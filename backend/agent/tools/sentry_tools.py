@@ -260,8 +260,8 @@ async def resolve_sentry_issue(
 
 
 SENTRY_TOOLS = {
-    "sentry.list_issues": list_sentry_issues,
-    "sentry.get_issue": get_sentry_issue,
-    "sentry.list_projects": list_sentry_projects,
-    "sentry.resolve_issue": resolve_sentry_issue,
+    "sentry_list_issues": list_sentry_issues,
+    "sentry_get_issue": get_sentry_issue,
+    "sentry_list_projects": list_sentry_projects,
+    "sentry_resolve_issue": resolve_sentry_issue,
 }

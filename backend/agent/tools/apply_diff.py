@@ -44,6 +44,13 @@ async def apply_diff(
     logger.info(f"[TOOL:apply_diff] user={user_id}, path={path}")
 
     try:
+        # Handle escaped newlines that might come from JSON serialization
+        # This fixes the issue where diff has literal '\n' instead of actual newlines
+        if '\\n' in diff and '\n' not in diff:
+            diff = diff.replace('\\n', '\n')
+            diff = diff.replace('\\t', '\t')
+            diff = diff.replace('\\r', '\r')
+
         # Check if file exists
         if not os.path.exists(path):
             return {

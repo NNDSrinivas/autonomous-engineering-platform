@@ -35,7 +35,7 @@ class IterationConfig:
     """Configuration for iterative execution."""
 
     mode: IterationMode = IterationMode.ONE_SHOT
-    max_iterations: int = 5
+    max_iterations: int = 15  # Increased to handle complex issues with retries
     stop_on_same_error: bool = True  # Stop if same error appears twice
     stop_on_no_progress: bool = True  # Stop if test count doesn't improve
     timeout_per_iteration_ms: int = 60000  # 1 minute per iteration

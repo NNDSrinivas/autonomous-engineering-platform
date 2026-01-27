@@ -398,8 +398,8 @@ async def add_bitbucket_pr_comment(
 
 # Tool registry for the dispatcher
 BITBUCKET_TOOLS = {
-    "bitbucket.list_my_prs": list_my_bitbucket_prs,
-    "bitbucket.list_repos": list_bitbucket_repos,
-    "bitbucket.get_pipeline_status": get_bitbucket_pipeline_status,
-    "bitbucket.add_comment": add_bitbucket_pr_comment,
+    "bitbucket_list_my_prs": list_my_bitbucket_prs,
+    "bitbucket_list_repos": list_bitbucket_repos,
+    "bitbucket_get_pipeline_status": get_bitbucket_pipeline_status,
+    "bitbucket_add_comment": add_bitbucket_pr_comment,
 }

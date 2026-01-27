@@ -98,6 +98,33 @@ import {
   addSessionTag,
   removeSessionTag,
   formatRelativeTime,
+  // Checkpoint & Recovery imports
+  TaskCheckpoint,
+  StreamingState,
+  createCheckpoint,
+  loadCheckpoint,
+  clearCheckpoint,
+  hasActiveCheckpoint,
+  updateCheckpointProgress,
+  markCheckpointInterrupted,
+  markCheckpointCompleted,
+  incrementCheckpointRetry,
+  createStreamingState,
+  loadStreamingState,
+  clearStreamingState,
+  updateStreamingContent,
+  appendStreamingActivity,
+  markStreamingComplete,
+  createDebouncedSave,
+  // Backend sync functions
+  initCheckpointSync,
+  createCheckpointWithSync,
+  updateCheckpointProgressWithSync,
+  markCheckpointInterruptedWithSync,
+  markCheckpointCompletedWithSync,
+  loadCheckpointWithFallback,
+  getInterruptedCheckpointsFromBackend,
+  deleteCheckpointFromBackend,
   updateSession,
   type ChatSessionTag,
 } from "../../utils/chatSessions";
@@ -112,6 +139,10 @@ import { AutonomousStepApproval } from "../AutonomousStepApproval";
 import { NaviActionRunner } from "./NaviActionRunner";
 import { NaviApprovalPanel, ActionWithRisk } from "./NaviApprovalPanel";
 import { ExecutionPlanStepper, ExecutionPlanStep } from "./ExecutionPlanStepper";
+import { FileChangeSummary } from "./FileChangeSummary";
+import { NaviCommandPanel, TerminalEntry as CommandTerminalEntry } from "../command";
+import { ConnectionErrorBanner } from "./ConnectionErrorBanner";
+import { CheckpointResumeDialog } from "./CheckpointResumeDialog";
 import "./NaviChatPanel.css";
 import Prism from 'prismjs';
 import type { ActivityEvent as ActivityEventPayload } from "../../types/activity";
@@ -474,6 +505,10 @@ type ActivityEvent = {
   additions?: number; // Lines added for edit/create operations
   deletions?: number; // Lines removed for edit operations
   _sequence?: number; // PHASE 5: Internal sequence number for guaranteed ordering
+  // Command context fields (Bug 5 fix)
+  purpose?: string; // Why this command/action is being run
+  explanation?: string; // What the result means
+  nextAction?: string; // What will happen next
 };
 
 type ActivityFile = {
@@ -497,6 +532,7 @@ type ActionSummaryEntry = {
   success: boolean;
   message?: string;
   originalContent?: string; // For undo functionality
+  wasCreated?: boolean; // True if file was newly created (for undo = delete)
 };
 
 // Inline change summary bar state (Cursor-style)
@@ -510,6 +546,7 @@ type InlineChangeSummary = {
     additions: number;
     deletions: number;
     originalContent?: string;
+    wasCreated?: boolean; // True if file was newly created (for undo = delete)
   }>;
   timestamp: string;
 };
@@ -1097,11 +1134,15 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const [coverageGate, setCoverageGate] = useState<CoverageGateState | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
-  const [historyFilter, setHistoryFilter] = useState<"all" | "pinned" | "starred" | "archived">("all");
+  const [historyFilter, setHistoryFilter] = useState<"all" | "pinned" | "starred" | "archived" | "interrupted">("all");
   const [historySort, setHistorySort] = useState<"recent" | "oldest" | "name">("recent");
   const [historySortOpen, setHistorySortOpen] = useState(false);
   const [, setHistoryRefreshTrigger] = useState(0);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  // Map of sessionId -> checkpoint for sessions with interrupted checkpoints
+  const [sessionCheckpoints, setSessionCheckpoints] = useState<Map<string, TaskCheckpoint>>(new Map());
+  // Checkpoint being shown in the resume dialog
+  const [resumeDialogCheckpoint, setResumeDialogCheckpoint] = useState<TaskCheckpoint | null>(null);
 
   // Settings panel state
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1171,6 +1212,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       build?: { passed: boolean; errors?: string[] };
       tests?: { passed: boolean; errors?: string[] };
     };
+    // Error/failure fields
+    stoppedReason?: string;  // e.g., "iteration_loop_detected", "max_iterations"
+    remainingErrors?: string[];  // List of unresolved errors
+    loopCount?: number;  // Number of times the same error occurred
   };
   const [taskSummary, setTaskSummary] = useState<TaskSummary | null>(null);
   const [taskFilesExpanded, setTaskFilesExpanded] = useState(true);
@@ -1201,6 +1246,24 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [accumulatedThinking, setAccumulatedThinking] = useState("");
   const accumulatedThinkingRef = useRef(""); // Ref for closure access
+
+  // ============================================================================
+  // CONNECTION ERROR & RECOVERY STATE
+  // ============================================================================
+  const [connectionError, setConnectionError] = useState<{
+    message: string;
+    timestamp: string;
+    retryCount: number;
+  } | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [currentCheckpoint, setCurrentCheckpoint] = useState<TaskCheckpoint | null>(null);
+  const [nextRetryIn, setNextRetryIn] = useState<number | null>(null);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxRetries = 3;
+  const baseRetryDelay = 2000; // 2 seconds base delay for exponential backoff
+
+  // Debounced save for streaming content
+  const debouncedSaveRef = useRef<((content: string) => void) | null>(null);
   const [isThinkingComplete, setIsThinkingComplete] = useState(false);
 
   // Execution plan panel state
@@ -1212,6 +1275,20 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   }
   const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
   const [planCollapsed, setPlanCollapsed] = useState(true);
+
+  // Build verification state - tracks build/typecheck results after task completion
+  type BuildVerificationResult = {
+    success: boolean;
+    skipped?: boolean;
+    message?: string;
+    project_type?: string;
+    command?: string;
+    command_name?: string;
+    output?: string;
+    errors?: string[];
+    return_code?: number;
+  };
+  const [buildVerification, setBuildVerification] = useState<BuildVerificationResult | null>(null);
 
   // Dynamic placeholder suggestions
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -1272,6 +1349,209 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     accumulatedThinkingRef.current = accumulatedThinking;
   }, [accumulatedThinking]);
 
+  // Initialize checkpoint sync with backend
+  useEffect(() => {
+    const backendBase = resolveBackendBase();
+    initCheckpointSync({
+      apiBaseUrl: backendBase,
+      userId: USER_ID,
+      onError: (error) => {
+        console.warn('[NAVI] Checkpoint sync error:', error.message);
+      },
+    });
+  }, []);
+
+  // Load interrupted checkpoints when history panel opens
+  useEffect(() => {
+    if (!historyOpen) return;
+
+    const loadInterruptedCheckpoints = async () => {
+      try {
+        // Load from backend
+        const backendCheckpoints = await getInterruptedCheckpointsFromBackend();
+        const checkpointMap = new Map<string, TaskCheckpoint>();
+
+        for (const cp of backendCheckpoints) {
+          checkpointMap.set(cp.sessionId, cp);
+        }
+
+        // Also check local storage for any sessions
+        const allSessions = listSessions();
+        for (const session of allSessions) {
+          if (!checkpointMap.has(session.id)) {
+            const localCp = loadCheckpoint(session.id);
+            if (localCp && localCp.status === 'interrupted') {
+              checkpointMap.set(session.id, localCp);
+            }
+          }
+        }
+
+        setSessionCheckpoints(checkpointMap);
+      } catch (error) {
+        console.warn('[NAVI] Failed to load interrupted checkpoints:', error);
+      }
+    };
+
+    loadInterruptedCheckpoints();
+  }, [historyOpen]);
+
+  // Handler to show the resume dialog when clicking resume on a checkpoint
+  const handleResumeFromCheckpoint = useCallback((checkpoint: TaskCheckpoint) => {
+    // Show the resume dialog
+    setResumeDialogCheckpoint(checkpoint);
+    // Close history panel
+    setHistoryOpen(false);
+  }, []);
+
+  // Handler for "Continue" action from resume dialog
+  const handleResumeContinue = useCallback((includeContext: boolean) => {
+    if (!resumeDialogCheckpoint) return;
+
+    const checkpoint = resumeDialogCheckpoint;
+
+    // Switch to the session
+    persistActiveSessionId(checkpoint.sessionId);
+    setActiveSessionId(checkpoint.sessionId);
+
+    // Load existing messages for this session
+    const existingMessages = loadSessionMessages<ChatMessage>(checkpoint.sessionId);
+    setMessages(existingMessages);
+
+    // Build the message with context about what was already done
+    let resumeMessage = checkpoint.userMessage;
+    if (includeContext && (checkpoint.modifiedFiles.length > 0 || checkpoint.executedCommands.length > 0)) {
+      const contextParts: string[] = [];
+
+      if (checkpoint.modifiedFiles.length > 0) {
+        const successfulFiles = checkpoint.modifiedFiles.filter(f => f.success);
+        if (successfulFiles.length > 0) {
+          contextParts.push(`Files already modified: ${successfulFiles.map(f => f.path).join(', ')}`);
+        }
+      }
+
+      if (checkpoint.executedCommands.length > 0) {
+        const successfulCmds = checkpoint.executedCommands.filter(c => c.success);
+        if (successfulCmds.length > 0) {
+          contextParts.push(`Commands already run: ${successfulCmds.map(c => c.command).join('; ')}`);
+        }
+      }
+
+      if (contextParts.length > 0) {
+        resumeMessage = `[Resuming interrupted task. ${contextParts.join('. ')}]\n\n${checkpoint.userMessage}`;
+      }
+    }
+
+    // Pre-fill the input with the message (with or without context)
+    setInput(resumeMessage);
+
+    // Clear the checkpoint since we're resuming
+    clearCheckpoint(checkpoint.sessionId);
+    deleteCheckpointFromBackend(checkpoint.sessionId);
+    setSessionCheckpoints(prev => {
+      const next = new Map(prev);
+      next.delete(checkpoint.sessionId);
+      return next;
+    });
+
+    // Close dialog
+    setResumeDialogCheckpoint(null);
+
+    // Focus input
+    setTimeout(() => inputRef.current?.focus(), 10);
+  }, [resumeDialogCheckpoint]);
+
+  // Handler for "Revert & Retry" action from resume dialog
+  const handleResumeRevert = useCallback(async () => {
+    if (!resumeDialogCheckpoint) return;
+
+    const checkpoint = resumeDialogCheckpoint;
+
+    // Switch to the session
+    persistActiveSessionId(checkpoint.sessionId);
+    setActiveSessionId(checkpoint.sessionId);
+
+    // Load existing messages
+    const existingMessages = loadSessionMessages<ChatMessage>(checkpoint.sessionId);
+    setMessages(existingMessages);
+
+    // TODO: Send a message to the backend to revert file changes
+    // For now, we'll add a note that files need manual revert
+    const revertNote = checkpoint.modifiedFiles.length > 0
+      ? `[Note: ${checkpoint.modifiedFiles.filter(f => f.success).length} file(s) were modified. Please review/revert if needed: ${checkpoint.modifiedFiles.filter(f => f.success).map(f => f.path).join(', ')}]\n\n`
+      : '';
+
+    // Pre-fill with original message + revert note
+    setInput(revertNote + checkpoint.userMessage);
+
+    // Clear the checkpoint
+    clearCheckpoint(checkpoint.sessionId);
+    deleteCheckpointFromBackend(checkpoint.sessionId);
+    setSessionCheckpoints(prev => {
+      const next = new Map(prev);
+      next.delete(checkpoint.sessionId);
+      return next;
+    });
+
+    // Close dialog
+    setResumeDialogCheckpoint(null);
+
+    // Focus input
+    setTimeout(() => inputRef.current?.focus(), 10);
+  }, [resumeDialogCheckpoint]);
+
+  // Handler for "Start Fresh" action from resume dialog
+  const handleResumeStartFresh = useCallback(async () => {
+    if (!resumeDialogCheckpoint) return;
+
+    const checkpoint = resumeDialogCheckpoint;
+
+    // Switch to the session
+    persistActiveSessionId(checkpoint.sessionId);
+    setActiveSessionId(checkpoint.sessionId);
+
+    // Load existing messages
+    const existingMessages = loadSessionMessages<ChatMessage>(checkpoint.sessionId);
+    setMessages(existingMessages);
+
+    // Clear the checkpoint (but keep any file changes)
+    clearCheckpoint(checkpoint.sessionId);
+    deleteCheckpointFromBackend(checkpoint.sessionId);
+    setSessionCheckpoints(prev => {
+      const next = new Map(prev);
+      next.delete(checkpoint.sessionId);
+      return next;
+    });
+
+    // Close dialog without pre-filling input
+    setResumeDialogCheckpoint(null);
+
+    // Focus input for a fresh start
+    setTimeout(() => inputRef.current?.focus(), 10);
+  }, [resumeDialogCheckpoint]);
+
+  // Handler to dismiss the resume dialog
+  const handleResumeDismiss = useCallback(() => {
+    setResumeDialogCheckpoint(null);
+  }, []);
+
+  // Handler to discard checkpoint from history list
+  const handleDiscardCheckpoint = useCallback(async (sessionId: string) => {
+    // Clear locally
+    clearCheckpoint(sessionId);
+
+    // Clear from backend
+    await deleteCheckpointFromBackend(sessionId);
+
+    // Remove from state
+    setSessionCheckpoints(prev => {
+      const next = new Map(prev);
+      next.delete(sessionId);
+      return next;
+    });
+
+    setHistoryRefreshTrigger(n => n + 1);
+  }, []);
+
   // Wrapper to set activity events AND sync ref immediately (before React renders)
   const setActivityEventsWithRef = useCallback((updater: React.SetStateAction<ActivityEvent[]>) => {
     setActivityEvents(prev => {
@@ -1303,13 +1583,16 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   // Track command outputs per action index for inline display
   const [perActionOutputs, setPerActionOutputs] = useState<Map<number, string>>(new Map());
 
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const diffSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Scroll navigation state
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+
+  // Track expanded user messages (for long messages with "Show more")
+  const [expandedUserMessages, setExpandedUserMessages] = useState<Set<string>>(new Set());
   const sendTimeoutRef = useRef<number | null>(null);
   const lastSentRef = useRef<string>("");
   const lastAttachmentsRef = useRef<AttachmentChipData[]>([]);
@@ -1502,16 +1785,25 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const pushActivityEvent = (event: ActivityEvent) => {
     // PHASE 5: Add sequence number for reliable ordering
     setActivityEvents((prev) => {
+      // FIX: When a new "running" activity starts, mark all previous "running" activities as "done"
+      // This ensures spinners stop when NAVI moves to the next step
+      let workingPrev = prev;
+      if (event.status === "running") {
+        workingPrev = prev.map((item) =>
+          item.status === "running" ? { ...item, status: "done" as const } : item
+        );
+      }
+
       // ENHANCED DEDUPLICATION: Check by label AND detail to avoid deduplicating different file reads
       // File reads all have label "Reading" or "Read" but different detail (file path)
       // So we need to match BOTH to properly deduplicate
-      const existingByLabelAndDetail = prev.findIndex(
+      const existingByLabelAndDetail = workingPrev.findIndex(
         (item) => item.label === event.label && item.detail === event.detail
       );
 
       if (existingByLabelAndDetail >= 0) {
         // Update existing activity instead of adding duplicate
-        const next = [...prev];
+        const next = [...workingPrev];
         next[existingByLabelAndDetail] = {
           ...next[existingByLabelAndDetail],
           kind: event.kind, // Update kind in case it changed
@@ -1523,10 +1815,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       }
 
       // Also check by ID
-      const existingById = prev.findIndex((item) => item.id === event.id);
+      const existingById = workingPrev.findIndex((item) => item.id === event.id);
       if (existingById >= 0) {
-        const next = [...prev];
-        next[existingById] = { ...event, _sequence: prev[existingById]._sequence };
+        const next = [...workingPrev];
+        next[existingById] = { ...event, _sequence: workingPrev[existingById]._sequence };
         return next;
       }
 
@@ -1538,7 +1830,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       };
 
       // Add new event and sort by sequence number for guaranteed order
-      const updated = [...prev, sequencedEvent];
+      const updated = [...workingPrev, sequencedEvent];
       updated.sort((a, b) => {
         const seqA = a._sequence || 0;
         const seqB = b._sequence || 0;
@@ -1561,6 +1853,43 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         activityStreamRef.current.scrollTop = activityStreamRef.current.scrollHeight;
       }
     });
+
+    // Update checkpoint with file/command activity for resume functionality
+    if (activeSessionId && currentCheckpoint) {
+      const isFileOp = ['read', 'edit', 'create'].includes(event.kind);
+      const isCommand = event.kind === 'command';
+
+      if (isFileOp && event.filePath && event.status === 'done') {
+        const operation = event.kind === 'create' ? 'create' : event.kind === 'edit' ? 'edit' : 'create';
+        const existingCheckpoint = loadCheckpoint(activeSessionId);
+        if (existingCheckpoint) {
+          const modifiedFiles = [...existingCheckpoint.modifiedFiles];
+          // Avoid duplicates
+          if (!modifiedFiles.some(f => f.path === event.filePath)) {
+            modifiedFiles.push({
+              path: event.filePath,
+              operation: operation as 'create' | 'edit' | 'delete',
+              timestamp: event.timestamp,
+              success: true,
+            });
+            updateCheckpointProgress(activeSessionId, { modifiedFiles });
+          }
+        }
+      }
+
+      if (isCommand && event.detail && event.status === 'done') {
+        const existingCheckpoint = loadCheckpoint(activeSessionId);
+        if (existingCheckpoint) {
+          const executedCommands = [...existingCheckpoint.executedCommands];
+          executedCommands.push({
+            command: event.detail,
+            timestamp: event.timestamp,
+            success: event.status === 'done',
+          });
+          updateCheckpointProgress(activeSessionId, { executedCommands });
+        }
+      }
+    }
   };
 
   const normalizeActivityPath = (filePath: string) => {
@@ -1657,6 +1986,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           additions: entry.additions ?? 0,
           deletions: entry.deletions ?? 0,
           originalContent: entry.originalContent,
+          wasCreated: entry.wasCreated,
         })),
         timestamp: nowIso(),
       };
@@ -1835,11 +2165,23 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   useEffect(() => {
     const handleDocumentClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.classList.contains('navi-link--file')) {
+
+      // Check if clicked element or any parent is a file link
+      const fileLink = target.classList.contains('navi-link--file')
+        ? target
+        : target.closest('.navi-link--file') as HTMLElement | null;
+
+      // Also check if clicked on the wrapper span (for SVG icon clicks)
+      const fileLinkWrapper = target.closest('.navi-file-link') as HTMLElement | null;
+      const anchorFromWrapper = fileLinkWrapper?.querySelector('.navi-link--file') as HTMLElement | null;
+
+      const finalLink = fileLink || anchorFromWrapper;
+
+      if (finalLink) {
         e.preventDefault();
         e.stopPropagation();
-        const filePath = target.getAttribute('data-file-path');
-        const lineStr = target.getAttribute('data-line');
+        const filePath = finalLink.getAttribute('data-file-path');
+        const lineStr = finalLink.getAttribute('data-line');
         const line = lineStr ? parseInt(lineStr, 10) : undefined;
         if (filePath) {
           console.log('[NAVI] Opening file:', filePath, 'at line:', line);
@@ -2540,6 +2882,21 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
       // Handle streaming message start - update existing placeholder or create new
       if (msg.type === "botMessageStart" && msg.messageId) {
+        // Clear any previous connection error when a new stream starts successfully
+        setConnectionError(null);
+        setIsRetrying(false);
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+          retryTimeoutRef.current = null;
+        }
+
+        // Initialize streaming state for incremental saving
+        if (activeSessionId) {
+          createStreamingState(activeSessionId, msg.messageId);
+          // Create debounced save function for this streaming session
+          debouncedSaveRef.current = createDebouncedSave(activeSessionId, 500);
+        }
+
         setMessages((prev) => {
           // Check if there's already a streaming assistant message (placeholder from handleSend)
           const existingStreamingIdx = prev.findIndex(
@@ -2576,6 +2933,19 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               : m
           )
         );
+
+        // Incrementally save streaming content (debounced to avoid excessive writes)
+        if (debouncedSaveRef.current) {
+          debouncedSaveRef.current(msg.fullContent);
+        }
+
+        // Update checkpoint with partial content if we have one
+        if (activeSessionId && currentCheckpoint) {
+          updateCheckpointProgress(activeSessionId, {
+            partialContent: msg.fullContent,
+          });
+        }
+
         return;
       }
 
@@ -2628,56 +2998,32 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         lastLiveProgressRef.current = "";
         clearSendTimeout();
 
-        // Generate task summary from activity files if no task.complete message was sent
-        // and there are activity files or actions to summarize
-        // BUT only if there were no errors - don't show "Task Complete" for failed tasks!
-        if (activityFiles.length > 0 || incomingActions.length > 0) {
-          const filesModified = activityFiles.filter(f => f.scope === 'unstaged' || f.scope === 'working').length;
-          const filesCreated = incomingActions.filter((a: any) => a.type === 'createFile').length;
-          const filesRead = activityEvents.filter(e => e.kind === 'read').length;
-
-          // Check for errors - don't show Task Complete if there were failures
-          const hasErrors = activityEvents.some(e => e.kind === 'error' || e.status === 'error');
-          const hasFailedCommands = activityEvents.some(
-            e => e.kind === 'command' && (e.status === 'error' || (e.output && /error|failed|cannot|unable/i.test(e.output)))
-          );
-
-          // Check response text for failure indicators
-          const responseText = msg.text || '';
-          const responseIndicatesFailure = /(?:couldn't|could not|unable to|failed to|error|issue|problem|not working|not responding|still.*issue)/i.test(responseText);
-
-          // Don't show Task Complete if there were errors or the response indicates failure
-          if (hasErrors || hasFailedCommands || responseIndicatesFailure) {
-            console.log('[NaviChatPanel] ⚠️ Not showing Task Complete due to errors or failures');
-            // Don't set task summary - the task didn't actually complete successfully
-          } else {
-            // Extract summary from the response text
-            const summaryLines = responseText.split('\n').slice(0, 3).join(' ').substring(0, 200);
-
-            // Build file list
-            const filesList = activityFiles.map(f => ({
-              path: f.path,
-              action: (f.scope === 'working' ? 'modified' : 'modified') as 'created' | 'modified' | 'read',
-              additions: f.additions,
-              deletions: f.deletions,
-            }));
-
-            // Only set task summary if there were significant FILE changes (not just commands)
-            // Command-only tasks should verify success before showing Task Complete
-            if (filesModified > 0 || filesCreated > 0) {
-              setTaskSummary({
-                filesRead,
-                filesModified,
-                filesCreated,
-                iterations: 1,
-                verificationPassed: null,
-                nextSteps: [],
-                summaryText: summaryLines || 'Task completed successfully.',
-                filesList: filesList.length > 0 ? filesList : undefined,
-              });
-            }
-          }
+        // Clear streaming state and mark checkpoint complete on successful end
+        if (activeSessionId) {
+          markStreamingComplete(activeSessionId);
+          markCheckpointCompletedWithSync(activeSessionId);
         }
+        setCurrentCheckpoint(null);
+        debouncedSaveRef.current = null;
+
+        // TASK COMPLETION: Now handled by backend via task_complete event
+        // The backend (streaming_agent.py) uses TaskContext to track:
+        // - Tool calls started/completed
+        // - File modifications/creations
+        // - Command executions and their success
+        // - Verification results
+        //
+        // The frontend receives a task_complete event with:
+        // - success: boolean - Whether task succeeded
+        // - state: TaskState - Current state (complete, failed, idle)
+        // - is_actionable_task: boolean - Whether task had file changes or commands
+        //
+        // This replaces heuristic regex-based detection which was error-prone.
+        // The Task Complete UI is now shown ONLY when:
+        // 1. Backend emits task_complete with success=true
+        // 2. is_actionable_task=true (file changes or commands run)
+        //
+        // See the "task_complete" event handler above for the implementation.
 
         // AUTO-EXECUTE: If auto-execute mode is enabled, automatically approve and execute all actions
         if (autoExecuteModeRef.current && incomingActions.length > 0) {
@@ -2748,38 +3094,69 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       // Handle execution plan events from backend
       if (msg.type === "plan_start" && msg.data) {
         console.log('[NaviChatPanel] ⚡ Execution plan started:', msg.data.plan_id);
+        const steps = (msg.data.steps || []).map((s: any) => ({
+          index: s.index,
+          title: s.title,
+          detail: s.detail,
+          status: 'pending' as const,
+        }));
         setExecutionPlan({
           planId: msg.data.plan_id,
-          steps: (msg.data.steps || []).map((s: any) => ({
-            index: s.index,
-            title: s.title,
-            detail: s.detail,
-            status: 'pending' as const,
-          })),
+          steps,
           isExecuting: true,
         });
+        // Also populate executionSteps for unified UI
+        setExecutionSteps(steps.map((s: any, i: number) => ({
+          id: `plan-step-${i}`,
+          title: s.title,
+          description: s.detail,
+          status: 'pending' as const,
+        })));
+        setPlanCollapsed(false);
         return;
       }
 
-      if (msg.type === "step_update" && msg.data && executionPlan?.planId === msg.data.plan_id) {
-        console.log('[NaviChatPanel] ⚡ Step update:', msg.data.step_index, '->', msg.data.status);
+      if (msg.type === "step_update" && msg.data) {
+        const stepIndex = msg.data.step_index;
+        const newStatus = msg.data.status === 'completed' ? 'done' : msg.data.status === 'error' ? 'error' : 'running';
+        console.log('[NaviChatPanel] ⚡ Step update:', stepIndex, '->', newStatus, 'plan_id:', msg.data.plan_id);
+
+        // Update executionPlan - use functional update to avoid stale closure issue
+        // The check for plan_id is done inside the callback where we have access to current state
         setExecutionPlan((prev) => {
-          if (!prev) return null;
+          if (!prev) {
+            console.log('[NaviChatPanel] ⚠️ step_update received but no executionPlan exists');
+            return null;
+          }
+          if (prev.planId !== msg.data.plan_id) {
+            console.log('[NaviChatPanel] ⚠️ step_update plan_id mismatch:', prev.planId, '!==', msg.data.plan_id);
+            return prev;
+          }
+          console.log('[NaviChatPanel] ✅ Updating step', stepIndex, 'to status:', msg.data.status);
           return {
             ...prev,
             steps: prev.steps.map((s, i) =>
-              i === msg.data.step_index
+              i === stepIndex
                 ? { ...s, status: msg.data.status, output: msg.data.output, error: msg.data.error }
                 : s
             ),
           };
         });
+
+        // Also update executionSteps for unified UI
+        setExecutionSteps((prev) =>
+          prev.map((s, i) =>
+            i === stepIndex ? { ...s, status: newStatus as 'pending' | 'running' | 'done' | 'error' } : s
+          )
+        );
         return;
       }
 
       if (msg.type === "plan_complete" && msg.data) {
         console.log('[NaviChatPanel] ⚡ Execution plan completed:', msg.data.plan_id);
         setExecutionPlan((prev) => (prev ? { ...prev, isExecuting: false } : null));
+        // Collapse the panel after completion
+        setTimeout(() => setPlanCollapsed(true), 3000);
         return;
       }
 
@@ -2796,21 +3173,156 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           deletions: f.deletions,
         }));
 
+        // Calculate actual file changes
+        const filesModifiedCount = Array.isArray(summary.files_modified)
+          ? summary.files_modified.length
+          : (summary.files_modified || filesList.filter(f => f.action === 'modified').length);
+        const filesCreatedCount = Array.isArray(summary.files_created)
+          ? summary.files_created.length
+          : (summary.files_created || filesList.filter(f => f.action === 'created').length);
+        const hasFileChanges = filesModifiedCount > 0 || filesCreatedCount > 0 || filesList.length > 0;
+
+        // Check if this is an error/failure case that should always show a summary
+        const isErrorCase = summary.stopped_reason || summary.verification_passed === false;
+
+        // Show Task Complete UI if there were file changes OR if it's an error case
+        // Error cases need to show the summary so users understand what went wrong
+        if (!hasFileChanges && !isErrorCase) {
+          console.log('[NaviChatPanel] ⏳ No file changes detected - NOT showing Task Complete UI (analysis-only response)');
+          // Still update next steps if provided
+          if (Array.isArray(summary.next_steps) && summary.next_steps.length > 0) {
+            setLastNextSteps(summary.next_steps);
+          }
+          return;
+        }
+
+        // Log error case details
+        if (isErrorCase) {
+          console.log('[NaviChatPanel] ⚠️ Task stopped/failed:', {
+            stoppedReason: summary.stopped_reason,
+            verificationPassed: summary.verification_passed,
+            loopCount: summary.loop_count,
+            remainingErrors: summary.remaining_errors,
+          });
+        }
+
         setTaskSummary({
-          filesRead: summary.files_read || 0,
-          filesModified: summary.files_modified || filesList.filter(f => f.action === 'modified').length,
-          filesCreated: summary.files_created || filesList.filter(f => f.action === 'created').length,
+          filesRead: Array.isArray(summary.files_read) ? summary.files_read.length : (summary.files_read || 0),
+          filesModified: filesModifiedCount,
+          filesCreated: filesCreatedCount,
           iterations: summary.iterations || 1,
           verificationPassed: summary.verification_passed ?? null,
           nextSteps: Array.isArray(summary.next_steps) ? summary.next_steps : [],
           summaryText: summary.summary_text || summary.message,
           filesList: filesList.length > 0 ? filesList : undefined,
           verificationDetails: summary.verification_details,
+          // Error/failure fields
+          stoppedReason: summary.stopped_reason,
+          remainingErrors: Array.isArray(summary.remaining_errors) ? summary.remaining_errors : undefined,
+          loopCount: summary.loop_count,
         });
 
         // Also update next steps if provided
         if (Array.isArray(summary.next_steps) && summary.next_steps.length > 0) {
           setLastNextSteps(summary.next_steps);
+        }
+        return;
+      }
+
+      // Handle build verification events from backend
+      // This is emitted after file changes to verify the build/typecheck passes
+      if (msg.type === "build_verification" && msg.build_verification) {
+        const buildResult = msg.build_verification;
+        console.log('[NaviChatPanel] 🔨 Build verification result:', buildResult);
+
+        setBuildVerification(buildResult);
+
+        // Add activity event for build verification
+        if (!buildResult.skipped) {
+          pushActivityEvent({
+            id: makeActivityId(),
+            kind: buildResult.success ? 'success' : 'error',
+            label: buildResult.command_name || 'Build verification',
+            detail: buildResult.success
+              ? 'Build passed successfully'
+              : `Build failed: ${buildResult.errors?.slice(0, 2).join(', ') || 'Unknown error'}`,
+            status: 'done',
+            timestamp: nowIso(),
+          });
+        }
+        return;
+      }
+
+      // Handle BACKEND-DRIVEN task completion (proper solution)
+      // This event is emitted by streaming_agent.py with semantic completion status
+      // It replaces heuristic regex-based detection in the "done" handler
+      if (msg.type === "task_complete" && msg.task_complete) {
+        const taskData = msg.task_complete;
+        console.log('[NaviChatPanel] 🎯 Backend task_complete event:', taskData);
+
+        // ONLY show Task Complete UI if:
+        // 1. Task was successful
+        // 2. It was an actionable task (file changes or commands run)
+        if (taskData.success && taskData.is_actionable_task) {
+          const summary = taskData.summary || {};
+          const taskState = summary.task_state || {};
+
+          // Build file list from activity files
+          const filesList = activityFiles.map(f => ({
+            path: f.path,
+            action: (f.status === 'done' ? 'modified' : 'modified') as 'created' | 'modified' | 'read',
+            additions: f.additions,
+            deletions: f.deletions,
+          }));
+
+          // Get build verification from event payload or existing state
+          const buildResult = taskData.build_verification || buildVerification;
+          const buildPassed = buildResult ? (buildResult.skipped || buildResult.success) : null;
+
+          // Create verification details if we have build info
+          const verificationDetails = buildResult && !buildResult.skipped ? {
+            build: {
+              passed: buildResult.success,
+              errors: buildResult.errors || [],
+            },
+          } : undefined;
+
+          // Generate appropriate summary text
+          let summaryText = 'Task completed successfully.';
+          if (buildResult && !buildResult.skipped) {
+            if (buildResult.success) {
+              summaryText = `Task completed. ${buildResult.command_name || 'Build'} passed.`;
+            } else {
+              summaryText = `Task completed with ${buildResult.errors?.length || 0} build error(s).`;
+            }
+          }
+
+          setTaskSummary({
+            filesRead: taskState.files_modified?.length || 0,
+            filesModified: summary.files_modified || taskState.files_modified?.length || filesList.length,
+            filesCreated: summary.files_created || taskState.files_created?.length || 0,
+            iterations: 1,
+            verificationPassed: buildPassed,
+            nextSteps: [],
+            summaryText,
+            filesList: filesList.length > 0 ? filesList : undefined,
+            verificationDetails,
+          });
+
+          // Clear build verification state after using it
+          setBuildVerification(null);
+
+          console.log('[NaviChatPanel] ✅ Showing Task Complete UI (backend-verified)', {
+            buildResult,
+            verificationDetails,
+          });
+        } else {
+          console.log('[NaviChatPanel] ⏳ Task not complete or not actionable:', {
+            success: taskData.success,
+            state: taskData.state,
+            is_actionable_task: taskData.is_actionable_task
+          });
+          // Don't show Task Complete UI - task either failed or was just informational
         }
         return;
       }
@@ -2869,6 +3381,14 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               : evt
           )
         );
+        return;
+      }
+
+      // Handle stream error events from the extension
+      if (msg.type === "navi.stream.error" || msg.type === "stream.error") {
+        const errorMsg = msg.error || msg.message || "Connection lost";
+        console.error('[NaviChatPanel] 🔴 Stream error received:', errorMsg);
+        handleStreamError(errorMsg);
         return;
       }
 
@@ -3385,6 +3905,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             success: isCommandSuccess,
             message: message ? String(message) : undefined,
             originalContent: data?.originalContent, // For undo functionality
+            wasCreated: data?.wasCreated, // True if file was newly created (undo = delete)
           });
 
           pendingActionCountRef.current = Math.max(0, pendingActionCountRef.current - 1);
@@ -3992,6 +4513,11 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           const label = data.label || 'Running command';
           const detail = data.detail || data.command || '';
           const status = data.status || 'running';
+          // Context fields for command explanations (Bug 5 fix)
+          const purpose = data.purpose || data.context?.purpose;
+          const explanation = data.explanation || data.context?.explanation;
+          const nextAction = data.nextAction || data.context?.nextAction;
+          const output = data.output || data.result?.stdout || data.result?.output;
 
           if (status === 'done') {
             setActivityEvents((prev) => {
@@ -4000,7 +4526,14 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               );
               if (existingIdx >= 0) {
                 const updated = [...prev];
-                updated[existingIdx] = { ...updated[existingIdx], status: 'done', detail };
+                updated[existingIdx] = {
+                  ...updated[existingIdx],
+                  status: 'done',
+                  detail,
+                  output,
+                  explanation,
+                  nextAction,
+                };
                 return updated;
               }
               return [...prev, {
@@ -4010,6 +4543,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 detail,
                 status: "done" as const,
                 timestamp: nowIso(),
+                output,
+                purpose,
+                explanation,
+                nextAction,
               }];
             });
           } else {
@@ -4020,6 +4557,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               detail,
               status: "running",
               timestamp: nowIso(),
+              purpose,
               ...(data.toolId ? { toolId: data.toolId } : {}),
             } as any);
           }
@@ -4974,6 +5512,159 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     }
   };
 
+  // ============================================================================
+  // CONNECTION ERROR HANDLERS (Retry, Resume, Dismiss)
+  // ============================================================================
+
+  /**
+   * Calculate exponential backoff delay: 2s, 4s, 8s...
+   */
+  const getRetryDelay = (retryCount: number): number => {
+    return baseRetryDelay * Math.pow(2, retryCount);
+  };
+
+  /**
+   * Handle retry button click - retry the last message
+   */
+  const handleRetry = useCallback(() => {
+    if (!connectionError || isRetrying) return;
+
+    const newRetryCount = connectionError.retryCount + 1;
+    if (newRetryCount > maxRetries) {
+      showToast("Maximum retries reached", "error");
+      return;
+    }
+
+    setIsRetrying(true);
+    setConnectionError(prev => prev ? { ...prev, retryCount: newRetryCount } : null);
+
+    // Update checkpoint retry count
+    if (activeSessionId) {
+      incrementCheckpointRetry(activeSessionId);
+    }
+
+    // Calculate backoff delay
+    const delay = getRetryDelay(newRetryCount - 1);
+    setNextRetryIn(Math.ceil(delay / 1000));
+
+    // Schedule retry
+    retryTimeoutRef.current = setTimeout(() => {
+      setIsRetrying(false);
+      setNextRetryIn(null);
+      setConnectionError(null);
+
+      // Retry the last sent message
+      if (lastSentRef.current) {
+        handleSend(lastSentRef.current);
+      }
+    }, delay);
+  }, [connectionError, isRetrying, activeSessionId, maxRetries]);
+
+  /**
+   * Handle resume from checkpoint - continues from where the task left off
+   */
+  const handleResume = useCallback(() => {
+    if (!currentCheckpoint || !activeSessionId) return;
+
+    setIsRetrying(true);
+    setConnectionError(null);
+
+    // Build a resume prompt with context from the checkpoint
+    const completedSteps = currentCheckpoint.steps
+      .filter(s => s.status === 'completed')
+      .map(s => s.title)
+      .join(', ');
+
+    const filesModified = currentCheckpoint.modifiedFiles
+      .map(f => f.path)
+      .join(', ');
+
+    const resumePrompt = `
+Please continue from where you left off. Here's the context:
+
+**Original Request:** ${currentCheckpoint.userMessage}
+
+**Progress Made:**
+- Completed steps: ${completedSteps || 'None'}
+- Files modified: ${filesModified || 'None'}
+- Current step: ${currentCheckpoint.currentStepIndex + 1}/${currentCheckpoint.totalSteps}
+
+**Partial Response So Far:**
+${currentCheckpoint.partialContent.substring(0, 500)}${currentCheckpoint.partialContent.length > 500 ? '...' : ''}
+
+Please continue completing this task from where it was interrupted.
+`.trim();
+
+    // Clear the current checkpoint since we're resuming
+    clearCheckpoint(activeSessionId);
+    setCurrentCheckpoint(null);
+
+    // Send the resume request
+    setTimeout(() => {
+      setIsRetrying(false);
+      handleSend(resumePrompt);
+    }, 500);
+  }, [currentCheckpoint, activeSessionId]);
+
+  /**
+   * Handle dismiss - clear error state and allow starting fresh
+   */
+  const handleDismissError = useCallback(() => {
+    // Clear retry timeout if active
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+
+    // Clear error state
+    setConnectionError(null);
+    setIsRetrying(false);
+    setNextRetryIn(null);
+
+    // Mark checkpoint as interrupted but keep it for potential resume later
+    if (activeSessionId && currentCheckpoint) {
+      markCheckpointInterruptedWithSync(activeSessionId, "User dismissed error");
+    }
+
+    // Clear streaming state
+    if (activeSessionId) {
+      clearStreamingState(activeSessionId);
+    }
+
+    // Reset sending state
+    setSending(false);
+    setSendTimedOut(false);
+
+    // Focus input for new message
+    setTimeout(() => inputRef.current?.focus(), 10);
+  }, [activeSessionId, currentCheckpoint]);
+
+  /**
+   * Handle stream error - called when streaming fails
+   */
+  const handleStreamError = useCallback((errorMessage: string) => {
+    console.error("[NAVI] Stream error:", errorMessage);
+
+    // Save checkpoint with current state
+    if (activeSessionId) {
+      const existingCheckpoint = loadCheckpoint(activeSessionId);
+      if (existingCheckpoint) {
+        markCheckpointInterruptedWithSync(activeSessionId, errorMessage);
+        setCurrentCheckpoint(existingCheckpoint);
+      }
+    }
+
+    // Set connection error state
+    setConnectionError({
+      message: errorMessage,
+      timestamp: nowIso(),
+      retryCount: 0,
+    });
+
+    setSending(false);
+    setIsRetrying(false);
+  }, [activeSessionId]);
+
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
@@ -5023,10 +5714,26 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       isStreaming: true,  // Show streaming cursor immediately
     };
     setMessages((prev) => [...prev, userMessage, placeholderAssistant]);
-    if (!overrideText) setInput("");
+    if (!overrideText) {
+      setInput("");
+      // Reset textarea height after sending
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
+    }
     setSending(true);
     setSendTimedOut(false);
     sentViaExtensionRef.current = false;
+
+    // Create checkpoint for potential recovery (with backend sync)
+    if (activeSessionId) {
+      createCheckpointWithSync(activeSessionId, placeholderAssistantId, text, []).then(checkpoint => {
+        setCurrentCheckpoint(checkpoint);
+      });
+      // Clear any previous connection error
+      setConnectionError(null);
+    }
+
     // Clear previous activities, narratives, and next steps when starting a new request
     setLastNextSteps([]);
     setNarrativeLines([]);
@@ -5222,15 +5929,31 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       setAttachments([]);
     } catch (err: any) {
       console.error("[NAVI Chat] Error during send:", err);
-      const errorMessage: ChatMessage = {
-        id: makeMessageId("system"),
-        role: "system",
-        content: `Error talking to Navi: ${err?.message ?? String(err ?? "Unknown error")
-          }`,
-        createdAt: nowIso(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      showToast("Error talking to Navi backend.", "error");
+      const errorMsg = err?.message ?? String(err ?? "Unknown error");
+
+      // Check if this looks like a connection/streaming error
+      const isConnectionError = errorMsg.includes('fetch') ||
+        errorMsg.includes('network') ||
+        errorMsg.includes('timeout') ||
+        errorMsg.includes('abort') ||
+        errorMsg.includes('terminated') ||
+        errorMsg.includes('stream') ||
+        err?.name === 'TypeError';
+
+      if (isConnectionError) {
+        // Use the connection error handler for retry UI
+        handleStreamError(errorMsg);
+      } else {
+        // For non-connection errors, show as system message
+        const errorMessage: ChatMessage = {
+          id: makeMessageId("system"),
+          role: "system",
+          content: `Error talking to Navi: ${errorMsg}`,
+          createdAt: nowIso(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        showToast("Error talking to Navi backend.", "error");
+      }
     } finally {
       setSending(false);
       if (sendTimeoutRef.current) {
@@ -5381,15 +6104,41 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  /* ---------- textarea auto-resize ---------- */
+
+  const autoResizeTextarea = useCallback(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+
+    const minHeight = 22;
+    const maxHeight = 120;
+
+    // Reset to minimum to get accurate scrollHeight
+    textarea.style.height = `${minHeight}px`;
+
+    // Calculate new height based on content
+    const scrollHeight = textarea.scrollHeight;
+    const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
+
+    textarea.style.height = `${newHeight}px`;
+    textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, []);
+
+  // Auto-resize on input change
+  useEffect(() => {
+    autoResizeTextarea();
+  }, [input, autoResizeTextarea]);
+
   /* ---------- keyboard ---------- */
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    // Enter to send
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter to send (without Shift), Shift+Enter for new line
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
       return;
     }
+    // Shift+Enter - allow default behavior for new line (no preventDefault)
 
     // Up arrow - navigate through history
     if (e.key === "ArrowUp") {
@@ -5456,14 +6205,23 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     }
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? el.value.length;
-    setInput((prev) => prev.slice(0, start) + text + prev.slice(end));
+    const newValue = el.value.slice(0, start) + text + el.value.slice(end);
+    setInput(newValue);
+
+    // Use double requestAnimationFrame to ensure DOM is updated before setting selection and resizing
     window.requestAnimationFrame(() => {
-      try {
-        const pos = start + text.length;
-        el.setSelectionRange(pos, pos);
-      } catch {
-        // ignore
-      }
+      window.requestAnimationFrame(() => {
+        try {
+          const pos = start + text.length;
+          el.setSelectionRange(pos, pos);
+          // Explicitly trigger resize after paste to handle multiline text
+          el.style.height = 'auto';
+          const newHeight = Math.min(el.scrollHeight, 150);
+          el.style.height = `${newHeight}px`;
+        } catch {
+          // ignore
+        }
+      });
     });
   };
 
@@ -5489,7 +6247,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     return false;
   };
 
-  const handlePaste = async (e: ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = async (e: ClipboardEvent<HTMLTextAreaElement>) => {
     // Check for image files in clipboard first
     const items = e.clipboardData?.items;
     if (items) {
@@ -5527,7 +6285,20 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
     // Handle text paste
     const nativeText = e.clipboardData?.getData("text/plain") ?? "";
-    if (nativeText) return; // Let native paste handle it
+    if (nativeText) {
+      // Let native paste handle it, but ensure resize happens after
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const el = inputRef.current;
+          if (el) {
+            el.style.height = 'auto';
+            const newHeight = Math.min(el.scrollHeight, 150);
+            el.style.height = `${newHeight}px`;
+          }
+        });
+      });
+      return;
+    }
     const canReadNative =
       typeof navigator !== "undefined" && !!navigator.clipboard?.readText;
     if (!vscodeApi.hasVsCodeHost() && !canReadNative) return;
@@ -5816,8 +6587,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const handleUndoChanges = async () => {
     if (!inlineChangeSummary) return;
 
-    // Request undo for each file with original content
-    const filesToUndo = inlineChangeSummary.files.filter((f) => f.originalContent !== undefined);
+    // Request undo for each file - either restore original content or delete if newly created
+    const filesToUndo = inlineChangeSummary.files.filter(
+      (f) => f.originalContent !== undefined || f.wasCreated
+    );
 
     if (filesToUndo.length === 0) {
       showToast("Cannot undo: original content not available", "error");
@@ -5831,11 +6604,30 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         type: "undoFileChange",
         filePath: file.path,
         originalContent: file.originalContent,
+        wasCreated: file.wasCreated, // If true, extension will delete the file
       });
     }
 
     setInlineChangeSummary(null);
     showToast(`Undone ${filesToUndo.length} file change${filesToUndo.length > 1 ? "s" : ""}`, "info");
+  };
+
+  // Handler for "Preview All" button - opens diff view for all changed files
+  const handlePreviewAllChanges = () => {
+    if (!inlineChangeSummary || inlineChangeSummary.files.length === 0) return;
+
+    // Open diff view for each file
+    for (const file of inlineChangeSummary.files) {
+      if (file.path) {
+        vscodeApi.postMessage({
+          type: 'openNativeDiff',
+          filePath: file.path,
+          scope: 'working',
+        });
+      }
+    }
+
+    showToast(`Opening ${inlineChangeSummary.files.length} file diff${inlineChangeSummary.files.length > 1 ? "s" : ""}`, "info");
   };
 
   const handleApproveAction = (actions: AgentAction[], actionIndex: number) => {
@@ -6090,24 +6882,69 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       return ext || 'default';
     };
 
+    // Get different SVG icon based on file type
+    const getFileIconSvg = (path: string, color: string): string => {
+      const ext = path.substring(path.lastIndexOf('.')).toLowerCase();
+      const iconClass = getFileIconClass(path);
+      const baseClass = `navi-file-svg navi-file-svg--${iconClass}`;
+      const baseStyle = `color: ${color}`;
+
+      // Code files - icon with brackets <>
+      const codeExts = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.py', '.pyw', '.go', '.rs', '.rb', '.java', '.kt', '.c', '.cpp', '.h', '.cs', '.php', '.swift', '.vue', '.svelte', '.html', '.htm', '.css', '.scss', '.sass', '.less'];
+      if (codeExts.includes(ext)) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 12L8 14L10 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 12L16 14L14 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      }
+
+      // JSON files - brackets {}
+      if (['.json', '.jsonc'].includes(ext)) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 12C8.45 12 8 12.45 8 13V13.5C8 14.05 7.55 14.5 7 14.5C7.55 14.5 8 14.95 8 15.5V16C8 16.55 8.45 17 9 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 12C15.55 12 16 12.45 16 13V13.5C16 14.05 16.45 14.5 17 14.5C16.45 14.5 16 14.95 16 15.5V16C16 16.55 15.55 17 15 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      }
+
+      // Config/settings files - cog icon
+      const configExts = ['.yaml', '.yml', '.toml', '.env', '.ini', '.conf', '.config', '.lock'];
+      if (configExts.includes(ext) || path.toLowerCase().includes('dockerfile')) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="14.5" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M12 11.5V12.5M12 16.5V17.5M14.12 13.38L13.41 13.38M10.59 15.62L9.88 15.62M14.12 15.62L13.41 14.91M10.59 13.38L9.88 14.09" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>`;
+      }
+
+      // Text/markdown files - document with lines
+      const textExts = ['.md', '.mdx', '.txt', '.rst', '.doc', '.docx', '.rtf'];
+      if (textExts.includes(ext)) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="17" x2="13" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+      }
+
+      // SQL files - database icon
+      if (['.sql'].includes(ext)) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="12" cy="13" rx="4" ry="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 13V16C8 16.83 9.79 17.5 12 17.5C14.21 17.5 16 16.83 16 16V13" stroke="currentColor" stroke-width="1.5"/></svg>`;
+      }
+
+      // Default file icon
+      return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    };
+
     // Make URLs and file paths clickable
     const makeLinksClickable = (html: string): string => {
       let result = html;
 
       // First, handle markdown links: [text](url) - convert to anchor tags
       // This prevents the URL from being matched again by the raw URL pattern
-      const markdownLinkPattern = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+      // Handle URLs with accidental spaces ANYWHERE (LLM tokenization artifact)
+      // Pattern allows spaces in: "http ://", "http: //", "http :/ /", etc.
+      const markdownLinkPattern = /\[([^\]]+)\]\((https?\s*:\s*\/\s*\/\s*[^)]+)\)/g;
       result = result.replace(markdownLinkPattern, (_match, text, url) => {
-        // If text is the same as URL (e.g., [http://localhost:3000](http://localhost:3000))
+        // Clean up URL: remove ALL spaces from the URL
+        const cleanUrl = url.replace(/\s+/g, '');
+        // Clean up display text too
+        const cleanText = text.replace(/\s+/g, '');
+        // If text matches URL (e.g., [http://localhost:3000](http://localhost:3000))
         // just show the URL once
-        const displayText = text === url ? url : text;
-        return `<a href="${url}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+        const displayText = cleanText === cleanUrl ? cleanUrl : cleanText;
+        return `<a href="${cleanUrl}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
       });
 
-      // URL pattern - matches http/https links that are NOT already inside an anchor tag
+      // URL pattern - matches http/https links with potential spaces (LLM tokenization)
+      // Pattern allows: "http://", "http ://", "http: //", "http :/ /" etc.
       // Skip URLs that are already converted (inside href="" or between > and <)
-      // Stop at common sentence-ending punctuation when followed by space/end
-      const urlPattern = /(https?:\/\/[^\s<>"'\[\]]+)/g;
+      const urlPattern = /(https?\s*:\s*\/\s*\/\s*[^\s<>"'\[\]]+)/g;
       result = result.replace(urlPattern, (url: string, _p1: string, position: number) => {
         // Check if this URL is already inside an anchor tag by looking at context
         const before = result.substring(Math.max(0, position - 15), position);
@@ -6115,8 +6952,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         if (/href="$/.test(before) || /">$/.test(before)) {
           return url; // Don't modify - already in anchor
         }
-        // Remove trailing punctuation that's likely sentence-ending (but keep port numbers like :3000)
-        let cleanUrl = url;
+        // Clean up URL: remove all internal spaces
+        let cleanUrl = url.replace(/\s+/g, '');
         // Only strip trailing period/comma if it's at the very end (likely punctuation, not part of URL)
         if (/[.,;:!?]$/.test(cleanUrl) && !/:\d+[.,;:!?]?$/.test(cleanUrl)) {
           cleanUrl = cleanUrl.replace(/[.,;:!?]+$/, '');
@@ -6124,24 +6961,28 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         return `<a href="${cleanUrl}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
       });
 
-      // File path pattern - VERY restrictive to avoid false positives
+      // File path pattern - matches common code file paths
       // Only match paths that:
       // 1. Start with / (absolute path like /Users/foo/bar.txt)
       // 2. Start with ./ or ../ (relative path like ./src/file.ts)
-      // 3. Have directory structure with common code directories (src/, lib/, components/, etc.)
+      // 3. Have directory structure with common code directories
+      // 4. Match filenames with extensions when wrapped in backticks
       // Do NOT match: Next.js, server.The, fresh.I've, Node.js, etc.
-      const filePathPattern = /(?:^|[\s(])((\/[\w\-.]+)+\.\w+|(\.\.?\/[\w\-./]+\.\w+)|((?:src|lib|components|pages|app|backend|frontend|extensions|webview|utils|services|api|hooks|types)\/[\w\-./]+\.\w+))(?::(\d+))?(?=[\s),.:;!?]|$)/g;
-      result = result.replace(filePathPattern, (match, fullPath, _p1, _p2, _p3, lineNum) => {
+      const commonDirs = 'src|lib|components|pages|app|backend|frontend|extensions|webview|utils|services|api|hooks|types|tests|test|__tests__|spec|config|configs|scripts|bin|dist|build|public|static|assets|styles|css|templates|views|models|controllers|routes|middleware|helpers|core|common|shared|modules|features|domains';
+      const filePathPattern = new RegExp(
+        `(?:^|[\\s(])((\\/[\\w\\-.]+)+\\.\\w+|(\\.\\.\\/[\\w\\-./]+\\.\\w+)|((?:${commonDirs})\\/[\\w\\-./]+\\.\\w+)|([\\w\\-]+\\.(?:tsx?|jsx?|py|go|rs|rb|java|cs|cpp|c|h|css|scss|less|html|json|ya?ml|toml|md|sql)))(?::(\\d+))?(?=[\\s),.:;!?]|$)`,
+        'g'
+      );
+      result = result.replace(filePathPattern, (match, fullPath, _p1, _p2, _p3, _p4, lineNum) => {
         // Preserve leading whitespace/punctuation
         const leadingMatch = match.match(/^[\s(]/) || [''];
         const leading = leadingMatch[0];
         const pathPart = match.slice(leading.length);
         const pathWithoutLine = pathPart.replace(/:(\d+)$/, '');
         const iconColor = getFileIconColor(pathWithoutLine);
-        const iconClass = getFileIconClass(pathWithoutLine);
         const dataLine = lineNum ? ` data-line="${lineNum}"` : '';
-        // Use inline SVG file icon with dynamic color
-        const svgIcon = `<svg class="navi-file-svg navi-file-svg--${iconClass}" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="color: ${iconColor}"><path d="M3 1.5C3 1.22386 3.22386 1 3.5 1H9.29289L13 4.70711V14.5C13 14.7761 12.7761 15 12.5 15H3.5C3.22386 15 3 14.7761 3 14.5V1.5Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1"/><path d="M9 1V5H13" stroke="currentColor" stroke-width="1"/></svg>`;
+        // Use file-type specific SVG icon
+        const svgIcon = getFileIconSvg(pathWithoutLine, iconColor);
         // Wrap in span with SVG icon
         return `${leading}<span class="navi-file-link">${svgIcon}<a href="#" class="navi-link navi-link--file" data-file-path="${pathWithoutLine}"${dataLine}>${pathWithoutLine}</a></span>`;
       });
@@ -6810,6 +7651,17 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   };
 
   return (
+    <>
+    {/* Checkpoint Resume Dialog - Modal overlay */}
+    {resumeDialogCheckpoint && (
+      <CheckpointResumeDialog
+        checkpoint={resumeDialogCheckpoint}
+        onContinue={handleResumeContinue}
+        onRevert={handleResumeRevert}
+        onStartFresh={handleResumeStartFresh}
+        onDismiss={handleResumeDismiss}
+      />
+    )}
     <div className="navi-chat-root navi-chat-root--no-header" data-testid="navi-interface">
       {/* Working Indicator - Floating with dynamic content */}
       {sending && (
@@ -6923,6 +7775,16 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 <Archive className="h-3.5 w-3.5 navi-icon-animated navi-icon-archive" />
                 <span>Archived</span>
               </button>
+              {sessionCheckpoints.size > 0 && (
+                <button
+                  type="button"
+                  className={`navi-history-filter-btn navi-filter-interrupted ${historyFilter === "interrupted" ? "is-active" : ""}`}
+                  onClick={() => setHistoryFilter("interrupted")}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 navi-icon-animated" />
+                  <span>Interrupted ({sessionCheckpoints.size})</span>
+                </button>
+              )}
             </div>
             <div className="navi-history-sort-container">
               <button
@@ -6971,7 +7833,9 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                   ? listStarredSessions()
                   : historyFilter === "archived"
                     ? listArchivedSessions()
-                    : listActiveSessions();
+                    : historyFilter === "interrupted"
+                      ? listActiveSessions().filter(s => sessionCheckpoints.has(s.id))
+                      : listActiveSessions();
 
               // Apply search filter
               if (historySearch.trim()) {
@@ -7010,16 +7874,22 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                             ? "No starred conversations"
                             : historyFilter === "archived"
                               ? "No archived conversations"
-                              : "No conversations yet"}
+                              : historyFilter === "interrupted"
+                                ? "No interrupted tasks to resume"
+                                : "No conversations yet"}
                     </span>
                   </div>
                 );
               }
 
-              return sessions.map((session) => (
+              return sessions.map((session) => {
+                const checkpoint = sessionCheckpoints.get(session.id);
+                const hasCheckpoint = !!checkpoint;
+
+                return (
                 <div
                   key={session.id}
-                  className={`navi-history-item${session.id === activeSessionId ? " is-active" : ""}${session.isPinned ? " is-pinned" : ""}`}
+                  className={`navi-history-item${session.id === activeSessionId ? " is-active" : ""}${session.isPinned ? " is-pinned" : ""}${hasCheckpoint ? " has-checkpoint" : ""}`}
                   onClick={() => {
                     persistActiveSessionId(session.id);
                     setActiveSessionId(session.id);
@@ -7032,6 +7902,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                   {session.isPinned && (
                     <div className="navi-history-pin-indicator">
                       <Pin className="h-3 w-3" />
+                    </div>
+                  )}
+
+                  {/* Checkpoint indicator */}
+                  {hasCheckpoint && (
+                    <div className="navi-history-checkpoint-indicator" title="Has interrupted task">
+                      <AlertTriangle className="h-3 w-3" />
                     </div>
                   )}
 
@@ -7078,6 +7955,34 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
                   {/* Action buttons - show on hover with animated icons */}
                   <div className="navi-history-item-actions">
+                    {/* Resume button for interrupted checkpoints */}
+                    {hasCheckpoint && checkpoint && (
+                      <>
+                        <button
+                          type="button"
+                          className="navi-history-action-btn navi-action-resume"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleResumeFromCheckpoint(checkpoint);
+                          }}
+                          title={`Resume: ${checkpoint.userMessage.slice(0, 50)}...`}
+                        >
+                          <RotateCw className="h-3.5 w-3.5 navi-icon-animated" />
+                          <span className="navi-action-label">Resume</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="navi-history-action-btn navi-action-discard"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDiscardCheckpoint(session.id);
+                          }}
+                          title="Discard checkpoint"
+                        >
+                          <XCircle className="h-3.5 w-3.5 navi-icon-animated" />
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       className={`navi-history-action-btn navi-action-pin ${session.isPinned ? "is-active" : ""}`}
@@ -7156,7 +8061,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                     )}
                   </div>
                 </div>
-              ));
+              );
+              });
             })()}
           </div>
 
@@ -7529,47 +8435,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 className={`navi-chat-bubble navi-chat-bubble--${m.role}`}
                 data-testid={m.role === "assistant" ? "ai-response" : undefined}
               >
-                {/* THINKING INDICATOR: Shows processing status during streaming */}
-                {/* Only show when streaming AND no real tool activities have appeared yet */}
-                {/* Check for filtered activities (read, edit, create, command) - not liveProgress/status events */}
-                {(() => {
-                  // Check if there are any real tool activities (not just liveProgress/status)
-                  const hasRealActivities = activityEvents.some(
-                    evt => evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create' || evt.kind === 'command'
-                  );
-                  const shouldShowThinking = m.role === "assistant" && m.isStreaming &&
-                    !hasRealActivities && narrativeLines.length === 0 && !m.content;
-
-                  if (!shouldShowThinking) return null;
-
-                  return (
-                    <div className="navi-thinking-block">
-                      <div
-                        className="navi-thinking-header"
-                        onClick={() => accumulatedThinking ? setThinkingExpanded(prev => !prev) : undefined}
-                        style={{ cursor: accumulatedThinking ? 'pointer' : 'default' }}
-                      >
-                        {accumulatedThinking && (
-                          <ChevronRight
-                            size={14}
-                            className={`navi-thinking-chevron ${thinkingExpanded ? 'expanded' : ''}`}
-                          />
-                        )}
-                        <span className="navi-thinking-label">
-                          {"Thinking...".split("").map((char, i) => (
-                            <span key={i} className="navi-thinking-label-char">{char}</span>
-                          ))}
-                        </span>
-                      </div>
-                      {/* Only show content if there's actual thinking from the model (Anthropic extended thinking) */}
-                      {thinkingExpanded && accumulatedThinking && (
-                        <div className="navi-thinking-content navi-thinking-content--streaming">
-                          {accumulatedThinking}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                {/* THINKING INDICATOR: Moved to bottom of chat for better UX */}
+                {/* See "Bottom Thinking Indicator" section after messages map */}
                 {/* After completion: Show thinking block only if there's stored thinking */}
                 {m.role === "assistant" && !m.isStreaming && m.storedThinking && (
                   <div className="navi-thinking-block navi-thinking-block--complete">
@@ -7595,14 +8462,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 {/* ASSISTANT MESSAGE: Show response text first, then activities inline */}
                 {m.role === "assistant" && (
                   <div className="navi-response-stream">
-                    {/* Execution Plan Stepper - shows task steps with real-time status */}
-                    {executionPlan && m.isStreaming && (
-                      <ExecutionPlanStepper
-                        planId={executionPlan.planId}
-                        steps={executionPlan.steps}
-                        isExecuting={executionPlan.isExecuting}
-                      />
-                    )}
+                    {/* ExecutionPlanStepper moved to above input bar for better visibility */}
                     {(() => {
                       // Get activities and narratives (live during streaming, stored after)
                       const activitiesToUse = m.isStreaming ? activityEvents : (m.storedActivities || []);
@@ -7642,6 +8502,43 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                         const timeB = b.itemType === 'narrative' ? b.timestamp : b.data.timestamp;
                         return new Date(timeA).getTime() - new Date(timeB).getTime();
                       });
+
+                      // Combine consecutive narrative items to prevent broken markdown patterns
+                      // (e.g., [text](url) split across chunks) and mid-word splits
+                      type MergedItem =
+                        | { itemType: 'narrative'; id: string; text: string; timestamp: string }
+                        | { itemType: 'activity'; data: ActivityEvent };
+
+                      const mergedItems: MergedItem[] = [];
+                      for (const item of allItems) {
+                        if (item.itemType === 'narrative') {
+                          const lastItem = mergedItems[mergedItems.length - 1];
+                          if (lastItem && lastItem.itemType === 'narrative') {
+                            // Combine with previous narrative - determine if we need a separator
+                            const lastChar = lastItem.text.slice(-1);
+                            const firstChar = item.text.charAt(0);
+
+                            // No separator needed if:
+                            // 1. Last char is whitespace, newline, or opening bracket/paren
+                            // 2. First char is whitespace or newline
+                            // 3. We're in the middle of a word (last char is letter/digit AND first char is letter/digit)
+                            const noSeparatorChars = ['[', '(', '\n', ' ', '\t'];
+                            const isLastCharWhitespace = /\s/.test(lastChar);
+                            const isFirstCharWhitespace = /\s/.test(firstChar);
+                            const isMidWord = /[a-zA-Z0-9]/.test(lastChar) && /[a-zA-Z0-9]/.test(firstChar);
+                            const needsSeparator = !noSeparatorChars.includes(lastChar) &&
+                                                   !isLastCharWhitespace &&
+                                                   !isFirstCharWhitespace &&
+                                                   !isMidWord;
+
+                            lastItem.text += (needsSeparator ? ' ' : '') + item.text;
+                          } else {
+                            mergedItems.push({ ...item });
+                          }
+                        } else {
+                          mergedItems.push(item);
+                        }
+                      }
 
                       // Render activity item helper
                       const renderActivityItem = (evt: ActivityEvent) => {
@@ -7690,6 +8587,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                             </div>
                             {isCommand && evt.detail && (
                               <div className="navi-claude-command-block">
+                                {/* Purpose: Why this command is being run */}
+                                {evt.purpose && (
+                                  <div className="navi-command-purpose">
+                                    <span className="navi-command-purpose-icon">💡</span>
+                                    <span className="navi-command-purpose-text">{evt.purpose}</span>
+                                  </div>
+                                )}
                                 <div className="navi-claude-command-row">
                                   <span className="navi-claude-io-label">IN</span>
                                   <code className="navi-claude-command-text">{evt.detail}</code>
@@ -7698,6 +8602,20 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                                   <div className="navi-claude-command-row">
                                     <span className="navi-claude-io-label">OUT</span>
                                     <code className="navi-claude-output-text">{evt.output}</code>
+                                  </div>
+                                )}
+                                {/* Explanation: What the result means */}
+                                {evt.explanation && (
+                                  <div className="navi-command-explanation">
+                                    <span className="navi-command-explanation-icon">📋</span>
+                                    <span className="navi-command-explanation-text">{evt.explanation}</span>
+                                  </div>
+                                )}
+                                {/* Next action: What will happen next */}
+                                {evt.nextAction && (
+                                  <div className="navi-command-next">
+                                    <span className="navi-command-next-icon">→</span>
+                                    <span className="navi-command-next-text">{evt.nextAction}</span>
                                   </div>
                                 )}
                               </div>
@@ -7717,9 +8635,17 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                           // Handle inline code `code`
                           result = result.replace(/`([^`]+)`/g, '<code class="navi-inline-code">$1</code>');
                           // Handle markdown links [text](url) - process these FIRST
+                          // Also handle URLs with accidental spaces (LLM tokenization artifact)
                           result = result.replace(
-                            /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
-                            '<a href="$2" class="navi-inline-link" target="_blank" rel="noopener noreferrer">$1</a>'
+                            /\[([^\]]+)\]\((https?:\/\/\s*[^)]+)\)/g,
+                            (_match, linkText, url) => {
+                              // Clean up URL: remove spaces that might have been introduced by LLM tokenization
+                              const cleanUrl = url.replace(/\s+/g, '');
+                              // If text is same as URL (with or without spaces), show URL once
+                              const cleanText = linkText.replace(/\s+/g, '');
+                              const displayText = cleanText === cleanUrl ? cleanUrl : linkText;
+                              return `<a href="${cleanUrl}" class="navi-inline-link" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+                            }
                           );
                           // Handle plain URLs (skip if preceded by [ or ]( which indicates markdown link syntax)
                           result = result.replace(
@@ -7825,7 +8751,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                       return (
                         <div data-testid="ai-response-text" className="navi-interleaved-stream">
                           {/* Render items in chronological order - interleave text and activities */}
-                          {allItems.map((item, idx) => {
+                          {/* Using mergedItems to combine consecutive narratives for proper markdown parsing */}
+                          {mergedItems.map((item, idx) => {
                             if (item.itemType === 'narrative') {
                               return renderNarrativeItem(item.text, item.id);
                             } else {
@@ -7869,12 +8796,15 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                                 alt={att.label || 'Attached image'}
                                 className="navi-message-attachment-image"
                                 style={{
-                                  maxWidth: '200px',
-                                  maxHeight: '150px',
-                                  borderRadius: 8,
+                                  maxWidth: '120px',
+                                  maxHeight: '90px',
+                                  borderRadius: 6,
                                   marginBottom: 4,
-                                  border: '1px solid rgba(255,255,255,0.1)'
+                                  border: '1px solid rgba(255,255,255,0.15)',
+                                  cursor: 'pointer',
+                                  objectFit: 'cover'
                                 }}
+                                title="Click to view full size"
                               />
                             ) : (
                               <div className="navi-message-attachment-file" style={{
@@ -7895,7 +8825,73 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                         ))}
                       </div>
                     )}
-                    {renderMessageContent(m)}
+                    {/* Collapsible user message for long content */}
+                    {(() => {
+                      const content = m.content;
+                      const MAX_LINES = 3;
+                      const MAX_CHARS = 250;
+                      const lines = content.split('\n');
+                      const isLong = lines.length > MAX_LINES || content.length > MAX_CHARS;
+                      const isExpanded = expandedUserMessages.has(m.id);
+
+                      if (!isLong) {
+                        return renderMessageContent(m);
+                      }
+
+                      // Truncate to first 3 lines or MAX_CHARS, whichever is shorter
+                      const truncatedLines = lines.slice(0, MAX_LINES);
+                      let truncatedContent = truncatedLines.join('\n');
+                      if (truncatedContent.length > MAX_CHARS) {
+                        truncatedContent = truncatedContent.slice(0, MAX_CHARS);
+                      }
+
+                      return (
+                        <div className="navi-user-message-collapsible">
+                          <div
+                            className={`navi-user-message-content ${!isExpanded ? 'navi-user-message-content--truncated' : ''}`}
+                            style={{
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {isExpanded ? renderMessageContent(m) : (
+                              <>
+                                {truncatedContent}
+                                {(lines.length > MAX_LINES || content.length > MAX_CHARS) && '...'}
+                              </>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="navi-user-message-toggle"
+                            onClick={() => {
+                              setExpandedUserMessages(prev => {
+                                const next = new Set(prev);
+                                if (next.has(m.id)) {
+                                  next.delete(m.id);
+                                } else {
+                                  next.add(m.id);
+                                }
+                                return next;
+                              });
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'hsl(var(--primary))',
+                              cursor: 'pointer',
+                              padding: '4px 0',
+                              fontSize: 12,
+                              fontWeight: 500,
+                              marginTop: 4,
+                              display: 'block',
+                            }}
+                          >
+                            {isExpanded ? 'Show less' : 'Show more'}
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -8407,33 +9403,21 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
         {/* Inline change summary bar (Cursor-style) - shows after action completion */}
         {inlineChangeSummary && (
-          <div className="navi-inline-change-summary">
-            <div className="navi-inline-change-summary-content">
-              <span className="navi-inline-change-summary-text">
-                {inlineChangeSummary.fileCount} file{inlineChangeSummary.fileCount !== 1 ? "s" : ""} changed
-              </span>
-              <span className="navi-inline-change-summary-stats">
-                <span className="navi-inline-change-summary-add">+{inlineChangeSummary.totalAdditions}</span>
-                <span className="navi-inline-change-summary-del">-{inlineChangeSummary.totalDeletions}</span>
-              </span>
-            </div>
-            <div className="navi-inline-change-summary-actions">
-              <button
-                type="button"
-                className="navi-inline-change-btn navi-inline-change-btn--keep"
-                onClick={handleKeepChanges}
-              >
-                Keep
-              </button>
-              <button
-                type="button"
-                className="navi-inline-change-btn navi-inline-change-btn--undo"
-                onClick={handleUndoChanges}
-              >
-                Undo
-              </button>
-            </div>
-          </div>
+          <FileChangeSummary
+            files={inlineChangeSummary.files.map((file) => ({
+              path: file.path,
+              additions: file.additions,
+              deletions: file.deletions,
+              originalContent: file.originalContent,
+              wasCreated: file.wasCreated,
+            }))}
+            totalAdditions={inlineChangeSummary.totalAdditions}
+            totalDeletions={inlineChangeSummary.totalDeletions}
+            onKeep={handleKeepChanges}
+            onUndo={handleUndoChanges}
+            onFileClick={handleOpenSummaryDiff}
+            onPreviewAll={handlePreviewAllChanges}
+          />
         )}
 
         {/* Next steps suggestions - show when available and not streaming */}
@@ -8527,13 +9511,76 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           </div>
         )}
 
+        {/* Bottom Thinking Indicator - Shows at END of chat during initial streaming */}
+        {/* BUG FIX: Moved here from inside message bubble to ensure it shows at bottom */}
+        {(() => {
+          // Check if there are any real tool activities (not just liveProgress/status)
+          const hasRealActivities = activityEvents.some(
+            evt => evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create' || evt.kind === 'command'
+          );
+          // Show thinking indicator at bottom when:
+          // 1. We are sending/streaming
+          // 2. No real activities have started
+          // 3. No message content yet in the last message
+          const lastMessage = messages[messages.length - 1];
+          const shouldShowBottomThinking = sending &&
+            !hasRealActivities &&
+            narrativeLines.length === 0 &&
+            (!lastMessage?.content || lastMessage.content.trim() === '');
+
+          if (!shouldShowBottomThinking) return null;
+
+          return (
+            <div className="navi-chat-bubble-row navi-chat-bubble-row--assistant">
+              <div className="navi-chat-avatar navi-chat-avatar--assistant">
+                <Zap className="h-4 w-4 navi-icon-3d" />
+              </div>
+              <div className="navi-chat-bubble navi-chat-bubble--assistant">
+                <div className="navi-thinking-block navi-thinking-block--bottom">
+                  <div
+                    className="navi-thinking-header"
+                    onClick={() => accumulatedThinking ? setThinkingExpanded(prev => !prev) : undefined}
+                    style={{ cursor: accumulatedThinking ? 'pointer' : 'default' }}
+                  >
+                    {accumulatedThinking && (
+                      <ChevronRight
+                        size={14}
+                        className={`navi-thinking-chevron ${thinkingExpanded ? 'expanded' : ''}`}
+                      />
+                    )}
+                    <span className="navi-thinking-label">
+                      {"Thinking...".split("").map((char, i) => (
+                        <span key={i} className="navi-thinking-label-char">{char}</span>
+                      ))}
+                    </span>
+                  </div>
+                  {thinkingExpanded && accumulatedThinking && (
+                    <div className="navi-thinking-content navi-thinking-content--streaming">
+                      {accumulatedThinking}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Task Complete Panel - shows after task finishes */}
         {!sending && taskSummary && (
-          <div className="navi-task-complete-panel">
+          <div className={`navi-task-complete-panel ${taskSummary.stoppedReason ? 'navi-task-complete-panel--error' : ''}`}>
             <div className="navi-task-complete-header">
               <div className="navi-task-complete-title">
-                <CheckCircle className="h-4 w-4 text-green-400" />
-                <span>Task Complete</span>
+                {taskSummary.stoppedReason ? (
+                  <>
+                    <AlertCircle className="h-4 w-4 text-orange-400" />
+                    <span>Task Stopped</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 text-green-400" />
+                    <span>Task Complete</span>
+                  </>
+                )}
               </div>
               <button
                 type="button"
@@ -8543,6 +9590,38 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
+
+            {/* Error reason banner */}
+            {taskSummary.stoppedReason && (
+              <div className="navi-task-error-banner">
+                <div className="navi-task-error-reason">
+                  {taskSummary.stoppedReason === 'iteration_loop_detected' ? (
+                    <>
+                      <strong>Loop Detected:</strong> The same error occurred {taskSummary.loopCount || 5} times.
+                      NAVI couldn't automatically resolve this issue.
+                    </>
+                  ) : taskSummary.stoppedReason === 'max_iterations' ? (
+                    <>
+                      <strong>Max Attempts Reached:</strong> NAVI tried {taskSummary.iterations} times but couldn't complete the task.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Task Stopped:</strong> {taskSummary.stoppedReason}
+                    </>
+                  )}
+                </div>
+                {taskSummary.remainingErrors && taskSummary.remainingErrors.length > 0 && (
+                  <div className="navi-task-error-details">
+                    <div className="navi-task-error-details-label">Unresolved errors:</div>
+                    <ul className="navi-task-error-list">
+                      {taskSummary.remainingErrors.slice(0, 3).map((err, idx) => (
+                        <li key={idx} className="navi-task-error-item">{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Summary text */}
             {taskSummary.summaryText && (
@@ -8654,6 +9733,27 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                     </span>
                   )}
                 </div>
+                {/* Show build errors if any */}
+                {taskSummary.verificationDetails?.build && !taskSummary.verificationDetails.build.passed && taskSummary.verificationDetails.build.errors && taskSummary.verificationDetails.build.errors.length > 0 && (
+                  <div className="navi-build-errors">
+                    <div className="navi-build-errors-header">
+                      <AlertCircle size={14} />
+                      <span>Build Errors ({taskSummary.verificationDetails.build.errors.length})</span>
+                    </div>
+                    <div className="navi-build-errors-list">
+                      {taskSummary.verificationDetails.build.errors.slice(0, 5).map((error, idx) => (
+                        <div key={idx} className="navi-build-error-item">
+                          <code>{error}</code>
+                        </div>
+                      ))}
+                      {taskSummary.verificationDetails.build.errors.length > 5 && (
+                        <div className="navi-build-error-more">
+                          +{taskSummary.verificationDetails.build.errors.length - 5} more errors
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -9286,40 +10386,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       </div>
 
       <div className="navi-chat-footer">
-        {/* Execution Plan Panel - shows steps being executed */}
-        {executionSteps.length > 0 && (
-          <div className={`navi-execution-panel ${planCollapsed ? 'collapsed' : ''}`}>
-            <div
-              className="navi-execution-header"
-              onClick={() => setPlanCollapsed((p) => !p)}
-            >
-              <ChevronDown
-                className={`navi-execution-chevron ${planCollapsed ? 'collapsed' : ''}`}
-                size={14}
-              />
-              <span className="navi-execution-title">Execution Plan</span>
-              <span className="navi-execution-progress">
-                {executionSteps.filter((s) => s.status === 'done').length}/{executionSteps.length}
-              </span>
-            </div>
-            {!planCollapsed && (
-              <div className="navi-execution-steps">
-                {executionSteps.map((step) => (
-                  <div key={step.id} className={`navi-step navi-step--${step.status}`}>
-                    <span className="navi-step-icon">
-                      {step.status === 'pending' && <Circle size={14} />}
-                      {step.status === 'running' && <Loader2 size={14} className="spin" />}
-                      {step.status === 'done' && <CheckCircle2 size={14} />}
-                      {step.status === 'error' && <XCircle size={14} />}
-                    </span>
-                    <span className="navi-step-title">{step.title}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Hide QuickActionsBar when we have specific next steps from the response */}
         {lastNextSteps.length === 0 && (
           <QuickActionsBar
@@ -9384,81 +10450,54 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         )}
 
         {hasChangeSummary && changeSummary && (
-          <div className="navi-change-summary navi-change-summary--compact">
-            <div className="navi-change-summary-header">
-              <div className="navi-change-summary-title">
-                {changeSummary.count} file{changeSummary.count !== 1 ? "s" : ""} changed
-                {changeTotals && (
-                  <span className="navi-change-summary-inline">
-                    {changeTotals.hasStats ? (
-                      <>
-                        <span className="navi-change-summary-add">+{changeTotals.additions}</span>
-                        <span className="navi-change-summary-del">-{changeTotals.deletions}</span>
-                      </>
-                    ) : (
-                      <span className="navi-change-summary-unknown">+— -—</span>
-                    )}
-                  </span>
-                )}
-              </div>
-              <div className="navi-change-summary-actions">
-                <button
-                  type="button"
-                  className="navi-change-summary-action"
-                  onClick={handleUndoChanges}
-                >
-                  <RotateCcw className="h-3.5 w-3.5 navi-icon-3d" />
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  className="navi-change-summary-action"
-                  onClick={handleReviewChanges}
-                >
-                  Review
-                  <ChevronRight className="h-3.5 w-3.5 navi-icon-3d" />
-                </button>
-              </div>
-            </div>
-            {changeDetailsOpen && (
-              <div className="navi-change-summary-list">
-                {changeSummary.files.map((file) => {
-                  const hasStats =
-                    typeof file.additions === "number" || typeof file.deletions === "number";
-                  return (
-                    <button
-                      key={file.path}
-                      type="button"
-                      className="navi-change-summary-row"
-                      onClick={() => handleOpenSummaryDiff(file.path)}
-                    >
-                      <span className="navi-change-summary-path">{toWorkspaceRelativePath(file.path)}</span>
-                      <span className="navi-change-summary-stats">
-                        {hasStats ? (
-                          <>
-                            {typeof file.additions === "number" && (
-                              <span className="navi-change-summary-add">+{file.additions}</span>
-                            )}
-                            {typeof file.deletions === "number" && (
-                              <span className="navi-change-summary-del">-{file.deletions}</span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="navi-change-summary-unknown">—</span>
-                        )}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <FileChangeSummary
+            files={changeSummary.files.map((file) => ({
+              path: toWorkspaceRelativePath(file.path),
+              additions: file.additions,
+              deletions: file.deletions,
+            }))}
+            totalAdditions={changeTotals?.additions}
+            totalDeletions={changeTotals?.deletions}
+            onKeep={handleKeepChanges}
+            onUndo={handleUndoChanges}
+            onFileClick={handleOpenSummaryDiff}
+          />
         )}
 
         <AttachmentChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
         />
+
+        {/* Execution Plan Stepper - Positioned ABOVE input bar for visibility */}
+        {/* Shows task steps with real-time status during streaming */}
+        {executionPlan && executionPlan.steps.length > 0 && (
+          <div className="navi-plan-stepper-floating">
+            <ExecutionPlanStepper
+              planId={executionPlan.planId}
+              steps={executionPlan.steps}
+              isExecuting={executionPlan.isExecuting}
+              isExpanded={!planCollapsed}
+              onToggle={(expanded) => setPlanCollapsed(!expanded)}
+              autoCollapseMs={4000}
+            />
+          </div>
+        )}
+
+        {/* Connection Error Banner - Shows when streaming connection is lost */}
+        {connectionError && (
+          <ConnectionErrorBanner
+            error={connectionError.message}
+            checkpoint={currentCheckpoint}
+            onRetry={handleRetry}
+            onResume={currentCheckpoint?.status === 'interrupted' ? handleResume : undefined}
+            onDismiss={handleDismissError}
+            retryCount={connectionError.retryCount}
+            maxRetries={maxRetries}
+            isRetrying={isRetrying}
+            nextRetryIn={nextRetryIn ?? undefined}
+          />
+        )}
 
         <div className="navi-chat-input-row">
           <AttachmentToolbar className="navi-chat-input-tools" />
@@ -9516,11 +10555,12 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             </div>
           )}
 
-          <input
+          <textarea
             ref={inputRef}
             className="navi-chat-input navi-chat-input--animated-placeholder"
             placeholder={input ? "Ask NAVI..." : NAVI_SUGGESTIONS[placeholderIndex]}
             value={input}
+            rows={1}
             onChange={(e) => {
               const newValue = e.target.value;
               setInput(newValue);
@@ -9745,58 +10785,12 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           </div>
         </div>
 
-        <div className="navi-terminal-panel">
-          <div className="navi-terminal-header">
-            <div className="navi-terminal-title">
-              <Terminal className="navi-icon-3d" />
-              Terminal
-              <span className={`navi-terminal-status ${terminalRunning ? "is-running" : ""}`}>
-                {terminalRunning ? "Running" : "Idle"}
-              </span>
-            </div>
-            <div className="navi-terminal-actions">
-              <button
-                type="button"
-                className="navi-terminal-action"
-                onClick={() => setTerminalEntries([])}
-                aria-label="Clear terminal"
-                title="Clear"
-              >
-                <Trash2 className="navi-icon-3d" />
-              </button>
-              <button
-                type="button"
-                className="navi-terminal-action"
-                onClick={() => setTerminalOpen((prev) => !prev)}
-                aria-label="Toggle terminal"
-                title="Collapse"
-              >
-                <ChevronDown className={`navi-icon-3d ${terminalOpen ? "is-open" : ""}`} />
-              </button>
-            </div>
-          </div>
-          {terminalOpen && (
-            <div className="navi-terminal-body">
-              {terminalEntries.length === 0 ? (
-                <div className="navi-terminal-empty">No terminal activity yet.</div>
-              ) : (
-                terminalEntries.slice(-MAX_TERMINAL_ENTRIES).map((entry) => (
-                  <div key={entry.id} className={`navi-terminal-entry navi-terminal-entry--${entry.status}`}>
-                    <div className="navi-terminal-entry-head">
-                      <span className="navi-terminal-entry-command">$ {entry.command}</span>
-                      <span className="navi-terminal-entry-status">{entry.status}</span>
-                    </div>
-                    <pre className="navi-terminal-entry-output">
-                      {entry.output || (entry.status === "running"
-                        ? "Running..."
-                        : `No output${entry.exitCode !== undefined ? ` (exit ${entry.exitCode})` : ""}`)}
-                    </pre>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
+        {/* Futuristic Command Panel */}
+        <NaviCommandPanel
+          entries={terminalEntries as CommandTerminalEntry[]}
+          onClear={() => setTerminalEntries([])}
+          defaultOpen={terminalOpen}
+        />
       </div>
 
       {/* Inline toast */}
@@ -9893,6 +10887,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       {/* Modern Toast Notifications - Temporarily disabled */}
       {/* <Toaster /> */}
     </div>
+    </>
   );
 }
 

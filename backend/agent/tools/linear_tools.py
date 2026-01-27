@@ -423,9 +423,9 @@ async def list_linear_teams(context: Dict[str, Any]) -> "ToolResult":
 
 # Tool function registry for NAVI
 LINEAR_TOOLS = {
-    "linear.list_my_issues": list_my_linear_issues,
-    "linear.search_issues": search_linear_issues,
-    "linear.create_issue": create_linear_issue,
-    "linear.update_status": update_linear_issue_status,
-    "linear.list_teams": list_linear_teams,
+    "linear_list_my_issues": list_my_linear_issues,
+    "linear_search_issues": search_linear_issues,
+    "linear_create_issue": create_linear_issue,
+    "linear_update_status": update_linear_issue_status,
+    "linear_list_teams": list_linear_teams,
 }

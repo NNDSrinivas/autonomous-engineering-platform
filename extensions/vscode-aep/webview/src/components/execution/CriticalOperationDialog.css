@@ -1,0 +1,625 @@
+/**
+ * Critical Operation Dialog Styles
+ *
+ * Designed to grab attention and communicate risk levels clearly.
+ * Uses color psychology: Red = danger, Orange = warning, Yellow = caution
+ */
+
+/* Overlay */
+.critical-operation-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.critical-operation-overlay.critical {
+  background: rgba(80, 0, 0, 0.9);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Dialog Container */
+.critical-operation-dialog {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border-radius: 12px;
+  max-width: 600px;
+  width: 95%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  animation: slideIn 0.3s ease-out;
+  overflow: hidden;
+}
+
+.critical-operation-dialog.low {
+  border: 2px solid #22c55e;
+}
+
+.critical-operation-dialog.medium {
+  border: 2px solid #eab308;
+}
+
+.critical-operation-dialog.high {
+  border: 3px solid #f97316;
+}
+
+.critical-operation-dialog.critical {
+  border: 4px solid #ef4444;
+}
+
+.critical-operation-dialog.pulsing {
+  animation: slideIn 0.3s ease-out, pulse 2s infinite;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 15px rgba(239, 68, 68, 0);
+  }
+}
+
+/* Header */
+.dialog-header {
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dialog-header.low {
+  background: linear-gradient(135deg, #166534 0%, #15803d 100%);
+}
+
+.dialog-header.medium {
+  background: linear-gradient(135deg, #a16207 0%, #ca8a04 100%);
+}
+
+.dialog-header.high {
+  background: linear-gradient(135deg, #c2410c 0%, #ea580c 100%);
+}
+
+.dialog-header.critical {
+  background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%);
+  animation: headerPulse 1.5s infinite;
+}
+
+@keyframes headerPulse {
+  0%, 100% {
+    background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%);
+  }
+  50% {
+    background: linear-gradient(135deg, #b91c1c 0%, #ef4444 100%);
+  }
+}
+
+.header-icon {
+  flex-shrink: 0;
+}
+
+.header-icon .icon {
+  width: 48px;
+  height: 48px;
+  color: white;
+}
+
+.header-icon .icon.critical {
+  animation: shake 0.5s infinite;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+.header-content {
+  flex: 1;
+}
+
+.dialog-title {
+  color: white;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 4px 0;
+}
+
+.operation-name {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  margin: 0;
+  font-family: monospace;
+}
+
+/* Risk Banner */
+.risk-banner {
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+}
+
+.risk-banner.low {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.risk-banner.medium {
+  background: rgba(234, 179, 8, 0.1);
+}
+
+.risk-banner.high {
+  background: rgba(249, 115, 22, 0.15);
+}
+
+.risk-banner.critical {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.risk-label {
+  color: var(--vscode-foreground, #ccc);
+  font-size: 0.85rem;
+}
+
+.risk-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.risk-badge.low {
+  background: #22c55e;
+  color: white;
+}
+
+.risk-badge.medium {
+  background: #eab308;
+  color: black;
+}
+
+.risk-badge.high {
+  background: #f97316;
+  color: white;
+}
+
+.risk-badge.critical {
+  background: #ef4444;
+  color: white;
+  animation: badgePulse 1s infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.category-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+}
+
+/* Content Area */
+.dialog-content {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+  max-height: 400px;
+}
+
+.description {
+  color: var(--vscode-foreground, #ccc);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0 0 20px 0;
+}
+
+/* Warnings Section */
+.warnings-section {
+  margin-bottom: 20px;
+}
+
+.warnings-section h3 {
+  color: var(--vscode-foreground, #fff);
+  font-size: 1rem;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.warning-item {
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.warning-item.low {
+  background: rgba(34, 197, 94, 0.1);
+  border-left: 4px solid #22c55e;
+}
+
+.warning-item.medium {
+  background: rgba(234, 179, 8, 0.1);
+  border-left: 4px solid #eab308;
+}
+
+.warning-item.high {
+  background: rgba(249, 115, 22, 0.15);
+  border-left: 4px solid #f97316;
+}
+
+.warning-item.critical {
+  background: rgba(239, 68, 68, 0.15);
+  border-left: 4px solid #ef4444;
+}
+
+.warning-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.warning-header strong {
+  color: var(--vscode-foreground, #fff);
+}
+
+.warning-icon {
+  font-size: 1.2rem;
+}
+
+.warning-message {
+  color: var(--vscode-foreground, #ccc);
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+.warning-details {
+  margin: 8px 0;
+  padding-left: 20px;
+  color: var(--vscode-foreground, #aaa);
+}
+
+.warning-details li {
+  margin-bottom: 4px;
+}
+
+.warning-mitigation {
+  color: #22c55e;
+  font-size: 0.9rem;
+  margin: 8px 0 0 0;
+}
+
+.rollback-info {
+  color: #3b82f6;
+  font-size: 0.9rem;
+  margin: 8px 0 0 0;
+}
+
+/* Affected Resources */
+.affected-resources {
+  margin-bottom: 20px;
+}
+
+.affected-resources h3 {
+  color: var(--vscode-foreground, #fff);
+  font-size: 1rem;
+  margin: 0 0 12px 0;
+}
+
+.affected-resources ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.affected-resources li {
+  margin-bottom: 4px;
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+/* Parameters Section */
+.parameters-section {
+  margin-bottom: 20px;
+}
+
+.toggle-details {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+.toggle-details:hover {
+  text-decoration: underline;
+}
+
+.parameters-code {
+  background: var(--vscode-textCodeBlock-background, #2d2d2d);
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: 12px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  color: var(--vscode-foreground, #ccc);
+}
+
+/* Rollback Plan */
+.rollback-plan {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.rollback-plan h3 {
+  color: #3b82f6;
+  font-size: 1rem;
+  margin: 0 0 8px 0;
+}
+
+.rollback-plan p {
+  color: var(--vscode-foreground, #ccc);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Duration Estimate */
+.duration-estimate {
+  color: var(--vscode-foreground, #aaa);
+  font-size: 0.9rem;
+}
+
+/* Scroll Indicator */
+.scroll-indicator {
+  text-align: center;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  padding: 12px;
+  background: linear-gradient(transparent, var(--vscode-editor-background, #1e1e1e));
+  position: sticky;
+  bottom: 0;
+  animation: bounce 1s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(5px); }
+}
+
+/* Confirmation Section */
+.confirmation-section {
+  padding: 16px 24px;
+  background: var(--vscode-input-background, #3c3c3c);
+  border-top: 1px solid var(--vscode-panel-border, #333);
+}
+
+.confirmation-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+
+.confirmation-checkbox input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.confirmation-phrase {
+  margin-bottom: 0;
+}
+
+.confirmation-phrase label {
+  display: block;
+  color: var(--vscode-foreground, #ccc);
+  margin-bottom: 8px;
+}
+
+.phrase-highlight {
+  color: #ef4444;
+  font-family: monospace;
+  background: rgba(239, 68, 68, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.phrase-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 1rem;
+  font-family: monospace;
+  background: var(--vscode-input-background, #3c3c3c);
+  border: 2px solid var(--vscode-input-border, #555);
+  border-radius: 6px;
+  color: var(--vscode-input-foreground, #fff);
+  transition: border-color 0.2s;
+}
+
+.phrase-input:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.phrase-input.valid {
+  border-color: #22c55e;
+}
+
+.phrase-input.invalid {
+  border-color: #ef4444;
+}
+
+/* Action Buttons */
+.dialog-actions {
+  padding: 16px 24px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  border-top: 1px solid var(--vscode-panel-border, #333);
+}
+
+.btn-cancel {
+  padding: 12px 24px;
+  font-size: 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--vscode-button-secondaryBackground, #555);
+  color: var(--vscode-foreground, #ccc);
+  transition: all 0.2s;
+}
+
+.btn-cancel:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #444);
+}
+
+.btn-approve {
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.btn-approve.low {
+  background: #22c55e;
+  color: white;
+}
+
+.btn-approve.low:hover:not(:disabled) {
+  background: #16a34a;
+}
+
+.btn-approve.medium {
+  background: #eab308;
+  color: black;
+}
+
+.btn-approve.medium:hover:not(:disabled) {
+  background: #ca8a04;
+}
+
+.btn-approve.high {
+  background: #f97316;
+  color: white;
+}
+
+.btn-approve.high:hover:not(:disabled) {
+  background: #ea580c;
+}
+
+.btn-approve.critical {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-approve.critical:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.btn-approve:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loading-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loading-spinner::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Expiry Warning */
+.expiry-warning {
+  text-align: center;
+  color: var(--vscode-foreground, #888);
+  font-size: 0.8rem;
+  padding: 8px 24px 16px;
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .critical-operation-dialog {
+    max-height: 95vh;
+    margin: 10px;
+  }
+
+  .dialog-header {
+    padding: 16px;
+  }
+
+  .header-icon .icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .dialog-content {
+    padding: 16px;
+  }
+
+  .dialog-actions {
+    flex-direction: column;
+  }
+
+  .btn-cancel,
+  .btn-approve {
+    width: 100%;
+  }
+}

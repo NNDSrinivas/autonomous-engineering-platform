@@ -273,8 +273,8 @@ async def get_circleci_job_status(
 
 
 CIRCLECI_TOOLS = {
-    "circleci.list_pipelines": list_circleci_pipelines,
-    "circleci.get_pipeline_status": get_circleci_pipeline_status,
-    "circleci.trigger_pipeline": trigger_circleci_pipeline,
-    "circleci.get_job_status": get_circleci_job_status,
+    "circleci_list_pipelines": list_circleci_pipelines,
+    "circleci_get_pipeline_status": get_circleci_pipeline_status,
+    "circleci_trigger_pipeline": trigger_circleci_pipeline,
+    "circleci_get_job_status": get_circleci_job_status,
 }

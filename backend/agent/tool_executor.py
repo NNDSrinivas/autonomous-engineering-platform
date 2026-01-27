@@ -4,10 +4,10 @@
 NAVI tool executor
 
 This module is the single place where logical tool names like
-  - "repo.inspect"
-  - "code.read_files"
-  - "code.search"
-  - "pm.create_ticket"
+  - "repo_inspect"
+  - "code_read_files"
+  - "code_search"
+  - "pm_create_ticket"
 are mapped to actual Python implementations.
 
 The goal is to keep this file boring and deterministic, so NAVI
@@ -26,72 +26,162 @@ from dataclasses import dataclass
 from .tools.create_file import create_file
 from .tools.edit_file import edit_file
 from .tools.apply_diff import apply_diff
-from .tools.run_command import run_command
+from .tools.run_command import (
+    run_command,
+    run_dangerous_command,
+    run_interactive_command,
+    run_parallel_commands,
+    run_command_with_retry,
+    list_backups,
+    restore_backup,
+)
+from .tools.web_tools import fetch_url, search_web
+
+# Credentials management for BYOK support
+from backend.services.credentials_service import (
+    CredentialsService,
+    CredentialProvider,
+)
 
 logger = logging.getLogger(__name__)
+
+# Global credentials service instance (per-session)
+# This can be initialized with BYOK credentials
+_credentials_service: Optional[CredentialsService] = None
+
+
+def get_credentials_service() -> CredentialsService:
+    """Get or create the global credentials service."""
+    global _credentials_service
+    if _credentials_service is None:
+        _credentials_service = CredentialsService()
+    return _credentials_service
+
+
+def set_byok_credentials(provider: str, credentials: Dict[str, str]) -> None:
+    """Set BYOK credentials for a provider."""
+    service = get_credentials_service()
+    service.set_byok_credential(provider, credentials)
+
+
+def get_credential(provider: str, field: str, default: Optional[str] = None) -> Optional[str]:
+    """Get a credential from the credentials service."""
+    service = get_credentials_service()
+    return service.get_credential(provider, field, default)
 
 # Tools that mutate state or filesystem. Used by guardrails and UI.
 WRITE_OPERATION_TOOLS = {
     # Code write operations
-    "code.apply_diff",
-    "code.create_file",
-    "code.edit_file",
-    "code.run_command",
-    "repo.write",
+    "code_apply_diff",
+    "code_create_file",
+    "code_edit_file",
+    "code_run_command",
+    "repo_write",
     # Jira write operations
-    "jira.add_comment",
-    "jira.transition_issue",
-    "jira.assign_issue",
-    "jira.create_issue",
+    "jira_add_comment",
+    "jira_transition_issue",
+    "jira_assign_issue",
+    "jira_create_issue",
     # GitHub write operations
-    "github.comment",
-    "github.set_label",
-    "github.rerun_check",
-    "github.create_issue",
-    "github.create_pr",
+    "github_comment",
+    "github_set_label",
+    "github_rerun_check",
+    "github_create_issue",
+    "github_create_pr",
     # Linear write operations
-    "linear.create_issue",
-    "linear.add_comment",
-    "linear.update_status",
+    "linear_create_issue",
+    "linear_add_comment",
+    "linear_update_status",
     # GitLab write operations
-    "gitlab.create_merge_request",
-    "gitlab.add_comment",
+    "gitlab_create_merge_request",
+    "gitlab_add_comment",
     # Notion write operations
-    "notion.create_page",
+    "notion_create_page",
     # Slack write operations
-    "slack.send_message",
+    "slack_send_message",
     # Asana write operations
-    "asana.create_task",
-    "asana.complete_task",
+    "asana_create_task",
+    "asana_complete_task",
     # Bitbucket write operations
-    "bitbucket.create_pull_request",
+    "bitbucket_create_pull_request",
     # Discord write operations
-    "discord.send_message",
+    "discord_send_message",
     # Trello write operations
-    "trello.create_card",
-    "trello.move_card",
+    "trello_create_card",
+    "trello_move_card",
     # ClickUp write operations
-    "clickup.create_task",
-    "clickup.update_task",
+    "clickup_create_task",
+    "clickup_update_task",
     # Confluence write operations
-    "confluence.create_page",
+    "confluence_create_page",
     # Figma write operations
-    "figma.add_comment",
+    "figma_add_comment",
     # Sentry write operations
-    "sentry.resolve_issue",
+    "sentry_resolve_issue",
     # GitHub Actions write operations
-    "github_actions.trigger_workflow",
+    "github_actions_trigger_workflow",
     # CircleCI write operations
-    "circleci.trigger_pipeline",
+    "circleci_trigger_pipeline",
     # Vercel write operations
-    "vercel.redeploy",
+    "vercel_redeploy",
     # PagerDuty write operations
-    "pagerduty.acknowledge_incident",
-    "pagerduty.resolve_incident",
+    "pagerduty_acknowledge_incident",
+    "pagerduty_resolve_incident",
     # Monday.com write operations
-    "monday.create_item",
+    "monday_create_item",
     # Datadog write operations
-    "datadog.mute_monitor",
+    "datadog_mute_monitor",
+    # Deployment execution operations (real execution)
+    "deploy_execute",
+    "deploy_confirm",
+    "deploy_rollback",
+    # Scaffolding write operations
+    "scaffold_project",
+    "scaffold_add_feature",
+    # Test generation write operations
+    "test_generate_for_file",
+    "test_generate_for_function",
+    "test_generate_suite",
+    # Documentation write operations
+    "docs_generate_readme",
+    "docs_generate_api",
+    "docs_generate_component",
+    "docs_generate_architecture",
+    "docs_generate_comments",
+    "docs_generate_changelog",
+    # Infrastructure write operations (Phase 2)
+    "infra_generate_terraform",
+    "infra_generate_cloudformation",
+    "infra_generate_k8s",
+    "infra_generate_docker_compose",
+    "infra_generate_helm",
+    # Database write operations (Phase 2)
+    "db_generate_migration",
+    "db_run_migration",
+    "db_generate_seed",
+    # Database execution operations (real execution)
+    "db_execute_migration",
+    "db_confirm",
+    "db_backup",
+    "db_restore",
+    # Monitoring write operations (Phase 2)
+    "monitor_setup_errors",
+    "monitor_setup_apm",
+    "monitor_setup_logging",
+    "monitor_generate_health_checks",
+    # Secrets write operations (Phase 2)
+    "secrets_sync_to_platform",
+    "secrets_rotate",
+    # Architecture write operations (Phase 3)
+    "arch_generate_adr",
+    # GitLab CI write operations (Phase 3)
+    "gitlab_ci_generate",
+    "gitlab_ci_add_stage",
+    "gitlab_ci_generate_cd",
+    "gitlab_ci_generate_templates",
+    # Multi-cloud write operations (Phase 3)
+    "cloud_multi_region",
+    "cloud_landing_zone",
 }
 
 
@@ -100,166 +190,244 @@ def get_available_tools():
     return sorted(
         {
             # Context tools
-            "context.present_packet",
-            "context.summary",
+            "context_present_packet",
+            "context_summary",
             # Repository and code tools
-            "repo.inspect",
-            "code.read_files",
-            "code.search",
-            "code.explain",
-            "code.apply_diff",
-            "code.create_file",
-            "code.edit_file",
-            "code.run_command",
+            "repo_inspect",
+            "code_read_files",
+            "code_search",
+            "code_explain",
+            "code_apply_diff",
+            "code_create_file",
+            "code_edit_file",
+            "code_run_command",
             # Project management
-            "project.summary",
+            "project_summary",
             # Jira tools
-            "jira.list_assigned_issues_for_user",
-            "jira.search_issues",
-            "jira.assign_issue",
-            "jira.create_issue",
-            "jira.add_comment",
-            "jira.transition_issue",
+            "jira_list_assigned_issues_for_user",
+            "jira_search_issues",
+            "jira_assign_issue",
+            "jira_create_issue",
+            "jira_add_comment",
+            "jira_transition_issue",
             # GitHub tools
-            "github.list_my_prs",
-            "github.list_my_issues",
-            "github.get_pr_details",
-            "github.list_repo_issues",
-            "github.create_issue",
-            "github.create_pr",
-            "github.comment",
-            "github.set_label",
-            "github.rerun_check",
+            "github_list_my_prs",
+            "github_list_my_issues",
+            "github_get_pr_details",
+            "github_list_repo_issues",
+            "github_create_issue",
+            "github_create_pr",
+            "github_comment",
+            "github_set_label",
+            "github_rerun_check",
             # Linear tools
-            "linear.list_my_issues",
-            "linear.search_issues",
-            "linear.create_issue",
-            "linear.add_comment",
-            "linear.update_status",
-            "linear.list_teams",
+            "linear_list_my_issues",
+            "linear_search_issues",
+            "linear_create_issue",
+            "linear_add_comment",
+            "linear_update_status",
+            "linear_list_teams",
             # GitLab tools
-            "gitlab.list_my_merge_requests",
-            "gitlab.list_my_issues",
-            "gitlab.get_pipeline_status",
-            "gitlab.search",
-            "gitlab.create_merge_request",
-            "gitlab.add_comment",
+            "gitlab_list_my_merge_requests",
+            "gitlab_list_my_issues",
+            "gitlab_get_pipeline_status",
+            "gitlab_search",
+            "gitlab_create_merge_request",
+            "gitlab_add_comment",
             # Notion tools
-            "notion.search_pages",
-            "notion.list_recent_pages",
-            "notion.get_page_content",
-            "notion.list_databases",
-            "notion.create_page",
+            "notion_search_pages",
+            "notion_list_recent_pages",
+            "notion_get_page_content",
+            "notion_list_databases",
+            "notion_create_page",
             # Slack tools
-            "slack.search_messages",
-            "slack.list_channel_messages",
-            "slack.send_message",
+            "slack_search_messages",
+            "slack_list_channel_messages",
+            "slack_send_message",
             # Asana tools
-            "asana.list_my_tasks",
-            "asana.search_tasks",
-            "asana.list_projects",
-            "asana.create_task",
-            "asana.complete_task",
+            "asana_list_my_tasks",
+            "asana_search_tasks",
+            "asana_list_projects",
+            "asana_create_task",
+            "asana_complete_task",
             # Bitbucket tools
-            "bitbucket.list_my_prs",
-            "bitbucket.list_repos",
-            "bitbucket.get_pr_details",
-            "bitbucket.create_pull_request",
+            "bitbucket_list_my_prs",
+            "bitbucket_list_repos",
+            "bitbucket_get_pr_details",
+            "bitbucket_create_pull_request",
             # Discord tools
-            "discord.list_channels",
-            "discord.get_messages",
-            "discord.send_message",
+            "discord_list_channels",
+            "discord_get_messages",
+            "discord_send_message",
             # Loom tools
-            "loom.list_videos",
-            "loom.search_videos",
-            "loom.get_video",
+            "loom_list_videos",
+            "loom_search_videos",
+            "loom_get_video",
             # Trello tools
-            "trello.list_boards",
-            "trello.list_my_cards",
-            "trello.get_card",
-            "trello.create_card",
-            "trello.move_card",
+            "trello_list_boards",
+            "trello_list_my_cards",
+            "trello_get_card",
+            "trello_create_card",
+            "trello_move_card",
             # ClickUp tools
-            "clickup.list_my_tasks",
-            "clickup.list_spaces",
-            "clickup.get_task",
-            "clickup.create_task",
-            "clickup.update_task",
+            "clickup_list_my_tasks",
+            "clickup_list_spaces",
+            "clickup_get_task",
+            "clickup_create_task",
+            "clickup_update_task",
             # SonarQube tools
-            "sonarqube.list_projects",
-            "sonarqube.list_issues",
-            "sonarqube.get_quality_gate",
-            "sonarqube.get_metrics",
+            "sonarqube_list_projects",
+            "sonarqube_list_issues",
+            "sonarqube_get_quality_gate",
+            "sonarqube_get_metrics",
             # Confluence tools
-            "confluence.search_pages",
-            "confluence.get_page",
-            "confluence.list_pages_in_space",
+            "confluence_search_pages",
+            "confluence_get_page",
+            "confluence_list_pages_in_space",
             # Figma tools
-            "figma.list_files",
-            "figma.get_file",
-            "figma.get_comments",
-            "figma.list_projects",
-            "figma.add_comment",
+            "figma_list_files",
+            "figma_get_file",
+            "figma_get_comments",
+            "figma_list_projects",
+            "figma_add_comment",
             # Sentry tools
-            "sentry.list_issues",
-            "sentry.get_issue",
-            "sentry.list_projects",
-            "sentry.resolve_issue",
+            "sentry_list_issues",
+            "sentry_get_issue",
+            "sentry_list_projects",
+            "sentry_resolve_issue",
             # Snyk tools
-            "snyk.list_vulnerabilities",
-            "snyk.list_projects",
-            "snyk.get_security_summary",
-            "snyk.get_project_issues",
+            "snyk_list_vulnerabilities",
+            "snyk_list_projects",
+            "snyk_get_security_summary",
+            "snyk_get_project_issues",
             # GitHub Actions tools
-            "github_actions.list_workflows",
-            "github_actions.list_runs",
-            "github_actions.get_run_status",
-            "github_actions.trigger_workflow",
+            "github_actions_list_workflows",
+            "github_actions_list_runs",
+            "github_actions_get_run_status",
+            "github_actions_trigger_workflow",
             # CircleCI tools
-            "circleci.list_pipelines",
-            "circleci.get_pipeline_status",
-            "circleci.trigger_pipeline",
-            "circleci.get_job_status",
+            "circleci_list_pipelines",
+            "circleci_get_pipeline_status",
+            "circleci_trigger_pipeline",
+            "circleci_get_job_status",
             # Vercel tools
-            "vercel.list_projects",
-            "vercel.list_deployments",
-            "vercel.get_deployment_status",
-            "vercel.redeploy",
+            "vercel_list_projects",
+            "vercel_list_deployments",
+            "vercel_get_deployment_status",
+            "vercel_redeploy",
             # PagerDuty tools
-            "pagerduty.list_incidents",
-            "pagerduty.get_oncall",
-            "pagerduty.list_services",
-            "pagerduty.acknowledge_incident",
-            "pagerduty.resolve_incident",
+            "pagerduty_list_incidents",
+            "pagerduty_get_oncall",
+            "pagerduty_list_services",
+            "pagerduty_acknowledge_incident",
+            "pagerduty_resolve_incident",
             # Google Drive tools
-            "gdrive.list_files",
-            "gdrive.search",
-            "gdrive.get_content",
+            "gdrive_list_files",
+            "gdrive_search",
+            "gdrive_get_content",
             # Zoom tools
-            "zoom.list_recordings",
-            "zoom.get_transcript",
-            "zoom.search_recordings",
+            "zoom_list_recordings",
+            "zoom_get_transcript",
+            "zoom_search_recordings",
             # Google Calendar tools
-            "gcalendar.list_events",
-            "gcalendar.todays_events",
-            "gcalendar.get_event",
+            "gcalendar_list_events",
+            "gcalendar_todays_events",
+            "gcalendar_get_event",
             # Monday.com tools
-            "monday.list_boards",
-            "monday.list_items",
-            "monday.get_my_items",
-            "monday.get_item",
-            "monday.create_item",
+            "monday_list_boards",
+            "monday_list_items",
+            "monday_get_my_items",
+            "monday_get_item",
+            "monday_create_item",
             # Datadog tools
-            "datadog.list_monitors",
-            "datadog.alerting_monitors",
-            "datadog.list_incidents",
-            "datadog.list_dashboards",
-            "datadog.mute_monitor",
+            "datadog_list_monitors",
+            "datadog_alerting_monitors",
+            "datadog_list_incidents",
+            "datadog_list_dashboards",
+            "datadog_mute_monitor",
             # Deployment tools
-            "deploy.detect_project",
-            "deploy.check_cli",
-            "deploy.get_info",
-            "deploy.list_platforms",
+            "deploy_detect_project",
+            "deploy_check_cli",
+            "deploy_get_info",
+            "deploy_list_platforms",
+            # Deployment execution tools (real execution)
+            "deploy_execute",
+            "deploy_confirm",
+            "deploy_rollback",
+            "deploy_status",
+            # Scaffolding tools
+            "scaffold_project",
+            "scaffold_detect_requirements",
+            "scaffold_add_feature",
+            "scaffold_list_templates",
+            # Test generation tools
+            "test_generate_for_file",
+            "test_generate_for_function",
+            "test_generate_suite",
+            "test_detect_framework",
+            "test_suggest_improvements",
+            # Documentation tools
+            "docs_generate_readme",
+            "docs_generate_api",
+            "docs_generate_component",
+            "docs_generate_architecture",
+            "docs_generate_comments",
+            "docs_generate_changelog",
+            # Infrastructure tools (Phase 2)
+            "infra_generate_terraform",
+            "infra_generate_cloudformation",
+            "infra_generate_k8s",
+            "infra_generate_docker_compose",
+            "infra_generate_helm",
+            "infra_analyze_needs",
+            # Database tools (Phase 2)
+            "db_design_schema",
+            "db_generate_migration",
+            "db_run_migration",
+            "db_generate_seed",
+            "db_analyze_schema",
+            "db_generate_erd",
+            # Database execution tools (real execution)
+            "db_execute_migration",
+            "db_confirm",
+            "db_backup",
+            "db_restore",
+            "db_status",
+            # Monitoring tools (Phase 2)
+            "monitor_setup_errors",
+            "monitor_setup_apm",
+            "monitor_setup_logging",
+            "monitor_generate_health_checks",
+            "monitor_setup_alerting",
+            # Secrets tools (Phase 2)
+            "secrets_generate_env",
+            "secrets_setup_provider",
+            "secrets_sync_to_platform",
+            "secrets_audit",
+            "secrets_rotate",
+            # Architecture tools (Phase 3)
+            "arch_recommend_stack",
+            "arch_design_system",
+            "arch_generate_diagram",
+            "arch_decompose_microservices",
+            "arch_generate_adr",
+            "arch_analyze_dependencies",
+            # GitLab CI/CD tools (Phase 3)
+            "gitlab_ci_generate",
+            "gitlab_ci_add_stage",
+            "gitlab_ci_setup_runners",
+            "gitlab_ci_generate_cd",
+            "gitlab_ci_generate_templates",
+            # Multi-cloud tools (Phase 3)
+            "cloud_compare_services",
+            "cloud_multi_region",
+            "cloud_migrate",
+            "cloud_estimate_costs",
+            "cloud_landing_zone",
+            "cloud_analyze_spend",
+            # Web tools - fetch URLs and search
+            "web_fetch_url",
+            "web_search",
         }
     )
 
@@ -342,13 +510,28 @@ async def execute_tool(
     attachments: Optional[List[Dict[str, Any]]] = None,
     workspace: Optional[Dict[str, Any]] = None,
     context_packet: Optional[Dict[str, Any]] = None,
+    credentials: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     """
     Main entrypoint – dispatch tool calls by name.
 
+    Args:
+        user_id: User ID
+        tool_name: Name of the tool to execute
+        args: Tool arguments
+        db: Database session
+        attachments: File attachments
+        workspace: Workspace configuration
+        context_packet: Context packet
+        credentials: BYOK credentials dict {provider: {field: value}}
+
     Returns a dict that always has a 'tool' key and a 'text' field
     that can be fed to the LLM.
     """
+    # Apply BYOK credentials if provided
+    if credentials:
+        for provider, creds in credentials.items():
+            set_byok_credentials(provider, creds)
     logger.info(
         "[TOOLS] execute_tool user=%s tool=%s args=%s",
         user_id,
@@ -357,7 +540,7 @@ async def execute_tool(
     )
 
     # Context packet passthrough -------------------------------------------------
-    if tool_name == "context.present_packet":
+    if tool_name == "context_present_packet":
         packet = context_packet or args.get("context_packet")
         if not packet:
             return {
@@ -375,13 +558,13 @@ async def execute_tool(
         }
 
     # Workspace-safe tools ------------------------------------------------------
-    if tool_name == "repo.inspect":
+    if tool_name == "repo_inspect":
         # Enrich args with context for VS Code workspace integration
         # Basic guard: require workspace_root to avoid inspecting the wrong repo
         ws = workspace or {}
         if not ws.get("workspace_root"):
             return {
-                "tool": "repo.inspect",
+                "tool": "repo_inspect",
                 "text": (
                     "I don’t have your workspace path from the extension. "
                     "Open the folder you want me to inspect in VS Code and retry."
@@ -395,141 +578,205 @@ async def execute_tool(
         }
         return await _tool_repo_inspect(enriched_args)
 
-    if tool_name == "code.read_files":
+    if tool_name == "code_read_files":
         return await _tool_code_read_files(args)
 
-    if tool_name == "code.search":
+    if tool_name == "code_search":
         return await _tool_code_search(args)
 
     # Code write operations (require workspace) --------------------------------------
-    if tool_name == "code.create_file":
+    if tool_name == "code_create_file":
         return await _tool_code_create_file(user_id, args)
-    if tool_name == "code.edit_file":
+    if tool_name == "code_edit_file":
         return await _tool_code_edit_file(user_id, args)
-    if tool_name == "code.apply_diff":
+    if tool_name == "code_apply_diff":
         return await _tool_code_apply_diff(user_id, args)
-    if tool_name == "code.run_command":
+    if tool_name == "code_run_command":
         return await _tool_code_run_command(user_id, args)
+    if tool_name == "code_run_dangerous_command" or tool_name == "run_dangerous_command":
+        return await _tool_code_run_dangerous_command(user_id, args)
+    if tool_name == "code_run_interactive_command" or tool_name == "run_interactive_command":
+        return await _tool_code_run_interactive_command(user_id, args)
+    if tool_name == "code_run_parallel_commands" or tool_name == "run_parallel_commands":
+        return await _tool_code_run_parallel_commands(user_id, args)
+    if tool_name == "code_run_command_with_retry" or tool_name == "run_command_with_retry":
+        return await _tool_code_run_command_with_retry(user_id, args)
+    if tool_name == "list_backups":
+        return await _tool_list_backups(user_id, args)
+    if tool_name == "restore_backup":
+        return await _tool_restore_backup(user_id, args)
 
     # Jira integration tools --------------------------------------------------------
-    if tool_name == "jira.list_assigned_issues_for_user":
+    if tool_name == "jira_list_assigned_issues_for_user":
         return await _tool_jira_list_assigned_issues(user_id, args, db)
-    if tool_name == "jira.add_comment":
+    if tool_name == "jira_add_comment":
         return await _tool_jira_add_comment(user_id, args, db)
-    if tool_name == "jira.transition_issue":
+    if tool_name == "jira_transition_issue":
         return await _tool_jira_transition_issue(user_id, args, db)
-    if tool_name == "jira.assign_issue":
+    if tool_name == "jira_assign_issue":
         return await _tool_jira_assign_issue(user_id, args, db)
     # GitHub write operations (approval-gated) --------------------------------------
-    if tool_name == "github.comment":
+    if tool_name == "github_comment":
         return await _tool_github_comment(user_id, args, db)
-    if tool_name == "github.set_label":
+    if tool_name == "github_set_label":
         return await _tool_github_set_label(user_id, args, db)
-    if tool_name == "github.rerun_check":
+    if tool_name == "github_rerun_check":
         return await _tool_github_rerun_check(user_id, args, db)
 
     # Linear integration tools -------------------------------------------------------
-    if tool_name.startswith("linear."):
+    if tool_name.startswith("linear_"):
         return await _dispatch_linear_tool(user_id, tool_name, args, db)
 
     # GitLab integration tools -------------------------------------------------------
-    if tool_name.startswith("gitlab."):
+    if tool_name.startswith("gitlab_"):
         return await _dispatch_gitlab_tool(user_id, tool_name, args, db)
 
     # Notion integration tools -------------------------------------------------------
-    if tool_name.startswith("notion."):
+    if tool_name.startswith("notion_"):
         return await _dispatch_notion_tool(user_id, tool_name, args, db)
 
     # Slack integration tools -------------------------------------------------------
-    if tool_name.startswith("slack."):
+    if tool_name.startswith("slack_"):
         return await _dispatch_slack_tool(user_id, tool_name, args, db)
 
     # Asana integration tools -------------------------------------------------------
-    if tool_name.startswith("asana."):
+    if tool_name.startswith("asana_"):
         return await _dispatch_asana_tool(user_id, tool_name, args, db)
 
     # Bitbucket integration tools ---------------------------------------------------
-    if tool_name.startswith("bitbucket."):
+    if tool_name.startswith("bitbucket_"):
         return await _dispatch_bitbucket_tool(user_id, tool_name, args, db)
 
     # Discord integration tools -----------------------------------------------------
-    if tool_name.startswith("discord."):
+    if tool_name.startswith("discord_"):
         return await _dispatch_discord_tool(user_id, tool_name, args, db)
 
     # Loom integration tools --------------------------------------------------------
-    if tool_name.startswith("loom."):
+    if tool_name.startswith("loom_"):
         return await _dispatch_loom_tool(user_id, tool_name, args, db)
 
     # Trello integration tools ------------------------------------------------------
-    if tool_name.startswith("trello."):
+    if tool_name.startswith("trello_"):
         return await _dispatch_trello_tool(user_id, tool_name, args, db)
 
     # ClickUp integration tools -----------------------------------------------------
-    if tool_name.startswith("clickup."):
+    if tool_name.startswith("clickup_"):
         return await _dispatch_clickup_tool(user_id, tool_name, args, db)
 
     # SonarQube integration tools ---------------------------------------------------
-    if tool_name.startswith("sonarqube."):
+    if tool_name.startswith("sonarqube_"):
         return await _dispatch_sonarqube_tool(user_id, tool_name, args, db)
 
     # Confluence integration tools --------------------------------------------------
-    if tool_name.startswith("confluence."):
+    if tool_name.startswith("confluence_"):
         return await _dispatch_confluence_tool(user_id, tool_name, args, db)
 
     # Figma integration tools -------------------------------------------------------
-    if tool_name.startswith("figma."):
+    if tool_name.startswith("figma_"):
         return await _dispatch_figma_tool(user_id, tool_name, args, db)
 
     # Sentry integration tools ------------------------------------------------------
-    if tool_name.startswith("sentry."):
+    if tool_name.startswith("sentry_"):
         return await _dispatch_sentry_tool(user_id, tool_name, args, db)
 
     # Snyk integration tools --------------------------------------------------------
-    if tool_name.startswith("snyk."):
+    if tool_name.startswith("snyk_"):
         return await _dispatch_snyk_tool(user_id, tool_name, args, db)
 
     # GitHub Actions integration tools ----------------------------------------------
-    if tool_name.startswith("github_actions."):
+    if tool_name.startswith("github_actions_"):
         return await _dispatch_github_actions_tool(user_id, tool_name, args, db)
 
     # CircleCI integration tools ----------------------------------------------------
-    if tool_name.startswith("circleci."):
+    if tool_name.startswith("circleci_"):
         return await _dispatch_circleci_tool(user_id, tool_name, args, db)
 
     # Vercel integration tools ------------------------------------------------------
-    if tool_name.startswith("vercel."):
+    if tool_name.startswith("vercel_"):
         return await _dispatch_vercel_tool(user_id, tool_name, args, db)
 
     # PagerDuty integration tools ---------------------------------------------------
-    if tool_name.startswith("pagerduty."):
+    if tool_name.startswith("pagerduty_"):
         return await _dispatch_pagerduty_tool(user_id, tool_name, args, db)
 
     # Google Drive integration tools ------------------------------------------------
-    if tool_name.startswith("gdrive."):
+    if tool_name.startswith("gdrive_"):
         return await _dispatch_google_drive_tool(user_id, tool_name, args, db)
 
     # Zoom integration tools --------------------------------------------------------
-    if tool_name.startswith("zoom."):
+    if tool_name.startswith("zoom_"):
         return await _dispatch_zoom_tool(user_id, tool_name, args, db)
 
     # Google Calendar integration tools ---------------------------------------------
-    if tool_name.startswith("gcalendar."):
+    if tool_name.startswith("gcalendar_"):
         return await _dispatch_google_calendar_tool(user_id, tool_name, args, db)
 
     # Monday.com integration tools --------------------------------------------------
-    if tool_name.startswith("monday."):
+    if tool_name.startswith("monday_"):
         return await _dispatch_monday_tool(user_id, tool_name, args, db)
 
     # Datadog integration tools -----------------------------------------------------
-    if tool_name.startswith("datadog."):
+    if tool_name.startswith("datadog_"):
         return await _dispatch_datadog_tool(user_id, tool_name, args, db)
 
     # Deployment tools -------------------------------------------------------------
-    if tool_name.startswith("deploy."):
+    if tool_name.startswith("deploy_"):
         return await _dispatch_deployment_tool(user_id, tool_name, args, workspace)
 
+    # Scaffolding tools -------------------------------------------------------------
+    if tool_name.startswith("scaffold_"):
+        return await _dispatch_scaffolding_tool(user_id, tool_name, args, workspace)
+
+    # Test generation tools ---------------------------------------------------------
+    if tool_name.startswith("test_"):
+        return await _dispatch_test_generation_tool(user_id, tool_name, args, workspace)
+
+    # Documentation tools -----------------------------------------------------------
+    if tool_name.startswith("docs_"):
+        return await _dispatch_documentation_tool(user_id, tool_name, args, workspace)
+
+    # Infrastructure tools (Phase 2) ---------------------------------------------
+    if tool_name.startswith("infra_"):
+        return await _dispatch_infrastructure_tool(user_id, tool_name, args, workspace)
+
+    # Database tools (Phase 2) ---------------------------------------------------
+    if tool_name.startswith("db_"):
+        return await _dispatch_database_tool(user_id, tool_name, args, workspace)
+
+    # Monitoring tools (Phase 2) -------------------------------------------------
+    if tool_name.startswith("monitor_"):
+        return await _dispatch_monitoring_tool(user_id, tool_name, args, workspace)
+
+    # Secrets tools (Phase 2) ----------------------------------------------------
+    if tool_name.startswith("secrets_"):
+        return await _dispatch_secrets_tool(user_id, tool_name, args, workspace)
+
+    # Phase 3 Tools ----------------------------------------------------------------
+    if tool_name.startswith("arch_"):
+        return await _dispatch_architecture_tool(user_id, tool_name, args, workspace)
+
+    if tool_name.startswith("gitlab_ci_"):
+        return await _dispatch_gitlab_ci_tool(user_id, tool_name, args, workspace)
+
+    if tool_name.startswith("cloud_"):
+        return await _dispatch_multicloud_tool(user_id, tool_name, args, workspace)
+
+    # Enterprise Tools (Phase 6) -----------------------------------------------
+    if tool_name.startswith("compliance_"):
+        return await _dispatch_compliance_tool(user_id, tool_name, args, workspace)
+
+    if tool_name.startswith("loadtest_"):
+        return await _dispatch_loadtest_tool(user_id, tool_name, args, workspace)
+
+    if tool_name.startswith("k8s_"):
+        return await _dispatch_k8s_lifecycle_tool(user_id, tool_name, args, workspace)
+
+    # Web tools - fetch URLs and search the web ----------------------------------
+    if tool_name.startswith("web_"):
+        return await _dispatch_web_tool(user_id, tool_name, args)
+
     # Project-management stubs (future expansion) --------------------------------
-    if tool_name.startswith("pm."):
+    if tool_name.startswith("pm_"):
         return {
             "tool": tool_name,
             "text": (
@@ -656,7 +903,7 @@ async def _tool_repo_inspect(args: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return {
-        "tool": "repo.inspect",
+        "tool": "repo_inspect",
         "text": reply,
         "workspace_root": workspace_ctx.get("workspace_root"),
         "files_count": len(workspace_ctx.get("small_files") or []),
@@ -744,7 +991,7 @@ async def _tool_code_read_files(args: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     return {
-        "tool": "code.read_files",
+        "tool": "code_read_files",
         "root": str(root),
         "files": results,
         "text": combined_text,
@@ -774,7 +1021,7 @@ async def _tool_code_search(args: Dict[str, Any]) -> Dict[str, Any]:
 
     if not pattern:
         return {
-            "tool": "code.search",
+            "tool": "code_search",
             "root": str(root),
             "matches": [],
             "text": "No search pattern provided.",
@@ -848,7 +1095,7 @@ async def _tool_code_search(args: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return {
-        "tool": "code.search",
+        "tool": "code_search",
         "root": str(root),
         "pattern": pattern,
         "matches": matches,
@@ -894,7 +1141,7 @@ async def _tool_jira_list_assigned_issues(
         count = local_db.execute(text(count_sql), params).scalar() or 0
         if count == 0:
             return {
-                "tool": "jira.list_assigned_issues_for_user",
+                "tool": "jira_list_assigned_issues_for_user",
                 "text": (
                     "Jira is not connected or no issues are synced for this org. "
                     "Please connect Jira in the Connectors panel and run a sync."
@@ -909,7 +1156,7 @@ async def _tool_jira_list_assigned_issues(
         if isinstance(result, dict):
             if "error" in result:
                 return {
-                    "tool": "jira.list_assigned_issues_for_user",
+                    "tool": "jira_list_assigned_issues_for_user",
                     "text": f"Error retrieving Jira issues: {result['error']}",
                 }
             issues = result.get("issues", [])
@@ -922,7 +1169,7 @@ async def _tool_jira_list_assigned_issues(
         # Format for LLM consumption
         if not issues:
             return {
-                "tool": "jira.list_assigned_issues_for_user",
+                "tool": "jira_list_assigned_issues_for_user",
                 "text": f"No Jira issues found assigned to user {user_id}",
                 "sources": sources,
             }
@@ -941,7 +1188,7 @@ async def _tool_jira_list_assigned_issues(
         )
 
         return {
-            "tool": "jira.list_assigned_issues_for_user",
+            "tool": "jira_list_assigned_issues_for_user",
             "issues": issues,
             "sources": sources,  # Unified sources for UI
             "count": len(issues),
@@ -951,7 +1198,7 @@ async def _tool_jira_list_assigned_issues(
     except Exception as e:
         logger.error("Jira list assigned issues error: %s", e)
         return {
-            "tool": "jira.list_assigned_issues_for_user",
+            "tool": "jira_list_assigned_issues_for_user",
             "text": "Failed to fetch Jira issues - check your connection and credentials",
         }
 
@@ -972,12 +1219,12 @@ async def _tool_jira_add_comment(
 
     if not issue_key or not comment:
         return {
-            "tool": "jira.add_comment",
+            "tool": "jira_add_comment",
             "text": "issue_key and comment are required to add a Jira comment.",
         }
     if not approved:
         return {
-            "tool": "jira.add_comment",
+            "tool": "jira_add_comment",
             "text": "Approval required to post a Jira comment. Pass approve=true to proceed.",
         }
 
@@ -993,7 +1240,7 @@ async def _tool_jira_add_comment(
         )
 
         return {
-            "tool": "jira.add_comment",
+            "tool": "jira_add_comment",
             "text": f"Added comment to {issue_key}",
             "sources": [
                 {
@@ -1006,7 +1253,7 @@ async def _tool_jira_add_comment(
     except Exception as exc:  # noqa: BLE001
         logger.error("Jira add_comment error: %s", exc)
         return {
-            "tool": "jira.add_comment",
+            "tool": "jira_add_comment",
             "text": f"Failed to add comment to {issue_key}: {exc}",
         }
 
@@ -1027,12 +1274,12 @@ async def _tool_jira_transition_issue(
 
     if not issue_key or not transition_id:
         return {
-            "tool": "jira.transition_issue",
+            "tool": "jira_transition_issue",
             "text": "issue_key and transition_id are required to transition a Jira issue.",
         }
     if not approved:
         return {
-            "tool": "jira.transition_issue",
+            "tool": "jira_transition_issue",
             "text": "Approval required to transition a Jira issue. Pass approve=true to proceed.",
         }
 
@@ -1047,7 +1294,7 @@ async def _tool_jira_transition_issue(
             org_id=org_id,
         )
         return {
-            "tool": "jira.transition_issue",
+            "tool": "jira_transition_issue",
             "text": f"Transitioned {issue_key} using transition {transition_id}",
             "sources": [
                 {
@@ -1060,7 +1307,7 @@ async def _tool_jira_transition_issue(
     except Exception as exc:  # noqa: BLE001
         logger.error("Jira transition_issue error: %s", exc)
         return {
-            "tool": "jira.transition_issue",
+            "tool": "jira_transition_issue",
             "text": f"Failed to transition {issue_key}: {exc}",
         }
 
@@ -1082,12 +1329,12 @@ async def _tool_jira_assign_issue(
 
     if not issue_key or not assignee_account_id:
         return {
-            "tool": "jira.assign_issue",
+            "tool": "jira_assign_issue",
             "text": "issue_key and assignee_account_id are required to assign a Jira issue.",
         }
     if not approved:
         return {
-            "tool": "jira.assign_issue",
+            "tool": "jira_assign_issue",
             "text": "Approval required to assign a Jira issue. Pass approve=true to proceed.",
         }
 
@@ -1103,7 +1350,7 @@ async def _tool_jira_assign_issue(
             org_id=org_id,
         )
         return {
-            "tool": "jira.assign_issue",
+            "tool": "jira_assign_issue",
             "text": f"Assigned {issue_key} to {assignee_name or assignee_account_id}",
             "sources": [
                 {
@@ -1116,7 +1363,7 @@ async def _tool_jira_assign_issue(
     except Exception:
         logger.error("Jira assign_issue error occurred")
         return {
-            "tool": "jira.assign_issue",
+            "tool": "jira_assign_issue",
             "text": "Failed to assign Jira issue due to an error",
         }
 
@@ -1145,12 +1392,12 @@ async def _tool_github_comment(
 
     if not (repo_full_name and number and comment):
         return {
-            "tool": "github.comment",
+            "tool": "github_comment",
             "text": "repo, number, and comment are required",
         }
     if not approved:
         return {
-            "tool": "github.comment",
+            "tool": "github_comment",
             "text": "Approval required. Pass approve=true to proceed.",
         }
 
@@ -1160,14 +1407,14 @@ async def _tool_github_comment(
         conn_q = conn_q.filter(GhConnection.org_id == org_id)
     conn = conn_q.order_by(GhConnection.id.desc()).first()
     if not conn:
-        return {"tool": "github.comment", "text": "No GitHub connection found"}
+        return {"tool": "github_comment", "text": "No GitHub connection found"}
 
     GitHubService(token=decrypt_token(conn.access_token or ""))
     try:
         # TODO: Implement add_comment method in GitHubService
         # await gh_client.add_comment(repo_full_name, number, comment)
         return {
-            "tool": "github.comment",
+            "tool": "github_comment",
             "text": f"GitHub comment functionality not yet implemented for {repo_full_name}#{number}",
             "sources": [
                 {
@@ -1179,7 +1426,7 @@ async def _tool_github_comment(
         }
     except Exception as exc:  # noqa: BLE001
         logger.error("GitHub comment error: %s", exc)
-        return {"tool": "github.comment", "text": f"Failed to add comment: {exc}"}
+        return {"tool": "github_comment", "text": f"Failed to add comment: {exc}"}
 
 
 async def _tool_github_set_label(
@@ -1199,12 +1446,12 @@ async def _tool_github_set_label(
 
     if not (repo_full_name and number and labels):
         return {
-            "tool": "github.set_label",
+            "tool": "github_set_label",
             "text": "repo, number, and labels are required",
         }
     if not approved:
         return {
-            "tool": "github.set_label",
+            "tool": "github_set_label",
             "text": "Approval required. Pass approve=true to proceed.",
         }
 
@@ -1214,14 +1461,14 @@ async def _tool_github_set_label(
         conn_q = conn_q.filter(GhConnection.org_id == org_id)
     conn = conn_q.order_by(GhConnection.id.desc()).first()
     if not conn:
-        return {"tool": "github.set_label", "text": "No GitHub connection found"}
+        return {"tool": "github_set_label", "text": "No GitHub connection found"}
 
     # gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
     try:
         # TODO: Implement set_labels method in GitHubService
         # await gh_client.set_labels(repo_full_name, number, labels)
         return {
-            "tool": "github.set_label",
+            "tool": "github_set_label",
             "text": f"GitHub label setting functionality not yet implemented for {repo_full_name}#{number}",
             "sources": [
                 {
@@ -1233,7 +1480,7 @@ async def _tool_github_set_label(
         }
     except Exception as exc:  # noqa: BLE001
         logger.error("GitHub set_label error: %s", exc)
-        return {"tool": "github.set_label", "text": f"Failed to set labels: {exc}"}
+        return {"tool": "github_set_label", "text": f"Failed to set labels: {exc}"}
 
 
 async def _tool_github_rerun_check(
@@ -1252,12 +1499,12 @@ async def _tool_github_rerun_check(
 
     if not (repo_full_name and check_run_id):
         return {
-            "tool": "github.rerun_check",
+            "tool": "github_rerun_check",
             "text": "repo and check_run_id are required",
         }
     if not approved:
         return {
-            "tool": "github.rerun_check",
+            "tool": "github_rerun_check",
             "text": "Approval required. Pass approve=true to proceed.",
         }
 
@@ -1267,14 +1514,14 @@ async def _tool_github_rerun_check(
         conn_q = conn_q.filter(GhConnection.org_id == org_id)
     conn = conn_q.order_by(GhConnection.id.desc()).first()
     if not conn:
-        return {"tool": "github.rerun_check", "text": "No GitHub connection found"}
+        return {"tool": "github_rerun_check", "text": "No GitHub connection found"}
 
     # gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
     try:
         # TODO: Implement rerun_check_run method in GitHubService
         # await gh_client.rerun_check_run(repo_full_name, check_run_id)
         return {
-            "tool": "github.rerun_check",
+            "tool": "github_rerun_check",
             "text": f"GitHub check run rerun functionality not yet implemented for {repo_full_name}",
             "sources": [
                 {"name": f"{repo_full_name}", "type": "github", "connector": "github"}
@@ -1282,7 +1529,7 @@ async def _tool_github_rerun_check(
         }
     except Exception as exc:  # noqa: BLE001
         logger.error("GitHub rerun_check error: %s", exc)
-        return {"tool": "github.rerun_check", "text": f"Failed to rerun check: {exc}"}
+        return {"tool": "github_rerun_check", "text": f"Failed to rerun check: {exc}"}
 
 
 # ==============================================================================
@@ -1297,7 +1544,7 @@ async def _tool_code_create_file(user_id: str, args: Dict[str, Any]) -> Dict[str
 
     if not path:
         return {
-            "tool": "code.create_file",
+            "tool": "code_create_file",
             "text": "❌ Path is required",
             "error": "Missing path parameter",
         }
@@ -1305,7 +1552,7 @@ async def _tool_code_create_file(user_id: str, args: Dict[str, Any]) -> Dict[str
     result = await create_file(user_id=user_id, path=path, content=content)
 
     return {
-        "tool": "code.create_file",
+        "tool": "code_create_file",
         "text": result["message"],
         "success": result["success"],
         "path": result.get("path"),
@@ -1320,7 +1567,7 @@ async def _tool_code_edit_file(user_id: str, args: Dict[str, Any]) -> Dict[str, 
 
     if not path:
         return {
-            "tool": "code.edit_file",
+            "tool": "code_edit_file",
             "text": "❌ Path is required",
             "error": "Missing path parameter",
         }
@@ -1328,7 +1575,7 @@ async def _tool_code_edit_file(user_id: str, args: Dict[str, Any]) -> Dict[str, 
     result = await edit_file(user_id=user_id, path=path, new_content=content)
 
     return {
-        "tool": "code.edit_file",
+        "tool": "code_edit_file",
         "text": result["message"],
         "success": result["success"],
         "path": result.get("path"),
@@ -1344,7 +1591,7 @@ async def _tool_code_apply_diff(user_id: str, args: Dict[str, Any]) -> Dict[str,
 
     if not path or not diff:
         return {
-            "tool": "code.apply_diff",
+            "tool": "code_apply_diff",
             "text": "❌ Path and diff are required",
             "error": "Missing path or diff parameter",
         }
@@ -1354,7 +1601,7 @@ async def _tool_code_apply_diff(user_id: str, args: Dict[str, Any]) -> Dict[str,
     )
 
     return {
-        "tool": "code.apply_diff",
+        "tool": "code_apply_diff",
         "text": result["message"],
         "success": result["success"],
         "path": result.get("path"),
@@ -1371,7 +1618,7 @@ async def _tool_code_run_command(user_id: str, args: Dict[str, Any]) -> Dict[str
 
     if not command:
         return {
-            "tool": "code.run_command",
+            "tool": "code_run_command",
             "text": "❌ Command is required",
             "error": "Missing command parameter",
         }
@@ -1381,12 +1628,193 @@ async def _tool_code_run_command(user_id: str, args: Dict[str, Any]) -> Dict[str
     )
 
     return {
-        "tool": "code.run_command",
+        "tool": "code_run_command",
         "text": result["message"],
         "success": result["success"],
         "stdout": result.get("stdout"),
         "stderr": result.get("stderr"),
         "exit_code": result.get("exit_code"),
+        "error": result.get("error"),
+    }
+
+
+async def _tool_code_run_dangerous_command(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute dangerous command after approval."""
+    command = args.get("command")
+    approved = args.get("approved", False)
+    skip_backup = args.get("skip_backup", False)
+    cwd = args.get("cwd")
+    timeout = args.get("timeout", 60)
+
+    if not command:
+        return {
+            "tool": "code_run_dangerous_command",
+            "text": "❌ Command is required",
+            "error": "Missing command parameter",
+        }
+
+    result = await run_dangerous_command(
+        user_id=user_id,
+        command=command,
+        approved=approved,
+        skip_backup=skip_backup,
+        cwd=cwd,
+        timeout=timeout,
+    )
+
+    return {
+        "tool": "code_run_dangerous_command",
+        "text": result["message"],
+        "success": result["success"],
+        "stdout": result.get("stdout"),
+        "stderr": result.get("stderr"),
+        "exit_code": result.get("exit_code"),
+        "backup": result.get("backup"),
+        "rollback_instructions": result.get("rollback_instructions"),
+        "error": result.get("error"),
+    }
+
+
+async def _tool_code_run_interactive_command(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute command with interactive prompt handling."""
+    command = args.get("command")
+    auto_yes = args.get("auto_yes", True)
+    cwd = args.get("cwd")
+    timeout = args.get("timeout", 120)
+
+    if not command:
+        return {
+            "tool": "code_run_interactive_command",
+            "text": "❌ Command is required",
+            "error": "Missing command parameter",
+        }
+
+    result = await run_interactive_command(
+        user_id=user_id,
+        command=command,
+        auto_yes=auto_yes,
+        cwd=cwd,
+        timeout=timeout,
+    )
+
+    return {
+        "tool": "code_run_interactive_command",
+        "text": result["message"],
+        "success": result["success"],
+        "stdout": result.get("stdout"),
+        "stderr": result.get("stderr"),
+        "exit_code": result.get("exit_code"),
+        "prompts_answered": result.get("prompts_answered"),
+        "error": result.get("error"),
+    }
+
+
+async def _tool_code_run_parallel_commands(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute multiple commands in parallel."""
+    commands = args.get("commands", [])
+    max_workers = args.get("max_workers", 4)
+    stop_on_failure = args.get("stop_on_failure", False)
+    cwd = args.get("cwd")
+    timeout = args.get("timeout", 60)
+
+    if not commands:
+        return {
+            "tool": "code_run_parallel_commands",
+            "text": "❌ Commands list is required",
+            "error": "Missing commands parameter",
+        }
+
+    result = await run_parallel_commands(
+        user_id=user_id,
+        commands=commands,
+        cwd=cwd,
+        timeout=timeout,
+        max_workers=max_workers,
+        stop_on_failure=stop_on_failure,
+    )
+
+    return {
+        "tool": "code_run_parallel_commands",
+        "text": result["message"],
+        "success": result["success"],
+        "results": result.get("results"),
+        "summary": result.get("summary"),
+        "error": result.get("error"),
+    }
+
+
+async def _tool_code_run_command_with_retry(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute command with automatic retry on failure."""
+    command = args.get("command")
+    max_retries = args.get("max_retries", 3)
+    retry_delay = args.get("retry_delay", 1.0)
+    cwd = args.get("cwd")
+    timeout = args.get("timeout", 30)
+
+    if not command:
+        return {
+            "tool": "code_run_command_with_retry",
+            "text": "❌ Command is required",
+            "error": "Missing command parameter",
+        }
+
+    result = await run_command_with_retry(
+        user_id=user_id,
+        command=command,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
+        cwd=cwd,
+        timeout=timeout,
+    )
+
+    return {
+        "tool": "code_run_command_with_retry",
+        "text": result["message"],
+        "success": result["success"],
+        "attempts": result.get("attempts"),
+        "stdout": result.get("stdout"),
+        "stderr": result.get("stderr"),
+        "exit_code": result.get("exit_code"),
+        "error": result.get("error"),
+    }
+
+
+async def _tool_list_backups(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """List NAVI backups."""
+    workspace_path = args.get("workspace_path", ".")
+
+    result = await list_backups(workspace_path)
+
+    return {
+        "tool": "list_backups",
+        "text": result["message"],
+        "success": result["success"],
+        "backups": result.get("backups"),
+        "backup_directory": result.get("backup_directory"),
+    }
+
+
+async def _tool_restore_backup(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Restore a backup."""
+    workspace_path = args.get("workspace_path", ".")
+    backup_name = args.get("backup_name")
+    target_path = args.get("target_path")
+
+    if not backup_name:
+        return {
+            "tool": "restore_backup",
+            "text": "❌ Backup name is required",
+            "error": "Missing backup_name parameter",
+        }
+
+    result = await restore_backup(workspace_path, backup_name, target_path)
+
+    return {
+        "tool": "restore_backup",
+        "text": result["message"],
+        "success": result["success"],
+        "backup_path": result.get("backup_path"),
+        "target_path": result.get("target_path"),
         "error": result.get("error"),
     }
 
@@ -1423,19 +1851,19 @@ async def _dispatch_linear_tool(
 
     try:
         # Call the tool with context and args
-        if tool_name == "linear.list_my_issues":
+        if tool_name == "linear_list_my_issues":
             result = await tool_func(
                 context,
                 status=args.get("status"),
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "linear.search_issues":
+        elif tool_name == "linear_search_issues":
             result = await tool_func(
                 context,
                 query=args.get("query", ""),
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "linear.create_issue":
+        elif tool_name == "linear_create_issue":
             result = await tool_func(
                 context,
                 team_id=args.get("team_id"),
@@ -1445,14 +1873,14 @@ async def _dispatch_linear_tool(
                 assignee_id=args.get("assignee_id"),
                 approve=args.get("approve", False),
             )
-        elif tool_name == "linear.update_status":
+        elif tool_name == "linear_update_status":
             result = await tool_func(
                 context,
                 issue_id=args.get("issue_id"),
                 state_id=args.get("state_id"),
                 approve=args.get("approve", False),
             )
-        elif tool_name == "linear.list_teams":
+        elif tool_name == "linear_list_teams":
             result = await tool_func(context)
         else:
             return {
@@ -1502,24 +1930,24 @@ async def _dispatch_gitlab_tool(
 
     try:
         # Call the tool with context and args
-        if tool_name == "gitlab.list_my_merge_requests":
+        if tool_name == "gitlab_list_my_merge_requests":
             result = await tool_func(
                 context,
                 status=args.get("status"),
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "gitlab.list_my_issues":
+        elif tool_name == "gitlab_list_my_issues":
             result = await tool_func(
                 context,
                 status=args.get("status"),
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "gitlab.get_pipeline_status":
+        elif tool_name == "gitlab_get_pipeline_status":
             result = await tool_func(
                 context,
                 max_results=args.get("max_results", 10),
             )
-        elif tool_name == "gitlab.search":
+        elif tool_name == "gitlab_search":
             result = await tool_func(
                 context,
                 query=args.get("query", ""),
@@ -1572,28 +2000,28 @@ async def _dispatch_notion_tool(
 
     try:
         # Call the tool with context and args
-        if tool_name == "notion.search_pages":
+        if tool_name == "notion_search_pages":
             result = await tool_func(
                 context,
                 query=args.get("query", ""),
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "notion.list_recent_pages":
+        elif tool_name == "notion_list_recent_pages":
             result = await tool_func(
                 context,
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "notion.get_page_content":
+        elif tool_name == "notion_get_page_content":
             result = await tool_func(
                 context,
                 page_id=args.get("page_id"),
             )
-        elif tool_name == "notion.list_databases":
+        elif tool_name == "notion_list_databases":
             result = await tool_func(
                 context,
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "notion.create_page":
+        elif tool_name == "notion_create_page":
             result = await tool_func(
                 context,
                 parent_id=args.get("parent_id"),
@@ -1648,20 +2076,20 @@ async def _dispatch_slack_tool(
 
     try:
         # Call the tool with context and args
-        if tool_name == "slack.search_messages":
+        if tool_name == "slack_search_messages":
             result = await tool_func(
                 context,
                 query=args.get("query", ""),
                 channel=args.get("channel"),
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "slack.list_channel_messages":
+        elif tool_name == "slack_list_channel_messages":
             result = await tool_func(
                 context,
                 channel=args.get("channel"),
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "slack.send_message":
+        elif tool_name == "slack_send_message":
             result = await tool_func(
                 context,
                 channel=args.get("channel"),
@@ -1716,24 +2144,24 @@ async def _dispatch_asana_tool(
 
     try:
         # Call the tool with context and args
-        if tool_name == "asana.list_my_tasks":
+        if tool_name == "asana_list_my_tasks":
             result = await tool_func(
                 context,
                 status=args.get("status"),
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "asana.search_tasks":
+        elif tool_name == "asana_search_tasks":
             result = await tool_func(
                 context,
                 query=args.get("query", ""),
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "asana.list_projects":
+        elif tool_name == "asana_list_projects":
             result = await tool_func(
                 context,
                 max_results=args.get("max_results", 20),
             )
-        elif tool_name == "asana.create_task":
+        elif tool_name == "asana_create_task":
             result = await tool_func(
                 context,
                 name=args.get("name"),
@@ -1743,7 +2171,7 @@ async def _dispatch_asana_tool(
                 due_on=args.get("due_on"),
                 approve=args.get("approve", False),
             )
-        elif tool_name == "asana.complete_task":
+        elif tool_name == "asana_complete_task":
             result = await tool_func(
                 context,
                 task_gid=args.get("task_gid"),
@@ -2241,7 +2669,19 @@ async def _dispatch_deployment_tool(
     """Dispatch deployment tools to their implementations."""
     from backend.agent.tools.deployment_tools import DEPLOYMENT_TOOLS
 
-    context = {"user_id": user_id}
+    # Include credentials from credentials service
+    cred_service = get_credentials_service()
+    context = {
+        "user_id": user_id,
+        "credentials": {
+            "vercel": cred_service.get_provider_credentials("vercel"),
+            "netlify": cred_service.get_provider_credentials("netlify"),
+            "aws": cred_service.get_provider_credentials("aws"),
+            "gcp": cred_service.get_provider_credentials("gcp"),
+            "azure": cred_service.get_provider_credentials("azure"),
+            "github": cred_service.get_provider_credentials("github"),
+        },
+    }
 
     # Get workspace path for project detection
     workspace_path = None
@@ -2257,16 +2697,54 @@ async def _dispatch_deployment_tool(
 
     try:
         # Call tools with appropriate arguments
-        if tool_name == "deploy.detect_project":
+        if tool_name == "deploy_detect_project":
             result = await tool_func(context, workspace_path=workspace_path)
-        elif tool_name == "deploy.check_cli":
+        elif tool_name == "deploy_check_cli":
             platform = args.get("platform", "")
             result = await tool_func(context, platform=platform)
-        elif tool_name == "deploy.get_info":
+        elif tool_name == "deploy_get_info":
             platform = args.get("platform", "")
             result = await tool_func(context, platform=platform)
-        elif tool_name == "deploy.list_platforms":
+        elif tool_name == "deploy_list_platforms":
             result = await tool_func(context)
+        elif tool_name == "deploy_execute":
+            platform = args.get("platform", "")
+            environment = args.get("environment", "production")
+            env_vars = args.get("env_vars", {})
+            dry_run = args.get("dry_run", False)
+            result = await tool_func(
+                context,
+                platform=platform,
+                workspace_path=workspace_path,
+                environment=environment,
+                env_vars=env_vars,
+                dry_run=dry_run,
+            )
+        elif tool_name == "deploy_confirm":
+            request_id = args.get("request_id", "")
+            confirmation_phrase = args.get("confirmation_phrase")
+            result = await tool_func(
+                context,
+                request_id=request_id,
+                confirmation_phrase=confirmation_phrase,
+            )
+        elif tool_name == "deploy_rollback":
+            platform = args.get("platform", "")
+            deployment_id = args.get("deployment_id", "")
+            result = await tool_func(
+                context,
+                platform=platform,
+                deployment_id=deployment_id,
+                workspace_path=workspace_path,
+            )
+        elif tool_name == "deploy_status":
+            platform = args.get("platform", "")
+            deployment_id = args.get("deployment_id", "")
+            result = await tool_func(
+                context,
+                platform=platform,
+                deployment_id=deployment_id,
+            )
         else:
             return {
                 "tool": tool_name,
@@ -2277,3 +2755,1140 @@ async def _dispatch_deployment_tool(
     except Exception as exc:
         logger.error("Deployment tool error: %s - %s", tool_name, exc)
         return {"tool": tool_name, "text": f"Error executing deployment tool: {exc}"}
+
+
+async def _dispatch_scaffolding_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch scaffolding tools to their implementations."""
+    from backend.agent.tools.scaffolding_tools import SCAFFOLDING_TOOLS
+
+    context = {"user_id": user_id}
+
+    # Get workspace path
+    workspace_path = None
+    if workspace:
+        workspace_path = workspace.get("workspace_root")
+
+    tool_func = SCAFFOLDING_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Scaffolding tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        if tool_name == "scaffold_project":
+            result = await tool_func(
+                context,
+                project_name=args.get("project_name", args.get("name", "")),
+                project_type=args.get("project_type", args.get("type", "nextjs")),
+                parent_directory=args.get("parent_directory", workspace_path or "."),
+                description=args.get("description"),
+                typescript=args.get("typescript", True),
+                git_init=args.get("git_init", True),
+                install_dependencies=args.get("install_dependencies", True),
+            )
+        elif tool_name == "scaffold_detect_requirements":
+            result = await tool_func(
+                context,
+                description=args.get("description", ""),
+            )
+        elif tool_name == "scaffold_add_feature":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                feature_type=args.get("feature_type", args.get("type", "")),
+                feature_name=args.get("feature_name", args.get("name", "")),
+            )
+        elif tool_name == "scaffold_list_templates":
+            result = await tool_func(context)
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Scaffolding tool '{tool_name}' dispatch not configured.",
+            }
+
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Scaffolding tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing scaffolding tool: {exc}"}
+
+
+async def _dispatch_test_generation_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch test generation tools to their implementations."""
+    from backend.agent.tools.test_generation_tools import TEST_GENERATION_TOOLS
+
+    context = {"user_id": user_id}
+
+    # Get workspace path
+    workspace_path = None
+    if workspace:
+        workspace_path = workspace.get("workspace_root")
+
+    tool_func = TEST_GENERATION_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Test generation tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        if tool_name == "test_generate_for_file":
+            result = await tool_func(
+                context,
+                file_path=args.get("file_path", args.get("file", "")),
+                test_type=args.get("test_type", "unit"),
+                framework=args.get("framework"),
+                coverage_target=args.get("coverage_target", 0.8),
+                workspace_path=args.get("workspace_path", workspace_path),
+            )
+        elif tool_name == "test_generate_for_function":
+            result = await tool_func(
+                context,
+                file_path=args.get("file_path", args.get("file", "")),
+                function_name=args.get("function_name", args.get("function", "")),
+                framework=args.get("framework"),
+                workspace_path=args.get("workspace_path", workspace_path),
+            )
+        elif tool_name == "test_generate_suite":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                scope=args.get("scope", "changed"),
+                test_type=args.get("test_type", "unit"),
+                framework=args.get("framework"),
+            )
+        elif tool_name == "test_detect_framework":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+            )
+        elif tool_name == "test_suggest_improvements":
+            result = await tool_func(
+                context,
+                test_file_path=args.get("test_file_path", args.get("file", "")),
+                workspace_path=args.get("workspace_path", workspace_path),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Test generation tool '{tool_name}' dispatch not configured.",
+            }
+
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Test generation tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing test generation tool: {exc}"}
+
+
+async def _dispatch_documentation_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch documentation tools to their implementations."""
+    from backend.agent.tools.documentation_tools import DOCUMENTATION_TOOLS
+
+    context = {"user_id": user_id}
+
+    # Get workspace path
+    workspace_path = None
+    if workspace:
+        workspace_path = workspace.get("workspace_root")
+
+    tool_func = DOCUMENTATION_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Documentation tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        if tool_name == "docs_generate_readme":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                include_badges=args.get("include_badges", True),
+                include_toc=args.get("include_toc", True),
+                style=args.get("style", "standard"),
+            )
+        elif tool_name == "docs_generate_api":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                format=args.get("format", "markdown"),
+                output_path=args.get("output_path"),
+            )
+        elif tool_name == "docs_generate_component":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                component_path=args.get("component_path"),
+            )
+        elif tool_name == "docs_generate_architecture":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                include_diagrams=args.get("include_diagrams", True),
+            )
+        elif tool_name == "docs_generate_comments":
+            result = await tool_func(
+                context,
+                file_path=args.get("file_path", args.get("file", "")),
+                workspace_path=args.get("workspace_path", workspace_path),
+                style=args.get("style", "jsdoc"),
+            )
+        elif tool_name == "docs_generate_changelog":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                version=args.get("version"),
+                since_tag=args.get("since_tag"),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Documentation tool '{tool_name}' dispatch not configured.",
+            }
+
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Documentation tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing documentation tool: {exc}"}
+
+
+async def _dispatch_infrastructure_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch infrastructure tools to their implementations."""
+    from backend.agent.tools.infrastructure_tools import INFRASTRUCTURE_TOOLS
+
+    # Include cloud credentials from credentials service
+    cred_service = get_credentials_service()
+    context = {
+        "user_id": user_id,
+        "credentials": {
+            "aws": cred_service.get_provider_credentials("aws"),
+            "gcp": cred_service.get_provider_credentials("gcp"),
+            "azure": cred_service.get_provider_credentials("azure"),
+            "digitalocean": cred_service.get_provider_credentials("digitalocean"),
+        },
+    }
+    workspace_path = workspace.get("workspace_root") if workspace else None
+
+    tool_func = INFRASTRUCTURE_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Infrastructure tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        if tool_name == "infra_generate_terraform":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                cloud_provider=args.get("cloud_provider", args.get("provider", "aws")),
+                resources=args.get("resources", []),
+                output_dir=args.get("output_dir", "terraform"),
+            )
+        elif tool_name == "infra_generate_cloudformation":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                resources=args.get("resources", []),
+                output_path=args.get("output_path", "cloudformation.yaml"),
+            )
+        elif tool_name == "infra_generate_k8s":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                app_name=args.get("app_name", args.get("name", "app")),
+                image=args.get("image"),
+                replicas=args.get("replicas", 2),
+                port=args.get("port", 8080),
+                env_vars=args.get("env_vars"),
+                host=args.get("host"),
+            )
+        elif tool_name == "infra_generate_docker_compose":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                services=args.get("services"),
+            )
+        elif tool_name == "infra_generate_helm":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                chart_name=args.get("chart_name", args.get("name", "app")),
+                app_version=args.get("app_version", "1.0.0"),
+            )
+        elif tool_name == "infra_analyze_needs":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+            )
+        # Execution tools (require approval)
+        elif tool_name == "infra_terraform_plan":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                working_dir=args.get("working_dir", "."),
+                var_file=args.get("var_file"),
+            )
+        elif tool_name == "infra_terraform_apply":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                working_dir=args.get("working_dir", "."),
+                var_file=args.get("var_file"),
+                approve=args.get("approve", False),
+            )
+        elif tool_name == "infra_terraform_destroy":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                working_dir=args.get("working_dir", "."),
+                approve=args.get("approve", False),
+            )
+        elif tool_name == "infra_kubectl_apply":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                manifest_path=args.get("manifest_path", ""),
+                namespace=args.get("namespace"),
+                dry_run=args.get("dry_run", True),
+                approve=args.get("approve", False),
+            )
+        elif tool_name == "infra_helm_install":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                chart_path=args.get("chart_path", "."),
+                release_name=args.get("release_name", "release"),
+                namespace=args.get("namespace"),
+                values_file=args.get("values_file"),
+                approve=args.get("approve", False),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Infrastructure tool '{tool_name}' dispatch not configured.",
+            }
+
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Infrastructure tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing infrastructure tool: {exc}"}
+
+
+async def _dispatch_database_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch database tools to their implementations."""
+    from backend.agent.tools.database_tools import DATABASE_TOOLS
+    from backend.agent.tools.advanced_database_tools import ADVANCED_DATABASE_TOOLS
+
+    context = {"user_id": user_id}
+    workspace_path = workspace.get("workspace_root") if workspace else None
+
+    # Check basic database tools first
+    tool_func = DATABASE_TOOLS.get(tool_name)
+
+    # If not found, check advanced database tools (Phase 6)
+    if not tool_func:
+        advanced_config = ADVANCED_DATABASE_TOOLS.get(tool_name)
+        if advanced_config:
+            return await _dispatch_advanced_database_tool(
+                user_id, tool_name, args, workspace, advanced_config
+            )
+        return {
+            "tool": tool_name,
+            "text": f"Database tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        if tool_name == "db_design_schema":
+            result = await tool_func(
+                context,
+                description=args.get("description", ""),
+                database_type=args.get("database_type", "postgresql"),
+                orm=args.get("orm"),
+            )
+        elif tool_name == "db_generate_migration":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                changes=args.get("changes", []),
+                migration_name=args.get("migration_name", "migration"),
+            )
+        elif tool_name == "db_run_migration":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                direction=args.get("direction", "up"),
+                dry_run=args.get("dry_run", False),
+            )
+        elif tool_name == "db_generate_seed":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                models=args.get("models", []),
+                count=args.get("count", 10),
+            )
+        elif tool_name == "db_analyze_schema":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+            )
+        elif tool_name == "db_generate_erd":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                format=args.get("format", "mermaid"),
+            )
+        # Real execution tools
+        elif tool_name == "db_execute_migration":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                direction=args.get("direction", "up"),
+                target=args.get("target"),
+                dry_run=args.get("dry_run", False),
+            )
+        elif tool_name == "db_confirm":
+            result = await tool_func(
+                context,
+                request_id=args.get("request_id", ""),
+                confirmation_input=args.get("confirmation_input"),
+            )
+        elif tool_name == "db_backup":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                database_url=args.get("database_url"),
+                output_path=args.get("output_path"),
+                compression=args.get("compression", True),
+            )
+        elif tool_name == "db_restore":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                backup_path=args.get("backup_path", ""),
+                database_url=args.get("database_url"),
+            )
+        elif tool_name == "db_status":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Database tool '{tool_name}' dispatch not configured.",
+            }
+
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Database tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing database tool: {exc}"}
+
+
+async def _dispatch_advanced_database_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch advanced database tools (Phase 6) to their implementations."""
+    workspace_path = workspace.get("workspace_root") if workspace else "."
+
+    if not tool_config:
+        return {
+            "tool": tool_name,
+            "text": f"Advanced database tool '{tool_name}' has no configuration.",
+        }
+
+    tool_func = tool_config.get("function")
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Advanced database tool '{tool_name}' has no function defined.",
+        }
+
+    try:
+        if tool_name == "db_orchestrate_migration":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                migration_tool=args.get("migration_tool"),
+                direction=args.get("direction", "up"),
+                target=args.get("target"),
+                dry_run=args.get("dry_run", True),
+                backup_first=args.get("backup_first", True),
+            )
+        elif tool_name == "db_setup_replication":
+            result = await tool_func(
+                database_type=args.get("database_type", "postgresql"),
+                replication_type=args.get("replication_type", "streaming"),
+                primary_host=args.get("primary_host", ""),
+                replica_hosts=args.get("replica_hosts", []),
+                replication_user=args.get("replication_user", "replicator"),
+                workspace_path=args.get("workspace_path", workspace_path),
+            )
+        elif tool_name == "db_configure_sharding":
+            result = await tool_func(
+                database_type=args.get("database_type", "postgresql"),
+                sharding_strategy=args.get("sharding_strategy", "hash"),
+                shard_key=args.get("shard_key", ""),
+                num_shards=args.get("num_shards", 4),
+                tables=args.get("tables", []),
+                workspace_path=args.get("workspace_path", workspace_path),
+            )
+        elif tool_name == "db_backup_restore":
+            result = await tool_func(
+                database_type=args.get("database_type", "postgresql"),
+                action=args.get("action", "backup"),
+                connection_string=args.get("connection_string"),
+                backup_path=args.get("backup_path"),
+                compression=args.get("compression", True),
+                include_schema=args.get("include_schema", True),
+                include_data=args.get("include_data", True),
+                tables=args.get("tables"),
+                workspace_path=args.get("workspace_path", workspace_path),
+            )
+        elif tool_name == "db_analyze_query_performance":
+            result = await tool_func(
+                database_type=args.get("database_type", "postgresql"),
+                connection_string=args.get("connection_string"),
+                query=args.get("query"),
+                log_path=args.get("log_path"),
+                analyze_mode=args.get("analyze_mode", "explain"),
+                top_n=args.get("top_n", 10),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Advanced database tool '{tool_name}' dispatch not configured.",
+            }
+
+        # Format result for display
+        if isinstance(result, dict):
+            import json
+            text = json.dumps(result, indent=2, default=str)
+        else:
+            text = str(result)
+
+        return {"tool": tool_name, "text": text}
+    except Exception as exc:
+        logger.error("Advanced database tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing advanced database tool: {exc}"}
+
+
+async def _dispatch_monitoring_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch monitoring tools to their implementations."""
+    from backend.agent.tools.monitoring_tools import MONITORING_TOOLS
+
+    context = {"user_id": user_id}
+    workspace_path = workspace.get("workspace_root") if workspace else None
+
+    tool_func = MONITORING_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Monitoring tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        if tool_name == "monitor_setup_errors":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                provider=args.get("provider", "sentry"),
+                dsn=args.get("dsn"),
+            )
+        elif tool_name == "monitor_setup_apm":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                provider=args.get("provider", "datadog"),
+            )
+        elif tool_name == "monitor_setup_logging":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                library=args.get("library"),
+            )
+        elif tool_name == "monitor_generate_health_checks":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+            )
+        elif tool_name == "monitor_setup_alerting":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                provider=args.get("provider", "pagerduty"),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Monitoring tool '{tool_name}' dispatch not configured.",
+            }
+
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Monitoring tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing monitoring tool: {exc}"}
+
+
+async def _dispatch_secrets_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch secrets tools to their implementations."""
+    from backend.agent.tools.secrets_tools import SECRETS_TOOLS
+
+    context = {"user_id": user_id}
+    workspace_path = workspace.get("workspace_root") if workspace else None
+
+    tool_func = SECRETS_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Secrets tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        if tool_name == "secrets_generate_env":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+            )
+        elif tool_name == "secrets_setup_provider":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                provider=args.get("provider", "vault"),
+            )
+        elif tool_name == "secrets_sync_to_platform":
+            result = await tool_func(
+                context,
+                env_file=args.get("env_file", ".env"),
+                platform=args.get("platform", "vercel"),
+                environment=args.get("environment", "production"),
+            )
+        elif tool_name == "secrets_audit":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+            )
+        elif tool_name == "secrets_rotate":
+            result = await tool_func(
+                context,
+                workspace_path=args.get("workspace_path", workspace_path or "."),
+                secrets=args.get("secrets", []),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Secrets tool '{tool_name}' dispatch not configured.",
+            }
+
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Secrets tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing secrets tool: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Architecture Tools
+# ---------------------------------------------------------------------------
+
+
+async def _dispatch_architecture_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch architecture tools to their implementations."""
+    from backend.agent.tools.architecture_tools import ARCHITECTURE_TOOLS
+
+    context = {"user_id": user_id, **args}
+    workspace_path = workspace.get("workspace_root") if workspace else None
+    if workspace_path:
+        context["workspace_path"] = workspace_path
+
+    tool_func = ARCHITECTURE_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Architecture tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        result = await tool_func(context)
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Architecture tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing architecture tool: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: GitLab CI Tools
+# ---------------------------------------------------------------------------
+
+
+async def _dispatch_gitlab_ci_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch GitLab CI tools to their implementations."""
+    from backend.agent.tools.gitlab_ci_tools import GITLAB_CI_TOOLS
+
+    context = {"user_id": user_id, **args}
+    workspace_path = workspace.get("workspace_root") if workspace else None
+    if workspace_path:
+        context["workspace_path"] = workspace_path
+
+    tool_func = GITLAB_CI_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"GitLab CI tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        result = await tool_func(context)
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("GitLab CI tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing GitLab CI tool: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Multi-Cloud Tools
+# ---------------------------------------------------------------------------
+
+
+async def _dispatch_multicloud_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch multi-cloud tools to their implementations."""
+    from backend.agent.tools.multicloud_tools import MULTICLOUD_TOOLS
+
+    context = {"user_id": user_id, **args}
+    workspace_path = workspace.get("workspace_root") if workspace else None
+    if workspace_path:
+        context["workspace_path"] = workspace_path
+
+    tool_func = MULTICLOUD_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Multi-cloud tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        result = await tool_func(context)
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Multi-cloud tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing multi-cloud tool: {exc}"}
+
+
+async def _dispatch_web_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Dispatch web tools (fetch URLs, search web) to their implementations."""
+    if tool_name == "web_fetch_url":
+        url = args.get("url", "")
+        extract_text = args.get("extract_text", True)
+        max_length = args.get("max_length")
+
+        result = await fetch_url(
+            user_id=user_id,
+            url=url,
+            extract_text=extract_text,
+            max_length=max_length,
+        )
+
+        if result.get("success"):
+            content = result.get("content", "")
+            title = result.get("title", "")
+            message = result.get("message", "")
+            return {
+                "tool": tool_name,
+                "text": f"{message}\n\n**Title:** {title}\n\n{content}" if title else f"{message}\n\n{content}",
+                "url": result.get("url"),
+                "content_type": result.get("content_type"),
+            }
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Failed to fetch URL: {result.get('error', 'Unknown error')}",
+            }
+
+    if tool_name == "web_search":
+        query = args.get("query", "")
+        max_results = args.get("max_results", 5)
+        search_depth = args.get("search_depth", "basic")
+
+        result = await search_web(
+            user_id=user_id,
+            query=query,
+            max_results=max_results,
+            search_depth=search_depth,
+        )
+
+        if result.get("success"):
+            results = result.get("results", [])
+            answer = result.get("answer", "")
+            message = result.get("message", "")
+
+            # Format results for display
+            formatted_results = []
+            for r in results:
+                formatted_results.append(
+                    f"**{r.get('title', 'Untitled')}**\n"
+                    f"URL: {r.get('url', '')}\n"
+                    f"{r.get('content', '')[:500]}..."
+                )
+
+            text = f"{message}\n\n"
+            if answer:
+                text += f"**Summary:** {answer}\n\n"
+            text += "**Results:**\n\n" + "\n\n---\n\n".join(formatted_results)
+
+            return {
+                "tool": tool_name,
+                "text": text,
+                "query": query,
+                "results": results,
+            }
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Web search failed: {result.get('error', 'Unknown error')}",
+            }
+
+    return {
+        "tool": tool_name,
+        "text": f"Web tool '{tool_name}' is not implemented.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Enterprise Tools Dispatch (Phase 6)
+# ---------------------------------------------------------------------------
+
+
+async def _dispatch_compliance_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch compliance tools (PCI-DSS, HIPAA, SOC2) to their implementations."""
+    from backend.agent.tools.compliance_tools import COMPLIANCE_TOOLS
+
+    workspace_path = workspace.get("workspace_root") if workspace else "."
+
+    tool_config = COMPLIANCE_TOOLS.get(tool_name)
+    if not tool_config:
+        return {
+            "tool": tool_name,
+            "text": f"Compliance tool '{tool_name}' is not implemented.",
+        }
+
+    tool_func = tool_config.get("function")
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Compliance tool '{tool_name}' has no function defined.",
+        }
+
+    try:
+        if tool_name == "compliance_check_pci_dss":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                scan_depth=args.get("scan_depth", "full"),
+            )
+        elif tool_name == "compliance_check_hipaa":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                scan_depth=args.get("scan_depth", "full"),
+            )
+        elif tool_name == "compliance_check_soc2":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                scan_depth=args.get("scan_depth", "full"),
+            )
+        elif tool_name == "compliance_audit_dependencies":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                include_dev=args.get("include_dev", False),
+            )
+        elif tool_name == "compliance_generate_report":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                frameworks=args.get("frameworks", ["pci-dss", "hipaa", "soc2"]),
+                output_format=args.get("output_format", "markdown"),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Compliance tool '{tool_name}' dispatch not configured.",
+            }
+
+        # Format result for display
+        if isinstance(result, dict):
+            import json
+            text = json.dumps(result, indent=2, default=str)
+        else:
+            text = str(result)
+
+        return {"tool": tool_name, "text": text}
+    except Exception as exc:
+        logger.error("Compliance tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing compliance tool: {exc}"}
+
+
+async def _dispatch_loadtest_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch load testing tools (k6, Locust) to their implementations."""
+    from backend.agent.tools.load_testing_tools import LOAD_TESTING_TOOLS
+
+    workspace_path = workspace.get("workspace_root") if workspace else "."
+
+    tool_config = LOAD_TESTING_TOOLS.get(tool_name)
+    if not tool_config:
+        return {
+            "tool": tool_name,
+            "text": f"Load testing tool '{tool_name}' is not implemented.",
+        }
+
+    tool_func = tool_config.get("function")
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Load testing tool '{tool_name}' has no function defined.",
+        }
+
+    try:
+        if tool_name == "loadtest_generate_k6":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                target_url=args.get("target_url", ""),
+                test_type=args.get("test_type", "load"),
+                duration=args.get("duration", "5m"),
+                vus=args.get("vus", 10),
+                endpoints=args.get("endpoints", []),
+                thresholds=args.get("thresholds"),
+            )
+        elif tool_name == "loadtest_generate_locust":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                target_url=args.get("target_url", ""),
+                test_type=args.get("test_type", "load"),
+                users=args.get("users", 10),
+                spawn_rate=args.get("spawn_rate", 1),
+                endpoints=args.get("endpoints", []),
+            )
+        elif tool_name == "loadtest_run":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                tool=args.get("tool", "k6"),
+                script_path=args.get("script_path", ""),
+                output_format=args.get("output_format", "json"),
+                env_vars=args.get("env_vars", {}),
+            )
+        elif tool_name == "loadtest_analyze_results":
+            result = await tool_func(
+                results_path=args.get("results_path", ""),
+                baseline_path=args.get("baseline_path"),
+                thresholds=args.get("thresholds"),
+            )
+        elif tool_name == "loadtest_establish_baseline":
+            result = await tool_func(
+                workspace_path=args.get("workspace_path", workspace_path),
+                target_url=args.get("target_url", ""),
+                duration=args.get("duration", "2m"),
+                vus=args.get("vus", 5),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Load testing tool '{tool_name}' dispatch not configured.",
+            }
+
+        # Format result for display
+        if isinstance(result, dict):
+            import json
+            text = json.dumps(result, indent=2, default=str)
+        else:
+            text = str(result)
+
+        return {"tool": tool_name, "text": text}
+    except Exception as exc:
+        logger.error("Load testing tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing load testing tool: {exc}"}
+
+
+async def _dispatch_k8s_lifecycle_tool(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Dispatch Kubernetes lifecycle tools to their implementations."""
+    from backend.agent.tools.kubernetes_lifecycle_tools import K8S_LIFECYCLE_TOOLS
+
+    # Include cloud credentials for K8s cluster operations
+    cred_service = get_credentials_service()
+
+    # Set cloud credentials as environment variables for CLI tools
+    aws_creds = cred_service.get_provider_credentials("aws")
+    gcp_creds = cred_service.get_provider_credentials("gcp")
+    azure_creds = cred_service.get_provider_credentials("azure")
+
+    # Export credentials to environment for eksctl/gcloud/az CLI
+    if aws_creds.get("access_key_id"):
+        os.environ["AWS_ACCESS_KEY_ID"] = aws_creds["access_key_id"]
+    if aws_creds.get("secret_access_key"):
+        os.environ["AWS_SECRET_ACCESS_KEY"] = aws_creds["secret_access_key"]
+    if aws_creds.get("region"):
+        os.environ["AWS_DEFAULT_REGION"] = aws_creds["region"]
+
+    if gcp_creds.get("service_account_key"):
+        # Write service account key to temp file for gcloud
+        import tempfile
+        key_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+        key_file.write(gcp_creds["service_account_key"])
+        key_file.close()
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = key_file.name
+
+    workspace_path = workspace.get("workspace_root") if workspace else "."
+
+    tool_config = K8S_LIFECYCLE_TOOLS.get(tool_name)
+    if not tool_config:
+        return {
+            "tool": tool_name,
+            "text": f"Kubernetes tool '{tool_name}' is not implemented.",
+        }
+
+    tool_func = tool_config.get("function")
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Kubernetes tool '{tool_name}' has no function defined.",
+        }
+
+    try:
+        if tool_name == "k8s_cluster_create":
+            result = await tool_func(
+                provider=args.get("provider", ""),
+                cluster_name=args.get("cluster_name", ""),
+                region=args.get("region", ""),
+                node_count=args.get("node_count", 3),
+                node_type=args.get("node_type", "standard"),
+                kubernetes_version=args.get("kubernetes_version", "latest"),
+                vpc_config=args.get("vpc_config"),
+                enable_private_cluster=args.get("enable_private_cluster", False),
+                enable_workload_identity=args.get("enable_workload_identity", True),
+                tags=args.get("tags"),
+                workspace_path=args.get("workspace_path", workspace_path),
+            )
+        elif tool_name == "k8s_cluster_upgrade":
+            result = await tool_func(
+                provider=args.get("provider", ""),
+                cluster_name=args.get("cluster_name", ""),
+                region=args.get("region", ""),
+                target_version=args.get("target_version", ""),
+                upgrade_strategy=args.get("upgrade_strategy", "rolling"),
+                drain_timeout=args.get("drain_timeout", 300),
+                node_pool=args.get("node_pool"),
+                workspace_path=args.get("workspace_path", workspace_path),
+            )
+        elif tool_name == "k8s_node_pool_manage":
+            result = await tool_func(
+                provider=args.get("provider", ""),
+                cluster_name=args.get("cluster_name", ""),
+                region=args.get("region", ""),
+                action=args.get("action", ""),
+                node_pool_name=args.get("node_pool_name", ""),
+                node_count=args.get("node_count"),
+                node_type=args.get("node_type"),
+                taints=args.get("taints"),
+                labels=args.get("labels"),
+                enable_autoscaling=args.get("enable_autoscaling", False),
+                min_nodes=args.get("min_nodes", 1),
+                max_nodes=args.get("max_nodes", 10),
+            )
+        elif tool_name == "k8s_install_addons":
+            result = await tool_func(
+                addons=args.get("addons", []),
+                cluster_name=args.get("cluster_name", ""),
+                provider=args.get("provider"),
+                namespace=args.get("namespace", "kube-system"),
+                helm_values=args.get("helm_values"),
+                workspace_path=args.get("workspace_path", workspace_path),
+            )
+        elif tool_name == "k8s_cluster_health_check":
+            result = await tool_func(
+                checks=args.get("checks"),
+                namespace=args.get("namespace"),
+                verbose=args.get("verbose", False),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Kubernetes tool '{tool_name}' dispatch not configured.",
+            }
+
+        # Format result for display
+        if isinstance(result, dict):
+            import json
+            text = json.dumps(result, indent=2, default=str)
+        else:
+            text = str(result)
+
+        return {"tool": tool_name, "text": text}
+    except Exception as exc:
+        logger.error("Kubernetes tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Kubernetes tool: {exc}"}

@@ -234,8 +234,8 @@ async def create_clickup_task(
 
 
 CLICKUP_TOOLS = {
-    "clickup.list_workspaces": list_clickup_workspaces,
-    "clickup.list_spaces": list_clickup_spaces,
-    "clickup.list_my_tasks": list_my_clickup_tasks,
-    "clickup.create_task": create_clickup_task,
+    "clickup_list_workspaces": list_clickup_workspaces,
+    "clickup_list_spaces": list_clickup_spaces,
+    "clickup_list_my_tasks": list_my_clickup_tasks,
+    "clickup_create_task": create_clickup_task,
 }

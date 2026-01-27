@@ -41,7 +41,9 @@ export class FileActionHandler extends BaseActionHandler {
                         message: `File ${operation === 'create' ? 'created' : 'written'}: ${filePath}`,
                         diffStats: writeResult.diffStats,
                         data: {
-                            diffUnified: writeResult.diffUnified
+                            diffUnified: writeResult.diffUnified,
+                            originalContent: writeResult.originalContent,
+                            wasCreated: writeResult.wasCreated,
                         }
                     };
 
@@ -95,17 +97,19 @@ export class FileActionHandler extends BaseActionHandler {
         filePath: string,
         content: string,
         context: ActionContext
-    ): Promise<{ diffStats: DiffStats; diffUnified: string }> {
+    ): Promise<{ diffStats: DiffStats; diffUnified: string; originalContent: string; wasCreated: boolean }> {
         const absolutePath = this.resolveFilePath(filePath, context.workspaceRoot);
         const uri = vscode.Uri.file(absolutePath);
         const nextContent = content ?? "";
         let originalContent = "";
+        let wasCreated = false;
 
         try {
             const existingDoc = await vscode.workspace.openTextDocument(uri);
             originalContent = existingDoc.getText();
         } catch {
             originalContent = "";
+            wasCreated = true; // File didn't exist before
         }
 
         const diffStats = this.calculateDiffStats(originalContent, nextContent);
@@ -123,7 +127,7 @@ export class FileActionHandler extends BaseActionHandler {
         const doc = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(doc);
 
-        return { diffStats, diffUnified };
+        return { diffStats, diffUnified, originalContent, wasCreated };
     }
 
     private async editFile(

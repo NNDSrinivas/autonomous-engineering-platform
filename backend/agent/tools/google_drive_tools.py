@@ -190,7 +190,7 @@ async def get_google_drive_file_content(
 
 
 GOOGLE_DRIVE_TOOLS = {
-    "gdrive.list_files": list_google_drive_files,
-    "gdrive.search": search_google_drive,
-    "gdrive.get_content": get_google_drive_file_content,
+    "gdrive_list_files": list_google_drive_files,
+    "gdrive_search": search_google_drive,
+    "gdrive_get_content": get_google_drive_file_content,
 }

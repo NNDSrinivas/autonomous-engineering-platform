@@ -265,7 +265,7 @@ async def send_slack_message(
 
 # Tool function registry for NAVI
 SLACK_TOOLS = {
-    "slack.search_messages": search_slack_messages,
-    "slack.list_channel_messages": list_slack_channel_messages,
-    "slack.send_message": send_slack_message,
+    "slack_search_messages": search_slack_messages,
+    "slack_list_channel_messages": list_slack_channel_messages,
+    "slack_send_message": send_slack_message,
 }

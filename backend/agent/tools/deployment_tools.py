@@ -738,7 +738,7 @@ async def detect_project_type(
                     )
 
             # Go project
-            elif filename == "go_mod":
+            elif filename == "go.mod":
                 detected["language"] = "go"
                 detected["type"] = "backend"
                 detected["recommended_platforms"] = ["fly", "railway", "render"]

@@ -366,8 +366,8 @@ async def search_gitlab(
 
 # Tool function registry for NAVI
 GITLAB_TOOLS = {
-    "gitlab.list_my_merge_requests": list_my_gitlab_merge_requests,
-    "gitlab.list_my_issues": list_my_gitlab_issues,
-    "gitlab.get_pipeline_status": get_gitlab_pipeline_status,
-    "gitlab.search": search_gitlab,
+    "gitlab_list_my_merge_requests": list_my_gitlab_merge_requests,
+    "gitlab_list_my_issues": list_my_gitlab_issues,
+    "gitlab_get_pipeline_status": get_gitlab_pipeline_status,
+    "gitlab_search": search_gitlab,
 }

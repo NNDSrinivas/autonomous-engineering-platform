@@ -317,9 +317,9 @@ async def mute_datadog_monitor(
 
 
 DATADOG_TOOLS = {
-    "datadog.list_monitors": list_datadog_monitors,
-    "datadog.alerting_monitors": get_datadog_alerting_monitors,
-    "datadog.list_incidents": list_datadog_incidents,
-    "datadog.list_dashboards": list_datadog_dashboards,
-    "datadog.mute_monitor": mute_datadog_monitor,
+    "datadog_list_monitors": list_datadog_monitors,
+    "datadog_alerting_monitors": get_datadog_alerting_monitors,
+    "datadog_list_incidents": list_datadog_incidents,
+    "datadog_list_dashboards": list_datadog_dashboards,
+    "datadog_mute_monitor": mute_datadog_monitor,
 }

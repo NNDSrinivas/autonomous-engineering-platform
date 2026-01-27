@@ -9335,6 +9335,139 @@ async def process_navi_request_streaming(
             }
         }
 
+        # STEP 5.5: Generate execution plan for complex tasks
+        # This creates a detailed task breakdown BEFORE the LLM call
+        # so users see what NAVI plans to do
+        execution_plan = None
+        if TaskDecomposer.needs_decomposition(message):
+            yield {
+                "activity": {
+                    "kind": "planning",
+                    "label": "Creating execution plan",
+                    "detail": "Breaking down task into steps...",
+                    "status": "running",
+                }
+            }
+
+            try:
+                # Use the LLM-based TaskDecomposer for detailed decomposition
+                from backend.services.task_decomposer import (
+                    TaskDecomposer as LLMTaskDecomposer,
+                )
+
+                llm_decomposer = LLMTaskDecomposer(
+                    provider=llm_provider,
+                    model=llm_model,
+                    api_key=api_key,
+                )
+
+                # Build context for decomposition
+                decomposition_context = {
+                    "workspace_path": workspace_path,
+                    "project_type": project_info.project_type,
+                    "framework": project_info.framework,
+                    "technologies": engine.technologies,
+                    "existing_files": list(source_files.keys()) if source_files else [],
+                }
+
+                # Decompose the goal into detailed tasks
+                decomposition_result = await llm_decomposer.decompose_goal(
+                    goal=message,
+                    context=decomposition_context,
+                )
+
+                if decomposition_result and decomposition_result.tasks:
+                    # Build execution plan from decomposition
+                    execution_plan = {
+                        "plan_id": f"plan-{uuid.uuid4().hex[:8]}",
+                        "project_name": decomposition_result.project_name,
+                        "total_steps": len(decomposition_result.tasks),
+                        "phases": decomposition_result.phases,
+                        "estimated_hours": decomposition_result.estimated_total_hours,
+                        "steps": [
+                            {
+                                "index": i + 1,
+                                "id": task.id,
+                                "title": task.title,
+                                "detail": task.description,
+                                "phase": task.phase,
+                                "complexity": task.estimated_complexity,
+                                "dependencies": task.dependencies,
+                                "can_parallelize": task.can_parallelize,
+                                "verification": task.verification_criteria,
+                            }
+                            for i, task in enumerate(decomposition_result.tasks)
+                        ],
+                        "milestones": decomposition_result.milestones,
+                        "architecture_decisions": decomposition_result.architecture_decisions,
+                    }
+
+                    # Emit execution plan event
+                    yield {"execution_plan": execution_plan}
+
+                    # Emit narrative about the plan
+                    yield {
+                        "narrative": f"I've created an execution plan with **{len(decomposition_result.tasks)} tasks** across **{len(decomposition_result.phases)} phases**. "
+                        f"Estimated completion: ~{decomposition_result.estimated_total_hours} hours."
+                    }
+
+                    yield {
+                        "activity": {
+                            "kind": "planning",
+                            "label": "Creating execution plan",
+                            "detail": f"{len(decomposition_result.tasks)} tasks planned",
+                            "status": "done",
+                        }
+                    }
+
+                    # Add plan context to the prompt so LLM follows it
+                    plan_context = "\n\n## EXECUTION PLAN (Follow these steps in order)\n"
+                    for i, task in enumerate(decomposition_result.tasks[:10]):  # First 10 for context
+                        plan_context += f"{i+1}. **{task.title}**: {task.description}\n"
+                    if len(decomposition_result.tasks) > 10:
+                        plan_context += f"... and {len(decomposition_result.tasks) - 10} more tasks\n"
+                    prompt = prompt + plan_context
+
+            except ImportError:
+                logger.warning("LLM TaskDecomposer not available, using basic decomposition")
+                # Fall back to basic decomposition
+                basic_plan = TaskDecomposer.decompose(message, project_info)
+                if basic_plan and basic_plan.steps:
+                    execution_plan = {
+                        "plan_id": basic_plan.id,
+                        "total_steps": len(basic_plan.steps),
+                        "steps": [
+                            {
+                                "index": i + 1,
+                                "id": step.id,
+                                "title": step.description,
+                                "detail": step.action_type,
+                            }
+                            for i, step in enumerate(basic_plan.steps)
+                        ],
+                    }
+                    yield {"execution_plan": execution_plan}
+
+                yield {
+                    "activity": {
+                        "kind": "planning",
+                        "label": "Creating execution plan",
+                        "detail": "Basic plan created",
+                        "status": "done",
+                    }
+                }
+
+            except Exception as e:
+                logger.error(f"Failed to generate execution plan: {e}")
+                yield {
+                    "activity": {
+                        "kind": "planning",
+                        "label": "Creating execution plan",
+                        "detail": f"Skipped: {str(e)[:50]}",
+                        "status": "done",
+                    }
+                }
+
         # STEP 6: Call LLM with STREAMING to show real-time thinking
         model_display = llm_model or engine.brain.model
 

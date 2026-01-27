@@ -334,9 +334,9 @@ async def create_monday_item(
 
 
 MONDAY_TOOLS = {
-    "monday.list_boards": list_monday_boards,
-    "monday.list_items": list_monday_items,
-    "monday.get_my_items": get_monday_my_items,
-    "monday.get_item": get_monday_item,
-    "monday.create_item": create_monday_item,
+    "monday_list_boards": list_monday_boards,
+    "monday_list_items": list_monday_items,
+    "monday_get_my_items": get_monday_my_items,
+    "monday_get_item": get_monday_item,
+    "monday_create_item": create_monday_item,
 }

@@ -331,3 +331,622 @@ export const ensureActiveSession = (
   }
   return createSession(seed);
 };
+
+// ============================================================================
+// TASK CHECKPOINT & RECOVERY SYSTEM
+// ============================================================================
+
+const CHECKPOINT_PREFIX = "aep.navi.checkpoint.v1.";
+const STREAMING_STATE_PREFIX = "aep.navi.streaming.v1.";
+
+/**
+ * Represents a file that was modified during a task
+ */
+export type ModifiedFile = {
+  path: string;
+  operation: 'create' | 'edit' | 'delete';
+  timestamp: string;
+  success: boolean;
+};
+
+/**
+ * Represents an executed command during a task
+ */
+export type ExecutedCommand = {
+  command: string;
+  exitCode?: number;
+  timestamp: string;
+  success: boolean;
+};
+
+/**
+ * Plan step status for checkpoint
+ */
+export type CheckpointStepStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+/**
+ * A plan step in the checkpoint
+ */
+export type CheckpointStep = {
+  id: number;
+  title: string;
+  status: CheckpointStepStatus;
+  completedAt?: string;
+};
+
+/**
+ * Task checkpoint - stores state for resuming interrupted tasks
+ */
+export type TaskCheckpoint = {
+  id: string;
+  sessionId: string;
+  messageId: string;
+  createdAt: string;
+  updatedAt: string;
+
+  // Original request
+  userMessage: string;
+
+  // Task progress
+  status: 'running' | 'interrupted' | 'completed' | 'failed';
+  currentStepIndex: number;
+  totalSteps: number;
+  steps: CheckpointStep[];
+
+  // What was done
+  modifiedFiles: ModifiedFile[];
+  executedCommands: ExecutedCommand[];
+
+  // Partial response content
+  partialContent: string;
+
+  // Error info if interrupted
+  interruptedAt?: string;
+  interruptReason?: string;
+
+  // For retry logic
+  retryCount: number;
+  lastRetryAt?: string;
+};
+
+/**
+ * Streaming state - for incremental message saving
+ */
+export type StreamingState = {
+  sessionId: string;
+  messageId: string;
+  content: string;
+  activities: any[];
+  narratives: string[];
+  thinking: string;
+  startedAt: string;
+  lastUpdatedAt: string;
+  isComplete: boolean;
+};
+
+// --- Checkpoint Functions ---
+
+export const saveCheckpoint = (checkpoint: TaskCheckpoint): void => {
+  checkpoint.updatedAt = nowIso();
+  writeStorage(`${CHECKPOINT_PREFIX}${checkpoint.sessionId}`, JSON.stringify(checkpoint));
+};
+
+export const loadCheckpoint = (sessionId: string): TaskCheckpoint | null => {
+  const raw = readStorage(`${CHECKPOINT_PREFIX}${sessionId}`);
+  if (!raw) return null;
+  return safeJsonParse<TaskCheckpoint | null>(raw, null);
+};
+
+export const clearCheckpoint = (sessionId: string): void => {
+  removeStorage(`${CHECKPOINT_PREFIX}${sessionId}`);
+};
+
+export const hasActiveCheckpoint = (sessionId: string): boolean => {
+  const checkpoint = loadCheckpoint(sessionId);
+  return checkpoint !== null && checkpoint.status === 'interrupted';
+};
+
+export const createCheckpoint = (
+  sessionId: string,
+  messageId: string,
+  userMessage: string,
+  steps: CheckpointStep[] = []
+): TaskCheckpoint => {
+  const now = nowIso();
+  const checkpoint: TaskCheckpoint = {
+    id: `checkpoint-${Date.now()}`,
+    sessionId,
+    messageId,
+    createdAt: now,
+    updatedAt: now,
+    userMessage,
+    status: 'running',
+    currentStepIndex: 0,
+    totalSteps: steps.length,
+    steps,
+    modifiedFiles: [],
+    executedCommands: [],
+    partialContent: '',
+    retryCount: 0,
+  };
+  saveCheckpoint(checkpoint);
+  return checkpoint;
+};
+
+export const updateCheckpointProgress = (
+  sessionId: string,
+  updates: Partial<Pick<TaskCheckpoint,
+    'currentStepIndex' | 'partialContent' | 'status' | 'modifiedFiles' | 'executedCommands' | 'steps'
+  >>
+): TaskCheckpoint | null => {
+  const checkpoint = loadCheckpoint(sessionId);
+  if (!checkpoint) return null;
+
+  const updated = { ...checkpoint, ...updates, updatedAt: nowIso() };
+  saveCheckpoint(updated);
+  return updated;
+};
+
+export const markCheckpointInterrupted = (
+  sessionId: string,
+  reason: string
+): TaskCheckpoint | null => {
+  const checkpoint = loadCheckpoint(sessionId);
+  if (!checkpoint) return null;
+
+  checkpoint.status = 'interrupted';
+  checkpoint.interruptedAt = nowIso();
+  checkpoint.interruptReason = reason;
+  saveCheckpoint(checkpoint);
+  return checkpoint;
+};
+
+export const markCheckpointCompleted = (sessionId: string): void => {
+  const checkpoint = loadCheckpoint(sessionId);
+  if (checkpoint) {
+    checkpoint.status = 'completed';
+    saveCheckpoint(checkpoint);
+  }
+  // Don't clear immediately - keep for a short time for debugging
+  setTimeout(() => clearCheckpoint(sessionId), 60000);
+};
+
+export const incrementCheckpointRetry = (sessionId: string): number => {
+  const checkpoint = loadCheckpoint(sessionId);
+  if (!checkpoint) return 0;
+
+  checkpoint.retryCount += 1;
+  checkpoint.lastRetryAt = nowIso();
+  checkpoint.status = 'running';
+  saveCheckpoint(checkpoint);
+  return checkpoint.retryCount;
+};
+
+// --- Streaming State Functions (for incremental saving) ---
+
+export const saveStreamingState = (state: StreamingState): void => {
+  state.lastUpdatedAt = nowIso();
+  writeStorage(`${STREAMING_STATE_PREFIX}${state.sessionId}`, JSON.stringify(state));
+};
+
+export const loadStreamingState = (sessionId: string): StreamingState | null => {
+  const raw = readStorage(`${STREAMING_STATE_PREFIX}${sessionId}`);
+  if (!raw) return null;
+  return safeJsonParse<StreamingState | null>(raw, null);
+};
+
+export const clearStreamingState = (sessionId: string): void => {
+  removeStorage(`${STREAMING_STATE_PREFIX}${sessionId}`);
+};
+
+export const createStreamingState = (
+  sessionId: string,
+  messageId: string
+): StreamingState => {
+  const state: StreamingState = {
+    sessionId,
+    messageId,
+    content: '',
+    activities: [],
+    narratives: [],
+    thinking: '',
+    startedAt: nowIso(),
+    lastUpdatedAt: nowIso(),
+    isComplete: false,
+  };
+  saveStreamingState(state);
+  return state;
+};
+
+export const updateStreamingContent = (
+  sessionId: string,
+  content: string
+): void => {
+  const state = loadStreamingState(sessionId);
+  if (state) {
+    state.content = content;
+    saveStreamingState(state);
+  }
+};
+
+export const appendStreamingActivity = (
+  sessionId: string,
+  activity: any
+): void => {
+  const state = loadStreamingState(sessionId);
+  if (state) {
+    state.activities.push(activity);
+    saveStreamingState(state);
+  }
+};
+
+export const markStreamingComplete = (sessionId: string): void => {
+  const state = loadStreamingState(sessionId);
+  if (state) {
+    state.isComplete = true;
+    saveStreamingState(state);
+  }
+  // Clear after a delay
+  setTimeout(() => clearStreamingState(sessionId), 5000);
+};
+
+/**
+ * Debounced save function factory for streaming content
+ * Saves at most once per interval to avoid excessive writes
+ */
+export const createDebouncedSave = (
+  sessionId: string,
+  intervalMs: number = 500
+): ((content: string) => void) => {
+  let lastSaveTime = 0;
+  let pendingContent: string | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  return (content: string) => {
+    const now = Date.now();
+    pendingContent = content;
+
+    if (now - lastSaveTime >= intervalMs) {
+      // Enough time has passed, save immediately
+      updateStreamingContent(sessionId, content);
+      lastSaveTime = now;
+      pendingContent = null;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    } else if (!timeoutId) {
+      // Schedule a save for later
+      timeoutId = setTimeout(() => {
+        if (pendingContent !== null) {
+          updateStreamingContent(sessionId, pendingContent);
+          lastSaveTime = Date.now();
+          pendingContent = null;
+        }
+        timeoutId = null;
+      }, intervalMs - (now - lastSaveTime));
+    }
+  };
+};
+
+// ============================================================================
+// BACKEND CHECKPOINT SYNC
+// ============================================================================
+
+/**
+ * Configuration for backend checkpoint sync
+ */
+export type CheckpointSyncConfig = {
+  apiBaseUrl: string;
+  userId: number;
+  onError?: (error: Error) => void;
+};
+
+let syncConfig: CheckpointSyncConfig | null = null;
+
+/**
+ * Initialize checkpoint sync with backend
+ */
+export const initCheckpointSync = (config: CheckpointSyncConfig): void => {
+  syncConfig = config;
+};
+
+/**
+ * Sync a checkpoint to the backend
+ */
+export const syncCheckpointToBackend = async (
+  checkpoint: TaskCheckpoint
+): Promise<boolean> => {
+  if (!syncConfig) return false;
+
+  try {
+    const response = await fetch(
+      `${syncConfig.apiBaseUrl}/api/navi/checkpoint/sync?user_id=${syncConfig.userId}&session_id=${checkpoint.sessionId}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId: checkpoint.messageId,
+          userMessage: checkpoint.userMessage,
+          status: checkpoint.status,
+          currentStepIndex: checkpoint.currentStepIndex,
+          totalSteps: checkpoint.totalSteps,
+          steps: checkpoint.steps,
+          modifiedFiles: checkpoint.modifiedFiles,
+          executedCommands: checkpoint.executedCommands,
+          partialContent: checkpoint.partialContent,
+          streamingState: {},
+          retryCount: checkpoint.retryCount,
+          interruptedAt: checkpoint.interruptedAt,
+        }),
+      }
+    );
+
+    return response.ok;
+  } catch (error) {
+    if (syncConfig.onError) {
+      syncConfig.onError(error instanceof Error ? error : new Error(String(error)));
+    }
+    return false;
+  }
+};
+
+/**
+ * Load checkpoint from backend
+ */
+export const loadCheckpointFromBackend = async (
+  sessionId: string
+): Promise<TaskCheckpoint | null> => {
+  if (!syncConfig) return null;
+
+  try {
+    const response = await fetch(
+      `${syncConfig.apiBaseUrl}/api/navi/checkpoint?user_id=${syncConfig.userId}&session_id=${sessionId}`
+    );
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (!data) return null;
+
+    // Convert backend format to frontend format
+    return {
+      id: data.id,
+      sessionId: data.session_id,
+      messageId: data.message_id,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      userMessage: data.user_message,
+      status: data.status,
+      currentStepIndex: data.current_step_index,
+      totalSteps: data.total_steps,
+      steps: data.steps || [],
+      modifiedFiles: data.modified_files || [],
+      executedCommands: data.executed_commands || [],
+      partialContent: data.partial_content || '',
+      interruptedAt: data.interrupted_at,
+      interruptReason: data.interrupt_reason,
+      retryCount: data.retry_count || 0,
+      lastRetryAt: data.last_retry_at,
+    };
+  } catch (error) {
+    if (syncConfig.onError) {
+      syncConfig.onError(error instanceof Error ? error : new Error(String(error)));
+    }
+    return null;
+  }
+};
+
+/**
+ * Mark checkpoint as interrupted on backend
+ */
+export const markInterruptedOnBackend = async (
+  sessionId: string,
+  reason: string
+): Promise<boolean> => {
+  if (!syncConfig) return false;
+
+  try {
+    const response = await fetch(
+      `${syncConfig.apiBaseUrl}/api/navi/checkpoint/interrupt?user_id=${syncConfig.userId}&session_id=${sessionId}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      }
+    );
+
+    return response.ok;
+  } catch (error) {
+    if (syncConfig.onError) {
+      syncConfig.onError(error instanceof Error ? error : new Error(String(error)));
+    }
+    return false;
+  }
+};
+
+/**
+ * Mark checkpoint as completed on backend
+ */
+export const markCompletedOnBackend = async (
+  sessionId: string
+): Promise<boolean> => {
+  if (!syncConfig) return false;
+
+  try {
+    const response = await fetch(
+      `${syncConfig.apiBaseUrl}/api/navi/checkpoint/complete?user_id=${syncConfig.userId}&session_id=${sessionId}`,
+      { method: 'POST' }
+    );
+
+    return response.ok;
+  } catch (error) {
+    if (syncConfig.onError) {
+      syncConfig.onError(error instanceof Error ? error : new Error(String(error)));
+    }
+    return false;
+  }
+};
+
+/**
+ * Get interrupted checkpoints from backend
+ */
+export const getInterruptedCheckpointsFromBackend = async (): Promise<TaskCheckpoint[]> => {
+  if (!syncConfig) return [];
+
+  try {
+    const response = await fetch(
+      `${syncConfig.apiBaseUrl}/api/navi/checkpoint/interrupted/list?user_id=${syncConfig.userId}`
+    );
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    if (!Array.isArray(data)) return [];
+
+    return data.map((item: any) => ({
+      id: item.id,
+      sessionId: item.session_id,
+      messageId: item.message_id,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+      userMessage: item.user_message,
+      status: item.status,
+      currentStepIndex: item.current_step_index,
+      totalSteps: item.total_steps,
+      steps: item.steps || [],
+      modifiedFiles: item.modified_files || [],
+      executedCommands: item.executed_commands || [],
+      partialContent: item.partial_content || '',
+      interruptedAt: item.interrupted_at,
+      interruptReason: item.interrupt_reason,
+      retryCount: item.retry_count || 0,
+      lastRetryAt: item.last_retry_at,
+    }));
+  } catch (error) {
+    if (syncConfig.onError) {
+      syncConfig.onError(error instanceof Error ? error : new Error(String(error)));
+    }
+    return [];
+  }
+};
+
+/**
+ * Delete checkpoint from backend
+ */
+export const deleteCheckpointFromBackend = async (
+  sessionId: string
+): Promise<boolean> => {
+  if (!syncConfig) return false;
+
+  try {
+    const response = await fetch(
+      `${syncConfig.apiBaseUrl}/api/navi/checkpoint?user_id=${syncConfig.userId}&session_id=${sessionId}`,
+      { method: 'DELETE' }
+    );
+
+    return response.ok;
+  } catch (error) {
+    if (syncConfig.onError) {
+      syncConfig.onError(error instanceof Error ? error : new Error(String(error)));
+    }
+    return false;
+  }
+};
+
+/**
+ * Enhanced checkpoint creation that syncs to backend
+ */
+export const createCheckpointWithSync = async (
+  sessionId: string,
+  messageId: string,
+  userMessage: string,
+  steps: CheckpointStep[] = []
+): Promise<TaskCheckpoint> => {
+  // Create locally first
+  const checkpoint = createCheckpoint(sessionId, messageId, userMessage, steps);
+
+  // Sync to backend in background (don't await to avoid blocking)
+  syncCheckpointToBackend(checkpoint).catch(() => {
+    // Silently ignore sync errors - local storage is the primary
+  });
+
+  return checkpoint;
+};
+
+/**
+ * Enhanced checkpoint update that syncs to backend
+ */
+export const updateCheckpointProgressWithSync = async (
+  sessionId: string,
+  updates: Partial<Pick<TaskCheckpoint,
+    'currentStepIndex' | 'partialContent' | 'status' | 'modifiedFiles' | 'executedCommands' | 'steps'
+  >>
+): Promise<TaskCheckpoint | null> => {
+  // Update locally first
+  const checkpoint = updateCheckpointProgress(sessionId, updates);
+
+  // Sync to backend in background if checkpoint exists
+  if (checkpoint) {
+    syncCheckpointToBackend(checkpoint).catch(() => {
+      // Silently ignore sync errors
+    });
+  }
+
+  return checkpoint;
+};
+
+/**
+ * Enhanced mark interrupted that syncs to backend
+ */
+export const markCheckpointInterruptedWithSync = async (
+  sessionId: string,
+  reason: string
+): Promise<TaskCheckpoint | null> => {
+  // Update locally first
+  const checkpoint = markCheckpointInterrupted(sessionId, reason);
+
+  // Sync to backend
+  if (checkpoint) {
+    markInterruptedOnBackend(sessionId, reason).catch(() => {
+      // Silently ignore sync errors
+    });
+  }
+
+  return checkpoint;
+};
+
+/**
+ * Enhanced mark completed that syncs to backend
+ */
+export const markCheckpointCompletedWithSync = async (
+  sessionId: string
+): Promise<void> => {
+  // Update locally first
+  markCheckpointCompleted(sessionId);
+
+  // Sync to backend
+  markCompletedOnBackend(sessionId).catch(() => {
+    // Silently ignore sync errors
+  });
+};
+
+/**
+ * Try to load checkpoint from backend first, fall back to local
+ */
+export const loadCheckpointWithFallback = async (
+  sessionId: string
+): Promise<TaskCheckpoint | null> => {
+  // Try backend first if sync is configured
+  if (syncConfig) {
+    const backendCheckpoint = await loadCheckpointFromBackend(sessionId);
+    if (backendCheckpoint) {
+      // Also save to local storage for offline access
+      saveCheckpoint(backendCheckpoint);
+      return backendCheckpoint;
+    }
+  }
+
+  // Fall back to local storage
+  return loadCheckpoint(sessionId);
+};

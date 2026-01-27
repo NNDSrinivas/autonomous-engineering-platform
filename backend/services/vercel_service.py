@@ -80,7 +80,7 @@ class VercelService(ConnectorServiceBase):
                     counts["project"] += 1
 
                 logger.info(
-                    "vercel.sync_projects",
+                    "navi_vercel_sync_projects",
                     user_id=user_id,
                     count=counts["project"],
                 )
@@ -118,7 +118,7 @@ class VercelService(ConnectorServiceBase):
                     counts["deployment"] += 1
 
                 logger.info(
-                    "vercel.sync_deployments",
+                    "navi_vercel_sync_deployments",
                     user_id=user_id,
                     count=counts["deployment"],
                 )

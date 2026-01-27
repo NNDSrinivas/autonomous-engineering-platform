@@ -579,6 +579,11 @@ export function CodeCompanionShell() {
     setUserMenuOpen(false);
   };
 
+  // Handle opening enterprise projects dashboard in web app
+  const handleOpenEnterpriseProjects = () => {
+    postMessage({ type: "enterprise.openDashboard" });
+  };
+
   // Handle MCP tool execution
   const handleExecuteMcpTool = useCallback(async (toolName: string, args: Record<string, unknown>): Promise<void> => {
     try {
@@ -988,6 +993,7 @@ export function CodeCompanionShell() {
                 onSignOut={handleSignOut}
                 onExecuteMcpTool={handleExecuteMcpTool}
                 onOpenFullPanel={() => setFullPanelOpen(true)}
+                onOpenEnterpriseProjects={handleOpenEnterpriseProjects}
                 externalPanelRequest={externalPanelRequest}
                 onClearExternalPanelRequest={() => setExternalPanelRequest(null)}
               />

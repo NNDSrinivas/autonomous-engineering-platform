@@ -1,0 +1,347 @@
+/**
+ * Enterprise Project Status Styles
+ */
+
+.enterprise-project-status {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  transition: border-color 0.2s ease;
+}
+
+.enterprise-project-status:hover {
+  border-color: var(--vscode-focusBorder);
+}
+
+/* Status-specific borders */
+.enterprise-project-status.status-active {
+  border-left: 3px solid var(--vscode-charts-green);
+}
+
+.enterprise-project-status.status-paused {
+  border-left: 3px solid var(--vscode-charts-yellow);
+}
+
+.enterprise-project-status.status-blocked {
+  border-left: 3px solid var(--vscode-charts-orange);
+}
+
+.enterprise-project-status.status-completed {
+  border-left: 3px solid var(--vscode-charts-blue);
+}
+
+.enterprise-project-status.status-failed {
+  border-left: 3px solid var(--vscode-charts-red);
+}
+
+.enterprise-project-status.status-planning {
+  border-left: 3px solid var(--vscode-charts-purple);
+}
+
+/* Header */
+.project-header {
+  cursor: pointer;
+}
+
+.project-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.status-icon {
+  color: var(--vscode-foreground);
+  opacity: 0.8;
+}
+
+.project-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--vscode-foreground);
+  flex: 1;
+}
+
+.status-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.status-badge.status-active {
+  background: rgba(40, 167, 69, 0.2);
+  color: var(--vscode-charts-green);
+}
+
+.status-badge.status-paused {
+  background: rgba(255, 193, 7, 0.2);
+  color: var(--vscode-charts-yellow);
+}
+
+.status-badge.status-blocked {
+  background: rgba(253, 126, 20, 0.2);
+  color: var(--vscode-charts-orange);
+}
+
+.status-badge.status-completed {
+  background: rgba(0, 123, 255, 0.2);
+  color: var(--vscode-charts-blue);
+}
+
+.status-badge.status-failed {
+  background: rgba(220, 53, 69, 0.2);
+  color: var(--vscode-charts-red);
+}
+
+.status-badge.status-planning {
+  background: rgba(111, 66, 193, 0.2);
+  color: var(--vscode-charts-purple);
+}
+
+/* Progress Bar */
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--vscode-progressBar-background);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--vscode-progressBar-background);
+  background: linear-gradient(90deg,
+    var(--vscode-charts-blue) 0%,
+    var(--vscode-charts-green) 100%
+  );
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* Details Section */
+.project-details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 8px;
+}
+
+/* Current Task */
+.current-task {
+  margin-bottom: 12px;
+}
+
+.task-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--vscode-input-background);
+  border-radius: 6px;
+}
+
+.task-title {
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Stats Row */
+.stats-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: var(--vscode-input-background);
+  border-radius: 6px;
+}
+
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--vscode-foreground);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Pending Gates */
+.pending-gates {
+  margin-bottom: 12px;
+}
+
+.pending-gates .section-label {
+  color: var(--vscode-charts-orange);
+}
+
+.gates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gate-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--vscode-input-background);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.gate-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.gate-item.blocking {
+  border-left: 2px solid var(--vscode-charts-orange);
+}
+
+.gate-title {
+  flex: 1;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+
+.blocking-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(253, 126, 20, 0.2);
+  color: var(--vscode-charts-orange);
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+/* Milestones */
+.milestones {
+  margin-bottom: 12px;
+}
+
+.milestones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.milestone-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+
+.milestone-icon {
+  flex-shrink: 0;
+}
+
+.milestone-icon.completed {
+  color: var(--vscode-charts-green);
+}
+
+.milestone-icon.blocked {
+  color: var(--vscode-charts-orange);
+}
+
+.milestone-icon.pending {
+  color: var(--vscode-descriptionForeground);
+}
+
+.milestone-title {
+  flex: 1;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+
+.milestone-progress {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Actions */
+.project-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.action-button.primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.action-button.primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.action-button.secondary {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.action-button.secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Compact Mode */
+.enterprise-project-status.compact .project-details {
+  display: none;
+}

@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   postgres:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
     container_name: aep_postgres
     environment:
       POSTGRES_USER: mentor

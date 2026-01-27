@@ -3,9 +3,13 @@
  *
  * Displays execution plans parsed from NAVI's narrative output with real-time
  * status tracking (pending, running, completed, error) for each step.
+ *
+ * Supports both controlled and uncontrolled expansion modes:
+ * - Controlled: Pass `isExpanded` and `onToggle` props
+ * - Uncontrolled: Component manages its own expanded state
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -28,14 +32,30 @@ interface ExecutionPlanStepperProps {
   planId: string;
   steps: ExecutionPlanStep[];
   isExecuting: boolean;
+  /** Controlled expansion state (optional) */
+  isExpanded?: boolean;
+  /** Callback when expansion is toggled (optional) */
+  onToggle?: (expanded: boolean) => void;
+  /** Auto-collapse after step transition (default: 4000ms, 0 to disable) */
+  autoCollapseMs?: number;
 }
 
 export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
   planId,
   steps,
   isExecuting,
+  isExpanded: controlledExpanded,
+  onToggle,
+  autoCollapseMs = 4000,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Support both controlled and uncontrolled modes
+  const [internalExpanded, setInternalExpanded] = useState(true);
+  const isControlled = controlledExpanded !== undefined;
+  const isExpanded = isControlled ? controlledExpanded : internalExpanded;
+
+  // Track previous step statuses for detecting transitions
+  const prevStepsRef = useRef<ExecutionPlanStep[]>([]);
+  const autoCollapseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const completedCount = steps.filter((s) => s.status === 'completed').length;
   const errorCount = steps.filter((s) => s.status === 'error').length;
@@ -44,6 +64,72 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
   const currentStep = steps.find((s) => s.status === 'running');
   const allCompleted = completedCount === steps.length && steps.length > 0;
   const hasError = errorCount > 0;
+
+  // Handle toggle - support both controlled and uncontrolled modes
+  const handleToggle = () => {
+    const newExpanded = !isExpanded;
+    if (onToggle) {
+      onToggle(newExpanded);
+    }
+    if (!isControlled) {
+      setInternalExpanded(newExpanded);
+    }
+  };
+
+  // Auto-expand on step status changes, then auto-collapse after delay
+  useEffect(() => {
+    if (autoCollapseMs <= 0) return;
+
+    const prevSteps = prevStepsRef.current;
+    const hasStepTransition = steps.some((step, i) => {
+      const prevStep = prevSteps[i];
+      if (!prevStep) return false;
+      // Detect when a step completes or starts running
+      return (
+        (prevStep.status !== 'completed' && step.status === 'completed') ||
+        (prevStep.status === 'pending' && step.status === 'running')
+      );
+    });
+
+    if (hasStepTransition && !isExpanded) {
+      // Expand briefly to show the transition
+      if (onToggle) {
+        onToggle(true);
+      }
+      if (!isControlled) {
+        setInternalExpanded(true);
+      }
+    }
+
+    // Schedule auto-collapse after step transition
+    if (hasStepTransition) {
+      // Clear any existing timer
+      if (autoCollapseTimerRef.current) {
+        clearTimeout(autoCollapseTimerRef.current);
+      }
+
+      autoCollapseTimerRef.current = setTimeout(() => {
+        // Only collapse if still executing (not at the end)
+        if (!allCompleted && !hasError) {
+          if (onToggle) {
+            onToggle(false);
+          }
+          if (!isControlled) {
+            setInternalExpanded(false);
+          }
+        }
+      }, autoCollapseMs);
+    }
+
+    // Update previous steps reference
+    prevStepsRef.current = [...steps];
+
+    return () => {
+      if (autoCollapseTimerRef.current) {
+        clearTimeout(autoCollapseTimerRef.current);
+      }
+    };
+  }, [steps, autoCollapseMs, isExpanded, allCompleted, hasError, isControlled, onToggle]);
 
   // Determine header display text
   const headerText = allCompleted
@@ -67,7 +153,7 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
       <button
         type="button"
         className="navi-plan-header"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={handleToggle}
         aria-expanded={isExpanded}
         aria-label={isExpanded ? 'Collapse execution plan' : 'Expand execution plan'}
       >

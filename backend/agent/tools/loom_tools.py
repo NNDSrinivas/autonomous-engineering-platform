@@ -184,7 +184,7 @@ async def search_loom_videos(
 
 
 LOOM_TOOLS = {
-    "loom.list_videos": list_loom_videos,
-    "loom.get_transcript": get_loom_transcript,
-    "loom.search_videos": search_loom_videos,
+    "loom_list_videos": list_loom_videos,
+    "loom_get_transcript": get_loom_transcript,
+    "loom_search_videos": search_loom_videos,
 }

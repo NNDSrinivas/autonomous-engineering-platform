@@ -457,9 +457,9 @@ async def create_notion_page(
 
 # Tool function registry for NAVI
 NOTION_TOOLS = {
-    "notion.search_pages": search_notion_pages,
-    "notion.list_recent_pages": list_recent_notion_pages,
-    "notion.get_page_content": get_notion_page_content,
-    "notion.list_databases": list_notion_databases,
-    "notion.create_page": create_notion_page,
+    "notion_search_pages": search_notion_pages,
+    "notion_list_recent_pages": list_recent_notion_pages,
+    "notion_get_page_content": get_notion_page_content,
+    "notion_list_databases": list_notion_databases,
+    "notion_create_page": create_notion_page,
 }

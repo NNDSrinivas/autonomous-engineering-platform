@@ -191,7 +191,7 @@ async def create_trello_card(
 
 
 TRELLO_TOOLS = {
-    "trello.list_boards": list_trello_boards,
-    "trello.list_my_cards": list_my_trello_cards,
-    "trello.create_card": create_trello_card,
+    "trello_list_boards": list_trello_boards,
+    "trello_list_my_cards": list_my_trello_cards,
+    "trello_create_card": create_trello_card,
 }

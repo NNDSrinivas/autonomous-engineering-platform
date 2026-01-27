@@ -297,8 +297,8 @@ async def get_snyk_project_issues(
 
 
 SNYK_TOOLS = {
-    "snyk.list_vulnerabilities": list_snyk_vulnerabilities,
-    "snyk.list_projects": list_snyk_projects,
-    "snyk.get_security_summary": get_snyk_security_summary,
-    "snyk.get_project_issues": get_snyk_project_issues,
+    "snyk_list_vulnerabilities": list_snyk_vulnerabilities,
+    "snyk_list_projects": list_snyk_projects,
+    "snyk_get_security_summary": get_snyk_security_summary,
+    "snyk_get_project_issues": get_snyk_project_issues,
 }

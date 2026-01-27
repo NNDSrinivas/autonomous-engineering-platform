@@ -298,9 +298,9 @@ async def resolve_pagerduty_incident(
 
 
 PAGERDUTY_TOOLS = {
-    "pagerduty.list_incidents": list_pagerduty_incidents,
-    "pagerduty.get_oncall": get_pagerduty_oncall,
-    "pagerduty.list_services": list_pagerduty_services,
-    "pagerduty.acknowledge_incident": acknowledge_pagerduty_incident,
-    "pagerduty.resolve_incident": resolve_pagerduty_incident,
+    "pagerduty_list_incidents": list_pagerduty_incidents,
+    "pagerduty_get_oncall": get_pagerduty_oncall,
+    "pagerduty_list_services": list_pagerduty_services,
+    "pagerduty_acknowledge_incident": acknowledge_pagerduty_incident,
+    "pagerduty_resolve_incident": resolve_pagerduty_incident,
 }

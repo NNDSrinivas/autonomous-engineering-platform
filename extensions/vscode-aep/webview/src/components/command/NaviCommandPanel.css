@@ -1,0 +1,925 @@
+/**
+ * NaviCommandPanel - NAVI Quantum Terminal v2
+ *
+ * Distinctive futuristic design with:
+ * - Holographic card borders with neon glow
+ * - Animated scan lines and data streams
+ * - NAVI signature purple/cyan energy effects
+ * - Distinct visual identity from Claude/standard terminals
+ */
+
+/* ==========================================================================
+   CSS Variables - NAVI Energy Palette
+   ========================================================================== */
+
+:root {
+  /* NAVI Signature - Vivid Neon */
+  --navi-purple: #a855f7;
+  --navi-purple-glow: rgba(168, 85, 247, 0.6);
+  --navi-cyan: #06b6d4;
+  --navi-cyan-glow: rgba(6, 182, 212, 0.6);
+  --navi-pink: #ec4899;
+  --navi-yellow: #facc15;
+
+  /* States - Vibrant */
+  --navi-running: #3b82f6;
+  --navi-success: #10b981;
+  --navi-error: #ef4444;
+  --navi-warning: #f59e0b;
+
+  /* Backgrounds - Deep Space */
+  --navi-bg-deep: rgba(10, 10, 20, 0.95);
+  --navi-bg-card: rgba(15, 15, 30, 0.9);
+  --navi-bg-surface: rgba(25, 25, 45, 0.85);
+
+  /* Borders */
+  --navi-border-dim: rgba(168, 85, 247, 0.15);
+  --navi-border-glow: rgba(168, 85, 247, 0.5);
+}
+
+/* ==========================================================================
+   Main Panel - Quantum Terminal Container
+   ========================================================================== */
+
+.navi-command-panel {
+  position: relative;
+  margin: 12px 16px;
+  background: var(--navi-bg-deep);
+  border: 1px solid var(--navi-border-dim);
+  border-radius: 16px;
+  overflow: hidden;
+
+  /* Outer glow effect */
+  box-shadow:
+    0 0 30px rgba(168, 85, 247, 0.1),
+    0 0 60px rgba(6, 182, 212, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Animated scan line effect */
+.navi-command-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--navi-cyan) 20%,
+    var(--navi-purple) 50%,
+    var(--navi-cyan) 80%,
+    transparent 100%
+  );
+  opacity: 0.6;
+  animation: navi-scan-line 4s ease-in-out infinite;
+  z-index: 10;
+}
+
+@keyframes navi-scan-line {
+  0%, 100% { transform: translateY(0); opacity: 0.6; }
+  50% { transform: translateY(100vh); opacity: 0.2; }
+}
+
+/* Data stream overlay pattern */
+.navi-command-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(168, 85, 247, 0.02) 2px,
+      rgba(168, 85, 247, 0.02) 4px
+    );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Running state - energized */
+.navi-command-panel--running {
+  border-color: var(--navi-purple);
+  box-shadow:
+    0 0 40px var(--navi-purple-glow),
+    0 0 80px rgba(6, 182, 212, 0.2),
+    inset 0 0 20px rgba(168, 85, 247, 0.1);
+}
+
+.navi-command-panel--running::before {
+  animation: navi-scan-fast 2s linear infinite;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--navi-cyan) 30%,
+    var(--navi-purple) 70%,
+    transparent 100%
+  );
+  height: 3px;
+  opacity: 1;
+}
+
+@keyframes navi-scan-fast {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(400px); }
+}
+
+/* ==========================================================================
+   Panel Header - NAVI Identity
+   ========================================================================== */
+
+.navi-command-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(180deg,
+    rgba(168, 85, 247, 0.08) 0%,
+    transparent 100%
+  );
+  border-bottom: 1px solid var(--navi-border-dim);
+  position: relative;
+  z-index: 2;
+}
+
+.navi-command-panel--collapsed .navi-command-panel__header {
+  border-bottom: none;
+}
+
+.navi-command-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0;
+  flex: 1;
+}
+
+.navi-command-panel__title:hover {
+  color: var(--navi-cyan);
+}
+
+/* NAVI Icon - Glowing terminal */
+.navi-command-panel__icon {
+  color: var(--navi-purple);
+  filter: drop-shadow(0 0 6px var(--navi-purple-glow));
+}
+
+.navi-command-panel__label {
+  background: linear-gradient(90deg, var(--navi-purple), var(--navi-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Status badges - Holographic pills */
+.navi-command-panel__badges {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+.navi-command-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
+}
+
+.navi-command-badge--running {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--navi-running);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  box-shadow:
+    0 0 15px rgba(59, 130, 246, 0.3),
+    inset 0 0 10px rgba(59, 130, 246, 0.1);
+  animation: navi-pulse-blue 1.5s ease-in-out infinite;
+}
+
+.navi-command-badge--running::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent);
+  animation: navi-badge-shimmer 2s linear infinite;
+}
+
+@keyframes navi-badge-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes navi-pulse-blue {
+  0%, 100% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
+  50% { box-shadow: 0 0 25px rgba(59, 130, 246, 0.5); }
+}
+
+.navi-command-badge--error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--navi-error);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+  animation: navi-pulse-red 1s ease-in-out infinite;
+}
+
+@keyframes navi-pulse-red {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.navi-command-badge--idle {
+  background: rgba(148, 163, 184, 0.1);
+  color: rgba(148, 163, 184, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* Chevron with glow */
+.navi-command-panel__chevron {
+  color: var(--navi-purple);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter: drop-shadow(0 0 4px var(--navi-purple-glow));
+}
+
+.navi-command-panel__chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Action buttons */
+.navi-command-panel__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.navi-command-panel__action {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--navi-border-dim);
+  background: rgba(168, 85, 247, 0.05);
+  color: rgba(168, 85, 247, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.navi-command-panel__action:hover {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: var(--navi-purple);
+  color: var(--navi-purple);
+  box-shadow: 0 0 15px var(--navi-purple-glow);
+  transform: translateY(-2px);
+}
+
+/* ==========================================================================
+   Panel Body - Expandable Container
+   ========================================================================== */
+
+.navi-command-panel__body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 1;
+}
+
+.navi-command-panel--collapsed .navi-command-panel__body {
+  grid-template-rows: 0fr;
+}
+
+.navi-command-panel__body-inner {
+  overflow: hidden;
+  max-height: 450px;
+  overflow-y: auto;
+}
+
+.navi-command-panel__entries {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.navi-command-panel__empty {
+  padding: 32px;
+  text-align: center;
+  color: rgba(168, 85, 247, 0.4);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Custom scrollbar - NAVI themed */
+.navi-command-panel__body-inner::-webkit-scrollbar {
+  width: 8px;
+}
+
+.navi-command-panel__body-inner::-webkit-scrollbar-track {
+  background: rgba(168, 85, 247, 0.05);
+  border-radius: 4px;
+}
+
+.navi-command-panel__body-inner::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--navi-purple), var(--navi-cyan));
+  border-radius: 4px;
+  box-shadow: 0 0 8px var(--navi-purple-glow);
+}
+
+/* ==========================================================================
+   Command Card - Holographic Entry
+   ========================================================================== */
+
+.navi-command-card {
+  position: relative;
+  background: var(--navi-bg-card);
+  border: 1px solid var(--navi-border-dim);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Holographic border glow on hover */
+.navi-command-card:hover {
+  border-color: var(--navi-purple);
+  transform: translateY(-3px) scale(1.01);
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.3),
+    0 0 20px var(--navi-purple-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Left accent stripe */
+.navi-command-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--navi-purple), var(--navi-cyan));
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+
+.navi-command-card:hover::before {
+  opacity: 1;
+  box-shadow: 0 0 10px var(--navi-purple-glow);
+}
+
+/* Running state - Electric energy */
+.navi-command-card--running {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow:
+    0 0 30px rgba(59, 130, 246, 0.2),
+    inset 0 0 20px rgba(59, 130, 246, 0.05);
+  animation: navi-card-energy 2s ease-in-out infinite;
+}
+
+.navi-command-card--running::before {
+  background: var(--navi-running);
+  animation: navi-stripe-pulse 1s ease-in-out infinite;
+}
+
+@keyframes navi-card-energy {
+  0%, 100% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.2); }
+  50% { box-shadow: 0 0 50px rgba(59, 130, 246, 0.4); }
+}
+
+@keyframes navi-stripe-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Success state - Green flash */
+.navi-command-card--success {
+  animation: navi-success-burst 0.5s ease-out;
+}
+
+.navi-command-card--success::before {
+  background: var(--navi-success);
+}
+
+@keyframes navi-success-burst {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 30px 5px rgba(16, 185, 129, 0.3);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: none;
+    transform: scale(1);
+  }
+}
+
+/* Error state - Red alert */
+.navi-command-card--error {
+  border-color: rgba(239, 68, 68, 0.5);
+  animation: navi-error-alert 1.5s ease-in-out infinite;
+}
+
+.navi-command-card--error::before {
+  background: var(--navi-error);
+  animation: navi-error-stripe 0.5s ease-in-out infinite;
+}
+
+@keyframes navi-error-alert {
+  0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); }
+  50% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.4); }
+}
+
+@keyframes navi-error-stripe {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+/* ==========================================================================
+   Command Header
+   ========================================================================== */
+
+.navi-command-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 12px 18px;
+  cursor: pointer;
+  gap: 12px;
+  background: linear-gradient(90deg,
+    rgba(168, 85, 247, 0.03) 0%,
+    transparent 100%
+  );
+}
+
+.navi-command-header__left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.navi-command-header__info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.navi-command-header__command {
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Cyan prompt symbol */
+.navi-command-prompt {
+  color: var(--navi-cyan);
+  margin-right: 6px;
+  font-weight: 700;
+  text-shadow: 0 0 8px var(--navi-cyan-glow);
+}
+
+.navi-command-header__cwd {
+  font-size: 10px;
+  color: rgba(168, 85, 247, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navi-command-header__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.navi-command-header__duration {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--navi-cyan);
+  opacity: 0.7;
+  padding: 2px 8px;
+  background: rgba(6, 182, 212, 0.1);
+  border-radius: 4px;
+}
+
+/* ==========================================================================
+   Command Actions - Floating buttons
+   ========================================================================== */
+
+.navi-command-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transform: translateX(10px);
+  transition: all 0.25s ease;
+}
+
+.navi-command-card:hover .navi-command-actions {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.navi-command-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(168, 85, 247, 0.1);
+  color: rgba(168, 85, 247, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.navi-command-action-btn:hover {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: var(--navi-purple);
+  color: var(--navi-purple);
+  box-shadow: 0 0 12px var(--navi-purple-glow);
+  transform: scale(1.1);
+}
+
+.navi-command-copy-btn--copied {
+  color: var(--navi-success) !important;
+  border-color: var(--navi-success) !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4) !important;
+}
+
+.navi-command-expand-btn svg {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.navi-command-card--expanded .navi-command-expand-btn svg {
+  transform: rotate(180deg);
+}
+
+/* ==========================================================================
+   Command Body - Output Container
+   ========================================================================== */
+
+.navi-command-card__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.navi-command-card--expanded .navi-command-card__body {
+  grid-template-rows: 1fr;
+}
+
+.navi-command-card__body-inner {
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   Command Output - Terminal Display
+   ========================================================================== */
+
+.navi-command-output {
+  background: rgba(0, 0, 0, 0.5);
+  border-top: 1px solid var(--navi-border-dim);
+  margin: 0;
+  padding: 14px 18px;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  color: rgba(226, 232, 240, 0.85);
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Output scrollbar */
+.navi-command-output::-webkit-scrollbar {
+  width: 6px;
+}
+
+.navi-command-output::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.navi-command-output::-webkit-scrollbar-thumb {
+  background: var(--navi-purple);
+  border-radius: 3px;
+}
+
+/* Syntax highlighting */
+.navi-output-success { color: var(--navi-success); }
+.navi-output-error { color: var(--navi-error); text-shadow: 0 0 8px rgba(239, 68, 68, 0.3); }
+.navi-output-warning { color: var(--navi-warning); }
+.navi-output-info { color: var(--navi-running); }
+.navi-output-path { color: var(--navi-cyan); }
+
+/* Streaming cursor - Neon blink */
+.navi-command-output--streaming::after {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 16px;
+  background: var(--navi-cyan);
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  box-shadow: 0 0 10px var(--navi-cyan-glow);
+  animation: navi-cursor-blink 0.7s step-end infinite;
+}
+
+@keyframes navi-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ==========================================================================
+   Status Ring - Quantum Indicator
+   ========================================================================== */
+
+.navi-status-ring {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.navi-status-ring--sm { width: 20px; height: 20px; }
+.navi-status-ring--md { width: 24px; height: 24px; }
+.navi-status-ring--lg { width: 32px; height: 32px; }
+
+/* Running - Spinning quantum ring */
+.navi-status-ring--running {
+  animation: navi-ring-glow 2s ease-in-out infinite;
+}
+
+.navi-status-ring--running::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border: 2px solid transparent;
+  border-top-color: var(--navi-cyan);
+  border-right-color: var(--navi-purple);
+  border-radius: 50%;
+  animation: navi-ring-spin 0.8s linear infinite;
+  box-shadow:
+    0 0 15px var(--navi-cyan-glow),
+    inset 0 0 10px rgba(6, 182, 212, 0.2);
+}
+
+/* Orbiting particle */
+.navi-status-ring--running::after {
+  content: '';
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background: var(--navi-cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--navi-cyan);
+  animation: navi-orbit 1.5s linear infinite;
+}
+
+@keyframes navi-ring-glow {
+  0%, 100% { filter: drop-shadow(0 0 5px var(--navi-cyan-glow)); }
+  50% { filter: drop-shadow(0 0 15px var(--navi-cyan-glow)); }
+}
+
+@keyframes navi-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes navi-orbit {
+  0% { transform: rotate(0deg) translateX(11px) rotate(0deg); }
+  100% { transform: rotate(360deg) translateX(11px) rotate(-360deg); }
+}
+
+/* Success - Green energy burst */
+.navi-status-ring--success::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  background: radial-gradient(circle, var(--navi-success) 0%, rgba(16, 185, 129, 0.7) 100%);
+  border-radius: 50%;
+  animation: navi-success-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.6);
+}
+
+.navi-status-ring--success::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+  animation: navi-check-draw 0.3s ease-out 0.15s both;
+}
+
+@keyframes navi-success-pop {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes navi-check-draw {
+  0% { clip-path: inset(100% 0 0 0); }
+  100% { clip-path: inset(0); }
+}
+
+/* Error - Pulsing danger */
+.navi-status-ring--error::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  background: radial-gradient(circle, var(--navi-error) 0%, rgba(239, 68, 68, 0.7) 100%);
+  border-radius: 50%;
+  animation: navi-error-breathe 1s ease-in-out infinite;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+}
+
+.navi-status-ring--error::after {
+  content: '\00D7';
+  position: absolute;
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
+  text-shadow: 0 0 5px rgba(0,0,0,0.5);
+}
+
+@keyframes navi-error-breathe {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.6);
+  }
+}
+
+/* ==========================================================================
+   Progress Bar - Energy Trail
+   ========================================================================== */
+
+.navi-command-progress {
+  height: 4px;
+  background: rgba(168, 85, 247, 0.1);
+  position: relative;
+  overflow: visible;
+}
+
+.navi-command-progress__track {
+  height: 100%;
+  position: relative;
+  overflow: visible;
+}
+
+.navi-command-progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--navi-purple), var(--navi-cyan), var(--navi-purple));
+  background-size: 200% 100%;
+  border-radius: 2px;
+  position: relative;
+  animation: navi-gradient-flow 2s linear infinite;
+}
+
+@keyframes navi-gradient-flow {
+  0% { background-position: 0% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Energy particle at progress head */
+.navi-command-progress--active .navi-command-progress__fill::after {
+  content: '';
+  position: absolute;
+  right: -4px;
+  top: -4px;
+  width: 12px;
+  height: 12px;
+  background: radial-gradient(circle, var(--navi-cyan), transparent);
+  border-radius: 50%;
+  box-shadow:
+    0 0 15px var(--navi-cyan),
+    0 0 30px var(--navi-cyan-glow),
+    -15px 0 20px var(--navi-purple-glow);
+  animation: navi-particle-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes navi-particle-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.8; }
+}
+
+/* Shimmer overlay */
+.navi-command-progress--active .navi-command-progress__fill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  );
+  animation: navi-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes navi-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+/* Indeterminate */
+.navi-command-progress--indeterminate .navi-command-progress__fill {
+  width: 30%;
+  animation: navi-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes navi-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+.navi-command-progress__time {
+  position: absolute;
+  right: 4px;
+  top: 8px;
+  font-size: 9px;
+  color: var(--navi-cyan);
+  font-family: 'JetBrains Mono', monospace;
+  opacity: 0.7;
+}
+
+/* ==========================================================================
+   Command Type Accents
+   ========================================================================== */
+
+.navi-command-card--git .navi-command-prompt { color: #f97316; text-shadow: 0 0 8px rgba(249, 115, 22, 0.5); }
+.navi-command-card--npm .navi-command-prompt { color: #ef4444; text-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+.navi-command-card--test .navi-command-prompt { color: #10b981; text-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+.navi-command-card--build .navi-command-prompt { color: #3b82f6; text-shadow: 0 0 8px rgba(59, 130, 246, 0.5); }
+
+.navi-command-card--git::before { background: linear-gradient(180deg, #f97316, #ea580c); }
+.navi-command-card--npm::before { background: linear-gradient(180deg, #ef4444, #dc2626); }
+.navi-command-card--test::before { background: linear-gradient(180deg, #10b981, #059669); }
+.navi-command-card--build::before { background: linear-gradient(180deg, #3b82f6, #2563eb); }
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 400px) {
+  .navi-command-panel {
+    margin: 8px;
+    border-radius: 12px;
+  }
+
+  .navi-command-panel__header {
+    padding: 10px 12px;
+  }
+
+  .navi-command-card {
+    border-radius: 10px;
+  }
+
+  .navi-command-header {
+    padding: 10px 12px 10px 14px;
+  }
+
+  .navi-command-header__command {
+    font-size: 11px;
+  }
+
+  .navi-command-output {
+    max-height: 150px;
+    font-size: 10px;
+    padding: 10px 14px;
+  }
+
+  /* Reduce animations on mobile */
+  .navi-command-progress--active .navi-command-progress__fill::after,
+  .navi-status-ring--running::after {
+    display: none;
+  }
+}

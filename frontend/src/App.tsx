@@ -6,6 +6,8 @@ import { PlanView } from './pages/PlanView'
 import ConciergePage from './pages/ConciergePage'
 import { NaviSearchPage } from './pages/NaviSearchPage'
 import ExtensionMarketplacePage from './pages/ExtensionMarketplacePage'
+import EnterpriseProjectsPage from './pages/EnterpriseProjectsPage'
+import GateApprovalsPage from './pages/GateApprovalsPage'
 // import NaviRoot from './components/navi/NaviRoot'
 import { WorkspaceProvider } from './context/WorkspaceContext'
 
@@ -60,6 +62,14 @@ function HomePage() {
                   🧩 Extension Marketplace
                 </Link>
               </li>
+              <li>
+                <Link
+                  to="/enterprise/projects"
+                  className="block bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                >
+                  🚀 Enterprise Projects
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
@@ -109,6 +119,12 @@ function Layout({ children }: { children: React.ReactNode }) {
               >
                 🧩 Extensions
               </Link>
+              <Link
+                to="/enterprise/projects"
+                className="text-gray-700 hover:text-orange-600 font-medium transition-colors"
+              >
+                🚀 Enterprise
+              </Link>
             </div>
           </div>
         </div>
@@ -131,6 +147,9 @@ function App() {
           <Route path="/plan/:id" element={<PlanView />} />
           <Route path="/navi/search" element={<NaviSearchPage />} />
           <Route path="/extensions" element={<ExtensionMarketplacePage />} />
+          <Route path="/enterprise/projects" element={<EnterpriseProjectsPage />} />
+          <Route path="/enterprise/projects/:id" element={<EnterpriseProjectsPage />} />
+          <Route path="/enterprise/approvals" element={<GateApprovalsPage />} />
         </Routes>
       </Layout>
     </WorkspaceProvider>

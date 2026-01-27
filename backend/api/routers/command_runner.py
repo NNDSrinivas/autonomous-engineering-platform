@@ -18,6 +18,71 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/run", tags=["command-runner"])
 
 
+def _get_command_env(workdir: Optional[str] = None) -> dict:
+    """
+    Get environment for command execution with nvm compatibility fixes.
+    Removes npm_config_prefix which conflicts with nvm.
+    """
+    env = os.environ.copy()
+    env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
+    env["SHELL"] = env.get("SHELL", "/bin/bash")
+    return env
+
+
+def _is_node_command(command: str) -> bool:
+    """Check if command requires Node.js environment."""
+    node_commands = ["npm", "npx", "node", "yarn", "pnpm", "bun", "tsc", "next"]
+    cmd_parts = command.split()
+    return bool(cmd_parts and cmd_parts[0] in node_commands)
+
+
+def _get_node_env_setup(workdir: Optional[str] = None) -> str:
+    """Get Node.js environment setup commands for nvm/fnm/volta."""
+    home = os.environ.get("HOME", os.path.expanduser("~"))
+    setup_parts = []
+
+    # Check for nvm
+    nvm_dir = os.environ.get("NVM_DIR", os.path.join(home, ".nvm"))
+    if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
+        # Check for .nvmrc in workspace
+        if workdir:
+            nvmrc_path = os.path.join(workdir, ".nvmrc")
+            node_version_path = os.path.join(workdir, ".node-version")
+            if os.path.exists(nvmrc_path) or os.path.exists(node_version_path):
+                nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
+            else:
+                nvm_use = "nvm use default 2>/dev/null || true"
+        else:
+            nvm_use = "nvm use default 2>/dev/null || true"
+
+        setup_parts.append(
+            f'export NVM_DIR="{nvm_dir}" && '
+            f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
+            f'{nvm_use}'
+        )
+
+    # Check for fnm
+    fnm_path = os.path.join(home, ".fnm")
+    if os.path.exists(fnm_path):
+        setup_parts.append(f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true')
+
+    # Check for volta
+    volta_home = os.environ.get("VOLTA_HOME", os.path.join(home, ".volta"))
+    if os.path.exists(volta_home):
+        setup_parts.append(f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"')
+
+    return " && ".join(setup_parts) if setup_parts else ""
+
+
+def _prepare_command(cmd: str, workdir: Optional[str] = None) -> str:
+    """Prepare command with environment setup if needed."""
+    if _is_node_command(cmd):
+        env_setup = _get_node_env_setup(workdir)
+        if env_setup:
+            return f"unset npm_config_prefix 2>/dev/null; {env_setup} && {cmd}"
+    return cmd
+
+
 class RunRequest(BaseModel):
     command: str = Field(..., description="Command to run (exact string)")
     workdir: Optional[str] = Field(
@@ -195,16 +260,22 @@ def run_command(
     try:
         audit_id = f"{user_id}-{datetime.now(timezone.utc).isoformat()}"
 
+        # Prepare environment and command with node setup if needed
+        env = _get_command_env(workdir)
+        prepared_cmd = _prepare_command(cmd, workdir)
+
         # Background mode for long-running servers (e.g., npm run dev)
         if req.background:
             proc = subprocess.Popen(
-                cmd,
+                prepared_cmd,
                 shell=True,
                 cwd=workdir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 start_new_session=True,  # detach from parent
+                env=env,
+                executable="/bin/bash",
             )
             logger.info(
                 "[CMD] (background) user=%s cmd=%s workdir=%s pid=%s",
@@ -222,12 +293,14 @@ def run_command(
             )
 
         proc = subprocess.run(
-            cmd,
+            prepared_cmd,
             shell=True,
             cwd=workdir,
             text=True,
             capture_output=True,
             check=False,
+            env=env,
+            executable="/bin/bash",
         )
         stdout = proc.stdout or ""
         stderr = proc.stderr or ""

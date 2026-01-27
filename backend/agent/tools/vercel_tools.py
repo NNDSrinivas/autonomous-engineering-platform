@@ -256,8 +256,8 @@ async def redeploy_vercel_deployment(
 
 
 VERCEL_TOOLS = {
-    "vercel.list_projects": list_vercel_projects,
-    "vercel.list_deployments": list_vercel_deployments,
-    "vercel.get_deployment_status": get_vercel_deployment_status,
-    "vercel.redeploy": redeploy_vercel_deployment,
+    "vercel_list_projects": list_vercel_projects,
+    "vercel_list_deployments": list_vercel_deployments,
+    "vercel_get_deployment_status": get_vercel_deployment_status,
+    "vercel_redeploy": redeploy_vercel_deployment,
 }

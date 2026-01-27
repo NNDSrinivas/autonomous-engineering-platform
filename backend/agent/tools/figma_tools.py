@@ -288,9 +288,9 @@ async def add_figma_comment(
 
 
 FIGMA_TOOLS = {
-    "figma.list_files": list_figma_files,
-    "figma.get_file": get_figma_file,
-    "figma.get_comments": get_figma_comments,
-    "figma.list_projects": list_figma_projects,
-    "figma.add_comment": add_figma_comment,
+    "figma_list_files": list_figma_files,
+    "figma_get_file": get_figma_file,
+    "figma_get_comments": get_figma_comments,
+    "figma_list_projects": list_figma_projects,
+    "figma_add_comment": add_figma_comment,
 }

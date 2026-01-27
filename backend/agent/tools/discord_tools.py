@@ -354,8 +354,8 @@ async def send_discord_message(
 
 # Tool registry for the dispatcher
 DISCORD_TOOLS = {
-    "discord.list_servers": list_discord_servers,
-    "discord.list_channels": list_discord_channels,
-    "discord.get_messages": get_discord_messages,
-    "discord.send_message": send_discord_message,
+    "discord_list_servers": list_discord_servers,
+    "discord_list_channels": list_discord_channels,
+    "discord_get_messages": get_discord_messages,
+    "discord_send_message": send_discord_message,
 }

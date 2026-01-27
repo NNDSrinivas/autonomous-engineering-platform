@@ -437,9 +437,9 @@ async def complete_asana_task(
 
 # Tool function registry for NAVI
 ASANA_TOOLS = {
-    "asana.list_my_tasks": list_my_asana_tasks,
-    "asana.search_tasks": search_asana_tasks,
-    "asana.list_projects": list_asana_projects,
-    "asana.create_task": create_asana_task,
-    "asana.complete_task": complete_asana_task,
+    "asana_list_my_tasks": list_my_asana_tasks,
+    "asana_search_tasks": search_asana_tasks,
+    "asana_list_projects": list_asana_projects,
+    "asana_create_task": create_asana_task,
+    "asana_complete_task": complete_asana_task,
 }

@@ -158,6 +158,9 @@ from .routers.meet_webhook import router as meet_webhook_router
 
 # Removed: navi_chat_enhanced_router - unused duplicate of chat.py navi_router
 from .routers.memory_enhanced import router as memory_enhanced_router
+from .routers.media import router as media_router  # Video/media processing for NAVI
+from .routers.checkpoint import router as checkpoint_router  # Task checkpoint management
+from .routers.enterprise_project import router as enterprise_project_router  # Enterprise project management
 
 # from .refactor_stream_api import router as refactor_stream_router  # Batch 8 Part 4: SSE Live Refactor Streaming - TODO: Implement
 # from .orchestrator import router as orchestrator_router  # Multi-Agent Orchestrator API
@@ -464,6 +467,9 @@ app.include_router(ci_webhook_router)  # CI ingestion webhook
 app.include_router(zoom_webhook_router)  # Zoom webhook ingestion
 app.include_router(meet_webhook_router)  # Meet webhook ingestion
 # app.include_router(orchestrator_router)  # Multi-Agent Orchestrator API
+app.include_router(media_router)  # Video/media processing for NAVI
+app.include_router(checkpoint_router)  # Task checkpoint management for recovery
+app.include_router(enterprise_project_router)  # Enterprise project management for long-running projects
 
 app.include_router(oauth_device_auth0_router)
 

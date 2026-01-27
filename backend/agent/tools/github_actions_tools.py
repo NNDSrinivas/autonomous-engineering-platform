@@ -302,7 +302,6 @@ async def generate_github_actions(
         include_deploy: Whether to include deployment job
     """
     import os
-    import json
 
     workspace_path = context.get("workspace_path", ".")
     if triggers is None:

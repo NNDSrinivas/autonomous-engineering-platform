@@ -7,7 +7,6 @@ Tracks project state, goals, architecture decisions, and human checkpoints.
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,

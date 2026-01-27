@@ -25,13 +25,11 @@ Usage:
 import asyncio
 import logging
 import json
-import subprocess
 import os
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any, Optional, AsyncGenerator, Callable
+from typing import Dict, List, Any, Optional, AsyncGenerator
 from dataclasses import dataclass, field
 from enum import Enum
-import uuid
 import aiohttp
 
 logger = logging.getLogger(__name__)
@@ -332,7 +330,7 @@ class CICDExecutionService:
             try:
                 async with session.get(url, headers=headers) as resp:
                     if resp.status != 200:
-                        yield {"type": "error", "message": f"Failed to get run status"}
+                        yield {"type": "error", "message": "Failed to get run status"}
                         break
 
                     data = await resp.json()

@@ -14,15 +14,14 @@ Key Features:
 
 import re
 import hashlib
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 import structlog
 
-from sqlalchemy import select, update, and_, or_
+from sqlalchemy import select, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = structlog.get_logger(__name__)
 

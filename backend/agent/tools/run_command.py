@@ -17,16 +17,12 @@ import logging
 import os
 import shutil
 from typing import Dict, Any, Optional, List
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from .dangerous_commands import (
-    is_dangerous_command,
     get_command_info,
     format_permission_request,
     BackupManager,
-    DANGEROUS_COMMANDS,
-    RiskLevel,
 )
 
 logger = logging.getLogger(__name__)
@@ -691,7 +687,7 @@ async def run_command(
                                f"**Backup strategy:** {cmd_info.backup_strategy}\n\n"
                                f"**Alternatives:**\n" +
                                "\n".join(f"  • {a}" for a in cmd_info.alternatives) +
-                               f"\n\n**To proceed, use:** `run_dangerous_command` with `approved=True`",
+                               "\n\n**To proceed, use:** `run_dangerous_command` with `approved=True`",
                     "error": "Permission required for dangerous command",
                 }
 
@@ -725,7 +721,7 @@ async def run_command(
                     "success": False,
                     "requires_permission": True,
                     "permission_request": permission_request,
-                    "message": f"⚠️ This command requires explicit permission. See permission_request for details.",
+                    "message": "⚠️ This command requires explicit permission. See permission_request for details.",
                     "error": "Permission required",
                 }
             return {
@@ -930,12 +926,12 @@ async def run_dangerous_command(
 
         # Build response message
         if success:
-            message = f"✅ **Dangerous command executed successfully**\n\n"
+            message = "✅ **Dangerous command executed successfully**\n\n"
             message += f"**Command:** `{command}`\n"
             if stdout:
                 message += f"\n**Output:**\n```\n{stdout[:2000]}\n```"
         else:
-            message = f"❌ **Dangerous command failed**\n\n"
+            message = "❌ **Dangerous command failed**\n\n"
             message += f"**Command:** `{command}`\n"
             message += f"**Exit code:** {exit_code}\n"
             if stderr:

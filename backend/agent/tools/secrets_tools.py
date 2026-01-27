@@ -214,12 +214,12 @@ async def generate_env_template(
     lines.append(f"**Variables Found**: {len(found_vars)}")
     lines.append(f"**Total Variables**: {len(all_vars)}")
 
-    lines.append(f"\n### .env.example")
+    lines.append("\n### .env.example")
     lines.append("```env")
     lines.append("\n".join(env_content))
     lines.append("```")
 
-    lines.append(f"\n### Security Notes")
+    lines.append("\n### Security Notes")
     lines.append("- Never commit `.env` to version control")
     lines.append("- Use different values for each environment")
     lines.append("- Rotate secrets regularly")
@@ -402,7 +402,7 @@ async def sync_env_to_platform(
     lines.append(f"**Variables**: {len(env_vars)}")
 
     # Generate set commands
-    lines.append(f"\n### Set Environment Variables")
+    lines.append("\n### Set Environment Variables")
     lines.append("```bash")
 
     if env_vars:
@@ -420,7 +420,7 @@ async def sync_env_to_platform(
     lines.append("```")
 
     # List command
-    lines.append(f"\n### Verify Variables")
+    lines.append("\n### Verify Variables")
     lines.append("```bash")
     lines.append(commands["list"])
     lines.append("```")
@@ -533,7 +533,7 @@ async def audit_secrets_exposure(
                             "message": f"Potential {secret_type} found",
                             "file": rel_path,
                             "line": line_num,
-                            "fix": f"Move to environment variable",
+                            "fix": "Move to environment variable",
                         })
             except IOError:
                 continue
@@ -551,28 +551,28 @@ async def audit_secrets_exposure(
     lines.append(f"- Warning: {len(warning)}")
 
     if critical:
-        lines.append(f"\n### Critical Issues")
+        lines.append("\n### Critical Issues")
         for finding in critical:
             lines.append(f"\n**{finding['message']}**")
             lines.append(f"- File: `{finding['file']}`" + (f":{finding.get('line', '')}" if finding.get('line') else ""))
             lines.append(f"- Fix: {finding['fix']}")
 
     if high:
-        lines.append(f"\n### High Priority Issues")
+        lines.append("\n### High Priority Issues")
         for finding in high:
             lines.append(f"\n**{finding['message']}**")
             lines.append(f"- File: `{finding['file']}`")
             lines.append(f"- Fix: {finding['fix']}")
 
     if warning:
-        lines.append(f"\n### Warnings")
+        lines.append("\n### Warnings")
         for finding in warning:
             lines.append(f"- {finding['message']} (`{finding['file']}`)")
 
     if not findings:
         lines.append("\nNo issues found! Your secrets appear to be properly managed.")
 
-    lines.append(f"\n### Recommendations")
+    lines.append("\n### Recommendations")
     lines.append("1. Never commit secrets to version control")
     lines.append("2. Use environment variables for all sensitive values")
     lines.append("3. Use a secrets manager in production")
@@ -643,17 +643,17 @@ async def rotate_secrets(
 
         lines.append("\n**Commands**:")
         lines.append("```bash")
-        lines.append(f"# Generate new secret")
-        lines.append(f"openssl rand -base64 32")
-        lines.append(f"")
-        lines.append(f"# Update in Vercel")
+        lines.append("# Generate new secret")
+        lines.append("openssl rand -base64 32")
+        lines.append("")
+        lines.append("# Update in Vercel")
         lines.append(f"vercel env add {secret} production")
-        lines.append(f"")
-        lines.append(f"# Update in Railway")
+        lines.append("")
+        lines.append("# Update in Railway")
         lines.append(f"railway variables set {secret}=$NEW_VALUE")
         lines.append("```")
 
-    lines.append(f"\n### Post-Rotation Checklist")
+    lines.append("\n### Post-Rotation Checklist")
     lines.append("- [ ] All services restarted with new secrets")
     lines.append("- [ ] Monitoring shows no errors")
     lines.append("- [ ] Old secrets revoked/deleted")

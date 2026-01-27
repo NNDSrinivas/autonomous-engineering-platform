@@ -6,11 +6,8 @@ Supports: PostgreSQL, MySQL, SQLite, MongoDB, and various ORMs (Prisma, Drizzle,
 """
 
 import asyncio
-import json
 import os
 import re
-import shutil
-import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -1127,7 +1124,7 @@ class DatabaseExecutorService:
 
         if output["returncode"] == 0:
             result.success = True
-            result.rollback_command = f"alembic downgrade -1"
+            result.rollback_command = "alembic downgrade -1"
             if progress_callback:
                 progress_callback("Alembic migrations completed", 100)
         else:

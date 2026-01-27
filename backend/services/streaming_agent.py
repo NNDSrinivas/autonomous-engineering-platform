@@ -15,16 +15,14 @@ This matches Claude Code's conversational style where the AI talks through
 what it's doing while actually doing it.
 """
 
-import json
 import logging
 import re
 import uuid
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
 # Session memory for conversation context
-from backend.services.session_memory_service import session_memory_service
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +132,6 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
 
 import asyncio
 import os
-import subprocess
 from pathlib import Path
 
 
@@ -275,7 +272,7 @@ async def run_build_verification(workspace_path: str) -> Dict[str, Any]:
         nvm_setup = _get_node_env_setup(workspace_path)
         if nvm_setup:
             full_command = f"{nvm_setup} && {command}"
-            logger.info(f"[BuildVerification] Added nvm setup to command")
+            logger.info("[BuildVerification] Added nvm setup to command")
 
     try:
         # Run the build command asynchronously

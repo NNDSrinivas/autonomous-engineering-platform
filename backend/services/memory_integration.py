@@ -27,7 +27,7 @@ Usage in streaming endpoints:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -328,7 +328,6 @@ def save_conversation_exchange_sync(
     try:
         from sqlalchemy import text
         from datetime import datetime
-        import re
         import uuid
 
         normalized_path = workspace_path.rstrip("/")

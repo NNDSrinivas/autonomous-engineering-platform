@@ -4,9 +4,7 @@ Provides tools for comparing, migrating, and managing resources across cloud pro
 """
 
 import os
-import json
-from typing import Any, Dict, List, Optional
-from pathlib import Path
+from typing import Any, Dict, List
 
 from backend.services.connector_base import ToolResult
 
@@ -1113,7 +1111,7 @@ def _get_strategy_details(strategy: str) -> str:
 
 def _generate_failover_procedures(provider: str, regions: List[str], strategy: str) -> str:
     """Generate failover procedures."""
-    return f"""### Automated Failover
+    return """### Automated Failover
 
 1. **Health Check Failure Detected**
    - Continuous health checks every 30 seconds

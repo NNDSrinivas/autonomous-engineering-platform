@@ -32,7 +32,6 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import asdict
-import json
 
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -360,7 +359,7 @@ class CheckpointPersistenceService:
         original_request: str,
     ) -> str:
         """Use LLM to summarize conversation context."""
-        from backend.services.llm_client import LLMClient, LLMMessage
+        from backend.services.llm_client import LLMClient
 
         client = LLMClient(
             provider=self.llm_provider,

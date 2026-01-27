@@ -12,7 +12,6 @@ Run this script once to create the tables:
     python -m backend.scripts.init_session_facts_tables
 """
 
-import asyncio
 import sys
 from pathlib import Path
 
@@ -21,7 +20,7 @@ project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from sqlalchemy import text
-from backend.core.db import get_engine, Base
+from backend.core.db import get_engine
 
 # Import models to register them with Base.metadata
 from backend.database.models.session_facts import (

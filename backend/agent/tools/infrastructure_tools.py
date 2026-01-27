@@ -16,7 +16,6 @@ Now with REAL EXECUTION capabilities - terraform apply, kubectl apply, helm inst
 import os
 import json
 from typing import Any, Dict, List, Optional
-from dataclasses import dataclass
 import structlog
 
 from backend.services.connector_base import ToolResult
@@ -1106,28 +1105,28 @@ gcp_region   = "us-central1"
     lines.append(f"**Resources**: {len(resources)}")
     lines.append(f"**Output Directory**: `{output_dir}/`")
 
-    lines.append(f"\n### main.tf")
+    lines.append("\n### main.tf")
     lines.append("```hcl")
     lines.append(main_tf)
     lines.append("```")
 
     if resource_contents:
-        lines.append(f"\n### resources.tf")
+        lines.append("\n### resources.tf")
         lines.append("```hcl")
         lines.append("\n\n".join(resource_contents))
         lines.append("```")
 
-    lines.append(f"\n### outputs.tf")
+    lines.append("\n### outputs.tf")
     lines.append("```hcl")
     lines.append(outputs_tf)
     lines.append("```")
 
-    lines.append(f"\n### terraform.tfvars.example")
+    lines.append("\n### terraform.tfvars.example")
     lines.append("```hcl")
     lines.append(tfvars_example)
     lines.append("```")
 
-    lines.append(f"\n### Next Steps")
+    lines.append("\n### Next Steps")
     lines.append("1. Save files to `{}/`".format(output_dir))
     lines.append("2. Copy `terraform.tfvars.example` to `terraform.tfvars`")
     lines.append("3. Fill in your actual values")
@@ -1262,12 +1261,12 @@ async def generate_cloudformation(
     lines = ["## Generated CloudFormation Template\n"]
     lines.append(f"**Resources**: {len(resources)}")
     lines.append(f"**Output File**: `{output_path}`")
-    lines.append(f"\n**Generated Template**:")
+    lines.append("\n**Generated Template**:")
     lines.append("```yaml")
     lines.append(yaml_content)
     lines.append("```")
 
-    lines.append(f"\n### Deployment")
+    lines.append("\n### Deployment")
     lines.append("```bash")
     lines.append("# Deploy the stack")
     lines.append("aws cloudformation deploy \\")
@@ -1377,27 +1376,27 @@ async def generate_kubernetes_manifests(
     lines.append(f"**Replicas**: {replicas}")
     lines.append(f"**Port**: {port}")
 
-    lines.append(f"\n### deployment.yaml")
+    lines.append("\n### deployment.yaml")
     lines.append("```yaml")
     lines.append(deployment)
     lines.append("```")
 
-    lines.append(f"\n### service.yaml")
+    lines.append("\n### service.yaml")
     lines.append("```yaml")
     lines.append(service)
     lines.append("```")
 
-    lines.append(f"\n### ingress.yaml")
+    lines.append("\n### ingress.yaml")
     lines.append("```yaml")
     lines.append(ingress)
     lines.append("```")
 
-    lines.append(f"\n### hpa.yaml")
+    lines.append("\n### hpa.yaml")
     lines.append("```yaml")
     lines.append(hpa)
     lines.append("```")
 
-    lines.append(f"\n### Deployment Commands")
+    lines.append("\n### Deployment Commands")
     lines.append("```bash")
     lines.append("# Apply all manifests")
     lines.append("kubectl apply -f k8s/")
@@ -1503,12 +1502,12 @@ async def generate_docker_compose(
     lines.append(f"**Services**: {len(compose['services'])}")
     lines.append(f"**Volumes**: {len(compose['volumes'])}")
 
-    lines.append(f"\n### docker-compose.yml")
+    lines.append("\n### docker-compose.yml")
     lines.append("```yaml")
     lines.append(yaml_content)
     lines.append("```")
 
-    lines.append(f"\n### Commands")
+    lines.append("\n### Commands")
     lines.append("```bash")
     lines.append("# Start all services")
     lines.append("docker-compose up -d")
@@ -1642,30 +1641,30 @@ spec:
     lines.append(f"**Chart Name**: {chart_name}")
     lines.append(f"**App Version**: {app_version}")
 
-    lines.append(f"\n### Chart.yaml")
+    lines.append("\n### Chart.yaml")
     lines.append("```yaml")
     lines.append(chart_yaml)
     lines.append("```")
 
-    lines.append(f"\n### values.yaml")
+    lines.append("\n### values.yaml")
     lines.append("```yaml")
     lines.append(values_yaml)
     lines.append("```")
 
-    lines.append(f"\n### templates/deployment.yaml")
+    lines.append("\n### templates/deployment.yaml")
     lines.append("```yaml")
     lines.append(deployment_template)
     lines.append("```")
 
-    lines.append(f"\n### Installation")
+    lines.append("\n### Installation")
     lines.append("```bash")
-    lines.append(f"# Install the chart")
+    lines.append("# Install the chart")
     lines.append(f"helm install {chart_name} ./{chart_name}")
     lines.append("")
-    lines.append(f"# Install with custom values")
+    lines.append("# Install with custom values")
     lines.append(f"helm install {chart_name} ./{chart_name} -f my-values.yaml")
     lines.append("")
-    lines.append(f"# Upgrade")
+    lines.append("# Upgrade")
     lines.append(f"helm upgrade {chart_name} ./{chart_name}")
     lines.append("```")
 
@@ -1907,8 +1906,8 @@ async def terraform_plan(
         destroy=destroy,
     )
 
-    output = f"## Terraform Plan\n\n"
-    output += f"### Summary\n"
+    output = "## Terraform Plan\n\n"
+    output += "### Summary\n"
     output += f"- **Add**: {plan.summary.get('add', 0)} resources\n"
     output += f"- **Change**: {plan.summary.get('change', 0)} resources\n"
     output += f"- **Destroy**: {plan.summary.get('destroy', 0)} resources\n\n"
@@ -1921,7 +1920,7 @@ async def terraform_plan(
 
     if plan.plan_file:
         output += f"\n**Plan file**: `{plan.plan_file}`\n"
-        output += f"\nTo apply this plan, use `infra.terraform_apply` with this plan file."
+        output += "\nTo apply this plan, use `infra.terraform_apply` with this plan file."
 
     return ToolResult(output=output, sources=[])
 
@@ -1996,7 +1995,7 @@ async def terraform_apply(
     )
 
     if result.success:
-        output = f"## ✅ Terraform Apply Successful\n\n"
+        output = "## ✅ Terraform Apply Successful\n\n"
         output += f"**Duration**: {result.duration_seconds:.1f}s\n\n"
 
         if result.outputs:
@@ -2149,7 +2148,7 @@ async def kubectl_apply(
     )
 
     if result.success:
-        output = f"## ✅ Kubernetes Apply Successful\n\n"
+        output = "## ✅ Kubernetes Apply Successful\n\n"
         output += f"**Duration**: {result.duration_seconds:.1f}s\n\n"
         output += "### Applied Resources\n"
         for change in result.changes_applied:

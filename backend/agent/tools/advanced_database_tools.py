@@ -12,9 +12,8 @@ Supports PostgreSQL, MySQL, MongoDB, and Redis.
 """
 
 import os
-import json
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import structlog
@@ -55,7 +54,7 @@ async def db_orchestrate_migration(
     Returns:
         Migration execution result
     """
-    logger.info(f"[TOOL:db_orchestrate_migration] Orchestrating migrations",
+    logger.info("[TOOL:db_orchestrate_migration] Orchestrating migrations",
                 workspace=workspace_path, tool=migration_tool, env=target_env)
 
     # Auto-detect migration tool
@@ -223,7 +222,7 @@ async def db_setup_replication(
     Returns:
         Replication configuration and setup steps
     """
-    logger.info(f"[TOOL:db_setup_replication] Setting up replication",
+    logger.info("[TOOL:db_setup_replication] Setting up replication",
                 db_type=database_type, primary=primary_host)
 
     configs = {
@@ -248,18 +247,18 @@ standby_mode = on
 trigger_file = '/tmp/postgresql.trigger'
 """,
             "setup_commands": [
-                f"# On primary: Create replication user",
-                f"CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'secure_password';",
-                f"",
-                f"# On replica: Stop PostgreSQL and backup",
-                f"sudo systemctl stop postgresql",
-                f"sudo rm -rf /var/lib/postgresql/data/*",
-                f"",
-                f"# On replica: Copy data from primary",
+                "# On primary: Create replication user",
+                "CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'secure_password';",
+                "",
+                "# On replica: Stop PostgreSQL and backup",
+                "sudo systemctl stop postgresql",
+                "sudo rm -rf /var/lib/postgresql/data/*",
+                "",
+                "# On replica: Copy data from primary",
                 f"pg_basebackup -h {primary_host} -D /var/lib/postgresql/data -U replicator -v -P --wal-method=stream",
-                f"",
-                f"# On replica: Start PostgreSQL",
-                f"sudo systemctl start postgresql",
+                "",
+                "# On replica: Start PostgreSQL",
+                "sudo systemctl start postgresql",
             ],
         },
         "mysql": {
@@ -273,7 +272,7 @@ binlog_do_db = {database_name}
 gtid_mode = ON
 enforce_gtid_consistency = ON
 """,
-            "replica_config": f"""
+            "replica_config": """
 # MySQL Replica Configuration (my.cnf)
 [mysqld]
 server-id = 2
@@ -284,22 +283,22 @@ gtid_mode = ON
 enforce_gtid_consistency = ON
 """,
             "setup_commands": [
-                f"# On primary: Create replication user",
+                "# On primary: Create replication user",
                 f"CREATE USER 'replicator'@'{replica_host}' IDENTIFIED BY 'secure_password';",
                 f"GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'{replica_host}';",
-                f"FLUSH PRIVILEGES;",
-                f"",
-                f"# On replica: Configure replication",
-                f"CHANGE MASTER TO",
+                "FLUSH PRIVILEGES;",
+                "",
+                "# On replica: Configure replication",
+                "CHANGE MASTER TO",
                 f"  MASTER_HOST='{primary_host}',",
-                f"  MASTER_USER='replicator',",
-                f"  MASTER_PASSWORD='secure_password',",
-                f"  MASTER_AUTO_POSITION=1;",
-                f"START SLAVE;",
+                "  MASTER_USER='replicator',",
+                "  MASTER_PASSWORD='secure_password',",
+                "  MASTER_AUTO_POSITION=1;",
+                "START SLAVE;",
             ],
         },
         "mongodb": {
-            "primary_config": f"""
+            "primary_config": """
 # MongoDB Replica Set Configuration
 # Add to mongod.conf on all nodes
 replication:
@@ -312,19 +311,19 @@ security:
 """,
             "replica_config": "# Same configuration as primary",
             "setup_commands": [
-                f"# Generate keyfile (same on all nodes)",
-                f"openssl rand -base64 756 > /etc/mongodb/keyfile",
-                f"chmod 400 /etc/mongodb/keyfile",
-                f"chown mongodb:mongodb /etc/mongodb/keyfile",
-                f"",
-                f"# On primary: Initialize replica set",
-                f"mongosh --eval 'rs.initiate({{",
-                f'  _id: "rs0",',
-                f"  members: [",
+                "# Generate keyfile (same on all nodes)",
+                "openssl rand -base64 756 > /etc/mongodb/keyfile",
+                "chmod 400 /etc/mongodb/keyfile",
+                "chown mongodb:mongodb /etc/mongodb/keyfile",
+                "",
+                "# On primary: Initialize replica set",
+                "mongosh --eval 'rs.initiate({",
+                '  _id: "rs0",',
+                "  members: [",
                 f'    {{ _id: 0, host: "{primary_host}:27017", priority: 2 }},',
                 f'    {{ _id: 1, host: "{replica_host}:27017", priority: 1 }}',
-                f"  ]",
-                f"}})'",
+                "  ]",
+                "})'",
             ],
         },
     }
@@ -382,7 +381,7 @@ async def db_configure_sharding(
     Returns:
         Sharding configuration and setup steps
     """
-    logger.info(f"[TOOL:db_configure_sharding] Configuring sharding",
+    logger.info("[TOOL:db_configure_sharding] Configuring sharding",
                 db_type=database_type, shard_key=shard_key)
 
     configs = {
@@ -402,7 +401,7 @@ sh.shardCollection("{collection_name}", {{ "{shard_key}": "hashed" }})
 // Or use ranged sharding for ordered access patterns
 // sh.shardCollection("{collection_name}", {{ "{shard_key}": 1 }})
 """,
-            "architecture": f"""
+            "architecture": """
 MongoDB Sharding Architecture:
 ┌─────────────────┐
 │   Application   │
@@ -423,19 +422,19 @@ Shard 1  Shard 2  Shard 3  ...
 (RS)     (RS)     (RS)
 """,
             "commands": [
-                f"# Start config server replica set",
-                f"mongod --configsvr --replSet configReplSet --port 27019",
-                f"",
-                f"# Start shard servers",
-                f"mongod --shardsvr --replSet shard1 --port 27018",
-                f"mongod --shardsvr --replSet shard2 --port 27020",
-                f"",
-                f"# Start mongos router",
-                f"mongos --configdb configReplSet/localhost:27019",
-                f"",
-                f"# Add shards to cluster",
-                f"sh.addShard('shard1/localhost:27018')",
-                f"sh.addShard('shard2/localhost:27020')",
+                "# Start config server replica set",
+                "mongod --configsvr --replSet configReplSet --port 27019",
+                "",
+                "# Start shard servers",
+                "mongod --shardsvr --replSet shard1 --port 27018",
+                "mongod --shardsvr --replSet shard2 --port 27020",
+                "",
+                "# Start mongos router",
+                "mongos --configdb configReplSet/localhost:27019",
+                "",
+                "# Add shards to cluster",
+                "sh.addShard('shard1/localhost:27018')",
+                "sh.addShard('shard2/localhost:27020')",
             ],
         },
         "postgres_citus": {
@@ -458,7 +457,7 @@ SELECT create_distributed_table('{collection_name}', '{shard_key}');
 -- Or create reference table (replicated to all nodes)
 -- SELECT create_reference_table('lookup_table');
 """,
-            "architecture": f"""
+            "architecture": """
 Citus Sharding Architecture:
 ┌─────────────────┐
 │   Application   │
@@ -474,13 +473,13 @@ Citus Sharding Architecture:
 Worker1  Worker2  Worker3  ...
 """,
             "commands": [
-                f"# Install Citus extension",
-                f"CREATE EXTENSION citus;",
-                f"",
-                f"# Configure coordinator and workers",
-                f"SELECT citus_add_node('worker1', 5432);",
-                f"",
-                f"# Create distributed table",
+                "# Install Citus extension",
+                "CREATE EXTENSION citus;",
+                "",
+                "# Configure coordinator and workers",
+                "SELECT citus_add_node('worker1', 5432);",
+                "",
+                "# Create distributed table",
                 f"SELECT create_distributed_table('{collection_name}', '{shard_key}');",
             ],
         },
@@ -608,7 +607,7 @@ async def db_analyze_query_performance(
     Returns:
         Performance analysis and recommendations
     """
-    logger.info(f"[TOOL:db_analyze_query_performance] Analyzing performance", db_type=database_type)
+    logger.info("[TOOL:db_analyze_query_performance] Analyzing performance", db_type=database_type)
 
     analysis_queries = {
         "postgres": {

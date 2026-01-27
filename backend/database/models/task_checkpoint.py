@@ -14,10 +14,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
-    Boolean,
     Column,
     DateTime,
-    Float,
     ForeignKey,
     Index,
     Integer,
@@ -27,7 +25,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, relationship
+from sqlalchemy.orm import Mapped
 
 from backend.core.db import Base
 

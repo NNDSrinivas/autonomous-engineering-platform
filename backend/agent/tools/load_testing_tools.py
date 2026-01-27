@@ -57,7 +57,7 @@ async def loadtest_generate_k6(
     Returns:
         Generated k6 script and configuration
     """
-    logger.info(f"[TOOL:loadtest_generate_k6] Generating k6 script", target=target_url, test_type=test_type)
+    logger.info("[TOOL:loadtest_generate_k6] Generating k6 script", target=target_url, test_type=test_type)
 
     # Default endpoints if none provided
     if not endpoints:
@@ -286,7 +286,7 @@ async def loadtest_generate_locust(
     Returns:
         Generated Locust script
     """
-    logger.info(f"[TOOL:loadtest_generate_locust] Generating Locust script", target=target_url)
+    logger.info("[TOOL:loadtest_generate_locust] Generating Locust script", target=target_url)
 
     if not endpoints:
         endpoints = [
@@ -461,7 +461,7 @@ async def loadtest_run(
     Returns:
         Load test execution results
     """
-    logger.info(f"[TOOL:loadtest_run] Running load test", script=script_path, tool=tool)
+    logger.info("[TOOL:loadtest_run] Running load test", script=script_path, tool=tool)
 
     if not os.path.exists(script_path):
         return {
@@ -544,7 +544,7 @@ async def loadtest_analyze_results(
     Returns:
         Analysis with insights and recommendations
     """
-    logger.info(f"[TOOL:loadtest_analyze_results] Analyzing results", path=results_path)
+    logger.info("[TOOL:loadtest_analyze_results] Analyzing results", path=results_path)
 
     if not os.path.exists(results_path):
         return {
@@ -636,7 +636,7 @@ async def loadtest_establish_baseline(
     Returns:
         Baseline metrics and thresholds
     """
-    logger.info(f"[TOOL:loadtest_establish_baseline] Establishing baseline", target=target_url)
+    logger.info("[TOOL:loadtest_establish_baseline] Establishing baseline", target=target_url)
 
     # Generate a smoke test
     smoke_result = await loadtest_generate_k6(

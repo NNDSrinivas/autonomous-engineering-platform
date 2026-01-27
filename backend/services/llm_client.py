@@ -19,7 +19,6 @@ Supports BYOK (Bring Your Own Key) - users can provide their own API keys.
 import os
 import json
 import logging
-import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -30,7 +29,6 @@ from typing import (
     List,
     Optional,
     Union,
-    Callable,
 )
 
 import httpx

@@ -13,7 +13,7 @@ Works dynamically for any project type.
 
 import os
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 import structlog
 
 from backend.services.connector_base import ToolResult
@@ -457,7 +457,7 @@ async def setup_error_tracking(
     lines.append(f"**Project Type**: {project_type}")
 
     # Installation
-    lines.append(f"\n### 1. Installation")
+    lines.append("\n### 1. Installation")
     if project_type in ("nextjs", "react", "express", "node"):
         lines.append("```bash")
         lines.append(f"npm install {config['js_package']}")
@@ -468,7 +468,7 @@ async def setup_error_tracking(
         lines.append("```")
 
     # Configuration
-    lines.append(f"\n### 2. Configuration")
+    lines.append("\n### 2. Configuration")
 
     if project_type in ("nextjs", "react", "express", "node"):
         if provider == "sentry" and project_type == "nextjs":
@@ -492,7 +492,7 @@ async def setup_error_tracking(
         lines.append("```")
 
     # Environment variables
-    lines.append(f"\n### 3. Environment Variables")
+    lines.append("\n### 3. Environment Variables")
     lines.append("```env")
     if provider == "sentry":
         dsn_placeholder = dsn or "https://xxx@xxx.ingest.sentry.io/xxx"
@@ -505,14 +505,14 @@ async def setup_error_tracking(
 
     # Source maps (for JavaScript)
     if project_type in ("nextjs", "react", "node"):
-        lines.append(f"\n### 4. Source Maps")
+        lines.append("\n### 4. Source Maps")
         if provider == "sentry":
             lines.append("Configure source map uploads for better stack traces:")
             lines.append("```bash")
             lines.append("npx @sentry/wizard@latest -i nextjs")
             lines.append("```")
 
-    lines.append(f"\n### Next Steps")
+    lines.append("\n### Next Steps")
     lines.append(f"1. Get your DSN from the {provider.title()} dashboard")
     lines.append("2. Add the environment variable to your deployment platform")
     lines.append("3. Deploy and verify errors are being captured")
@@ -553,7 +553,7 @@ async def setup_apm(
     lines.append(f"**Project Type**: {project_type}")
 
     # Installation
-    lines.append(f"\n### 1. Installation")
+    lines.append("\n### 1. Installation")
     if project_type in ("nextjs", "react", "express", "node"):
         lines.append("```bash")
         lines.append(f"npm install {config['js_package']}")
@@ -564,7 +564,7 @@ async def setup_apm(
         lines.append("```")
 
     # Configuration
-    lines.append(f"\n### 2. Configuration")
+    lines.append("\n### 2. Configuration")
     lines.append("\n**Important**: Import tracer before other modules!\n")
 
     if project_type in ("nextjs", "react", "express", "node"):
@@ -579,7 +579,7 @@ async def setup_apm(
         lines.append("```")
 
     # Environment variables
-    lines.append(f"\n### 3. Environment Variables")
+    lines.append("\n### 3. Environment Variables")
     lines.append("```env")
     for env_var in config.get("env_vars", []):
         lines.append(f"{env_var}=")
@@ -587,7 +587,7 @@ async def setup_apm(
 
     # Docker setup for Datadog
     if provider == "datadog":
-        lines.append(f"\n### 4. Docker Agent Setup")
+        lines.append("\n### 4. Docker Agent Setup")
         lines.append("```yaml")
         lines.append("# docker-compose.yml")
         lines.append("services:")
@@ -645,7 +645,7 @@ async def setup_logging(
     lines.append(f"**Project Type**: {project_type}")
 
     # Installation
-    lines.append(f"\n### 1. Installation")
+    lines.append("\n### 1. Installation")
     if library == "pino":
         lines.append("```bash")
         lines.append("npm install pino pino-pretty")
@@ -660,13 +660,13 @@ async def setup_logging(
         lines.append("```")
 
     # Configuration
-    lines.append(f"\n### 2. Logger Configuration")
+    lines.append("\n### 2. Logger Configuration")
     lines.append("```" + ("typescript" if library in ("pino", "winston") else "python"))
     lines.append(LOGGING_TEMPLATES[library])
     lines.append("```")
 
     # Usage
-    lines.append(f"\n### 3. Usage Example")
+    lines.append("\n### 3. Usage Example")
     if library in ("pino", "winston"):
         lines.append("```typescript")
         lines.append('import logger from "./lib/logger";')
@@ -684,7 +684,7 @@ async def setup_logging(
         lines.append("```")
 
     # Best practices
-    lines.append(f"\n### 4. Best Practices")
+    lines.append("\n### 4. Best Practices")
     lines.append("- Use structured logging (key-value pairs)")
     lines.append("- Include request IDs for tracing")
     lines.append("- Log at appropriate levels (debug, info, warn, error)")
@@ -725,13 +725,13 @@ async def generate_health_checks(
     lines.append("- `GET /ready` - Readiness probe")
     lines.append("- `GET /live` - Liveness probe")
 
-    lines.append(f"\n### Implementation")
+    lines.append("\n### Implementation")
     lines.append("```" + ("typescript" if project_type in ("nextjs", "express") else "python"))
     lines.append(template)
     lines.append("```")
 
     # Kubernetes configuration
-    lines.append(f"\n### Kubernetes Probes Configuration")
+    lines.append("\n### Kubernetes Probes Configuration")
     lines.append("```yaml")
     lines.append("livenessProbe:")
     lines.append("  httpGet:")
@@ -748,7 +748,7 @@ async def generate_health_checks(
     lines.append("  periodSeconds: 5")
     lines.append("```")
 
-    lines.append(f"\n### Health Check Best Practices")
+    lines.append("\n### Health Check Best Practices")
     lines.append("1. Check all critical dependencies (database, cache, external APIs)")
     lines.append("2. Set appropriate timeouts")
     lines.append("3. Return 503 when unhealthy")

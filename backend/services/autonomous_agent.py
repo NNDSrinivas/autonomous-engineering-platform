@@ -26,8 +26,6 @@ from enum import Enum
 # Enterprise iteration control (Phase 4)
 from backend.agent.enhanced_iteration_controller import (
     EnhancedIterationController,
-    EnterpriseIterationConfig,
-    EnterpriseIterationMode,
 )
 
 # Human checkpoint gate detection (Phase 5)
@@ -1416,7 +1414,7 @@ class AutonomousAgent:
         )
 
         # Build fnm activation command
-        fnm_activate = f'eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
+        fnm_activate = 'eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
 
         # Combined Node.js environment setup (tries all managers)
         node_env_setup = f'{nvm_activate} || {volta_activate} || {fnm_activate}'
@@ -1449,11 +1447,11 @@ class AutonomousAgent:
             ),
             (
                 "volta",
-                f'command -v volta >/dev/null 2>&1 && volta --version 2>/dev/null || echo "not found"',
+                'command -v volta >/dev/null 2>&1 && volta --version 2>/dev/null || echo "not found"',
             ),
             (
                 "fnm",
-                f'command -v fnm >/dev/null 2>&1 && fnm --version 2>/dev/null || echo "not found"',
+                'command -v fnm >/dev/null 2>&1 && fnm --version 2>/dev/null || echo "not found"',
             ),
             (
                 "Available Node versions",
@@ -2098,7 +2096,7 @@ Return ONLY the JSON, no markdown or explanations."""
                             f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
                             f'{nvm_use} && {command}'
                         )
-                        logger.info(f"[AutonomousAgent] Added nvm setup to command")
+                        logger.info("[AutonomousAgent] Added nvm setup to command")
 
                 # If command is already wrapped in bash -c, extract the inner command
                 # to avoid double-wrapping issues
@@ -2109,7 +2107,7 @@ Return ONLY the JSON, no markdown or explanations."""
                         parts = shlex.split(command)
                         if len(parts) >= 3 and parts[0] == "bash" and parts[1] == "-c":
                             command = parts[2]
-                            logger.info(f"[AutonomousAgent] Unwrapped bash -c command")
+                            logger.info("[AutonomousAgent] Unwrapped bash -c command")
                     except Exception:
                         pass  # Keep original if parsing fails
 
@@ -2252,7 +2250,7 @@ Return ONLY the JSON, no markdown or explanations."""
                             f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
                             f'{nvm_use} && {command}'
                         )
-                        logger.info(f"[AutonomousAgent] Added nvm setup to start_server command")
+                        logger.info("[AutonomousAgent] Added nvm setup to start_server command")
 
                 # Start the server in background using nohup
                 log_file = os.path.join(self.workspace_path, ".navi-server.log")
@@ -2403,7 +2401,7 @@ Return ONLY the JSON, no markdown or explanations."""
 
             else:
                 logger.error(f"[AutonomousAgent] ❌ UNKNOWN TOOL: {tool_name}")
-                logger.error(f"[AutonomousAgent] Available tools: read_file, write_file, edit_file, run_command, search_files, list_directory, start_server, check_endpoint, stop_server")
+                logger.error("[AutonomousAgent] Available tools: read_file, write_file, edit_file, run_command, search_files, list_directory, start_server, check_endpoint, stop_server")
                 return {"success": False, "error": f"Unknown tool: {tool_name}"}
 
         except Exception as e:

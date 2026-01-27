@@ -22,27 +22,21 @@ Usage:
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional, Callable, AsyncGenerator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 import uuid
 
 from backend.distributed.agent_fleet import (
     DistributedAgentFleet,
-    AgentRole,
-    TaskPriority as FleetTaskPriority,
-    TaskStatus as FleetTaskStatus,
-    Task as FleetTask,
     ConflictResolutionStrategy,
 )
 from backend.database.models.enterprise_project import (
-    EnterpriseProject,
-    HumanCheckpointGate,
     ProjectTaskQueue,
 )
 from backend.services.enterprise_project_service import EnterpriseProjectService
-from backend.services.checkpoint_gate_detector import CheckpointGateDetector, GateTrigger
+from backend.services.checkpoint_gate_detector import CheckpointGateDetector
 
 
 logger = logging.getLogger(__name__)

@@ -6,7 +6,6 @@ Handles real infrastructure operations: Terraform, Kubernetes, CloudFormation, H
 import asyncio
 import json
 import os
-import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field

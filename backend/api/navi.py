@@ -5667,7 +5667,6 @@ To get started, I need to analyze your codebase and create a detailed implementa
                         try:
                             from backend.services.vision_service import (
                                 VisionClient,
-                                VisionProvider,
                             )
 
                             # Extract base64 data from data URL
@@ -6042,7 +6041,6 @@ async def navi_chat_stream(
                             try:
                                 from backend.services.vision_service import (
                                     VisionClient,
-                                    VisionProvider,
                                 )
 
                                 # Extract base64 data from data URL
@@ -6388,6 +6386,17 @@ async def navi_chat_stream(
                 elif "thinking" in event:
                     thinking_text = event["thinking"]
                     yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+
+                # Stream execution plan events (detailed task decomposition)
+                elif "execution_plan" in event:
+                    execution_plan = event["execution_plan"]
+                    steps = execution_plan.get("steps", [])
+                    logger.info(
+                        "[NAVI-STREAM] Emitting execution plan with %d steps",
+                        len(steps),
+                    )
+                    # Emit in the format the frontend expects: plan_start with steps
+                    yield f"data: {json.dumps({'type': 'plan_start', 'data': {'plan_id': execution_plan.get('plan_id', 'plan-unknown'), 'steps': steps, 'total_steps': len(steps), 'project_name': execution_plan.get('project_name'), 'phases': execution_plan.get('phases', []), 'estimated_hours': execution_plan.get('estimated_hours')}})}\n\n"
 
                 # Capture final result
                 elif "result" in event:
@@ -7105,10 +7114,10 @@ async def navi_autonomous_task(
     http_request: Request,
 ):
     # DEBUG: Print to stdout to ensure this endpoint is being called
-    print(f"[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
+    print("[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
     print(f"[NAVI Autonomous DEBUG] Message: {request.message[:100] if request.message else 'None'}...")
     print(f"[NAVI Autonomous DEBUG] Attachments: {request.attachments}")
-    print(f"[NAVI Autonomous DEBUG] =====================================")
+    print("[NAVI Autonomous DEBUG] =====================================")
     """
     NAVI Autonomous Task Execution
 
@@ -7176,7 +7185,7 @@ async def navi_autonomous_task(
                 att_content = att.get("content") if isinstance(att, dict) else getattr(att, "content", None)
                 if att_content:
                     try:
-                        from backend.services.vision_service import VisionClient, VisionProvider
+                        from backend.services.vision_service import VisionClient
 
                         # Extract base64 data from data URL
                         if att_content.startswith("data:"):
@@ -7295,7 +7304,6 @@ async def navi_enterprise_task(
     from backend.services.enterprise_project_detector import (
         detect_enterprise_project,
         create_enterprise_project_from_spec,
-        ProjectScale,
     )
     from backend.distributed.enterprise_agent_coordinator import (
         EnterpriseAgentCoordinator,
@@ -7303,7 +7311,7 @@ async def navi_enterprise_task(
     )
     from backend.services.enterprise_project_service import EnterpriseProjectService
 
-    logger.info(f"[NAVI Enterprise] ========== ENDPOINT CALLED ==========")
+    logger.info("[NAVI Enterprise] ========== ENDPOINT CALLED ==========")
     logger.info(f"[NAVI Enterprise] Message: {request.message[:200] if request.message else 'None'}...")
 
     # Determine workspace path

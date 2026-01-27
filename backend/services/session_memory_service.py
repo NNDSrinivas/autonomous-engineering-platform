@@ -10,7 +10,6 @@ providing a structured facts store that's injected into the context.
 """
 
 import re
-import json
 from typing import Any, Dict, List, Optional, Set
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -409,7 +408,7 @@ class SessionMemoryService:
 
             facts.append(SessionFact(
                 category="task",
-                key=f"last_command",
+                key="last_command",
                 value=cmd,
                 timestamp=timestamp,
                 source_message_id=message_id,

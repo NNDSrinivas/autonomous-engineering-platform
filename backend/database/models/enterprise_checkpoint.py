@@ -7,7 +7,6 @@ Stores complete agent state including conversation history, file changes, and ex
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
@@ -21,7 +20,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, relationship
+from sqlalchemy.orm import Mapped
 
 from backend.core.db import Base
 

@@ -6,10 +6,6 @@ This service ensures that dangerous operations (deployments, migrations, infrast
 require explicit user confirmation before execution.
 """
 
-import asyncio
-import hashlib
-import json
-import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta

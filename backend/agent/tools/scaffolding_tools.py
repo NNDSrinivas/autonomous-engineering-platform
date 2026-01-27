@@ -9,9 +9,7 @@ detects requirements and generates appropriate project structures.
 import os
 import json
 import re
-from typing import Any, Dict, List, Optional
-from dataclasses import dataclass, asdict
-from enum import Enum
+from typing import Any, Dict, Optional
 import structlog
 
 from backend.services.connector_base import ToolResult
@@ -936,20 +934,20 @@ async def scaffold_project(
     lines = [f"## Project Scaffolding: {project_name}\n"]
 
     if result.success:
-        lines.append(f"**Status**: Success")
+        lines.append("**Status**: Success")
         lines.append(f"**Path**: `{result.project_path}`")
         lines.append(f"**Type**: {result.project_type.value}")
-        lines.append(f"\n**Commands Executed**:")
+        lines.append("\n**Commands Executed**:")
         for cmd in result.commands_run:
             lines.append(f"- `{cmd}`")
 
-        lines.append(f"\n**Next Steps**:")
+        lines.append("\n**Next Steps**:")
         lines.append(f"1. `cd {result.project_path}`")
         if not install_dependencies:
-            lines.append(f"2. Install dependencies")
-        lines.append(f"3. Start development server")
+            lines.append("2. Install dependencies")
+        lines.append("3. Start development server")
     else:
-        lines.append(f"**Status**: Failed")
+        lines.append("**Status**: Failed")
         lines.append(f"**Error**: {result.error}")
         lines.append(f"\n**Message**: {result.message}")
 
@@ -1142,21 +1140,21 @@ async def add_feature_scaffold(
     lines = [f"## Feature Scaffold: {feature_type}\n"]
     lines.append(f"**Feature Name**: {feature_name}")
     lines.append(f"**Framework**: {framework}")
-    lines.append(f"\n**Created Files**:")
+    lines.append("\n**Created Files**:")
     for file in created_files:
         lines.append(f"- `{file}`")
 
-    lines.append(f"\n**Next Steps**:")
-    lines.append(f"1. Review and customize the generated code")
-    lines.append(f"2. Add your business logic")
+    lines.append("\n**Next Steps**:")
+    lines.append("1. Review and customize the generated code")
+    lines.append("2. Add your business logic")
     if feature_type == "api-route":
-        lines.append(f"3. Test the endpoint")
+        lines.append("3. Test the endpoint")
     elif feature_type == "component":
-        lines.append(f"3. Import and use the component")
+        lines.append("3. Import and use the component")
     elif feature_type == "model":
-        lines.append(f"3. Run database migrations")
+        lines.append("3. Run database migrations")
     elif feature_type == "auth":
-        lines.append(f"3. Set up environment variables for OAuth providers")
+        lines.append("3. Set up environment variables for OAuth providers")
 
     return ToolResult(output="\n".join(lines), sources=[])
 

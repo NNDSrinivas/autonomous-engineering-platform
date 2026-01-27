@@ -22,7 +22,6 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 import structlog
 
-from backend.services.connector_base import ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -194,7 +193,7 @@ async def compliance_check_pci_dss(
     Returns:
         Compliance report with violations and recommendations
     """
-    logger.info(f"[TOOL:compliance_check_pci_dss] Starting PCI-DSS scan", workspace=workspace_path)
+    logger.info("[TOOL:compliance_check_pci_dss] Starting PCI-DSS scan", workspace=workspace_path)
 
     violations = []
     scanned_files = 0
@@ -301,7 +300,7 @@ async def compliance_check_hipaa(
     Returns:
         Compliance report with violations and recommendations
     """
-    logger.info(f"[TOOL:compliance_check_hipaa] Starting HIPAA scan", workspace=workspace_path)
+    logger.info("[TOOL:compliance_check_hipaa] Starting HIPAA scan", workspace=workspace_path)
 
     violations = []
     scanned_files = 0
@@ -397,7 +396,7 @@ async def compliance_check_soc2(
     Returns:
         Compliance report with violations and recommendations
     """
-    logger.info(f"[TOOL:compliance_check_soc2] Starting SOC2 scan", workspace=workspace_path)
+    logger.info("[TOOL:compliance_check_soc2] Starting SOC2 scan", workspace=workspace_path)
 
     violations = []
     scanned_files = 0
@@ -487,7 +486,7 @@ async def compliance_audit_dependencies(
     Returns:
         Vulnerability report with affected packages and recommendations
     """
-    logger.info(f"[TOOL:compliance_audit_dependencies] Starting dependency audit", workspace=workspace_path)
+    logger.info("[TOOL:compliance_audit_dependencies] Starting dependency audit", workspace=workspace_path)
 
     vulnerabilities = []
     tools_run = []
@@ -588,7 +587,7 @@ async def compliance_generate_report(
     Returns:
         Comprehensive compliance report
     """
-    logger.info(f"[TOOL:compliance_generate_report] Generating compliance report", workspace=workspace_path)
+    logger.info("[TOOL:compliance_generate_report] Generating compliance report", workspace=workspace_path)
 
     standards = standards or ["PCI-DSS", "HIPAA", "SOC2"]
     reports = {}

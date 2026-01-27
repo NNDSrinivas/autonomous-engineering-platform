@@ -444,6 +444,35 @@ async def health_check():
     }
 
 
+@router.get("/supported-actions")
+async def supported_actions():
+    """
+    Return supported action types and any registered backend handlers.
+    """
+    try:
+        from backend.core.action_registry import get_action_registry
+
+        registry = get_action_registry()
+        handler_actions = registry.get_supported_actions()
+    except Exception:
+        handler_actions = []
+
+    built_in_action_types = [
+        {
+            "type": "editFile",
+            "fields": ["filePath", "content", "operation"],
+            "operations": ["create", "modify", "delete", "write"],
+        },
+        {"type": "runCommand", "fields": ["command", "cwd"]},
+        {"type": "vscode_command", "fields": ["command", "args"]},
+    ]
+
+    return {
+        "handlers": handler_actions,
+        "action_types": built_in_action_types,
+    }
+
+
 @router.get("/providers")
 async def get_providers():
     """

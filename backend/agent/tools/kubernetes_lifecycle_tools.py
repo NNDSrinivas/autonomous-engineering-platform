@@ -12,8 +12,6 @@ Usage:
     from backend.agent.tools.kubernetes_lifecycle_tools import K8S_LIFECYCLE_TOOLS
 """
 
-import json
-import subprocess
 import os
 import yaml
 from typing import Dict, Any, List, Optional
@@ -157,7 +155,7 @@ async def k8s_cluster_create(
             f"--region={region}",
             "--enable-ip-alias",
             "--enable-autoscaling",
-            f"--min-nodes=1",
+            "--min-nodes=1",
             f"--max-nodes={node_count * 2}",
         ]
 
@@ -196,7 +194,7 @@ async def k8s_cluster_create(
             f"--node-vm-size {instance_type}",
             f"--location {region}",
             "--enable-cluster-autoscaler",
-            f"--min-count 1",
+            "--min-count 1",
             f"--max-count {node_count * 2}",
             "--network-plugin azure",
             "--enable-managed-identity"

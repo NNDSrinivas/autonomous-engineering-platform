@@ -309,12 +309,12 @@ async def design_schema(
     for model in models:
         lines.append(f"- **{model.name}**: {len(model.fields)} fields")
 
-    lines.append(f"\n**Generated Schema**:")
+    lines.append("\n**Generated Schema**:")
     lines.append(f"```{code_type}")
     lines.append(schema_code)
     lines.append("```")
 
-    lines.append(f"\n### Next Steps")
+    lines.append("\n### Next Steps")
     if orm == "prisma":
         lines.append("1. Add to `prisma/schema.prisma`")
         lines.append("2. Run `npx prisma migrate dev --name init`")
@@ -394,7 +394,7 @@ async def generate_migration(
         target = change.get("table", change.get("name", ""))
         lines.append(f"- {action}: {target}")
 
-    lines.append(f"\n**Migration Code**:")
+    lines.append("\n**Migration Code**:")
     lines.append("```python" if orm in ("alembic", "django") else "```typescript" if orm in ("drizzle", "typeorm") else "```sql")
     lines.append(migration_code)
     lines.append("```")
@@ -468,13 +468,13 @@ async def run_migration(
     lines.append(f"**Direction**: {direction}")
     lines.append(f"**Dry Run**: {dry_run}")
 
-    lines.append(f"\n**Command**:")
+    lines.append("\n**Command**:")
     lines.append("```bash")
     lines.append(command)
     lines.append("```")
 
     if direction == "up":
-        lines.append(f"\n**Notes**:")
+        lines.append("\n**Notes**:")
         lines.append("- Ensure your database connection is configured")
         lines.append("- Back up your database before running migrations in production")
         lines.append("- Test migrations in a staging environment first")
@@ -510,12 +510,12 @@ async def generate_seed_data(
     lines.append(f"**Records per Model**: {count}")
     lines.append(f"**ORM**: {orm or 'prisma'}")
 
-    lines.append(f"\n**Seed Code**:")
+    lines.append("\n**Seed Code**:")
     lines.append("```typescript" if orm in ("prisma", "drizzle", "typeorm") else "```python")
     lines.append(seed_code)
     lines.append("```")
 
-    lines.append(f"\n### Running Seeds")
+    lines.append("\n### Running Seeds")
     if orm == "prisma":
         lines.append("```bash")
         lines.append("npx prisma db seed")
@@ -582,17 +582,17 @@ async def analyze_schema(
     lines.append(f"**Models Found**: {len(analysis['models'])}")
 
     if analysis["models"]:
-        lines.append(f"\n### Models")
+        lines.append("\n### Models")
         for model in analysis["models"]:
             lines.append(f"- **{model['name']}**: {len(model.get('fields', []))} fields")
 
     if analysis["issues"]:
-        lines.append(f"\n### Issues")
+        lines.append("\n### Issues")
         for issue in analysis["issues"]:
             lines.append(f"- {issue}")
 
     if analysis["suggestions"]:
-        lines.append(f"\n### Suggestions")
+        lines.append("\n### Suggestions")
         for suggestion in analysis["suggestions"]:
             lines.append(f"- {suggestion}")
 
@@ -647,7 +647,7 @@ async def generate_erd(
     lines.append(f"**Format**: {format}")
     lines.append(f"**Models**: {len(models)}")
 
-    lines.append(f"\n**Diagram**:")
+    lines.append("\n**Diagram**:")
     lines.append(f"```{lang}")
     lines.append(diagram)
     lines.append("```")
@@ -949,7 +949,7 @@ def _generate_mermaid_erd(models: List[Dict]) -> str:
         fields = model.get("fields", [])
 
         lines.append(f"    {name} {{")
-        lines.append(f"        int id PK")
+        lines.append("        int id PK")
         for field in fields[:10]:  # Limit fields
             field_name = field.get("name", "unknown")
             field_type = field.get("type", "string").lower()
@@ -1000,7 +1000,7 @@ def _generate_prisma_migration(changes: List[Dict]) -> str:
         action = change.get("action")
         if action == "add_table":
             table = change.get("name", "new_table")
-            output.append(f"\n-- CreateTable")
+            output.append("\n-- CreateTable")
             output.append(f"CREATE TABLE \"{table}\" (")
             output.append('  "id" SERIAL PRIMARY KEY')
             output.append(");")
@@ -1053,7 +1053,7 @@ def _generate_drizzle_migration(changes: List[Dict]) -> str:
 
 def _generate_django_migration(changes: List[Dict], name: str) -> str:
     """Generate Django migration."""
-    output = [f'''from django.db import migrations, models
+    output = ['''from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
@@ -1265,7 +1265,7 @@ async def execute_migration(
 
     # Create execution request for confirmation
     request = await execution_confirmation_service.create_execution_request(
-        operation=f"db.execute_migration",
+        operation="db.execute_migration",
         category=OperationCategory.DATABASE,
         parameters={
             "workspace_path": workspace_path,
@@ -1293,7 +1293,7 @@ async def execute_migration(
                 ],
                 "mitigation": "Ensure you have a database backup before proceeding",
                 "rollback_available": direction == "up",
-                "rollback_instructions": f"Run migration down: db.execute_migration with direction='down'" if direction == "up" else None,
+                "rollback_instructions": "Run migration down: db.execute_migration with direction='down'" if direction == "up" else None,
             }
         ],
         rollback_plan=f"Run migration in opposite direction ({('down' if direction == 'up' else 'up')})" if not dry_run else None,
@@ -1305,8 +1305,8 @@ async def execute_migration(
     lines.append(f"**Tool**: {tool_name}")
     lines.append(f"**Risk Level**: {request.risk_level.value.upper()}")
     lines.append(f"**Dry Run**: {dry_run}")
-    lines.append(f"\n**⚠️ Requires Confirmation**")
-    lines.append(f"This operation will modify your database schema.")
+    lines.append("\n**⚠️ Requires Confirmation**")
+    lines.append("This operation will modify your database schema.")
     lines.append(f"\nCall `db.confirm` with request_id='{request.id}' to execute.")
 
     if request.confirmation_phrase:
@@ -1398,12 +1398,12 @@ async def confirm_database_operation(
         lines.append(f"**Direction**: {direction}")
 
         if result.migrations_applied:
-            lines.append(f"\n**Migrations Applied**:")
+            lines.append("\n**Migrations Applied**:")
             for migration in result.migrations_applied:
                 lines.append(f"- {migration}")
 
         if result.output:
-            lines.append(f"\n**Output**:")
+            lines.append("\n**Output**:")
             lines.append("```")
             lines.append(result.output[:2000])  # Limit output
             lines.append("```")
@@ -1412,13 +1412,13 @@ async def confirm_database_operation(
         lines.append(f"**Error**: {result.error}")
 
         if result.output:
-            lines.append(f"\n**Output**:")
+            lines.append("\n**Output**:")
             lines.append("```")
             lines.append(result.output[:2000])
             lines.append("```")
 
         if result.rollback_command:
-            lines.append(f"\n**Rollback Command**:")
+            lines.append("\n**Rollback Command**:")
             lines.append("```bash")
             lines.append(result.rollback_command)
             lines.append("```")
@@ -1490,7 +1490,7 @@ async def backup_database(
 
     lines = ["## Database Backup Request Created\n"]
     lines.append(f"**Request ID**: `{request.id}`")
-    lines.append(f"**Risk Level**: LOW")
+    lines.append("**Risk Level**: LOW")
     lines.append(f"**Compression**: {compression}")
     lines.append(f"\nCall `db.confirm` with request_id='{request.id}' to execute backup.")
 
@@ -1569,10 +1569,10 @@ async def restore_database(
 
     lines = ["## 🚨 CRITICAL: Database Restore Request\n"]
     lines.append(f"**Request ID**: `{request.id}`")
-    lines.append(f"**Risk Level**: CRITICAL")
+    lines.append("**Risk Level**: CRITICAL")
     lines.append(f"**Backup File**: {backup_path}")
-    lines.append(f"\n**⚠️ WARNING**: This will overwrite ALL current database data!")
-    lines.append(f"\n**Confirmation Required**")
+    lines.append("\n**⚠️ WARNING**: This will overwrite ALL current database data!")
+    lines.append("\n**Confirmation Required**")
     lines.append(f"Type the phrase: `{request.confirmation_phrase}`")
     lines.append(f"\nCall `db.confirm` with request_id='{request.id}' and confirmation_input='{request.confirmation_phrase}'")
 
@@ -1635,7 +1635,7 @@ async def get_migration_status(
     lines = ["## Migration Status\n"]
     lines.append(f"**Tool**: {tool_name}")
     lines.append(f"**Workspace**: {workspace_path}")
-    lines.append(f"\n**Check Status Command**:")
+    lines.append("\n**Check Status Command**:")
     lines.append("```bash")
     lines.append(f"cd {workspace_path}")
     lines.append(cmd)

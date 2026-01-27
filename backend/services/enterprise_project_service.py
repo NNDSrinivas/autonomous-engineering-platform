@@ -10,14 +10,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, select, update
 from sqlalchemy.orm import Session
 
 from backend.database.models import (
     EnterpriseProject,
     HumanCheckpointGate,
     ProjectTaskQueue,
-    WorkspaceSession,
 )
 
 logger = logging.getLogger(__name__)

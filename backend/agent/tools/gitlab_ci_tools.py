@@ -5,8 +5,7 @@ Provides tools for generating GitLab CI/CD pipelines and configurations.
 
 import os
 import json
-from typing import Any, Dict, List, Optional
-from pathlib import Path
+from typing import Any, Dict, List
 
 from backend.services.connector_base import ToolResult
 

@@ -1073,7 +1073,7 @@ async def execute_deployment(
     result = await deployment_executor_service.execute_deployment(config)
 
     if result.success:
-        output = f"## ✅ Deployment Successful!\n\n"
+        output = "## ✅ Deployment Successful!\n\n"
         output += f"**Platform**: {platform.title()}\n"
         output += f"**Environment**: {environment}\n"
         output += f"**Duration**: {result.duration_seconds:.1f}s\n"
@@ -1089,7 +1089,7 @@ async def execute_deployment(
 
         return ToolResult(output=output, sources=[{"type": "deployment", "url": result.deployment_url}])
     else:
-        output = f"## ❌ Deployment Failed\n\n"
+        output = "## ❌ Deployment Failed\n\n"
         output += f"**Platform**: {platform.title()}\n"
         output += f"**Error**: {result.error}\n\n"
 

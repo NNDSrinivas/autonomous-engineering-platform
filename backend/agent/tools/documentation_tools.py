@@ -15,7 +15,7 @@ Works dynamically for any project type without hardcoding.
 import os
 import re
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import structlog
@@ -271,12 +271,12 @@ async def generate_readme(
     lines.append(f"**Language**: {project_info.language}")
     if project_info.framework:
         lines.append(f"**Framework**: {project_info.framework}")
-    lines.append(f"\n**Generated Content**:")
+    lines.append("\n**Generated Content**:")
     lines.append("```markdown")
     lines.append(readme_content)
     lines.append("```")
 
-    lines.append(f"\n**Next Steps**:")
+    lines.append("\n**Next Steps**:")
     lines.append("1. Save to `README.md`")
     lines.append("2. Review and customize content")
     lines.append("3. Add project-specific details")
@@ -338,7 +338,7 @@ async def generate_api_docs(
     lines = [f"## Generated API Documentation ({format})\n"]
     lines.append(f"**Endpoints Found**: {len(routes)}")
     lines.append(f"**Framework**: {project_info.framework or 'Unknown'}")
-    lines.append(f"\n**Generated Content**:")
+    lines.append("\n**Generated Content**:")
     lines.append(f"```{content_type}")
     lines.append(doc_content)
     lines.append("```")
@@ -394,10 +394,10 @@ async def generate_component_docs(
     if not docs:
         return ToolResult(output="Could not extract documentation from components.", sources=[])
 
-    lines = [f"## Generated Component Documentation\n"]
+    lines = ["## Generated Component Documentation\n"]
     lines.append(f"**Components Found**: {len(docs)}")
     for doc in docs:
-        lines.append(f"\n---\n")
+        lines.append("\n---\n")
         lines.append(doc)
 
     return ToolResult(output="\n".join(lines), sources=[])
@@ -458,7 +458,7 @@ async def generate_architecture_doc(
 
     lines = ["## Generated Architecture Documentation\n"]
     lines.append(f"**Project**: {project_info.name}")
-    lines.append(f"\n**Generated Content**:")
+    lines.append("\n**Generated Content**:")
     lines.append("```markdown")
     lines.append(doc_content)
     lines.append("```")
@@ -507,11 +507,11 @@ async def generate_code_comments(
     # Generate comments
     comments = _generate_comments_for_file(source_code, language, style)
 
-    lines = [f"## Generated Documentation Comments\n"]
+    lines = ["## Generated Documentation Comments\n"]
     lines.append(f"**File**: {file_path}")
     lines.append(f"**Style**: {style}")
     lines.append(f"**Language**: {language}")
-    lines.append(f"\n**Suggested Comments**:")
+    lines.append("\n**Suggested Comments**:")
 
     for comment in comments:
         lines.append(f"\n### Line {comment['line']}: `{comment['name']}`")
@@ -609,7 +609,7 @@ async def generate_changelog(
     version_str = version or "Unreleased"
     date_str = datetime.now().strftime("%Y-%m-%d")
 
-    changelog = [f"# Changelog\n"]
+    changelog = ["# Changelog\n"]
     changelog.append(f"## [{version_str}] - {date_str}\n")
 
     for category, commits in categories.items():
@@ -626,7 +626,7 @@ async def generate_changelog(
     lines = ["## Generated Changelog\n"]
     lines.append(f"**Version**: {version_str}")
     lines.append(f"**Commits Analyzed**: {len(commits)}")
-    lines.append(f"\n**Generated Content**:")
+    lines.append("\n**Generated Content**:")
     lines.append("```markdown")
     lines.append(changelog_content)
     lines.append("```")

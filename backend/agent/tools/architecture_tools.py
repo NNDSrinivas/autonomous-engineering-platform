@@ -15,7 +15,7 @@ Works dynamically for any project type.
 import os
 import re
 import json
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import structlog
@@ -578,7 +578,7 @@ async def decompose_to_microservices(
     # Identify bounded contexts
     contexts = _identify_bounded_contexts(structure, strategy)
 
-    lines.append(f"\n### Identified Bounded Contexts")
+    lines.append("\n### Identified Bounded Contexts")
     for i, ctx in enumerate(contexts, 1):
         lines.append(f"\n#### {i}. {ctx['name']} Service")
         lines.append(f"**Responsibility**: {ctx['responsibility']}")

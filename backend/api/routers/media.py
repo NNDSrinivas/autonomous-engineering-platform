@@ -6,14 +6,12 @@ Handles video processing and other media operations for NAVI.
 
 import os
 import tempfile
-import base64
 from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
 import structlog
 
 from backend.services.video_processor_service import (
-    process_video,
     process_video_for_chat,
     is_video_processing_available,
     SUPPORTED_VIDEO_FORMATS,
@@ -105,7 +103,7 @@ async def process_video_endpoint(request: VideoProcessRequest) -> VideoProcessRe
             raise HTTPException(status_code=404, detail=f"Video file not found: {request.video_path}")
 
         # Process video
-        from backend.services.video_processor_service import VideoProcessor, VideoAnalysis
+        from backend.services.video_processor_service import VideoProcessor
 
         analysis = await VideoProcessor.process_video(
             video_path=request.video_path,

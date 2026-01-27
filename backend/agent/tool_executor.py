@@ -40,7 +40,6 @@ from .tools.web_tools import fetch_url, search_web
 # Credentials management for BYOK support
 from backend.services.credentials_service import (
     CredentialsService,
-    CredentialProvider,
 )
 
 logger = logging.getLogger(__name__)

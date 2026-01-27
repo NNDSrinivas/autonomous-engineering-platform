@@ -6,8 +6,7 @@ that enable NAVI to remember context across VS Code restarts.
 
 import pytest
 from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock, patch
-import json
+from unittest.mock import MagicMock
 
 # Import the session memory service (in-memory version for comparison)
 from backend.services.session_memory_service import (

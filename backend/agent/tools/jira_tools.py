@@ -271,7 +271,7 @@ async def update_jira_issue(
         if summary:
             changes.append(f"• Summary: {summary}")
         if description:
-            changes.append(f"• Description: (updated)")
+            changes.append("• Description: (updated)")
         if status:
             changes.append(f"• Status: {status}")
         if priority:
@@ -284,7 +284,7 @@ async def update_jira_issue(
         return ToolResult(
             output=f"**Action requires approval**: Update Jira issue {issue_key}\n\n"
             f"Changes:\n" + "\n".join(changes) + "\n\n"
-            f"Set `approve=True` to execute this action.",
+            "Set `approve=True` to execute this action.",
             sources=[],
         )
 

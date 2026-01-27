@@ -331,16 +331,16 @@ async def generate_tests_for_file(
         for cls in classes:
             lines.append(f"  - {cls.name}: {len(cls.methods)} methods")
 
-    lines.append(f"\n**Generated Test Code**:")
+    lines.append("\n**Generated Test Code**:")
     lines.append(f"```{language}")
     lines.append(test_code)
     lines.append("```")
 
-    lines.append(f"\n**Next Steps**:")
+    lines.append("\n**Next Steps**:")
     lines.append(f"1. Save to `{test_file_path}`")
-    lines.append(f"2. Review and customize test cases")
-    lines.append(f"3. Add mock implementations as needed")
-    lines.append(f"4. Run tests with `npm test` or `pytest`")
+    lines.append("2. Review and customize test cases")
+    lines.append("3. Add mock implementations as needed")
+    lines.append("4. Run tests with `npm test` or `pytest`")
 
     return ToolResult(output="\n".join(lines), sources=[])
 
@@ -419,7 +419,7 @@ async def generate_tests_for_function(
     lines.append(f"**Function Signature**: `{_format_signature(target_func)}`")
     if target_func.docstring:
         lines.append(f"**Docstring**: {target_func.docstring[:100]}...")
-    lines.append(f"\n**Generated Test Code**:")
+    lines.append("\n**Generated Test Code**:")
     lines.append(f"```{language}")
     lines.append(test_code)
     lines.append("```")
@@ -477,13 +477,13 @@ async def generate_test_suite(
         )
 
     # Generate summary
-    lines = [f"## Test Suite Generation\n"]
+    lines = ["## Test Suite Generation\n"]
     lines.append(f"**Scope**: {scope}")
     lines.append(f"**Framework**: {framework}")
     lines.append(f"**Language**: {language}")
     lines.append(f"**Files Found**: {len(files)}")
 
-    lines.append(f"\n### Files to Process")
+    lines.append("\n### Files to Process")
     for file in files[:20]:  # Limit display
         test_path = _get_test_file_path(file, framework, language)
         lines.append(f"- `{file}` -> `{test_path}`")
@@ -509,10 +509,10 @@ async def generate_test_suite(
 
     lines.append(f"\n**Estimated Test Cases**: ~{estimated_tests}")
 
-    lines.append(f"\n### Next Steps")
-    lines.append(f"1. Run `test.generate_for_file` for each file")
-    lines.append(f"2. Review and customize generated tests")
-    lines.append(f"3. Run test suite: `npm test` or `pytest`")
+    lines.append("\n### Next Steps")
+    lines.append("1. Run `test.generate_for_file` for each file")
+    lines.append("2. Review and customize generated tests")
+    lines.append("3. Run test suite: `npm test` or `pytest`")
 
     return ToolResult(output="\n".join(lines), sources=[])
 
@@ -583,7 +583,7 @@ async def detect_test_framework(
             pass
 
     # Build output
-    lines = [f"## Test Framework Detection\n"]
+    lines = ["## Test Framework Detection\n"]
 
     if detected:
         primary = detected[0]
@@ -592,7 +592,7 @@ async def detect_test_framework(
         lines.append(f"**Confidence**: {primary['confidence']}")
 
         if len(detected) > 1:
-            lines.append(f"\n**Other Frameworks Detected**:")
+            lines.append("\n**Other Frameworks Detected**:")
             for d in detected[1:]:
                 lines.append(f"- {d['framework']} (from {d['config_file']})")
     else:
@@ -709,7 +709,7 @@ async def suggest_test_improvements(
         })
 
     # Build output
-    lines = [f"## Test Improvement Suggestions\n"]
+    lines = ["## Test Improvement Suggestions\n"]
     lines.append(f"**File**: {test_file_path}")
 
     if suggestions:

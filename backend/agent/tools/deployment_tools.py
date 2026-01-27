@@ -572,7 +572,7 @@ async def detect_project_type(
                 detected["has_dockerfile"] = True
 
             # Parse package.json for more details
-            if filename == "package_json":
+            if filename == "package.json":
                 try:
                     with open(filepath, "r") as f:
                         pkg = json.load(f)

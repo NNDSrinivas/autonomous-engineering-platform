@@ -695,7 +695,7 @@ async def detect_project_type(
                 detected["language"] = "python"
 
                 try:
-                    if filename == "requirements_txt":
+                    if filename == "requirements.txt":
                         with open(filepath, "r") as f:
                             content = f.read().lower()
                     else:

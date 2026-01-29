@@ -7,7 +7,8 @@ from typing import Callable
 from typing import Optional
 
 import redis
-from loguru import logger
+
+from .obs.obs_logging import logger
 from prometheus_client import Counter
 from prometheus_client import Gauge
 from prometheus_client import Summary
@@ -170,9 +171,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 key, settings.redis_rate_limit_ttl
             )  # Set TTL from settings to prevent unbounded memory growth
         except Exception as e:
-            # Redis unavailable (e.g., CI environment) - skip rate limiting with warning
-            logger.warning(f"Redis unavailable, skipping rate limiting: {e}")
-            # In production, you'd want proper in-memory fallback, but for CI we skip
+            # Redis unavailable - skip rate limiting for this request
+            _ = e
             pass
 
         return await call_next(request)

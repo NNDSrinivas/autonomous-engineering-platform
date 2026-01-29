@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 #   2. Use Redis key expiration instead of cleanup thread
 #   3. Handle Redis connection failures gracefully
 _presence_cache: Dict[Tuple[str, str], int] = {}
+_org_presence_cache: Dict[str, Dict[str, int]] = {}
 _cache_lock = threading.Lock()
 _cleanup_thread: Optional[threading.Thread] = None
 _cleanup_stop_event = threading.Event()
@@ -50,6 +51,19 @@ def _cleanup_presence_cache() -> None:
             ]
             for key in keys_to_delete:
                 del _presence_cache[key]
+            orgs_to_delete = []
+            for org_id, users in _org_presence_cache.items():
+                expired_users = [
+                    user_id
+                    for user_id, ts in users.items()
+                    if (now - ts) > settings.PRESENCE_TTL_SEC
+                ]
+                for user_id in expired_users:
+                    users.pop(user_id, None)
+                if not users:
+                    orgs_to_delete.append(org_id)
+            for org_id in orgs_to_delete:
+                _org_presence_cache.pop(org_id, None)
 
 
 def start_cleanup_thread() -> None:
@@ -122,6 +136,39 @@ def note_heartbeat(plan_id: str, user_id: str) -> None:
     """
     with _cache_lock:
         _presence_cache[(plan_id, user_id)] = int(time.time())
+
+
+def note_org_heartbeat(org_id: str, user_id: str) -> None:
+    """Record heartbeat timestamp for a user at the org level."""
+    with _cache_lock:
+        org_users = _org_presence_cache.setdefault(org_id, {})
+        org_users[user_id] = int(time.time())
+
+
+def remove_org_user(org_id: str, user_id: str) -> None:
+    """Remove a user's org-level presence entry."""
+    with _cache_lock:
+        org_users = _org_presence_cache.get(org_id)
+        if not org_users:
+            return
+        org_users.pop(user_id, None)
+        if not org_users:
+            _org_presence_cache.pop(org_id, None)
+
+
+def get_active_org_user_count(org_id: str) -> Optional[int]:
+    """Return active org user count if presence data exists, else None."""
+    now = int(time.time())
+    with _cache_lock:
+        org_users = _org_presence_cache.get(org_id)
+        if not org_users:
+            return None
+        active_users = [
+            user_id
+            for user_id, ts in org_users.items()
+            if (now - ts) <= settings.PRESENCE_TTL_SEC
+        ]
+        return len(active_users)
 
 
 def is_expired(plan_id: str, user_id: str) -> bool:

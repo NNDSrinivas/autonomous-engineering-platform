@@ -677,6 +677,51 @@ This generates sample plans and verifies metrics are being recorded correctly.
 3. **Test Flow**: Command Palette → "AEP: Open Agent" → Pick task → Approve plan
 4. **Verify Policy**: Try denied command to confirm security enforcement
 
+#### **VS Code Webview CORS (Dev Only)**
+
+For local UI testing from the VS Code webview, allow CORS in dev:
+
+```bash
+# Dev only: allow all origins for local testing
+export CORS_ORIGINS="*"
+```
+
+Restart the backend after changing envs. Do not use wildcard CORS in production. In prod, use a strict allowlist and require auth tokens.
+
+#### **NAVI V2 Approval Flow (Onboarding)**
+
+Use V2 plan + approval endpoints for the current approval UX and streaming execution events.
+
+```bash
+# 1) Propose plan (returns planId + actions)
+curl -X POST http://localhost:8002/api/navi/v2/plan \
+  -H "Content-Type: application/json" \
+  -H "X-Org-Id: default" \
+  -H "X-User-Id: dev1" \
+  -d '{"message":"Add a /health endpoint","mode":"plan"}'
+
+# 2) Approve + stream execution
+curl -N -X POST http://localhost:8002/api/navi/v2/plan/{planId}/approve/stream \
+  -H "Content-Type: application/json" \
+  -H "X-Org-Id: default" \
+  -H "X-User-Id: dev1"
+```
+
+Notes:
+- Use `/api/navi/v2/plan/{planId}/approve` for non-stream execution.
+- Use `/api/navi/apply` to apply file edits + run commands when actions are ready.
+
+#### **Extension Compile Check**
+
+```bash
+./scripts/check_extension_compile.sh
+```
+
+#### **Enterprise Ops Readiness**
+
+For production-oriented security and ops guidance (audit retention, encryption, JWT rotation),
+see `docs/NAVI_PROD_READINESS.md`.
+
 ### 🔮 **Future Roadmap**
 
 - **PR-9**: Model Router & LLM-powered Planning with cost controls

@@ -179,6 +179,46 @@
   background-clip: text;
 }
 
+/* ==========================================================================
+   Command Output Segments
+   ========================================================================== */
+
+.navi-command-header__badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.navi-command-header__badge--stderr {
+  color: var(--navi-error);
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.12);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+}
+
+.navi-command-output__segment {
+  white-space: pre-wrap;
+}
+
+.navi-command-output__stderr {
+  color: #f87171;
+}
+
+.navi-command-output__stdout {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.navi-command-output__truncated {
+  display: block;
+  color: rgba(255, 255, 255, 0.55);
+  font-style: italic;
+  margin-top: 8px;
+}
+
 /* Status badges - Holographic pills */
 .navi-command-panel__badges {
   display: flex;

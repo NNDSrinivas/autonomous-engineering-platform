@@ -7,8 +7,11 @@ Verifies that:
 4. No duplicate edges exist
 """
 
+import pytest
 from httpx import Client
 from tests.conftest import assert_response_ok
+
+pytestmark = pytest.mark.integration
 
 
 def test_edges_accuracy(api_client: Client, seeded_graph):

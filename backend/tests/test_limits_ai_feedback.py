@@ -16,42 +16,59 @@ from backend.api.main import app
 TOKEN_REFILL_WAIT_SEC = 1.1  # Slightly longer than token refill interval
 
 client = TestClient(app)
+RATE_LIMIT_HEADERS = {"X-Forwarded-For": "10.12.34.56"}
 
 
 def setup_module(_):
     """Set up test environment with rate limiting enabled."""
-    os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
-    os.environ.setdefault("ALLOW_DEV_AUTH", "true")
-    os.environ.setdefault("DEV_USER_ID", "u-ae")
-    os.environ.setdefault("DEV_ORG_ID", "org-ae")
-    os.environ.setdefault("DEV_USER_ROLE", "planner")
+    os.environ["RATE_LIMIT_ENABLED"] = "true"
+    os.environ["ALLOW_DEV_AUTH"] = "true"
+    os.environ["DEV_USER_ID"] = "u-ae"
+    os.environ["DEV_ORG_ID"] = "org-ae"
+    os.environ["DEV_USER_ROLE"] = "admin"
 
     # Set low limits for testing
-    os.environ.setdefault("RL_AI_GEN_PM", "2")
-    os.environ.setdefault("RL_AI_GEN_BURST", "1")
-    os.environ.setdefault("RL_FB_PM", "3")
-    os.environ.setdefault("RL_FB_BURST", "1")
+    os.environ["RL_AI_GEN_PM"] = "2"
+    os.environ["RL_AI_GEN_BURST"] = "1"
+    os.environ["RL_FB_PM"] = "3"
+    os.environ["RL_FB_BURST"] = "1"
 
 
 def test_ai_generate_rate_limited():
     """Test that AI generation endpoint is rate limited."""
     # First request should succeed (or fail with validation, but not rate limit)
-    r1 = client.post("/api/ai/generate-diff", json={"intent": "test", "files": []})
+    r1 = client.post(
+        "/api/ai/generate-diff",
+        json={"intent": "test", "files": []},
+        headers=RATE_LIMIT_HEADERS,
+    )
     assert r1.status_code in (200, 422, 404)  # Not rate limited
 
     # Second request within same window should be rate limited (burst=1)
-    r2 = client.post("/api/ai/generate-diff", json={"intent": "test", "files": []})
+    r2 = client.post(
+        "/api/ai/generate-diff",
+        json={"intent": "test", "files": []},
+        headers=RATE_LIMIT_HEADERS,
+    )
     assert r2.status_code == 429, f"Expected 429, got {r2.status_code}: {r2.text}"
 
 
 def test_ai_apply_patch_rate_limited():
     """Test that AI apply patch endpoint is rate limited."""
     # First request should succeed (or fail with validation, but not rate limit)
-    r1 = client.post("/api/ai/apply-patch", json={"patch": "test", "files": []})
+    r1 = client.post(
+        "/api/ai/apply-patch",
+        json={"patch": "test", "files": []},
+        headers=RATE_LIMIT_HEADERS,
+    )
     assert r1.status_code in (200, 422, 404)  # Not rate limited
 
     # Second request within same window should be rate limited (burst=1)
-    r2 = client.post("/api/ai/apply-patch", json={"patch": "test", "files": []})
+    r2 = client.post(
+        "/api/ai/apply-patch",
+        json={"patch": "test", "files": []},
+        headers=RATE_LIMIT_HEADERS,
+    )
     assert r2.status_code == 429, f"Expected 429, got {r2.status_code}: {r2.text}"
 
 
@@ -65,30 +82,34 @@ def test_feedback_endpoints_rate_limited():
     }
 
     # First request should succeed
-    r1 = client.post("/api/feedback/submit", json=feedback_data)
+    r1 = client.post(
+        "/api/feedback/submit", json=feedback_data, headers=RATE_LIMIT_HEADERS
+    )
     assert r1.status_code in (200, 422, 404)  # Not rate limited
 
     # Second request within same window should be rate limited (burst=1)
-    r2 = client.post("/api/feedback/submit", json=feedback_data)
+    r2 = client.post(
+        "/api/feedback/submit", json=feedback_data, headers=RATE_LIMIT_HEADERS
+    )
     assert r2.status_code == 429, f"Expected 429, got {r2.status_code}: {r2.text}"
 
 
 def test_feedback_stats_rate_limited():
     """Test that feedback stats endpoint is rate limited."""
     # First request should succeed
-    r1 = client.get("/api/feedback/stats")
+    r1 = client.get("/api/feedback/stats", headers=RATE_LIMIT_HEADERS)
     assert r1.status_code in (200, 422, 404)  # Not rate limited
 
     # Multiple requests to test burst limit
     for i in range(3):
-        r = client.get("/api/feedback/stats")
+        r = client.get("/api/feedback/stats", headers=RATE_LIMIT_HEADERS)
         # Should eventually hit rate limit
         if r.status_code == 429:
             break
     else:
         # If we didn't hit rate limit after multiple requests,
         # make one more to ensure we do
-        r_final = client.get("/api/feedback/stats")
+        r_final = client.get("/api/feedback/stats", headers=RATE_LIMIT_HEADERS)
         assert (
             r_final.status_code == 429
         ), f"Expected eventual 429, got {r_final.status_code}"
@@ -100,7 +121,11 @@ def test_different_endpoints_separate_limits():
     time.sleep(TOKEN_REFILL_WAIT_SEC)
 
     # AI generate should be limited independently from feedback
-    r1 = client.post("/api/ai/generate-diff", json={"intent": "test", "files": []})
+    r1 = client.post(
+        "/api/ai/generate-diff",
+        json={"intent": "test", "files": []},
+        headers=RATE_LIMIT_HEADERS,
+    )
     assert r1.status_code in (200, 422, 404)
 
     # Feedback should still work (separate limit)
@@ -109,5 +134,7 @@ def test_different_endpoints_separate_limits():
         "rating": 1,
         # Note: org_key and user_sub are extracted from current_user by the API
     }
-    r2 = client.post("/api/feedback/submit", json=feedback_data)
+    r2 = client.post(
+        "/api/feedback/submit", json=feedback_data, headers=RATE_LIMIT_HEADERS
+    )
     assert r2.status_code in (200, 422, 404)  # Should not be rate limited

@@ -15,6 +15,7 @@ This matches Claude Code's conversational style where the AI talks through
 what it's doing while actually doing it.
 """
 
+import json
 import logging
 import re
 import uuid
@@ -133,6 +134,7 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
 import asyncio
 import os
 from pathlib import Path
+from typing import AsyncGenerator
 
 
 def _get_command_env() -> dict:
@@ -167,6 +169,95 @@ def _get_node_env_setup(workspace_path: str) -> str:
             f'{nvm_use}'
         )
     return ""
+
+
+async def stream_with_tools_openai(
+    message: str,
+    workspace_path: str,
+    api_key: str,
+    model: str,
+    base_url: str = "https://api.openai.com/v1",
+    context: Optional[Dict[str, Any]] = None,
+    conversation_history: Optional[List[Dict[str, Any]]] = None,
+) -> AsyncGenerator["StreamEvent", None]:
+    """
+    Minimal streaming implementation for OpenAI-compatible providers.
+    Emits text chunks as StreamEventType.TEXT to keep the V2 endpoint functional.
+    """
+    from backend.services.llm_client import LLMClient, LLMMessage
+
+    if not api_key:
+        yield StreamEvent(StreamEventType.DONE, {"summary": {}, "error": "Missing API key"})
+        return
+
+    system_prompt = "You are NAVI, an autonomous engineering assistant."
+    if context:
+        system_prompt += "\n\nContext:\n" + json.dumps(context, ensure_ascii=False)
+
+    messages: List[LLMMessage] = [LLMMessage(role="system", content=system_prompt)]
+    if conversation_history:
+        for msg in conversation_history:
+            role = msg.get("role") or msg.get("type") or "user"
+            content = str(msg.get("content") or "")
+            messages.append(LLMMessage(role=role, content=content))
+    messages.append(LLMMessage(role="user", content=message))
+
+    client = LLMClient(
+        provider="openai",
+        model=model,
+        api_key=api_key,
+        api_base=base_url,
+    )
+
+    async for chunk in client.stream(messages):
+        if chunk:
+            yield StreamEvent(StreamEventType.TEXT, chunk)
+
+    yield StreamEvent(StreamEventType.DONE, {"summary": {}})
+
+
+async def stream_with_tools_anthropic(
+    message: str,
+    workspace_path: str,
+    api_key: str,
+    model: str,
+    context: Optional[Dict[str, Any]] = None,
+    conversation_history: Optional[List[Dict[str, Any]]] = None,
+    conversation_id: Optional[str] = None,
+) -> AsyncGenerator["StreamEvent", None]:
+    """
+    Minimal streaming implementation for Anthropic.
+    Emits text chunks as StreamEventType.TEXT to keep the V2 endpoint functional.
+    """
+    from backend.services.llm_client import LLMClient, LLMMessage
+
+    if not api_key:
+        yield StreamEvent(StreamEventType.DONE, {"summary": {}, "error": "Missing API key"})
+        return
+
+    system_prompt = "You are NAVI, an autonomous engineering assistant."
+    if context:
+        system_prompt += "\n\nContext:\n" + json.dumps(context, ensure_ascii=False)
+
+    messages: List[LLMMessage] = [LLMMessage(role="system", content=system_prompt)]
+    if conversation_history:
+        for msg in conversation_history:
+            role = msg.get("role") or msg.get("type") or "user"
+            content = str(msg.get("content") or "")
+            messages.append(LLMMessage(role=role, content=content))
+    messages.append(LLMMessage(role="user", content=message))
+
+    client = LLMClient(
+        provider="anthropic",
+        model=model,
+        api_key=api_key,
+    )
+
+    async for chunk in client.stream(messages):
+        if chunk:
+            yield StreamEvent(StreamEventType.TEXT, chunk)
+
+    yield StreamEvent(StreamEventType.DONE, {"summary": {}})
 
 async def detect_project_type_and_build_command(workspace_path: str) -> Optional[Dict[str, Any]]:
     """

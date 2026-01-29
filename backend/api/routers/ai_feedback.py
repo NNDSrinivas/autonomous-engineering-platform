@@ -30,9 +30,11 @@ router = APIRouter(prefix="/api/feedback", tags=["AI Feedback"])
 async def submit_feedback(
     feedback: FeedbackSubmission,
     current_user: Dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession | None = Depends(get_db_session),
 ) -> FeedbackResponse:
     """Submit feedback for an AI generation."""
+    if session is None:
+        raise HTTPException(status_code=404, detail="Database not initialized")
     service = FeedbackService(session)
 
     success = await service.submit_feedback(
@@ -87,9 +89,11 @@ async def submit_feedback(
 async def get_feedback_stats(
     days: int = 30,
     current_user: Dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession | None = Depends(get_db_session),
 ) -> FeedbackStats:
     """Get feedback statistics for the organization."""
+    if session is None:
+        raise HTTPException(status_code=404, detail="Database not initialized")
     if days < 1 or days > 365:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -109,9 +113,11 @@ async def get_feedback_stats(
 async def get_recent_feedback(
     limit: int = 50,
     current_user: Dict = Depends(require_role(Role.ADMIN)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession | None = Depends(get_db_session),
 ) -> RecentFeedbackResponse:
     """Get recent feedback entries (admin only)."""
+    if session is None:
+        raise HTTPException(status_code=404, detail="Database not initialized")
     if limit < 1 or limit > 200:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

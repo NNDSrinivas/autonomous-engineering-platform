@@ -1,0 +1,670 @@
+/* =============================================================================
+   NAVI CODE ARCHAEOLOGY PANEL
+   =============================================================================
+   Archaeological dig theme - Commands are "artifacts" at depth layers
+   Color Palette:
+   - Excavation Tan: #D4A574
+   - Sediment Dark: #1A1612
+   - Artifact Gold: #C9A227
+   - Erosion Red: #8B3A3A
+   - Stone Gray: #5C534A
+   - Fossil Cream: #E8DCC8
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   CSS Variables
+   ----------------------------------------------------------------------------- */
+.archaeology-panel {
+  --arch-bg-dark: #1A1612;
+  --arch-bg-medium: #252018;
+  --arch-bg-light: #302820;
+  --arch-tan: #D4A574;
+  --arch-tan-light: #E8C9A8;
+  --arch-gold: #C9A227;
+  --arch-gold-dim: #8B7319;
+  --arch-red: #8B3A3A;
+  --arch-red-light: #B54A4A;
+  --arch-green: #5A8B3A;
+  --arch-green-light: #7AB54A;
+  --arch-stone: #5C534A;
+  --arch-cream: #E8DCC8;
+  --arch-cream-dim: #A89B88;
+  --arch-border: #3D352C;
+  --arch-border-light: #5C534A;
+}
+
+/* -----------------------------------------------------------------------------
+   Panel Container
+   ----------------------------------------------------------------------------- */
+.archaeology-panel {
+  background: var(--arch-bg-dark);
+  border: 2px solid var(--arch-tan);
+  border-radius: 0;
+  font-family: 'Courier New', 'Monaco', 'Consolas', monospace;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.archaeology-panel.collapsed {
+  cursor: pointer;
+  border-width: 1px;
+}
+
+.archaeology-panel.collapsed:hover {
+  border-color: var(--arch-gold);
+  background: var(--arch-bg-medium);
+}
+
+/* -----------------------------------------------------------------------------
+   Collapsed State
+   ----------------------------------------------------------------------------- */
+.collapsed-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--arch-tan);
+}
+
+.collapsed-icon {
+  font-size: 14px;
+}
+
+.collapsed-title {
+  font-weight: bold;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.collapsed-stats {
+  flex: 1;
+  text-align: right;
+  font-size: 10px;
+  color: var(--arch-cream-dim);
+}
+
+.collapsed-expand {
+  font-size: 10px;
+  color: var(--arch-tan);
+}
+
+/* -----------------------------------------------------------------------------
+   Site Header
+   ----------------------------------------------------------------------------- */
+.site-header {
+  background: linear-gradient(180deg, var(--arch-bg-medium) 0%, var(--arch-bg-dark) 100%);
+  border-bottom: 2px solid var(--arch-tan);
+  padding: 12px 16px;
+}
+
+.site-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.site-title:hover .title-text {
+  color: var(--arch-gold);
+}
+
+.site-icon {
+  font-size: 16px;
+}
+
+.title-text {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--arch-tan);
+  letter-spacing: 2px;
+  transition: color 0.2s;
+}
+
+.collapse-btn {
+  font-size: 10px;
+  color: var(--arch-cream-dim);
+}
+
+.site-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--arch-cream-dim);
+  padding: 8px 12px;
+  background: var(--arch-bg-dark);
+  border: 1px dashed var(--arch-border);
+  border-radius: 0;
+}
+
+.depth-badge {
+  color: var(--arch-gold);
+  font-weight: bold;
+}
+
+.info-divider {
+  color: var(--arch-border-light);
+}
+
+.depth-current,
+.artifact-count {
+  color: var(--arch-cream);
+}
+
+.site-clear {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: transparent;
+  border: 1px solid var(--arch-red);
+  color: var(--arch-red);
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 9px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+
+.site-clear:hover {
+  background: var(--arch-red);
+  color: var(--arch-cream);
+}
+
+/* -----------------------------------------------------------------------------
+   Legend
+   ----------------------------------------------------------------------------- */
+.site-legend {
+  display: flex;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--arch-bg-medium);
+  border-bottom: 1px solid var(--arch-border);
+  font-size: 9px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-symbol {
+  font-size: 10px;
+}
+
+.legend-item.pristine .legend-symbol {
+  color: var(--arch-gold);
+}
+
+.legend-item.analyzing .legend-symbol {
+  color: var(--arch-tan-light);
+  animation: dig-pulse 1.5s ease-in-out infinite;
+}
+
+.legend-item.fragmented .legend-symbol {
+  color: var(--arch-red);
+}
+
+.legend-label {
+  color: var(--arch-cream-dim);
+}
+
+/* -----------------------------------------------------------------------------
+   Excavation Area
+   ----------------------------------------------------------------------------- */
+.excavation-area {
+  max-height: 500px;
+  overflow-y: auto;
+  background: var(--arch-bg-dark);
+}
+
+.excavation-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.excavation-area::-webkit-scrollbar-track {
+  background: var(--arch-bg-dark);
+}
+
+.excavation-area::-webkit-scrollbar-thumb {
+  background: var(--arch-stone);
+  border-radius: 0;
+}
+
+.excavation-area::-webkit-scrollbar-thumb:hover {
+  background: var(--arch-tan);
+}
+
+/* -----------------------------------------------------------------------------
+   No Artifacts State
+   ----------------------------------------------------------------------------- */
+.no-artifacts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: var(--arch-cream-dim);
+}
+
+.dig-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.dig-message {
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.dig-hint {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* -----------------------------------------------------------------------------
+   Surface Marker
+   ----------------------------------------------------------------------------- */
+.surface-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  color: var(--arch-tan);
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+
+.surface-line {
+  color: var(--arch-border-light);
+  font-size: 8px;
+}
+
+.surface-label {
+  white-space: nowrap;
+}
+
+/* -----------------------------------------------------------------------------
+   Stratum Layer
+   ----------------------------------------------------------------------------- */
+.stratum-layer {
+  display: grid;
+  grid-template-columns: 50px 2px 1fr;
+  border-bottom: 1px solid var(--arch-border);
+  position: relative;
+}
+
+.stratum-layer.stratum-0 {
+  background: var(--arch-bg-dark);
+}
+
+.stratum-layer.stratum-1 {
+  background: #1F1A15;
+}
+
+.stratum-layer.stratum-2 {
+  background: #241E18;
+}
+
+.stratum-layer.stratum-3 {
+  background: #29221B;
+}
+
+.stratum-ruler {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 12px 4px;
+  background: var(--arch-bg-medium);
+  border-right: 1px solid var(--arch-border);
+}
+
+.depth-marker {
+  font-size: 9px;
+  color: var(--arch-cream-dim);
+  font-weight: bold;
+}
+
+.stratum-number {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  background: var(--arch-stone);
+  color: var(--arch-cream);
+  font-size: 8px;
+  border-radius: 0;
+  margin-top: 4px;
+}
+
+.stratum-divider {
+  background: linear-gradient(180deg,
+    var(--arch-border) 0%,
+    var(--arch-tan) 50%,
+    var(--arch-border) 100%
+  );
+}
+
+.stratum-content {
+  position: relative;
+  padding: 8px 12px;
+}
+
+.stratum-pattern {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  font-size: 8px;
+  line-height: 1;
+  color: var(--arch-border);
+  opacity: 0.3;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* -----------------------------------------------------------------------------
+   Artifact Card
+   ----------------------------------------------------------------------------- */
+.artifact-card {
+  background: var(--arch-bg-light);
+  border: 1px solid var(--arch-border-light);
+  margin: 4px 0;
+  position: relative;
+}
+
+.artifact-card.artifact-pristine {
+  border-color: var(--arch-gold-dim);
+}
+
+.artifact-card.artifact-analyzing {
+  border-color: var(--arch-tan);
+  border-style: solid;
+  animation: excavate-pulse 2s ease-in-out infinite;
+}
+
+.artifact-card.artifact-fragmented {
+  border-color: var(--arch-red);
+  border-style: dashed;
+}
+
+/* Header */
+.artifact-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--arch-border);
+  transition: background 0.2s;
+}
+
+.artifact-header:hover {
+  background: var(--arch-bg-medium);
+}
+
+.artifact-symbol {
+  font-size: 12px;
+  color: var(--arch-tan);
+}
+
+.artifact-pristine .artifact-symbol {
+  color: var(--arch-gold);
+}
+
+.artifact-analyzing .artifact-symbol {
+  color: var(--arch-tan-light);
+  animation: dig-pulse 1s ease-in-out infinite;
+}
+
+.artifact-fragmented .artifact-symbol {
+  color: var(--arch-red);
+}
+
+.artifact-id {
+  font-size: 10px;
+  color: var(--arch-cream-dim);
+  font-weight: bold;
+}
+
+.artifact-divider {
+  color: var(--arch-border-light);
+  font-size: 10px;
+}
+
+.artifact-command {
+  flex: 1;
+  font-size: 11px;
+  color: var(--arch-cream);
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-expand {
+  font-size: 10px;
+  color: var(--arch-cream-dim);
+}
+
+/* Classification */
+.artifact-classification {
+  padding: 4px 12px;
+  font-size: 9px;
+  color: var(--arch-stone);
+  letter-spacing: 1px;
+}
+
+/* Condition */
+.artifact-condition {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 10px;
+}
+
+.condition-label {
+  color: var(--arch-cream-dim);
+}
+
+.condition-value {
+  font-weight: bold;
+}
+
+.condition-value.pristine {
+  color: var(--arch-gold);
+}
+
+.condition-value.analyzing {
+  color: var(--arch-tan-light);
+}
+
+.condition-value.fragmented {
+  color: var(--arch-red);
+}
+
+/* Progress */
+.artifact-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--arch-bg-dark);
+  border: 1px solid var(--arch-border);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--arch-tan) 0%, var(--arch-gold) 100%);
+  transition: width 0.3s ease;
+  animation: dig-progress 2s ease-in-out infinite;
+}
+
+.progress-text {
+  font-size: 10px;
+  color: var(--arch-tan);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Findings (Output) */
+.artifact-findings {
+  border-top: 1px solid var(--arch-border);
+  background: var(--arch-bg-dark);
+}
+
+.findings-header {
+  padding: 6px 12px;
+  font-size: 9px;
+  color: var(--arch-stone);
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+.findings-content {
+  padding: 8px 12px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.finding-line {
+  font-size: 10px;
+  color: var(--arch-cream-dim);
+  line-height: 1.5;
+  font-family: 'Courier New', monospace;
+}
+
+.artifact-damage {
+  padding: 8px 12px;
+  font-size: 9px;
+  color: var(--arch-red);
+  background: rgba(139, 58, 58, 0.1);
+  border-top: 1px dashed var(--arch-red);
+}
+
+.artifact-age {
+  padding: 8px 12px;
+  font-size: 9px;
+  color: var(--arch-gold-dim);
+  border-top: 1px solid var(--arch-border);
+}
+
+/* Actions */
+.artifact-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--arch-border);
+  background: var(--arch-bg-medium);
+}
+
+.artifact-action {
+  background: transparent;
+  border: 1px solid var(--arch-tan);
+  color: var(--arch-tan);
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 9px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+
+.artifact-action:hover {
+  background: var(--arch-tan);
+  color: var(--arch-bg-dark);
+}
+
+/* -----------------------------------------------------------------------------
+   Bedrock Marker
+   ----------------------------------------------------------------------------- */
+.bedrock-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--arch-bg-medium);
+  color: var(--arch-stone);
+}
+
+.bedrock-pattern {
+  font-size: 8px;
+  letter-spacing: -1px;
+  opacity: 0.5;
+}
+
+.bedrock-label {
+  font-size: 10px;
+  padding: 4px 0;
+  letter-spacing: 2px;
+}
+
+/* -----------------------------------------------------------------------------
+   Animations
+   ----------------------------------------------------------------------------- */
+@keyframes dig-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes excavate-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(212, 165, 116, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 8px 2px rgba(212, 165, 116, 0.3);
+  }
+}
+
+@keyframes dig-progress {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Responsive Design
+   ----------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .site-info {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .info-divider {
+    display: none;
+  }
+
+  .stratum-layer {
+    grid-template-columns: 40px 2px 1fr;
+  }
+
+  .artifact-command {
+    max-width: 200px;
+  }
+
+  .surface-line {
+    display: none;
+  }
+}

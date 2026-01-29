@@ -162,7 +162,9 @@ class TestDecodeJWT:
         monkeypatch.setattr(settings, "JWT_ENABLED", True)
         monkeypatch.setattr(settings, "JWT_SECRET", None)
 
-        with pytest.raises(JWTVerificationError, match="JWT_SECRET is required"):
+        with pytest.raises(
+            JWTVerificationError, match="JWT_SECRET \\(or JWT_SECRET_PREVIOUS\\) is required"
+        ):
             decode_jwt("any-token")
 
     def test_decode_jwt_disabled(self):

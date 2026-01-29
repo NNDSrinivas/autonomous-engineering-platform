@@ -7,8 +7,11 @@ Verifies that:
 4. Subgraph returned matches query depth and k parameters
 """
 
+import pytest
 from httpx import Client
 from tests.conftest import assert_response_ok
+
+pytestmark = pytest.mark.integration
 
 
 def test_explain_contains_citations(api_client: Client, seeded_graph):

@@ -85,6 +85,7 @@ def clear_log_timestamps() -> None:
 
 def get_current_user(
     x_org_id: Annotated[Optional[str], Header()] = None,
+    x_plan_tier: Annotated[Optional[str], Header()] = None,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> User:
     """
@@ -116,6 +117,13 @@ def get_current_user(
             # Verify token and extract claims (includes 'display_name' key)
             claims = verify_token(credentials.credentials)
 
+            plan_tier = (
+                claims.get("plan_tier")
+                or claims.get("org_tier")
+                or claims.get("tier")
+                or "default"
+            )
+
             return User(
                 user_id=claims["user_id"],
                 email=claims.get("email"),
@@ -123,6 +131,7 @@ def get_current_user(
                 role=Role(claims["role"]),
                 org_id=claims["org_id"],
                 projects=claims.get("projects", []),
+                plan_tier=plan_tier,
             )
 
         except JWTVerificationError:
@@ -165,6 +174,8 @@ def get_current_user(
         # Projects: comma-separated list from env
         projects = parse_comma_separated(os.getenv("DEV_PROJECTS"))
 
+        plan_tier = (x_plan_tier or os.getenv("DEV_PLAN_TIER") or "default").lower()
+
         return User(
             user_id=user_id,
             email=email,
@@ -172,11 +183,13 @@ def get_current_user(
             role=role,
             org_id=org_id,
             projects=projects,
+            plan_tier=plan_tier,
         )
 
 
 def get_current_user_optional(
     x_org_id: Annotated[Optional[str], Header()] = None,
+    x_plan_tier: Annotated[Optional[str], Header()] = None,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[User]:
     """
@@ -195,7 +208,9 @@ def get_current_user_optional(
         User object with role and context, or None if not authenticated
     """
     try:
-        return get_current_user(x_org_id=x_org_id, credentials=credentials)
+        return get_current_user(
+            x_org_id=x_org_id, x_plan_tier=x_plan_tier, credentials=credentials
+        )
     except HTTPException:
         # Not authenticated - return None instead of raising
         return None

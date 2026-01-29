@@ -73,7 +73,7 @@ class GenerateDiffOut(BaseModel):
 async def generate_diff(
     body: GenerateDiffIn,
     user: User = Depends(require_role(Role.PLANNER)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession | None = Depends(get_db_session),
 ):
     """
     Generate a context-aware unified diff for the given intent.

@@ -8,10 +8,14 @@ import { NaviSearchPage } from './pages/NaviSearchPage'
 import ExtensionMarketplacePage from './pages/ExtensionMarketplacePage'
 import EnterpriseProjectsPage from './pages/EnterpriseProjectsPage'
 import GateApprovalsPage from './pages/GateApprovalsPage'
+import AdminAuditPage from './pages/AdminAuditPage'
+import AdminSecurityPage from './pages/AdminSecurityPage'
+import { isAdminUser } from './utils/auth'
 // import NaviRoot from './components/navi/NaviRoot'
 import { WorkspaceProvider } from './context/WorkspaceContext'
 
 function HomePage() {
+  const isAdmin = isAdminUser()
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-8">
       <div className="max-w-2xl w-full bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 p-8">
@@ -70,6 +74,26 @@ function HomePage() {
                   🚀 Enterprise Projects
                 </Link>
               </li>
+              {isAdmin ? (
+                <>
+                  <li>
+                    <Link
+                      to="/admin/security"
+                      className="block bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                    >
+                      🔐 Admin Security Console
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      to="/admin/audit"
+                      className="block bg-gradient-to-r from-cyan-500 to-sky-600 hover:from-cyan-600 hover:to-sky-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                    >
+                      🛡️ Admin Audit Console
+                    </Link>
+                  </li>
+                </>
+              ) : null}
             </ul>
           </div>
         </div>
@@ -80,6 +104,7 @@ function HomePage() {
 
 function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
+  const isAdmin = isAdminUser()
 
   // Don't show nav on home page or NAVI webview
   if (location.pathname === '/' || location.pathname === '/navi') {
@@ -125,6 +150,22 @@ function Layout({ children }: { children: React.ReactNode }) {
               >
                 🚀 Enterprise
               </Link>
+              {isAdmin ? (
+                <>
+                  <Link
+                    to="/admin/security"
+                    className="text-gray-700 hover:text-emerald-600 font-medium transition-colors"
+                  >
+                    🔐 Admin Security
+                  </Link>
+                  <Link
+                    to="/admin/audit"
+                    className="text-gray-700 hover:text-cyan-600 font-medium transition-colors"
+                  >
+                    🛡️ Admin Audit
+                  </Link>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -150,6 +191,8 @@ function App() {
           <Route path="/enterprise/projects" element={<EnterpriseProjectsPage />} />
           <Route path="/enterprise/projects/:id" element={<EnterpriseProjectsPage />} />
           <Route path="/enterprise/approvals" element={<GateApprovalsPage />} />
+          <Route path="/admin/audit" element={<AdminAuditPage />} />
+          <Route path="/admin/security" element={<AdminSecurityPage />} />
         </Routes>
       </Layout>
     </WorkspaceProvider>

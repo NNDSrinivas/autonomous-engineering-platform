@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.core.db import get_db
 from backend.core.config import settings
+from backend.core import settings as core_settings
 from backend.core.webhooks import verify_hmac_signature
 from backend.services import github as ghsvc
 from backend.models.integrations import GhConnection, GhRepo
@@ -19,6 +20,18 @@ from backend.agent.context_packet import invalidate_context_packet_cache
 
 router = APIRouter(prefix="/api/webhooks/github", tags=["github_webhook"])
 logger = logging.getLogger(__name__)
+
+
+def _infer_github_event(payload: dict) -> str | None:
+    if "pull_request" in payload:
+        return "pull_request"
+    if "issue" in payload:
+        return "issues"
+    if "comment" in payload:
+        return "issue_comment"
+    if "repository" in payload and "commits" in payload:
+        return "push"
+    return None
 
 
 @router.post("")
@@ -35,16 +48,21 @@ async def ingest(
     verify_hmac_signature(
         signature=x_hub_signature_256,
         payload=body,
-        secret=settings.github_webhook_secret,
+        secret=(
+            core_settings.settings.GITHUB_WEBHOOK_SECRET
+            or settings.github_webhook_secret
+            or getattr(settings, "GITHUB_WEBHOOK_SECRET", None)
+        ),
         connector="github",
     )
 
+    payload = await request.json()
     event = request.headers.get("X-GitHub-Event")
     delivery = request.headers.get("X-GitHub-Delivery")
+    if not event and x_org_id:
+        event = _infer_github_event(payload)
     if not event:
         raise HTTPException(status_code=400, detail="Missing X-GitHub-Event header")
-
-    payload = await request.json()
     repo = payload.get("repository") or {}
     repo_full_name = repo.get("full_name")
 

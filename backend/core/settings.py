@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     #       Typical expiration: 1 hour (3600 seconds). Configure this in your auth service.
     JWT_ENABLED: bool = False  # Default: use dev shim for local development
     JWT_SECRET: str | None = None  # Required when JWT_ENABLED=true
+    JWT_SECRET_PREVIOUS: str | None = None  # Comma-separated list of previous secrets
     JWT_ALGORITHM: str = "HS256"  # Algorithm for JWT signature verification
     JWT_AUDIENCE: str | None = None  # Expected 'aud' claim (optional)
     JWT_ISSUER: str | None = None  # Expected 'iss' claim (optional)
@@ -50,7 +51,17 @@ class Settings(BaseSettings):
     RATE_LIMITING_ESTIMATED_ACTIVE_USERS: int = 5
 
     # CORS configuration
-    CORS_ORIGINS: str = "*"  # Comma-separated list of allowed origins or "*" for all
+    CORS_ORIGINS: str = ""  # Comma-separated list of allowed origins; empty means strict deny
+    ALLOW_DEV_CORS: bool = False  # Explicit dev override for localhost/vscode-webview
+    ALLOW_VSCODE_WEBVIEW: bool = True  # Allow VS Code webview origins when enabled
+
+    # VS Code/webview auth enforcement
+    VSCODE_AUTH_REQUIRED: bool = True
+    ALLOW_DEV_AUTH_BYPASS: bool = False
+
+    # OAuth device token TTLs
+    OAUTH_DEVICE_CODE_TTL_SECONDS: int = 600
+    OAUTH_DEVICE_TOKEN_TTL_SECONDS: int = 86400
 
     # API server configuration
     API_HOST: str = "0.0.0.0"
@@ -64,6 +75,10 @@ class Settings(BaseSettings):
 
     # Audit logging configuration
     enable_audit_logging: bool = True
+    AUDIT_RETENTION_ENABLED: bool = True
+    AUDIT_RETENTION_DAYS: int = 90
+    AUDIT_ENCRYPTION_KEY: str | None = None
+    AUDIT_ENCRYPTION_KEY_ID: str = "default"
 
     # Webhook secrets (shared secrets for inbound webhooks)
     JIRA_WEBHOOK_SECRET: str | None = None
@@ -104,9 +119,9 @@ if settings.HEARTBEAT_SEC * 2 >= settings.PRESENCE_TTL_SEC:
         f"Invalid presence timing: HEARTBEAT_SEC={settings.HEARTBEAT_SEC} must be < PRESENCE_TTL_SEC/2={settings.PRESENCE_TTL_SEC / 2}"
     )
 
-# Validate JWT configuration: JWT_SECRET is required when JWT_ENABLED=true
-if settings.JWT_ENABLED and not settings.JWT_SECRET:
+# Validate JWT configuration: at least one secret is required when JWT_ENABLED=true
+if settings.JWT_ENABLED and not (settings.JWT_SECRET or settings.JWT_SECRET_PREVIOUS):
     raise ValueError(
-        "JWT_SECRET must be set when JWT_ENABLED=true. "
+        "JWT_SECRET (or JWT_SECRET_PREVIOUS) must be set when JWT_ENABLED=true. "
         "Set the JWT_SECRET environment variable or disable JWT authentication."
     )

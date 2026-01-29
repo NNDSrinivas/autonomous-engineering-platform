@@ -17,6 +17,8 @@ except ImportError:
     np = None  # type: ignore
 np = cast(Any, np)
 
+logger = logging.getLogger(__name__)
+
 try:
     import faiss  # type: ignore  # Optional dependency
 
@@ -24,7 +26,7 @@ try:
 except ImportError:
     faiss = cast(Any, None)
     FAISS_AVAILABLE = False
-    logging.warning("FAISS not available, using fallback similarity search")
+    logger.debug("FAISS not available, using fallback similarity search")
 
 SentenceTransformer = None
 SENTENCE_TRANSFORMERS_AVAILABLE = False
@@ -44,7 +46,7 @@ def _load_sentence_transformer():
         from sentence_transformers import SentenceTransformer as _SentenceTransformer
     except ImportError:
         SENTENCE_TRANSFORMERS_AVAILABLE = False
-        logging.warning("SentenceTransformers not available, using basic embeddings")
+        logger.debug("SentenceTransformers not available, using basic embeddings")
         return None
 
     SentenceTransformer = _SentenceTransformer

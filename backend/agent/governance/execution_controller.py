@@ -254,6 +254,7 @@ class GovernedExecutionController(ExecutionController):
                     action=fallback_action,
                     status=ExecutionStatus.FAILED,
                     error_message=f"No pending execution found for approval {approval_id}",
+                    message=f"No pending execution found for approval {approval_id}",
                 )
 
             execution_context = self.pending_executions.pop(approval_id)
@@ -322,6 +323,15 @@ class GovernedExecutionController(ExecutionController):
                 rollback_id, requester_id, reason or ""
             )
 
+            if isinstance(rollback_result, tuple):
+                success, message, details = rollback_result
+                rollback_result = {
+                    "success": success,
+                    "message": message,
+                }
+                if isinstance(details, dict):
+                    rollback_result.update(details)
+
             success = bool(rollback_result.get("success"))
             message = rollback_result.get("message", "Rollback completed")
 
@@ -348,11 +358,13 @@ class GovernedExecutionController(ExecutionController):
                 action=rollback_action,
                 status=ExecutionStatus.COMPLETED if success else ExecutionStatus.FAILED,
                 success=success,
+                message=message,
             )
             result.result_data = {
                 "rollback": rollback_result,
                 "message": message,
             }
+            result.metadata = result.result_data
             if not success:
                 result.error_message = f"Rollback failed: {message}"
 
@@ -402,6 +414,7 @@ class GovernedExecutionController(ExecutionController):
                     action=action,
                     status=ExecutionStatus.FAILED,
                     error_message="Safety checks failed",
+                    message="Safety checks failed",
                 )
                 result.safety_checks_passed = False
                 result.result_data = {"safety_failures": safety_issues}

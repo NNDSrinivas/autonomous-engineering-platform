@@ -56,6 +56,7 @@ let globalGitService: GitService | undefined;
 let globalTaskService: TaskService | undefined;
 let globalActionRegistry: ActionRegistry | undefined;
 let globalAuthService: DeviceAuthService | undefined;
+let cachedAuthToken: string | undefined;
 
 // Phase 1.4: Collect VS Code diagnostics for a set of files
 function collectDiagnosticsForFiles(workspaceRoot: string, relativePaths: string[]) {
@@ -803,17 +804,24 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize Auth Service for device code flow
   globalAuthService = new DeviceAuthService(context);
   console.log('[AEP] DeviceAuthService initialized');
+  globalAuthService.getToken().then((token) => {
+    if (token) {
+      cachedAuthToken = token;
+    }
+  });
 
   // Register auth commands
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.signIn', async () => {
       await globalAuthService?.startLogin();
+      cachedAuthToken = await globalAuthService?.getToken();
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.signOut', async () => {
       await globalAuthService?.logout();
+      cachedAuthToken = undefined;
     })
   );
 
@@ -2291,6 +2299,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       process.env.AEP_ACCESS_TOKEN;
     if (envToken && envToken.trim()) {
       return envToken.trim();
+    }
+    if (cachedAuthToken && cachedAuthToken.trim()) {
+      return cachedAuthToken.trim();
     }
     return undefined;
   }
@@ -5145,6 +5156,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             // Import NaviService
             const { NaviService } = await import('./services/NaviService');
             const naviService = NaviService.getInstance();
+            const endpoints = this.resolveBackendEndpoints();
+            naviService.setBaseUrl(endpoints.baseUrl);
 
             try {
               // Show progress notification
@@ -5155,8 +5168,62 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   cancellable: false,
                 },
                 async (progress) => {
-                  // Approve and execute plan
-                  const executionId = await naviService.approvePlan(planId, approvedActionIndices);
+                  // Approve and execute plan with streaming updates
+                  let executionId = `${planId}-exec`;
+                  let completed = false;
+                  await naviService.approvePlanStream(planId, approvedActionIndices, (update) => {
+                    if (!update || !update.type) return;
+                    if (update.type === 'action_start') {
+                      const action = update.action || {};
+                      const normalizedAction = {
+                        ...action,
+                        filePath: (action as any).filePath || (action as any).path,
+                      };
+                      this.postToWebview({
+                        type: 'action.start',
+                        actionIndex: update.index,
+                        action: normalizedAction,
+                        planId,
+                      });
+                      return;
+                    }
+                    if (update.type === 'action_complete') {
+                      const action = update.action || {};
+                      const normalizedAction = {
+                        ...action,
+                        filePath: (action as any).filePath || (action as any).path,
+                      };
+                      this.postToWebview({
+                        type: 'action.complete',
+                        actionIndex: update.index,
+                        action: normalizedAction,
+                        success: update.success,
+                        data: {
+                          output: update.output,
+                          exitCode: update.exitCode,
+                        },
+                        planId,
+                      });
+                      return;
+                    }
+                    if (update.type === 'plan_complete') {
+                      completed = true;
+                      this.postToWebview({
+                        type: 'navi.execution.complete',
+                        planId,
+                        executionId,
+                        approvedActionIndices,
+                      });
+                      return;
+                    }
+                    if (update.type === 'error') {
+                      this.postToWebview({
+                        type: 'navi.execution.error',
+                        planId,
+                        error: update.error || 'Execution failed',
+                      });
+                    }
+                  });
 
                   progress.report({ increment: 100 });
 
@@ -5166,12 +5233,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   );
 
                   // Notify webview of completion
-                  this.postToWebview({
-                    type: 'navi.execution.complete',
-                    planId,
-                    executionId,
-                    approvedActionIndices,
-                  });
+                  if (!completed) {
+                    this.postToWebview({
+                      type: 'navi.execution.complete',
+                      planId,
+                      executionId,
+                      approvedActionIndices,
+                    });
+                  }
                 }
               );
             } catch (error: any) {
@@ -5208,6 +5277,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               // Import NaviService
               const { NaviService } = await import('./services/NaviService');
               const naviService = NaviService.getInstance();
+              const endpoints = this.resolveBackendEndpoints();
+              naviService.setBaseUrl(endpoints.baseUrl);
 
               // Get plan
               const plan = await naviService.getPlan(planId);
@@ -7742,6 +7813,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       let hasSeenToolCalls = false;
       // Collect actions during streaming (declared outside try for access in catch)
       let streamedActions: any[] = [];
+      const toolCommandMap = new Map<string, { command: string; cwd?: string }>();
 
       try {
         // AUTO-RECOVERY: Include last action error if recent (within 5 minutes)
@@ -8005,6 +8077,20 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                       }
                     }
                   });
+
+                  if (tc.name === 'run_command') {
+                    const commandId = String(tc.id || `cmd-${Date.now()}`);
+                    const command = String(tc.arguments?.command || '');
+                    const cwd = typeof tc.arguments?.cwd === 'string' ? tc.arguments.cwd : undefined;
+                    toolCommandMap.set(commandId, { command, cwd });
+                    this.postToWebview({
+                      type: 'command.start',
+                      commandId,
+                      command,
+                      cwd,
+                      meta: { actionIndex: tc.arguments?.actionIndex },
+                    });
+                  }
                 }
 
                 if (parsed.type === 'tool_result' && parsed.tool_result) {
@@ -8018,6 +8104,38 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     command: tr.result?.command,
                     kind: tr.result?.kind || tr.name,
                   };
+
+                  const mappedCommand = toolCommandMap.get(tr.id);
+                  if (mappedCommand) {
+                    const stdout = tr.result?.stdout ? String(tr.result.stdout) : '';
+                    const stderr = tr.result?.stderr ? String(tr.result.stderr) : '';
+                    if (stdout) {
+                      this.postToWebview({
+                        type: 'command.output',
+                        commandId: tr.id,
+                        text: stdout,
+                        stream: 'stdout',
+                      });
+                    }
+                    if (stderr) {
+                      this.postToWebview({
+                        type: 'command.output',
+                        commandId: tr.id,
+                        text: stderr,
+                        stream: 'stderr',
+                      });
+                    }
+                    this.postToWebview({
+                      type: 'command.done',
+                      commandId: tr.id,
+                      exitCode: typeof tr.result?.exit_code === 'number'
+                        ? tr.result.exit_code
+                        : (tr.result?.success === false ? 1 : 0),
+                      stdout,
+                      stderr,
+                    });
+                    toolCommandMap.delete(tr.id);
+                  }
 
                   this.postToWebview({
                     type: 'navi.agent.event',

@@ -8,10 +8,44 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 import logging
 import os
+import time
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/navi", tags=["navi"])
+
+# In-memory plan storage for approval flow
+_PLAN_BRAINS: Dict[str, "NaviBrain"] = {}
+_PLAN_CREATED_AT: Dict[str, float] = {}
+_PLAN_TTL_SEC = 60 * 60  # 1 hour
+_PLAN_MAX = 50
+
+
+async def _evict_plan(plan_id: str) -> None:
+    brain = _PLAN_BRAINS.pop(plan_id, None)
+    _PLAN_CREATED_AT.pop(plan_id, None)
+    if brain:
+        try:
+            await brain.close()
+        except Exception:
+            logger.warning("Failed to close NaviBrain for plan %s", plan_id)
+
+
+async def _cleanup_plans() -> None:
+    now = time.time()
+    expired = [
+        plan_id
+        for plan_id, created_at in _PLAN_CREATED_AT.items()
+        if now - created_at > _PLAN_TTL_SEC
+    ]
+    for plan_id in expired:
+        await _evict_plan(plan_id)
+
+    if len(_PLAN_CREATED_AT) > _PLAN_MAX:
+        # Evict oldest plans
+        ordered = sorted(_PLAN_CREATED_AT.items(), key=lambda item: item[1])
+        for plan_id, _ in ordered[: len(_PLAN_CREATED_AT) - _PLAN_MAX]:
+            await _evict_plan(plan_id)
 
 
 # ==================== REQUEST/RESPONSE MODELS ====================
@@ -248,7 +282,27 @@ class ExecutionUpdate(BaseModel):
     error: Optional[str] = Field(default=None, description="Error message")
 
 
-@router.post("/plan", response_model=PlanResponse)
+class ApplyActionsRequest(BaseModel):
+    """Apply file edits and optionally run commands."""
+
+    workspace: str = Field(..., description="Workspace root path")
+    file_edits: List[Dict[str, Any]] = Field(default_factory=list)
+    commands_run: List[str] = Field(default_factory=list)
+    allow_commands: bool = Field(
+        default=False, description="Allow command execution"
+    )
+
+
+class ApplyActionsResponse(BaseModel):
+    success: bool
+    files_created: List[str] = Field(default_factory=list)
+    files_modified: List[str] = Field(default_factory=list)
+    commands_run: List[str] = Field(default_factory=list)
+    command_failures: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+@router.post("/v2/plan", response_model=PlanResponse)
 async def create_plan(request: NaviRequest):
     """
     NAVI V2: Create a plan without executing (for human approval).
@@ -298,6 +352,8 @@ async def create_plan(request: NaviRequest):
 
         logger.info(f"🎯 [NAVI V2] Creating plan for: {request.message[:100]}...")
 
+        await _cleanup_plans()
+
         # Initialize brain
         brain = NaviBrain(
             provider=request.llm_provider, model=request.llm_model, api_key=api_key
@@ -317,8 +373,12 @@ async def create_plan(request: NaviRequest):
 
         # Generate plan (doesn't execute)
         response = await brain.plan(request.message, context)
-
-        await brain.close()
+        if response.plan_id:
+            _PLAN_BRAINS[response.plan_id] = brain
+            _PLAN_CREATED_AT[response.plan_id] = time.time()
+        else:
+            # No approval needed; no plan stored
+            await brain.close()
 
         return PlanResponse(
             plan_id=response.plan_id or "",
@@ -336,7 +396,7 @@ async def create_plan(request: NaviRequest):
         raise HTTPException(status_code=500, detail=f"Plan creation failed: {str(e)}")
 
 
-@router.post("/plan/{plan_id}/approve")
+@router.post("/v2/plan/{plan_id}/approve")
 async def approve_plan(plan_id: str, approve_request: ApproveRequest):
     """
     NAVI V2: Approve and execute specific actions from a plan.
@@ -355,9 +415,8 @@ async def approve_plan(plan_id: str, approve_request: ApproveRequest):
         }
     """
     try:
-        # Get the brain instance (in production, you'd store this globally)
-        # For now, we'll track plans globally in the module
-        brain = getattr(approve_plan, "_brain_instance", None)
+        await _cleanup_plans()
+        brain = _PLAN_BRAINS.get(plan_id)
         if not brain:
             raise HTTPException(status_code=404, detail="Plan not found")
 
@@ -369,13 +428,20 @@ async def approve_plan(plan_id: str, approve_request: ApproveRequest):
             f"🎯 [NAVI V2] Approved {len(approve_request.approved_action_indices)} actions for plan {plan_id}"
         )
 
-        # Start execution in background
         execution_id = plan_id + "-exec"
+        updates = []
+        async for update in brain.execute_plan(
+            plan_id, approve_request.approved_action_indices
+        ):
+            updates.append(update)
+
+        await _evict_plan(plan_id)
 
         return {
             "execution_id": execution_id,
-            "status": "executing",
-            "message": f"Executing {len(approve_request.approved_action_indices)} approved actions...",
+            "status": "completed",
+            "message": f"Executed {len(approve_request.approved_action_indices)} approved actions.",
+            "updates": updates,
         }
 
     except HTTPException:
@@ -385,7 +451,7 @@ async def approve_plan(plan_id: str, approve_request: ApproveRequest):
         raise HTTPException(status_code=500, detail=f"Plan approval failed: {str(e)}")
 
 
-@router.get("/plan/{plan_id}")
+@router.get("/v2/plan/{plan_id}")
 async def get_plan(plan_id: str):
     """
     NAVI V2: Get plan details by ID.
@@ -393,7 +459,8 @@ async def get_plan(plan_id: str):
     Returns the full plan including actions and status.
     """
     try:
-        brain = getattr(approve_plan, "_brain_instance", None)
+        await _cleanup_plans()
+        brain = _PLAN_BRAINS.get(plan_id)
         if not brain:
             raise HTTPException(status_code=404, detail="Plan not found")
 
@@ -402,12 +469,66 @@ async def get_plan(plan_id: str):
             raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
 
         return plan.to_dict()
-
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ [NAVI V2] Get plan failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Get plan failed: {str(e)}")
+
+
+@router.post("/v2/plan/{plan_id}/approve/stream")
+async def approve_plan_stream(plan_id: str, approve_request: ApproveRequest):
+    """
+    NAVI V2: Approve and execute specific actions from a plan (SSE stream).
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+
+    await _cleanup_plans()
+    brain = _PLAN_BRAINS.get(plan_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    plan = brain.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
+
+    async def event_stream():
+        async for update in brain.execute_plan(
+            plan_id, approve_request.approved_action_indices
+        ):
+            yield f"data: {json.dumps(update)}\n\n"
+        await _evict_plan(plan_id)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/apply", response_model=ApplyActionsResponse)
+async def apply_actions(request: ApplyActionsRequest):
+    """
+    Apply file edits and optionally run commands (non-VSCode clients).
+    """
+    from backend.services.action_apply import apply_file_edits, run_commands
+
+    created, modified, warnings = apply_file_edits(
+        request.workspace, request.file_edits
+    )
+
+    commands_run: List[str] = []
+    command_failures: List[str] = []
+    if request.allow_commands and request.commands_run:
+        commands_run, command_failures = run_commands(
+            request.workspace, request.commands_run
+        )
+
+    return ApplyActionsResponse(
+        success=not command_failures,
+        files_created=created,
+        files_modified=modified,
+        commands_run=commands_run,
+        command_failures=command_failures,
+        warnings=warnings,
+    )
 
 
 # ==================== HEALTH & INFO ENDPOINTS ====================

@@ -13,11 +13,14 @@ import asyncio
 import aiohttp
 import json
 import base64
+import os
 import tempfile
 
 # Test server URL
-BASE_URL = "http://localhost:8002"
+BASE_URL = os.getenv("NAVI_TEST_URL", "http://localhost:8002")
 TIMEOUT = 60
+
+pytestmark = pytest.mark.integration
 
 
 class TestPlanCreation:

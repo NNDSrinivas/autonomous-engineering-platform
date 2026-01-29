@@ -6,6 +6,7 @@ Provides:
 - test_db: Database session for direct queries
 """
 
+import os
 import pytest
 import subprocess
 import sys
@@ -162,3 +163,24 @@ def get_edges_for_node(session: Session, foreign_id: str, org_id: str = TEST_ORG
     )
 
     return edges
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip integration tests unless explicitly enabled."""
+    if os.getenv("RUN_INTEGRATION_TESTS") == "1":
+        return
+    skip_integration = pytest.mark.skip(
+        reason="integration tests disabled (set RUN_INTEGRATION_TESTS=1 to run)"
+    )
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip_integration)
+
+    if os.getenv("RUN_MANUAL_TESTS") == "1":
+        return
+    skip_manual = pytest.mark.skip(
+        reason="manual tests disabled (set RUN_MANUAL_TESTS=1 to run)"
+    )
+    for item in items:
+        if "tests/manual" in str(item.fspath):
+            item.add_marker(skip_manual)

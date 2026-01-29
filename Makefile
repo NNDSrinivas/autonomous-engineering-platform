@@ -56,6 +56,12 @@ config: frontend-config
 test:
 	pytest -q
 
+e2e-smoke:
+	python3 scripts/smoke_navi_v2_e2e.py --runs 1
+
+e2e-gate:
+	python3 scripts/smoke_navi_v2_e2e.py --runs 20
+
 # Memory graph utilities
 CORE ?= http://localhost:8000
 
@@ -78,3 +84,6 @@ ui-preview:
 ui-test:
 	@echo "Testing Memory Graph UI..."
 	@cd frontend && npm run build > /dev/null 2>&1 && echo "✅ UI build successful" || (echo "❌ UI build failed" && exit 1)
+
+audit-purge:
+	python3 backend/scripts/purge_audit_logs.py

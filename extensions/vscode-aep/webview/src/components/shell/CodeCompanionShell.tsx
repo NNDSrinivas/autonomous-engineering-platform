@@ -502,6 +502,8 @@ export function CodeCompanionShell() {
   const [user, setUser] = useState<UserInfo | undefined>(undefined);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activityPanelOpen, setActivityPanelOpen] = useState(false);
+  const [activityJumpCommandId, setActivityJumpCommandId] = useState<string | null>(null);
+  const [chatJumpCommandId, setChatJumpCommandId] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [externalPanelRequest, setExternalPanelRequest] = useState<SidebarPanelType>(null);
@@ -547,6 +549,12 @@ export function CodeCompanionShell() {
 
   const activityPanelState = useActivityPanel();
 
+  useEffect(() => {
+    if (activityPanelState.isVisible && activityPanelState.steps.length > 0) {
+      setActivityPanelOpen(true);
+    }
+  }, [activityPanelState.isVisible, activityPanelState.steps.length]);
+
   // Listen for messages from extension
   useEffect(() => {
     const unsubscribe = onMessage((message: any) => {
@@ -579,10 +587,32 @@ export function CodeCompanionShell() {
     setUserMenuOpen(false);
   };
 
-  // Handle opening enterprise projects dashboard in web app
-  const handleOpenEnterpriseProjects = () => {
-    postMessage({ type: "enterprise.openDashboard" });
-  };
+  const handleOpenActivityForCommand = useCallback((commandId: string) => {
+    if (!commandId) return;
+    setActivityPanelOpen(true);
+    setActivityJumpCommandId(commandId);
+  }, []);
+
+  const handleViewCommandInChat = useCallback((commandId: string) => {
+    if (!commandId) return;
+    setChatJumpCommandId(commandId);
+  }, []);
+
+  useEffect(() => {
+    if (!activityJumpCommandId) return;
+    const timer = window.setTimeout(() => {
+      setActivityJumpCommandId(null);
+    }, 20000);
+    return () => window.clearTimeout(timer);
+  }, [activityJumpCommandId]);
+
+  useEffect(() => {
+    if (!chatJumpCommandId) return;
+    const timer = window.setTimeout(() => {
+      setChatJumpCommandId(null);
+    }, 20000);
+    return () => window.clearTimeout(timer);
+  }, [chatJumpCommandId]);
 
   // Handle MCP tool execution
   const handleExecuteMcpTool = useCallback(async (toolName: string, args: Record<string, unknown>): Promise<void> => {
@@ -854,6 +884,16 @@ export function CodeCompanionShell() {
                 </div>
               </button>
 
+              {/* Activity Panel Toggle */}
+              <button
+                className="navi-header-icon-btn navi-animated-icon navi-activity-toggle"
+                title={activityPanelOpen ? "Hide Activity" : "Show Activity"}
+                onClick={() => setActivityPanelOpen((prev) => !prev)}
+              >
+                <span className="navi-icon-glow" />
+                <Activity className="h-4 w-4 navi-activity-icon" />
+              </button>
+
               {/* Help - Opens documentation */}
               <button
                 className="navi-header-icon-btn navi-animated-icon navi-help-btn"
@@ -993,7 +1033,6 @@ export function CodeCompanionShell() {
                 onSignOut={handleSignOut}
                 onExecuteMcpTool={handleExecuteMcpTool}
                 onOpenFullPanel={() => setFullPanelOpen(true)}
-                onOpenEnterpriseProjects={handleOpenEnterpriseProjects}
                 externalPanelRequest={externalPanelRequest}
                 onClearExternalPanelRequest={() => setExternalPanelRequest(null)}
               />
@@ -1003,7 +1042,11 @@ export function CodeCompanionShell() {
           {/* Main Chat Area */}
           <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-              <NaviChatPanel activityPanelState={activityPanelState} />
+              <NaviChatPanel
+                activityPanelState={activityPanelState}
+                onOpenActivityForCommand={handleOpenActivityForCommand}
+                highlightCommandId={chatJumpCommandId}
+              />
 
               {/* Activity Panel - Right Sidebar */}
               {activityPanelOpen && activityPanelState.isVisible && (
@@ -1011,14 +1054,17 @@ export function CodeCompanionShell() {
                   <ActivityPanel
                     steps={activityPanelState.steps}
                     currentStep={activityPanelState.currentStep}
+                    highlightCommandId={activityJumpCommandId}
+                    onViewInChat={handleViewCommandInChat}
                     onFileClick={(filePath) => {
                       postMessage({ type: 'openFile', filePath });
                     }}
+                    onViewHistory={() => setHistoryOpen(true)}
                     onAcceptAll={() => {
-                      console.log('[Activity] Accept all changes');
+                      // TODO: wire up bulk accept flow
                     }}
                     onRejectAll={() => {
-                      console.log('[Activity] Reject all changes');
+                      // TODO: wire up bulk reject flow
                     }}
                   />
                   <button

@@ -4,39 +4,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 from backend.services.diff_metadata_builder import DiffMetadataBuilder
-
-
-# Placeholder classes for missing services
-class ReviewService:
-    def __init__(self):
-        pass
-
-    def review_files(self, files):
-        return []
-
-
-class FixResult:
-    def __init__(self, success=True, message="Fix applied"):
-        self.success = success
-        self.message = message
-
-
-class AutoFixService:
-    def __init__(self):
-        pass
-
-    def generate_fix(self, issue):
-        return None
-
-    def apply_fix(self, file_path, fix_id, fix_data):
-        return FixResult()
-
-    def apply_batch_fixes(self, file_path, fixes):
-        return [FixResult() for _ in fixes]
-
-
-# from backend.services.review_service import ReviewService
-# from backend.services.auto_fix_service import AutoFixService
+from backend.services.review_service import ReviewService
+from backend.services.auto_fix_service import AutoFixService
 
 
 class TestReviewService:

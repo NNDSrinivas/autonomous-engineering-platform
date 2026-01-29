@@ -19,10 +19,13 @@ export interface TerminalEntry {
   command: string;
   cwd?: string;
   output: string;
+  segments?: Array<{ stream: 'stdout' | 'stderr'; text: string }>;
   status: CommandStatus;
   startedAt: string;
   exitCode?: number;
   durationMs?: number;
+  truncated?: boolean;
+  hasStderr?: boolean;
 }
 
 interface NaviCommandCardProps {
@@ -61,6 +64,7 @@ export const NaviCommandCard: React.FC<NaviCommandCardProps> = ({
 
   // Map status for CSS class
   const statusClass = entry.status === 'done' ? 'success' : entry.status;
+  const hasStderr = Boolean(entry.hasStderr || entry.segments?.some((seg) => seg.stream === 'stderr'));
 
   // Format duration
   const formatDuration = (ms?: number) => {
@@ -124,6 +128,11 @@ export const NaviCommandCard: React.FC<NaviCommandCardProps> = ({
         </div>
 
         <div className="navi-command-header__right">
+          {hasStderr && (
+            <span className="navi-command-header__badge navi-command-header__badge--stderr">
+              stderr
+            </span>
+          )}
           {formatDuration(entry.durationMs) && (
             <span className="navi-command-header__duration">
               {formatDuration(entry.durationMs)}
@@ -172,7 +181,32 @@ export const NaviCommandCard: React.FC<NaviCommandCardProps> = ({
             ref={outputRef}
             className={`navi-command-output ${isStreaming ? 'navi-command-output--streaming' : ''}`}
           >
-            {entry.output || (entry.status === 'running' ? 'Running...' : 'No output')}
+            {entry.segments && entry.segments.length > 0 ? (
+              <>
+                {entry.segments.map((segment, idx) => (
+                  <span
+                    key={`${segment.stream}-${idx}`}
+                    className={`navi-command-output__segment navi-command-output__${segment.stream}`}
+                  >
+                    {segment.text}
+                  </span>
+                ))}
+                {entry.truncated && (
+                  <span className="navi-command-output__truncated">
+                    {'\n...output truncated...'}
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                {entry.output || (entry.status === 'running' ? 'Running...' : 'No output')}
+                {entry.truncated && (
+                  <span className="navi-command-output__truncated">
+                    {'\n...output truncated...'}
+                  </span>
+                )}
+              </>
+            )}
             {entry.exitCode !== undefined && entry.exitCode !== 0 && (
               <span className="navi-output-error">
                 {'\n'}Exit code: {entry.exitCode}

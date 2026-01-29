@@ -181,6 +181,13 @@ def test_audit_middleware_captures_requests():
 def test_event_sequence_monotonic(test_db: Session):
     """Test that event sequences are monotonic per plan"""
     plan_id = "test-monotonic"
+    other_plan_id = "other-plan"
+
+    test_db.execute(
+        text("DELETE FROM plan_events WHERE plan_id IN (:plan_id, :other_plan_id)"),
+        {"plan_id": plan_id, "other_plan_id": other_plan_id},
+    )
+    test_db.commit()
 
     # Add events in multiple transactions
     evt1 = append_event(
@@ -205,7 +212,7 @@ def test_event_sequence_monotonic(test_db: Session):
     # Events for different plans should have independent sequences
     other_plan_evt = append_event(
         test_db,
-        plan_id="other-plan",
+        plan_id=other_plan_id,
         type="event",
         payload={},
         user_sub=None,

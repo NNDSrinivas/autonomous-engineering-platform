@@ -88,6 +88,8 @@ class ClassifyResponse(BaseModel):
 class ModelInfo(BaseModel):
     """Information about available LLM model."""
 
+    model_config = {"protected_namespaces": ()}
+
     model_id: str
     provider: str
     display_name: str

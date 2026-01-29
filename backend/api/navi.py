@@ -63,13 +63,6 @@ from backend.services.git_service import GitService
 # Conversation memory for cross-session persistence
 from backend.services.memory.conversation_memory import ConversationMemoryService
 
-# Persistent session memory for workspace-based context
-from backend.services.memory_integration import (
-    load_workspace_memory,
-    inject_memory_context,
-    save_conversation_exchange_sync,
-)
-
 # NOTE: ProjectAnalyzer is in backend/services/navi_brain.py
 # The /api/navi/chat endpoint in chat.py uses navi_brain.py's implementation
 
@@ -150,30 +143,6 @@ class ToolResult(BaseModel):
 active_runs: Dict[str, RunState] = {}
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# ENVIRONMENT HELPERS FOR NODE.JS COMMANDS
-# ============================================================================
-
-
-def _get_command_env() -> dict:
-    """
-    Get environment for command execution with nvm compatibility fixes.
-    Removes npm_config_prefix which conflicts with nvm.
-    """
-    env = os.environ.copy()
-    env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
-    env["SHELL"] = env.get("SHELL", "/bin/bash")
-    return env
-
-
-def _is_node_command(cmd: List[str]) -> bool:
-    """Check if command requires Node.js environment."""
-    if not cmd:
-        return False
-    node_commands = ["npm", "npx", "node", "yarn", "pnpm", "bun", "tsc", "next"]
-    return cmd[0] in node_commands
 
 
 # Model alias resolution - maps fake/future model IDs to real valid models
@@ -1259,7 +1228,6 @@ async def analyze_working_changes(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
         },
     )
 
@@ -1368,8 +1336,6 @@ async def stream_repo_review(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
         },
     )
 
@@ -1398,8 +1364,6 @@ async def test_stream():
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
         },
     )
 
@@ -2063,16 +2027,12 @@ async def _run_command(
     """
     Run a single command in the workspace and capture exit code + combined output.
     """
-    # Get environment with npm_config_prefix removed for nvm compatibility
-    env = _get_command_env()
-
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=env,
         )
     except FileNotFoundError:
         # e.g. npm not installed
@@ -2825,15 +2785,11 @@ async def _run_command_in_repo(
     """
     logger.info("[NAVI-REPO] Running command in %s: %s", cwd, " ".join(cmd))
 
-    # Get environment with npm_config_prefix removed for nvm compatibility
-    env = _get_command_env()
-
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=str(cwd),
         stdout=PIPE,
         stderr=STDOUT,
-        env=env,
     )
 
     try:
@@ -3385,9 +3341,6 @@ async def run_command_in_workspace(
     """
     Runs a shell command in `cwd`, capturing stdout/stderr, exit code, and duration.
     """
-    # Get environment with npm_config_prefix removed for nvm compatibility
-    env = _get_command_env()
-
     started = time.monotonic()
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -3395,7 +3348,6 @@ async def run_command_in_workspace(
             stdout=PIPE,
             stderr=PIPE,
             cwd=str(cwd),
-            env=env,
         )
     except FileNotFoundError:
         duration_ms = int((time.monotonic() - started) * 1000)
@@ -5544,7 +5496,6 @@ async def navi_chat(
                     headers={
                         "Cache-Control": "no-cache",
                         "Connection": "keep-alive",
-                        "Access-Control-Allow-Origin": "*",
                     },
                 )
 
@@ -5553,17 +5504,17 @@ async def navi_chat(
                 # Fall through to standard processing
 
         # Standard request processing
-        print("[DEBUG-FLOW] Starting standard request processing")
+        logger.debug("Starting standard request processing")
         if any(word in msg_lower for word in ["review", "diff", "changes", "git"]):
-            print("[DEBUG-FLOW] Matched review/diff/changes/git")
+            logger.debug("Matched review/diff/changes/git")
             progress_tracker.update_status("Analyzing Git repository...")
             progress_tracker.complete_step("Detected Git diff request")
         elif any(word in msg_lower for word in ["explain", "what", "describe"]):
-            print("[DEBUG-FLOW] Matched explain/what/describe")
+            logger.debug("Matched explain/what/describe")
             progress_tracker.update_status("Scanning codebase...")
             progress_tracker.complete_step("Detected explanation request")
         elif any(word in msg_lower for word in ["fix", "error", "debug", "issue"]):
-            print("[DEBUG-FLOW] Matched fix/error/debug/issue")
+            logger.debug("Matched fix/error/debug/issue")
             progress_tracker.update_status("Analyzing code issues...")
             progress_tracker.complete_step("Detected debugging request")
         elif (
@@ -5573,8 +5524,9 @@ async def navi_chat(
             )
             and workspace_root
         ):
-            print(
-                f"[DEBUG-FLOW] Matched autonomous coding keywords with workspace_root={workspace_root}"
+            logger.debug(
+                "Matched autonomous coding keywords with workspace_root=%s",
+                workspace_root,
             )
             progress_tracker.update_status("Preparing autonomous coding...")
             progress_tracker.complete_step("Detected coding request")
@@ -5591,7 +5543,7 @@ async def navi_chat(
                 "code",
             ]
             if any(keyword in msg_lower for keyword in coding_keywords):
-                print("[DEBUG-FLOW] ENTERING AUTONOMOUS CODING BLOCK")
+                logger.debug("Entering autonomous coding block")
                 try:
                     # Simple autonomous coding integration
                     reply = f"""I can help you implement that autonomously! 
@@ -5619,7 +5571,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
                         }
                     ]
 
-                    print("[DEBUG-FLOW] RETURNING AUTONOMOUS RESPONSE")
+                    logger.debug("Returning autonomous response")
                     return ChatResponse(
                         content=reply,
                         actions=actions,
@@ -5631,20 +5583,19 @@ To get started, I need to analyze your codebase and create a detailed implementa
                     )
 
                 except Exception as e:
-                    print(f"[DEBUG-FLOW] AUTONOMOUS CODING EXCEPTION: {e}")
-                    logger.error("Autonomous coding failed", error=str(e))
+                    logger.exception("Autonomous coding failed: %s", e)
                     # Fall back to regular agent loop
                     progress_tracker.update_status(
                         "Falling back to standard analysis..."
                     )
             else:
-                print("[DEBUG-FLOW] Coding keywords check failed")
+                logger.debug("Coding keywords check failed")
         else:
-            print("[DEBUG-FLOW] No specific patterns matched - default processing")
+            logger.debug("No specific patterns matched - default processing")
             progress_tracker.update_status("Analyzing your request...")
             progress_tracker.complete_step("Request type identified")
 
-        print("[DEBUG-FLOW] Continuing to agent loop")
+        logger.debug("Continuing to agent loop")
 
         # =================================================================
         # IMAGE PROCESSING: Check for image attachments and analyze them
@@ -5667,6 +5618,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
                         try:
                             from backend.services.vision_service import (
                                 VisionClient,
+                                VisionProvider,
                             )
 
                             # Extract base64 data from data URL
@@ -6000,28 +5952,9 @@ async def navi_chat_stream(
         """Generator for SSE events."""
         stream_session = StreamingSession()
 
-        # Track response for saving to memory
-        accumulated_response = ""
-        collected_actions = []
-
         try:
             # Emit initial activity
             yield f"data: {json.dumps({'activity': {'kind': 'context', 'label': 'Starting', 'detail': 'Processing your request...', 'status': 'running'}})}\n\n"
-
-            # =================================================================
-            # PERSISTENT MEMORY: Load workspace context from previous sessions
-            # =================================================================
-            memory_context = {}
-            if workspace_root:
-                try:
-                    memory_context = await load_workspace_memory(user_id, workspace_root, db)
-                    if not memory_context.get("is_new_workspace"):
-                        facts_count = sum(len(v) for v in memory_context.get("facts", {}).values())
-                        if facts_count > 0:
-                            yield f"data: {json.dumps({'activity': {'kind': 'memory', 'label': 'Memory Loaded', 'detail': f'Restored {facts_count} facts from previous session', 'status': 'done'}})}\n\n"
-                            logger.info(f"[NAVI-STREAM] Loaded {facts_count} facts from workspace memory")
-                except Exception as mem_err:
-                    logger.warning(f"[NAVI-STREAM] Failed to load workspace memory: {mem_err}")
 
             # =================================================================
             # IMAGE PROCESSING: Check for image attachments and analyze them
@@ -6041,6 +5974,7 @@ async def navi_chat_stream(
                             try:
                                 from backend.services.vision_service import (
                                     VisionClient,
+                                    VisionProvider,
                                 )
 
                                 # Extract base64 data from data URL
@@ -6078,11 +6012,6 @@ async def navi_chat_stream(
             augmented_message = request.message
             if image_context:
                 augmented_message = f"{request.message}\n\n[CONTEXT FROM ATTACHED IMAGE(S)]{image_context}"
-
-            # Inject workspace memory context if available
-            if memory_context and memory_context.get("context_summary"):
-                augmented_message = inject_memory_context(augmented_message, memory_context)
-                logger.info("[NAVI-STREAM] Injected workspace memory context into message")
 
             # Check if we have workspace for agent mode
             if not workspace_root:
@@ -6387,17 +6316,6 @@ async def navi_chat_stream(
                     thinking_text = event["thinking"]
                     yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
 
-                # Stream execution plan events (detailed task decomposition)
-                elif "execution_plan" in event:
-                    execution_plan = event["execution_plan"]
-                    steps = execution_plan.get("steps", [])
-                    logger.info(
-                        "[NAVI-STREAM] Emitting execution plan with %d steps",
-                        len(steps),
-                    )
-                    # Emit in the format the frontend expects: plan_start with steps
-                    yield f"data: {json.dumps({'type': 'plan_start', 'data': {'plan_id': execution_plan.get('plan_id', 'plan-unknown'), 'steps': steps, 'total_steps': len(steps), 'project_name': execution_plan.get('project_name'), 'phases': execution_plan.get('phases', []), 'estimated_hours': execution_plan.get('estimated_hours')}})}\n\n"
-
                 # Capture final result
                 elif "result" in event:
                     navi_result = event["result"]
@@ -6421,8 +6339,6 @@ async def navi_chat_stream(
                 response_content = navi_result.get(
                     "message", "Task completed successfully."
                 )
-                # Track for persistent memory
-                accumulated_response = response_content
 
                 async for chunk in stream_text_with_typing(
                     response_content,
@@ -6480,8 +6396,6 @@ async def navi_chat_stream(
                         [a.get("type") for a in actions],
                     )
                     yield f"data: {json.dumps({'actions': actions})}\n\n"
-                    # Track for persistent memory
-                    collected_actions = actions
 
                 # Include next_steps if available
                 next_steps = navi_result.get("next_steps", [])
@@ -6556,30 +6470,6 @@ async def navi_chat_stream(
             # Include streaming metrics
             metrics = stream_session.get_metrics()
             yield f"data: {json.dumps(metrics)}\n\n"
-
-            # =================================================================
-            # PERSISTENT MEMORY: Save conversation exchange for future sessions
-            # =================================================================
-            if workspace_root and accumulated_response:
-                try:
-                    save_conversation_exchange_sync(
-                        user_id=user_id,
-                        workspace_path=workspace_root,
-                        user_message=request.message,
-                        assistant_response=accumulated_response,
-                        actions=collected_actions,
-                        db=db,
-                    )
-                    logger.info(
-                        "[NAVI-STREAM] Saved exchange to persistent memory for workspace: %s",
-                        workspace_root,
-                    )
-                except Exception as save_err:
-                    # Don't fail the stream if memory save fails
-                    logger.warning(
-                        "[NAVI-STREAM] Failed to save to persistent memory: %s",
-                        save_err,
-                    )
 
             yield "data: [DONE]\n\n"
 
@@ -7114,10 +7004,10 @@ async def navi_autonomous_task(
     http_request: Request,
 ):
     # DEBUG: Print to stdout to ensure this endpoint is being called
-    print("[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
+    print(f"[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
     print(f"[NAVI Autonomous DEBUG] Message: {request.message[:100] if request.message else 'None'}...")
     print(f"[NAVI Autonomous DEBUG] Attachments: {request.attachments}")
-    print("[NAVI Autonomous DEBUG] =====================================")
+    print(f"[NAVI Autonomous DEBUG] =====================================")
     """
     NAVI Autonomous Task Execution
 
@@ -7185,7 +7075,7 @@ async def navi_autonomous_task(
                 att_content = att.get("content") if isinstance(att, dict) else getattr(att, "content", None)
                 if att_content:
                     try:
-                        from backend.services.vision_service import VisionClient
+                        from backend.services.vision_service import VisionClient, VisionProvider
 
                         # Extract base64 data from data URL
                         if att_content.startswith("data:"):
@@ -7243,308 +7133,3 @@ async def navi_autonomous_task(
             "X-Accel-Buffering": "no",
         },
     )
-
-
-# ============================================================================
-# NAVI V4: Enterprise Project Execution (Long-Running Multi-Agent)
-# ============================================================================
-
-
-class EnterpriseTaskRequest(BaseModel):
-    """Request for enterprise-level project execution.
-
-    Enterprise projects are large-scale tasks that require:
-    - Unlimited iterations with checkpointing
-    - Task decomposition into 50+ subtasks
-    - Human checkpoint gates for decisions
-    - Multi-agent parallel execution
-    """
-
-    message: str
-    provider: Optional[str] = None
-    model: Optional[str] = None
-    workspace_path: Optional[str] = None
-    workspace_root: Optional[str] = None
-    user_id: Optional[str] = None
-    workspace_session_id: Optional[str] = None
-    force_enterprise: bool = False  # Force enterprise mode even if detection says no
-    checkpoint_interval_minutes: int = 30
-    execution_mode: str = "hybrid"  # sequential, parallel, hybrid
-    attachments: Optional[list] = None
-
-
-@router.post("/chat/enterprise")
-async def navi_enterprise_task(
-    request: EnterpriseTaskRequest,
-    http_request: Request,
-    db: Session = Depends(get_db),
-):
-    """
-    NAVI Enterprise Project Execution
-
-    This endpoint handles enterprise-level application development:
-    1. Detects if request is enterprise-scale (or uses force_enterprise)
-    2. Creates EnterpriseProject with task decomposition
-    3. Uses EnterpriseAgentCoordinator for multi-agent execution
-    4. Streams progress events including:
-       - project_created: Initial project with task count
-       - task_started/completed: Individual task progress
-       - gate_triggered: Human checkpoint gates
-       - checkpoint_created: Progress checkpoints
-       - project_status: Periodic status updates
-       - project_completed: Final completion
-
-    Use cases:
-    - "Build a complete e-commerce platform with auth, payments, admin dashboard"
-    - "Create a microservices architecture for a SaaS platform"
-    - "Develop an end-to-end API with database, tests, and deployment"
-    """
-    import os
-    import uuid
-    from backend.services.enterprise_project_detector import (
-        detect_enterprise_project,
-        create_enterprise_project_from_spec,
-    )
-    from backend.distributed.enterprise_agent_coordinator import (
-        EnterpriseAgentCoordinator,
-        ExecutionMode,
-    )
-    from backend.services.enterprise_project_service import EnterpriseProjectService
-
-    logger.info("[NAVI Enterprise] ========== ENDPOINT CALLED ==========")
-    logger.info(f"[NAVI Enterprise] Message: {request.message[:200] if request.message else 'None'}...")
-
-    # Determine workspace path
-    workspace_path = request.workspace_path or request.workspace_root
-    if not workspace_path:
-        workspace_path = os.environ.get("AEP_WORKSPACE_PATH", os.getcwd())
-
-    # Detect if this is an enterprise project
-    is_enterprise, spec, scale = detect_enterprise_project(request.message, workspace_path)
-
-    if not is_enterprise and not request.force_enterprise:
-        # Not enterprise-scale, redirect to standard autonomous endpoint
-        logger.info(f"[NAVI Enterprise] Not enterprise scale ({scale.value}), redirecting to autonomous")
-        return await navi_autonomous_task(
-            AutonomousTaskRequest(
-                message=request.message,
-                provider=request.provider,
-                model=request.model,
-                workspace_path=workspace_path,
-                attachments=request.attachments,
-            ),
-            http_request,
-        )
-
-    # Map model to provider
-    if request.provider:
-        provider = request.provider
-        model = request.model
-    else:
-        provider, model = _map_model_to_provider(request.model)
-
-    logger.info(f"[NAVI Enterprise] Provider: {provider}, Model: {model}")
-    logger.info(f"[NAVI Enterprise] Project: {spec.name if spec else 'Unknown'}")
-    logger.info(f"[NAVI Enterprise] Estimated tasks: {spec.estimated_tasks if spec else 'Unknown'}")
-
-    # Get user ID
-    user_id = int(request.user_id) if request.user_id and request.user_id.isdigit() else 1
-
-    # Generate workspace session ID if not provided
-    workspace_session_id = request.workspace_session_id or str(uuid.uuid4())
-
-    # Parse execution mode
-    exec_mode_map = {
-        "sequential": ExecutionMode.SEQUENTIAL,
-        "parallel": ExecutionMode.PARALLEL,
-        "hybrid": ExecutionMode.HYBRID,
-    }
-    execution_mode = exec_mode_map.get(request.execution_mode, ExecutionMode.HYBRID)
-
-    async def stream_generator():
-        """Generate SSE events from enterprise execution."""
-        project_id = None
-
-        try:
-            # Create enterprise project in database
-            if spec:
-                yield f"data: {json.dumps({'type': 'status', 'status': 'creating_project', 'message': f'Creating enterprise project: {spec.name}'})}\n\n"
-
-                project_id = await create_enterprise_project_from_spec(
-                    spec=spec,
-                    user_id=user_id,
-                    workspace_session_id=workspace_session_id,
-                    db_session=db,
-                )
-
-                yield f"data: {json.dumps({'type': 'project_created', 'project_id': project_id, 'name': spec.name, 'estimated_tasks': spec.estimated_tasks, 'goals': spec.goals, 'project_type': spec.project_type})}\n\n"
-            else:
-                # Forced enterprise mode without spec
-                project_service = EnterpriseProjectService(db)
-                project = await project_service.create_project(
-                    user_id=user_id,
-                    workspace_session_id=workspace_session_id,
-                    name="Enterprise Project",
-                    description=request.message[:500],
-                    project_type="custom",
-                    goals=[{"id": "core", "description": request.message, "status": "pending"}],
-                )
-                project_id = str(project.id)
-
-                yield f"data: {json.dumps({'type': 'project_created', 'project_id': project_id, 'name': 'Enterprise Project', 'estimated_tasks': 50})}\n\n"
-
-            # Initialize enterprise coordinator
-            coordinator = EnterpriseAgentCoordinator(
-                db_session=db,
-                max_parallel_agents=5,
-            )
-
-            # Start project execution
-            yield f"data: {json.dumps({'type': 'status', 'status': 'starting', 'message': 'Starting enterprise project execution...'})}\n\n"
-
-            async for event in coordinator.start_project_execution(
-                project_id=project_id,
-                execution_mode=execution_mode,
-                checkpoint_interval_minutes=request.checkpoint_interval_minutes,
-            ):
-                # Forward all events from coordinator
-                yield f"data: {json.dumps(event)}\n\n"
-
-                # Check for human gate - pause for user decision
-                if event.get("type") == "gate_triggered":
-                    gate = event.get("gate", {})
-                    yield f"data: {json.dumps({'type': 'awaiting_decision', 'gate_id': gate.get('id'), 'message': 'Waiting for human decision on checkpoint gate'})}\n\n"
-                    # Note: The coordinator handles pausing; frontend submits decision via /enterprise/projects/{id}/gates/{gate_id}/decide
-
-                # Check for project completion
-                if event.get("type") == "project_completed":
-                    yield f"data: {json.dumps({'type': 'complete', 'project_id': project_id, 'summary': event.get('summary', {})})}\n\n"
-                    break
-
-                # Check for fatal errors
-                if event.get("type") == "error" and event.get("fatal", False):
-                    yield f"data: {json.dumps({'type': 'failed', 'project_id': project_id, 'error': event.get('message', 'Unknown error')})}\n\n"
-                    break
-
-        except Exception as e:
-            logger.exception(f"[NAVI Enterprise] Error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'project_id': project_id})}\n\n"
-
-        yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        stream_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-@router.post("/chat/enterprise/resume/{project_id}")
-async def navi_enterprise_resume(
-    project_id: str,
-    http_request: Request,
-    db: Session = Depends(get_db),
-    checkpoint_id: Optional[str] = None,
-):
-    """
-    Resume an enterprise project from a checkpoint.
-
-    This endpoint:
-    1. Loads project state from database
-    2. Optionally resumes from specific checkpoint
-    3. Continues execution from where it left off
-    4. Streams progress events
-    """
-    from backend.distributed.enterprise_agent_coordinator import (
-        EnterpriseAgentCoordinator,
-        ExecutionMode,
-    )
-    from backend.services.enterprise_project_service import EnterpriseProjectService
-
-    logger.info(f"[NAVI Enterprise Resume] Resuming project: {project_id}")
-
-    async def stream_generator():
-        try:
-            # Verify project exists
-            project_service = EnterpriseProjectService(db)
-            project = await project_service.get_project(project_id)
-
-            if not project:
-                yield f"data: {json.dumps({'type': 'error', 'error': f'Project {project_id} not found'})}\n\n"
-                yield "data: [DONE]\n\n"
-                return
-
-            yield f"data: {json.dumps({'type': 'status', 'status': 'resuming', 'message': f'Resuming project: {project.name}', 'project_id': project_id})}\n\n"
-
-            # Initialize coordinator
-            coordinator = EnterpriseAgentCoordinator(
-                db_session=db,
-                max_parallel_agents=5,
-            )
-
-            # Resume project
-            await coordinator.resume_project(project_id, checkpoint_id)
-
-            # Continue execution
-            async for event in coordinator.start_project_execution(
-                project_id=project_id,
-                execution_mode=ExecutionMode.HYBRID,
-            ):
-                yield f"data: {json.dumps(event)}\n\n"
-
-                if event.get("type") in ("project_completed", "error"):
-                    break
-
-        except Exception as e:
-            logger.exception(f"[NAVI Enterprise Resume] Error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
-
-        yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        stream_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-@router.get("/enterprise/detect")
-async def detect_enterprise_scale(
-    message: str,
-    workspace_path: Optional[str] = None,
-):
-    """
-    Detect if a message describes an enterprise-level project.
-
-    Returns:
-    - is_enterprise: Whether this should use enterprise mode
-    - scale: Detected project scale (simple, medium, complex, enterprise)
-    - spec: Project specification if enterprise (name, type, estimated tasks, goals)
-    """
-    from backend.services.enterprise_project_detector import detect_enterprise_project
-
-    is_enterprise, spec, scale = detect_enterprise_project(message, workspace_path)
-
-    return {
-        "is_enterprise": is_enterprise,
-        "scale": scale.value,
-        "spec": {
-            "name": spec.name,
-            "description": spec.description,
-            "project_type": spec.project_type,
-            "estimated_tasks": spec.estimated_tasks,
-            "goals": spec.goals,
-            "requires_database": spec.requires_database,
-            "requires_deployment": spec.requires_deployment,
-            "requires_auth": spec.requires_auth,
-            "confidence": spec.confidence,
-        } if spec else None,
-    }

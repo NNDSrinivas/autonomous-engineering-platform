@@ -34,6 +34,12 @@ from backend.agent.closedloop.execution_controller import (
 )
 
 
+@pytest.fixture
+def mock_db_session():
+    """Mock database session for performance tests"""
+    return Mock()
+
+
 class TestGovernanceIntegration:
     """Test governance integration with Phase 5.0 system"""
 
@@ -55,12 +61,14 @@ class TestGovernanceIntegration:
     @pytest.fixture
     def governed_execution_controller(self, mock_db_session):
         """Create governed execution controller for testing"""
-        return GovernedExecutionController(
+        controller = GovernedExecutionController(
             db_session=mock_db_session,
             workspace_path="/test/workspace",
             org_key="test_org",
             user_id="test_user",
         )
+        controller.audit_logger = Mock()
+        return controller
 
     @pytest.fixture
     def sample_action(self):

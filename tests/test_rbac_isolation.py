@@ -7,8 +7,11 @@ Verifies that:
 4. No data leakage between organizations
 """
 
+import pytest
 from httpx import Client
 from tests.conftest import TEST_ORG_ID, assert_response_ok
+
+pytestmark = pytest.mark.integration
 
 
 def test_cross_org_forbidden_node_access(

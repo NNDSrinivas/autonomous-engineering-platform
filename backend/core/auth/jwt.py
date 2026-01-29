@@ -38,29 +38,39 @@ def decode_jwt(token: str) -> dict:
     if not settings.JWT_ENABLED:
         raise JWTVerificationError("JWT authentication is not enabled")
 
-    if not settings.JWT_SECRET:
-        raise JWTVerificationError("JWT_SECRET is required when JWT_ENABLED=true")
-
-    try:
-        # Decode and verify token (includes expiration check)
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET,
-            algorithms=[settings.JWT_ALGORITHM],
-            audience=settings.JWT_AUDIENCE,
-            issuer=settings.JWT_ISSUER,
+    secrets = _get_jwt_secrets()
+    if not secrets:
+        raise JWTVerificationError(
+            "JWT_SECRET (or JWT_SECRET_PREVIOUS) is required when JWT_ENABLED=true"
         )
 
-        return payload
+    try:
+        for secret in secrets:
+            try:
+                # Decode and verify token (includes expiration check)
+                payload = jwt.decode(
+                    token,
+                    secret,
+                    algorithms=[settings.JWT_ALGORITHM],
+                    audience=settings.JWT_AUDIENCE,
+                    issuer=settings.JWT_ISSUER,
+                )
+                return payload
+            except ExpiredSignatureError:
+                raise JWTVerificationError("Token has expired")
+            except JWTClaimsError:
+                # Note: Detailed error information not logged to avoid leaking JWT validation logic
+                raise JWTVerificationError("Invalid token claims")
+            except JWTError:
+                continue
 
-    except ExpiredSignatureError:
-        raise JWTVerificationError("Token has expired")
-    except JWTClaimsError:
-        # Note: Detailed error information not logged to avoid leaking JWT validation logic
-        raise JWTVerificationError("Invalid token claims")
-    except JWTError:
         logger.warning("JWT verification failed")
         # Note: Detailed error information not logged to avoid leaking sensitive JWT structure/config
+        raise JWTVerificationError("Token verification failed")
+    except JWTVerificationError:
+        raise
+    except JWTError:
+        logger.warning("JWT verification failed")
         raise JWTVerificationError("Token verification failed")
 
 
@@ -135,3 +145,20 @@ def verify_token(token: str) -> dict:
     """
     payload = decode_jwt(token)
     return extract_user_claims(payload)
+
+
+def _get_jwt_secrets() -> list[str]:
+    secrets: list[str] = []
+    if settings.JWT_SECRET:
+        secrets.append(settings.JWT_SECRET)
+    if settings.JWT_SECRET_PREVIOUS:
+        secrets.extend(parse_comma_separated(settings.JWT_SECRET_PREVIOUS))
+
+    # Preserve order while removing duplicates
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for secret in secrets:
+        if secret and secret not in seen:
+            seen.add(secret)
+            ordered.append(secret)
+    return ordered

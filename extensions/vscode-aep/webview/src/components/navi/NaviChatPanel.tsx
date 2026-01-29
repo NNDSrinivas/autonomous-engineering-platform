@@ -71,6 +71,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import { NaviInlineCommand } from "../command";
 import { resolveBackendBase } from "../../api/navi/client";
 import { ORG, USER_ID } from "../../api/client";
 import { getRecommendedModel, getProgressMessages, detectTaskType, type TaskType } from "../../lib/llmRouter";
@@ -98,33 +99,6 @@ import {
   addSessionTag,
   removeSessionTag,
   formatRelativeTime,
-  // Checkpoint & Recovery imports
-  TaskCheckpoint,
-  StreamingState,
-  createCheckpoint,
-  loadCheckpoint,
-  clearCheckpoint,
-  hasActiveCheckpoint,
-  updateCheckpointProgress,
-  markCheckpointInterrupted,
-  markCheckpointCompleted,
-  incrementCheckpointRetry,
-  createStreamingState,
-  loadStreamingState,
-  clearStreamingState,
-  updateStreamingContent,
-  appendStreamingActivity,
-  markStreamingComplete,
-  createDebouncedSave,
-  // Backend sync functions
-  initCheckpointSync,
-  createCheckpointWithSync,
-  updateCheckpointProgressWithSync,
-  markCheckpointInterruptedWithSync,
-  markCheckpointCompletedWithSync,
-  loadCheckpointWithFallback,
-  getInterruptedCheckpointsFromBackend,
-  deleteCheckpointFromBackend,
   updateSession,
   type ChatSessionTag,
 } from "../../utils/chatSessions";
@@ -140,9 +114,7 @@ import { NaviActionRunner } from "./NaviActionRunner";
 import { NaviApprovalPanel, ActionWithRisk } from "./NaviApprovalPanel";
 import { ExecutionPlanStepper, ExecutionPlanStep } from "./ExecutionPlanStepper";
 import { FileChangeSummary } from "./FileChangeSummary";
-import { NaviCommandPanel, TerminalEntry as CommandTerminalEntry } from "../command";
-import { ConnectionErrorBanner } from "./ConnectionErrorBanner";
-import { CheckpointResumeDialog } from "./CheckpointResumeDialog";
+import { useActivityPanelPreferences } from "../../hooks/useActivityPanelPreferences";
 import "./NaviChatPanel.css";
 import Prism from 'prismjs';
 import type { ActivityEvent as ActivityEventPayload } from "../../types/activity";
@@ -502,6 +474,7 @@ type ActivityEvent = {
   status?: "running" | "done" | "error";
   timestamp: string;
   output?: string; // Command output for IN/OUT display
+  exitCode?: number; // Command exit code
   additions?: number; // Lines added for edit/create operations
   deletions?: number; // Lines removed for edit operations
   _sequence?: number; // PHASE 5: Internal sequence number for guaranteed ordering
@@ -1118,10 +1091,34 @@ function DiffFileCard({ fileDiff }: { fileDiff: FileDiffDetail }) {
 
 interface NaviChatPanelProps {
   activityPanelState?: ReturnType<typeof import("../../hooks/useActivityPanel").useActivityPanel>;
+  onOpenActivityForCommand?: (commandId: string) => void;
+  highlightCommandId?: string | null;
 }
 
-export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps = {}) {
+export default function NaviChatPanel({ activityPanelState, onOpenActivityForCommand, highlightCommandId }: NaviChatPanelProps = {}) {
   const { workspaceRoot, repoName, isLoading } = useWorkspace();
+  const activityPanelRef = useRef(activityPanelState);
+
+  useEffect(() => {
+    activityPanelRef.current = activityPanelState;
+  }, [activityPanelState]);
+
+  useEffect(() => {
+    if (!highlightCommandId) return;
+    setInlineCommandHighlightId(highlightCommandId);
+    const el = document.querySelector(
+      `[data-command-id="${highlightCommandId}"]`
+    ) as HTMLElement | null;
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    const timer = window.setTimeout(() => {
+      setInlineCommandHighlightId((current) =>
+        current === highlightCommandId ? null : current
+      );
+    }, 20000);
+    return () => window.clearTimeout(timer);
+  }, [highlightCommandId]);
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1134,15 +1131,12 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const [coverageGate, setCoverageGate] = useState<CoverageGateState | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
-  const [historyFilter, setHistoryFilter] = useState<"all" | "pinned" | "starred" | "archived" | "interrupted">("all");
+  const [historyFilter, setHistoryFilter] = useState<"all" | "pinned" | "starred" | "archived">("all");
   const [historySort, setHistorySort] = useState<"recent" | "oldest" | "name">("recent");
   const [historySortOpen, setHistorySortOpen] = useState(false);
   const [, setHistoryRefreshTrigger] = useState(0);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  // Map of sessionId -> checkpoint for sessions with interrupted checkpoints
-  const [sessionCheckpoints, setSessionCheckpoints] = useState<Map<string, TaskCheckpoint>>(new Map());
-  // Checkpoint being shown in the resume dialog
-  const [resumeDialogCheckpoint, setResumeDialogCheckpoint] = useState<TaskCheckpoint | null>(null);
+  const [inlineCommandHighlightId, setInlineCommandHighlightId] = useState<string | null>(null);
 
   // Settings panel state
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1172,6 +1166,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     syntaxHighlighting: true,
     animationsEnabled: true,
   });
+  const [activityPanelPreferences, setActivityPanelPreferences] = useActivityPanelPreferences();
 
   // Notification Settings
   const [notificationSettings, setNotificationSettings] = useState({
@@ -1212,10 +1207,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       build?: { passed: boolean; errors?: string[] };
       tests?: { passed: boolean; errors?: string[] };
     };
-    // Error/failure fields
-    stoppedReason?: string;  // e.g., "iteration_loop_detected", "max_iterations"
-    remainingErrors?: string[];  // List of unresolved errors
-    loopCount?: number;  // Number of times the same error occurred
   };
   const [taskSummary, setTaskSummary] = useState<TaskSummary | null>(null);
   const [taskFilesExpanded, setTaskFilesExpanded] = useState(true);
@@ -1246,24 +1237,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [accumulatedThinking, setAccumulatedThinking] = useState("");
   const accumulatedThinkingRef = useRef(""); // Ref for closure access
-
-  // ============================================================================
-  // CONNECTION ERROR & RECOVERY STATE
-  // ============================================================================
-  const [connectionError, setConnectionError] = useState<{
-    message: string;
-    timestamp: string;
-    retryCount: number;
-  } | null>(null);
-  const [isRetrying, setIsRetrying] = useState(false);
-  const [currentCheckpoint, setCurrentCheckpoint] = useState<TaskCheckpoint | null>(null);
-  const [nextRetryIn, setNextRetryIn] = useState<number | null>(null);
-  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const maxRetries = 3;
-  const baseRetryDelay = 2000; // 2 seconds base delay for exponential backoff
-
-  // Debounced save for streaming content
-  const debouncedSaveRef = useRef<((content: string) => void) | null>(null);
   const [isThinkingComplete, setIsThinkingComplete] = useState(false);
 
   // Execution plan panel state
@@ -1349,209 +1322,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     accumulatedThinkingRef.current = accumulatedThinking;
   }, [accumulatedThinking]);
 
-  // Initialize checkpoint sync with backend
-  useEffect(() => {
-    const backendBase = resolveBackendBase();
-    initCheckpointSync({
-      apiBaseUrl: backendBase,
-      userId: USER_ID,
-      onError: (error) => {
-        console.warn('[NAVI] Checkpoint sync error:', error.message);
-      },
-    });
-  }, []);
-
-  // Load interrupted checkpoints when history panel opens
-  useEffect(() => {
-    if (!historyOpen) return;
-
-    const loadInterruptedCheckpoints = async () => {
-      try {
-        // Load from backend
-        const backendCheckpoints = await getInterruptedCheckpointsFromBackend();
-        const checkpointMap = new Map<string, TaskCheckpoint>();
-
-        for (const cp of backendCheckpoints) {
-          checkpointMap.set(cp.sessionId, cp);
-        }
-
-        // Also check local storage for any sessions
-        const allSessions = listSessions();
-        for (const session of allSessions) {
-          if (!checkpointMap.has(session.id)) {
-            const localCp = loadCheckpoint(session.id);
-            if (localCp && localCp.status === 'interrupted') {
-              checkpointMap.set(session.id, localCp);
-            }
-          }
-        }
-
-        setSessionCheckpoints(checkpointMap);
-      } catch (error) {
-        console.warn('[NAVI] Failed to load interrupted checkpoints:', error);
-      }
-    };
-
-    loadInterruptedCheckpoints();
-  }, [historyOpen]);
-
-  // Handler to show the resume dialog when clicking resume on a checkpoint
-  const handleResumeFromCheckpoint = useCallback((checkpoint: TaskCheckpoint) => {
-    // Show the resume dialog
-    setResumeDialogCheckpoint(checkpoint);
-    // Close history panel
-    setHistoryOpen(false);
-  }, []);
-
-  // Handler for "Continue" action from resume dialog
-  const handleResumeContinue = useCallback((includeContext: boolean) => {
-    if (!resumeDialogCheckpoint) return;
-
-    const checkpoint = resumeDialogCheckpoint;
-
-    // Switch to the session
-    persistActiveSessionId(checkpoint.sessionId);
-    setActiveSessionId(checkpoint.sessionId);
-
-    // Load existing messages for this session
-    const existingMessages = loadSessionMessages<ChatMessage>(checkpoint.sessionId);
-    setMessages(existingMessages);
-
-    // Build the message with context about what was already done
-    let resumeMessage = checkpoint.userMessage;
-    if (includeContext && (checkpoint.modifiedFiles.length > 0 || checkpoint.executedCommands.length > 0)) {
-      const contextParts: string[] = [];
-
-      if (checkpoint.modifiedFiles.length > 0) {
-        const successfulFiles = checkpoint.modifiedFiles.filter(f => f.success);
-        if (successfulFiles.length > 0) {
-          contextParts.push(`Files already modified: ${successfulFiles.map(f => f.path).join(', ')}`);
-        }
-      }
-
-      if (checkpoint.executedCommands.length > 0) {
-        const successfulCmds = checkpoint.executedCommands.filter(c => c.success);
-        if (successfulCmds.length > 0) {
-          contextParts.push(`Commands already run: ${successfulCmds.map(c => c.command).join('; ')}`);
-        }
-      }
-
-      if (contextParts.length > 0) {
-        resumeMessage = `[Resuming interrupted task. ${contextParts.join('. ')}]\n\n${checkpoint.userMessage}`;
-      }
-    }
-
-    // Pre-fill the input with the message (with or without context)
-    setInput(resumeMessage);
-
-    // Clear the checkpoint since we're resuming
-    clearCheckpoint(checkpoint.sessionId);
-    deleteCheckpointFromBackend(checkpoint.sessionId);
-    setSessionCheckpoints(prev => {
-      const next = new Map(prev);
-      next.delete(checkpoint.sessionId);
-      return next;
-    });
-
-    // Close dialog
-    setResumeDialogCheckpoint(null);
-
-    // Focus input
-    setTimeout(() => inputRef.current?.focus(), 10);
-  }, [resumeDialogCheckpoint]);
-
-  // Handler for "Revert & Retry" action from resume dialog
-  const handleResumeRevert = useCallback(async () => {
-    if (!resumeDialogCheckpoint) return;
-
-    const checkpoint = resumeDialogCheckpoint;
-
-    // Switch to the session
-    persistActiveSessionId(checkpoint.sessionId);
-    setActiveSessionId(checkpoint.sessionId);
-
-    // Load existing messages
-    const existingMessages = loadSessionMessages<ChatMessage>(checkpoint.sessionId);
-    setMessages(existingMessages);
-
-    // TODO: Send a message to the backend to revert file changes
-    // For now, we'll add a note that files need manual revert
-    const revertNote = checkpoint.modifiedFiles.length > 0
-      ? `[Note: ${checkpoint.modifiedFiles.filter(f => f.success).length} file(s) were modified. Please review/revert if needed: ${checkpoint.modifiedFiles.filter(f => f.success).map(f => f.path).join(', ')}]\n\n`
-      : '';
-
-    // Pre-fill with original message + revert note
-    setInput(revertNote + checkpoint.userMessage);
-
-    // Clear the checkpoint
-    clearCheckpoint(checkpoint.sessionId);
-    deleteCheckpointFromBackend(checkpoint.sessionId);
-    setSessionCheckpoints(prev => {
-      const next = new Map(prev);
-      next.delete(checkpoint.sessionId);
-      return next;
-    });
-
-    // Close dialog
-    setResumeDialogCheckpoint(null);
-
-    // Focus input
-    setTimeout(() => inputRef.current?.focus(), 10);
-  }, [resumeDialogCheckpoint]);
-
-  // Handler for "Start Fresh" action from resume dialog
-  const handleResumeStartFresh = useCallback(async () => {
-    if (!resumeDialogCheckpoint) return;
-
-    const checkpoint = resumeDialogCheckpoint;
-
-    // Switch to the session
-    persistActiveSessionId(checkpoint.sessionId);
-    setActiveSessionId(checkpoint.sessionId);
-
-    // Load existing messages
-    const existingMessages = loadSessionMessages<ChatMessage>(checkpoint.sessionId);
-    setMessages(existingMessages);
-
-    // Clear the checkpoint (but keep any file changes)
-    clearCheckpoint(checkpoint.sessionId);
-    deleteCheckpointFromBackend(checkpoint.sessionId);
-    setSessionCheckpoints(prev => {
-      const next = new Map(prev);
-      next.delete(checkpoint.sessionId);
-      return next;
-    });
-
-    // Close dialog without pre-filling input
-    setResumeDialogCheckpoint(null);
-
-    // Focus input for a fresh start
-    setTimeout(() => inputRef.current?.focus(), 10);
-  }, [resumeDialogCheckpoint]);
-
-  // Handler to dismiss the resume dialog
-  const handleResumeDismiss = useCallback(() => {
-    setResumeDialogCheckpoint(null);
-  }, []);
-
-  // Handler to discard checkpoint from history list
-  const handleDiscardCheckpoint = useCallback(async (sessionId: string) => {
-    // Clear locally
-    clearCheckpoint(sessionId);
-
-    // Clear from backend
-    await deleteCheckpointFromBackend(sessionId);
-
-    // Remove from state
-    setSessionCheckpoints(prev => {
-      const next = new Map(prev);
-      next.delete(sessionId);
-      return next;
-    });
-
-    setHistoryRefreshTrigger(n => n + 1);
-  }, []);
-
   // Wrapper to set activity events AND sync ref immediately (before React renders)
   const setActivityEventsWithRef = useCallback((updater: React.SetStateAction<ActivityEvent[]>) => {
     setActivityEvents(prev => {
@@ -1583,16 +1353,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   // Track command outputs per action index for inline display
   const [perActionOutputs, setPerActionOutputs] = useState<Map<number, string>>(new Map());
 
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const diffSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Scroll navigation state
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
-
-  // Track expanded user messages (for long messages with "Show more")
-  const [expandedUserMessages, setExpandedUserMessages] = useState<Set<string>>(new Set());
   const sendTimeoutRef = useRef<number | null>(null);
   const lastSentRef = useRef<string>("");
   const lastAttachmentsRef = useRef<AttachmentChipData[]>([]);
@@ -1622,6 +1389,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         status: "running" | "done" | "error";
         exitCode?: number;
         durationMs?: number;
+        actionIndex?: number | null;
+        activityStepIndex?: number;
         meta?: {
           kind?: string;
           threshold?: number;
@@ -1678,6 +1447,22 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     scope: 'staged' | 'unstaged';
   }>>([]);
   const [changeDetailsOpen, setChangeDetailsOpen] = useState(false);
+
+  // Sync latest terminal output into Activity Panel as a fallback
+  useEffect(() => {
+    if (!activityPanelState || terminalEntries.length === 0) return;
+    if (!activityPanelState.steps.length) return;
+
+    const latest = terminalEntries[terminalEntries.length - 1];
+    const stepIndex = activityPanelState.currentStep ?? 0;
+    activityPanelState.upsertCommand(stepIndex, latest.id, {
+      command: latest.command,
+      status: latest.status,
+      exitCode: latest.exitCode,
+      stdout: latest.output,
+      truncated: latest.truncated,
+    });
+  }, [terminalEntries, activityPanelState]);
 
   // Phase 1.4: Diagnostics scoped to changed files
   const [diagnosticsByFile, setDiagnosticsByFile] = useState<Array<{
@@ -1853,43 +1638,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         activityStreamRef.current.scrollTop = activityStreamRef.current.scrollHeight;
       }
     });
-
-    // Update checkpoint with file/command activity for resume functionality
-    if (activeSessionId && currentCheckpoint) {
-      const isFileOp = ['read', 'edit', 'create'].includes(event.kind);
-      const isCommand = event.kind === 'command';
-
-      if (isFileOp && event.filePath && event.status === 'done') {
-        const operation = event.kind === 'create' ? 'create' : event.kind === 'edit' ? 'edit' : 'create';
-        const existingCheckpoint = loadCheckpoint(activeSessionId);
-        if (existingCheckpoint) {
-          const modifiedFiles = [...existingCheckpoint.modifiedFiles];
-          // Avoid duplicates
-          if (!modifiedFiles.some(f => f.path === event.filePath)) {
-            modifiedFiles.push({
-              path: event.filePath,
-              operation: operation as 'create' | 'edit' | 'delete',
-              timestamp: event.timestamp,
-              success: true,
-            });
-            updateCheckpointProgress(activeSessionId, { modifiedFiles });
-          }
-        }
-      }
-
-      if (isCommand && event.detail && event.status === 'done') {
-        const existingCheckpoint = loadCheckpoint(activeSessionId);
-        if (existingCheckpoint) {
-          const executedCommands = [...existingCheckpoint.executedCommands];
-          executedCommands.push({
-            command: event.detail,
-            timestamp: event.timestamp,
-            success: event.status === 'done',
-          });
-          updateCheckpointProgress(activeSessionId, { executedCommands });
-        }
-      }
-    }
   };
 
   const normalizeActivityPath = (filePath: string) => {
@@ -2548,6 +2296,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
     const unsub = vscodeApi.onMessage((msg) => {
       if (!msg || typeof msg !== "object") return;
+      const activityPanel = activityPanelRef.current;
 
       if (msg.type === "hydrateState") {
         const nextModelId = typeof msg.modelId === "string" ? msg.modelId : AUTO_MODEL_ID;
@@ -2882,21 +2631,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
       // Handle streaming message start - update existing placeholder or create new
       if (msg.type === "botMessageStart" && msg.messageId) {
-        // Clear any previous connection error when a new stream starts successfully
-        setConnectionError(null);
-        setIsRetrying(false);
-        if (retryTimeoutRef.current) {
-          clearTimeout(retryTimeoutRef.current);
-          retryTimeoutRef.current = null;
-        }
-
-        // Initialize streaming state for incremental saving
-        if (activeSessionId) {
-          createStreamingState(activeSessionId, msg.messageId);
-          // Create debounced save function for this streaming session
-          debouncedSaveRef.current = createDebouncedSave(activeSessionId, 500);
-        }
-
         setMessages((prev) => {
           // Check if there's already a streaming assistant message (placeholder from handleSend)
           const existingStreamingIdx = prev.findIndex(
@@ -2933,19 +2667,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               : m
           )
         );
-
-        // Incrementally save streaming content (debounced to avoid excessive writes)
-        if (debouncedSaveRef.current) {
-          debouncedSaveRef.current(msg.fullContent);
-        }
-
-        // Update checkpoint with partial content if we have one
-        if (activeSessionId && currentCheckpoint) {
-          updateCheckpointProgress(activeSessionId, {
-            partialContent: msg.fullContent,
-          });
-        }
-
         return;
       }
 
@@ -2997,14 +2718,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         // Activities will be cleared when a new message is sent
         lastLiveProgressRef.current = "";
         clearSendTimeout();
-
-        // Clear streaming state and mark checkpoint complete on successful end
-        if (activeSessionId) {
-          markStreamingComplete(activeSessionId);
-          markCheckpointCompletedWithSync(activeSessionId);
-        }
-        setCurrentCheckpoint(null);
-        debouncedSaveRef.current = null;
 
         // TASK COMPLETION: Now handled by backend via task_complete event
         // The backend (streaming_agent.py) uses TaskContext to track:
@@ -3094,69 +2807,51 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       // Handle execution plan events from backend
       if (msg.type === "plan_start" && msg.data) {
         console.log('[NaviChatPanel] ⚡ Execution plan started:', msg.data.plan_id);
-        const steps = (msg.data.steps || []).map((s: any) => ({
-          index: s.index,
-          title: s.title,
-          detail: s.detail,
-          status: 'pending' as const,
-        }));
         setExecutionPlan({
           planId: msg.data.plan_id,
-          steps,
+          steps: (msg.data.steps || []).map((s: any) => ({
+            index: s.index,
+            title: s.title,
+            detail: s.detail,
+            status: 'pending' as const,
+          })),
           isExecuting: true,
         });
-        // Also populate executionSteps for unified UI
-        setExecutionSteps(steps.map((s: any, i: number) => ({
-          id: `plan-step-${i}`,
-          title: s.title,
-          description: s.detail,
-          status: 'pending' as const,
-        })));
-        setPlanCollapsed(false);
+        if (activityPanel) {
+          const steps = (msg.data.steps || []).map((s: any) => ({
+            description: s.title || s.detail || `Step ${s.index ?? ''}`.trim(),
+          }));
+          activityPanel.initializeSteps(
+            {
+              mode: 'autonomous_coding',
+              total_steps: steps.length,
+              current_step: 0,
+            },
+            steps
+          );
+        }
         return;
       }
 
-      if (msg.type === "step_update" && msg.data) {
-        const stepIndex = msg.data.step_index;
-        const newStatus = msg.data.status === 'completed' ? 'done' : msg.data.status === 'error' ? 'error' : 'running';
-        console.log('[NaviChatPanel] ⚡ Step update:', stepIndex, '->', newStatus, 'plan_id:', msg.data.plan_id);
-
-        // Update executionPlan - use functional update to avoid stale closure issue
-        // The check for plan_id is done inside the callback where we have access to current state
+      if (msg.type === "step_update" && msg.data && executionPlan?.planId === msg.data.plan_id) {
+        console.log('[NaviChatPanel] ⚡ Step update:', msg.data.step_index, '->', msg.data.status);
         setExecutionPlan((prev) => {
-          if (!prev) {
-            console.log('[NaviChatPanel] ⚠️ step_update received but no executionPlan exists');
-            return null;
-          }
-          if (prev.planId !== msg.data.plan_id) {
-            console.log('[NaviChatPanel] ⚠️ step_update plan_id mismatch:', prev.planId, '!==', msg.data.plan_id);
-            return prev;
-          }
-          console.log('[NaviChatPanel] ✅ Updating step', stepIndex, 'to status:', msg.data.status);
+          if (!prev) return null;
           return {
             ...prev,
             steps: prev.steps.map((s, i) =>
-              i === stepIndex
+              i === msg.data.step_index
                 ? { ...s, status: msg.data.status, output: msg.data.output, error: msg.data.error }
                 : s
             ),
           };
         });
-
-        // Also update executionSteps for unified UI
-        setExecutionSteps((prev) =>
-          prev.map((s, i) =>
-            i === stepIndex ? { ...s, status: newStatus as 'pending' | 'running' | 'done' | 'error' } : s
-          )
-        );
         return;
       }
 
       if (msg.type === "plan_complete" && msg.data) {
         console.log('[NaviChatPanel] ⚡ Execution plan completed:', msg.data.plan_id);
         setExecutionPlan((prev) => (prev ? { ...prev, isExecuting: false } : null));
-        // Collapse the panel after completion
-        setTimeout(() => setPlanCollapsed(true), 3000);
         return;
       }
 
@@ -3174,20 +2869,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         }));
 
         // Calculate actual file changes
-        const filesModifiedCount = Array.isArray(summary.files_modified)
-          ? summary.files_modified.length
-          : (summary.files_modified || filesList.filter(f => f.action === 'modified').length);
-        const filesCreatedCount = Array.isArray(summary.files_created)
-          ? summary.files_created.length
-          : (summary.files_created || filesList.filter(f => f.action === 'created').length);
+        const filesModifiedCount = summary.files_modified || filesList.filter(f => f.action === 'modified').length;
+        const filesCreatedCount = summary.files_created || filesList.filter(f => f.action === 'created').length;
         const hasFileChanges = filesModifiedCount > 0 || filesCreatedCount > 0 || filesList.length > 0;
 
-        // Check if this is an error/failure case that should always show a summary
-        const isErrorCase = summary.stopped_reason || summary.verification_passed === false;
-
-        // Show Task Complete UI if there were file changes OR if it's an error case
-        // Error cases need to show the summary so users understand what went wrong
-        if (!hasFileChanges && !isErrorCase) {
+        // ONLY show Task Complete UI if there were actual file changes
+        // This prevents showing "Task Complete" when NAVI only provided analysis
+        if (!hasFileChanges) {
           console.log('[NaviChatPanel] ⏳ No file changes detected - NOT showing Task Complete UI (analysis-only response)');
           // Still update next steps if provided
           if (Array.isArray(summary.next_steps) && summary.next_steps.length > 0) {
@@ -3196,18 +2884,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           return;
         }
 
-        // Log error case details
-        if (isErrorCase) {
-          console.log('[NaviChatPanel] ⚠️ Task stopped/failed:', {
-            stoppedReason: summary.stopped_reason,
-            verificationPassed: summary.verification_passed,
-            loopCount: summary.loop_count,
-            remainingErrors: summary.remaining_errors,
-          });
-        }
-
         setTaskSummary({
-          filesRead: Array.isArray(summary.files_read) ? summary.files_read.length : (summary.files_read || 0),
+          filesRead: summary.files_read || 0,
           filesModified: filesModifiedCount,
           filesCreated: filesCreatedCount,
           iterations: summary.iterations || 1,
@@ -3216,10 +2894,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           summaryText: summary.summary_text || summary.message,
           filesList: filesList.length > 0 ? filesList : undefined,
           verificationDetails: summary.verification_details,
-          // Error/failure fields
-          stoppedReason: summary.stopped_reason,
-          remainingErrors: Array.isArray(summary.remaining_errors) ? summary.remaining_errors : undefined,
-          loopCount: summary.loop_count,
         });
 
         // Also update next steps if provided
@@ -3384,14 +3058,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         return;
       }
 
-      // Handle stream error events from the extension
-      if (msg.type === "navi.stream.error" || msg.type === "stream.error") {
-        const errorMsg = msg.error || msg.message || "Connection lost";
-        console.error('[NaviChatPanel] 🔴 Stream error received:', errorMsg);
-        handleStreamError(errorMsg);
-        return;
-      }
-
       // Handle streaming narrative text for actions (Cline/Claude-like conversational output)
       if (msg.type === "navi.narrative" || msg.type === "action.narrative") {
         const narrativeText = msg.text || msg.narrative || "";
@@ -3437,6 +3103,25 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const meta =
           msg.meta && typeof msg.meta === "object" ? msg.meta : undefined;
         const actionIndex = currentActionIndexRef.current;
+        let activityStepIndex =
+          activityPanel &&
+          typeof actionIndex === 'number' &&
+          actionIndex >= 0 &&
+          actionIndex < activityPanel.steps.length
+            ? actionIndex
+            : activityPanel &&
+              typeof activityPanel.currentStep === 'number' &&
+              activityPanel.currentStep >= 0 &&
+              activityPanel.currentStep < activityPanel.steps.length
+              ? activityPanel.currentStep
+              : undefined;
+        if (
+          activityStepIndex === undefined &&
+          activityPanel &&
+          activityPanel.steps.length > 0
+        ) {
+          activityStepIndex = 0;
+        }
         const entry = {
           messageId,
           command,
@@ -3446,6 +3131,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           status: "running" as const,
           meta,
           actionIndex, // Track which action this command belongs to
+          activityStepIndex,
         };
         commandStateRef.current.set(msg.commandId, entry);
         const activityId = makeActivityId();
@@ -3484,6 +3170,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             startedAt: nowIso(),
           },
         ].slice(-MAX_TERMINAL_ENTRIES));
+
+        if (activityPanel && activityStepIndex !== undefined) {
+          activityPanel.upsertCommand(activityStepIndex, terminalId, {
+            command,
+            status: "running",
+          });
+        }
         return;
       }
 
@@ -3491,7 +3184,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const entry = commandStateRef.current.get(msg.commandId);
         if (!entry) return;
         const terminalId = String(msg.commandId);
-        const actionIndex = entry.meta?.actionIndex ?? null;
+        const actionIndex = entry.actionIndex ?? null;
+        const stream = msg.stream === "stderr" ? "stderr" : "stdout";
         const next = appendWithLimit(entry.output, String(msg.text), MAX_COMMAND_OUTPUT);
         // CRITICAL: Update entry.output so it's available for self-healing!
         entry.output = next.text;
@@ -3514,6 +3208,27 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             return updated;
           });
         }
+
+        if (activityPanel && entry.activityStepIndex !== undefined) {
+          activityPanel.appendCommandOutput(
+            entry.activityStepIndex,
+            terminalId,
+            String(msg.text),
+            stream
+          );
+        } else if (activityPanel && activityPanel.steps.length > 0) {
+          const fallbackStep = activityPanel.currentStep ?? 0;
+          activityPanel.upsertCommand(fallbackStep, terminalId, {
+            command: entry.command,
+            status: entry.status,
+          });
+          activityPanel.appendCommandOutput(
+            fallbackStep,
+            terminalId,
+            String(msg.text),
+            stream
+          );
+        }
         // IMPORTANT: Don't return early - we're updating entry which is a ref!
         // But we can return since no other processing needed
         return;
@@ -3523,7 +3238,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const entry = commandStateRef.current.get(msg.commandId);
         if (!entry) return;
         const terminalId = String(msg.commandId);
-        const actionIndex = entry.meta?.actionIndex ?? null;
+        const actionIndex = entry.actionIndex ?? null;
         entry.status = "done";
         entry.exitCode =
           typeof msg.exitCode === "number" ? msg.exitCode : entry.exitCode;
@@ -3601,8 +3316,79 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           }
         }
 
+        // Update the activity event with final status and output
+        const activityId = commandActivityRef.current.get(msg.commandId);
+        const finalStatus = entry.exitCode !== undefined && entry.exitCode !== 0 ? "error" : "done";
+        if (activityId) {
+          setActivityEvents((prev) =>
+            prev.map((event) =>
+              event.id === activityId
+                ? {
+                  ...event,
+                  status: finalStatus as "running" | "done" | "error",
+                  output: entry.output, // Include the command output
+                  exitCode: entry.exitCode,
+                }
+                : event
+            )
+          );
+
+          // Also update per-action activities for inline display
+          if (actionIndex !== null) {
+            setPerActionActivities((prev) => {
+              const next = new Map(prev);
+              const existing = next.get(actionIndex) || [];
+              const updatedActivities = existing.map((evt) =>
+                evt.id === activityId
+                  ? { ...evt, status: finalStatus as "running" | "done" | "error", output: entry.output, exitCode: entry.exitCode }
+                  : evt
+              );
+              next.set(actionIndex, updatedActivities);
+              return next;
+            });
+          }
+
+          // Also update storedActivities on messages (for display after streaming ends)
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.storedActivities && m.storedActivities.some((a) => a.id === activityId)) {
+                return {
+                  ...m,
+                  storedActivities: m.storedActivities.map((a) =>
+                    a.id === activityId
+                      ? { ...a, status: finalStatus as "running" | "done" | "error", output: entry.output, exitCode: entry.exitCode }
+                      : a
+                  ),
+                };
+              }
+              return m;
+            })
+          );
+
+          commandActivityRef.current.delete(msg.commandId);
+        }
+
         reportCoverageIfNeeded(entry);
-        commandStateRef.current.delete(msg.commandId);
+        if (activityPanel && entry.activityStepIndex !== undefined) {
+          activityPanel.updateCommandStatus(
+            entry.activityStepIndex,
+            terminalId,
+            finalStatus,
+            entry.exitCode
+          );
+        } else if (activityPanel && activityPanel.steps.length > 0) {
+          const fallbackStep = activityPanel.currentStep ?? 0;
+          activityPanel.upsertCommand(fallbackStep, terminalId, {
+            command: entry.command,
+            status: entry.status,
+          });
+          activityPanel.updateCommandStatus(
+            fallbackStep,
+            terminalId,
+            finalStatus,
+            entry.exitCode
+          );
+        }
         return;
       }
 
@@ -3643,7 +3429,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           })
         );
         const activityId = commandActivityRef.current.get(msg.commandId);
-        const actionIndex = (entry as any).actionIndex ?? null;
+        const actionIndex = entry.actionIndex ?? null;
         if (activityId) {
           setActivityEvents((prev) =>
             prev.map((event) =>
@@ -3697,6 +3483,38 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           }
         }
         commandStateRef.current.delete(msg.commandId);
+        if (activityPanelState && entry.activityStepIndex !== undefined) {
+          activityPanelState.appendCommandOutput(
+            entry.activityStepIndex,
+            terminalId,
+            `\n${errorText}`,
+            "stderr"
+          );
+          activityPanelState.updateCommandStatus(
+            entry.activityStepIndex,
+            terminalId,
+            "error",
+            entry.exitCode
+          );
+        } else if (activityPanelState && activityPanelState.steps.length > 0) {
+          const fallbackStep = activityPanelState.currentStep ?? 0;
+          activityPanelState.upsertCommand(fallbackStep, terminalId, {
+            command: entry.command,
+            status: entry.status,
+          });
+          activityPanelState.appendCommandOutput(
+            fallbackStep,
+            terminalId,
+            `\n${errorText}`,
+            "stderr"
+          );
+          activityPanelState.updateCommandStatus(
+            fallbackStep,
+            terminalId,
+            "error",
+            entry.exitCode
+          );
+        }
         return;
       }
 
@@ -5512,159 +5330,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     }
   };
 
-  // ============================================================================
-  // CONNECTION ERROR HANDLERS (Retry, Resume, Dismiss)
-  // ============================================================================
-
-  /**
-   * Calculate exponential backoff delay: 2s, 4s, 8s...
-   */
-  const getRetryDelay = (retryCount: number): number => {
-    return baseRetryDelay * Math.pow(2, retryCount);
-  };
-
-  /**
-   * Handle retry button click - retry the last message
-   */
-  const handleRetry = useCallback(() => {
-    if (!connectionError || isRetrying) return;
-
-    const newRetryCount = connectionError.retryCount + 1;
-    if (newRetryCount > maxRetries) {
-      showToast("Maximum retries reached", "error");
-      return;
-    }
-
-    setIsRetrying(true);
-    setConnectionError(prev => prev ? { ...prev, retryCount: newRetryCount } : null);
-
-    // Update checkpoint retry count
-    if (activeSessionId) {
-      incrementCheckpointRetry(activeSessionId);
-    }
-
-    // Calculate backoff delay
-    const delay = getRetryDelay(newRetryCount - 1);
-    setNextRetryIn(Math.ceil(delay / 1000));
-
-    // Schedule retry
-    retryTimeoutRef.current = setTimeout(() => {
-      setIsRetrying(false);
-      setNextRetryIn(null);
-      setConnectionError(null);
-
-      // Retry the last sent message
-      if (lastSentRef.current) {
-        handleSend(lastSentRef.current);
-      }
-    }, delay);
-  }, [connectionError, isRetrying, activeSessionId, maxRetries]);
-
-  /**
-   * Handle resume from checkpoint - continues from where the task left off
-   */
-  const handleResume = useCallback(() => {
-    if (!currentCheckpoint || !activeSessionId) return;
-
-    setIsRetrying(true);
-    setConnectionError(null);
-
-    // Build a resume prompt with context from the checkpoint
-    const completedSteps = currentCheckpoint.steps
-      .filter(s => s.status === 'completed')
-      .map(s => s.title)
-      .join(', ');
-
-    const filesModified = currentCheckpoint.modifiedFiles
-      .map(f => f.path)
-      .join(', ');
-
-    const resumePrompt = `
-Please continue from where you left off. Here's the context:
-
-**Original Request:** ${currentCheckpoint.userMessage}
-
-**Progress Made:**
-- Completed steps: ${completedSteps || 'None'}
-- Files modified: ${filesModified || 'None'}
-- Current step: ${currentCheckpoint.currentStepIndex + 1}/${currentCheckpoint.totalSteps}
-
-**Partial Response So Far:**
-${currentCheckpoint.partialContent.substring(0, 500)}${currentCheckpoint.partialContent.length > 500 ? '...' : ''}
-
-Please continue completing this task from where it was interrupted.
-`.trim();
-
-    // Clear the current checkpoint since we're resuming
-    clearCheckpoint(activeSessionId);
-    setCurrentCheckpoint(null);
-
-    // Send the resume request
-    setTimeout(() => {
-      setIsRetrying(false);
-      handleSend(resumePrompt);
-    }, 500);
-  }, [currentCheckpoint, activeSessionId]);
-
-  /**
-   * Handle dismiss - clear error state and allow starting fresh
-   */
-  const handleDismissError = useCallback(() => {
-    // Clear retry timeout if active
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
-
-    // Clear error state
-    setConnectionError(null);
-    setIsRetrying(false);
-    setNextRetryIn(null);
-
-    // Mark checkpoint as interrupted but keep it for potential resume later
-    if (activeSessionId && currentCheckpoint) {
-      markCheckpointInterruptedWithSync(activeSessionId, "User dismissed error");
-    }
-
-    // Clear streaming state
-    if (activeSessionId) {
-      clearStreamingState(activeSessionId);
-    }
-
-    // Reset sending state
-    setSending(false);
-    setSendTimedOut(false);
-
-    // Focus input for new message
-    setTimeout(() => inputRef.current?.focus(), 10);
-  }, [activeSessionId, currentCheckpoint]);
-
-  /**
-   * Handle stream error - called when streaming fails
-   */
-  const handleStreamError = useCallback((errorMessage: string) => {
-    console.error("[NAVI] Stream error:", errorMessage);
-
-    // Save checkpoint with current state
-    if (activeSessionId) {
-      const existingCheckpoint = loadCheckpoint(activeSessionId);
-      if (existingCheckpoint) {
-        markCheckpointInterruptedWithSync(activeSessionId, errorMessage);
-        setCurrentCheckpoint(existingCheckpoint);
-      }
-    }
-
-    // Set connection error state
-    setConnectionError({
-      message: errorMessage,
-      timestamp: nowIso(),
-      retryCount: 0,
-    });
-
-    setSending(false);
-    setIsRetrying(false);
-  }, [activeSessionId]);
-
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
@@ -5714,26 +5379,10 @@ Please continue completing this task from where it was interrupted.
       isStreaming: true,  // Show streaming cursor immediately
     };
     setMessages((prev) => [...prev, userMessage, placeholderAssistant]);
-    if (!overrideText) {
-      setInput("");
-      // Reset textarea height after sending
-      if (inputRef.current) {
-        inputRef.current.style.height = 'auto';
-      }
-    }
+    if (!overrideText) setInput("");
     setSending(true);
     setSendTimedOut(false);
     sentViaExtensionRef.current = false;
-
-    // Create checkpoint for potential recovery (with backend sync)
-    if (activeSessionId) {
-      createCheckpointWithSync(activeSessionId, placeholderAssistantId, text, []).then(checkpoint => {
-        setCurrentCheckpoint(checkpoint);
-      });
-      // Clear any previous connection error
-      setConnectionError(null);
-    }
-
     // Clear previous activities, narratives, and next steps when starting a new request
     setLastNextSteps([]);
     setNarrativeLines([]);
@@ -5929,31 +5578,15 @@ Please continue completing this task from where it was interrupted.
       setAttachments([]);
     } catch (err: any) {
       console.error("[NAVI Chat] Error during send:", err);
-      const errorMsg = err?.message ?? String(err ?? "Unknown error");
-
-      // Check if this looks like a connection/streaming error
-      const isConnectionError = errorMsg.includes('fetch') ||
-        errorMsg.includes('network') ||
-        errorMsg.includes('timeout') ||
-        errorMsg.includes('abort') ||
-        errorMsg.includes('terminated') ||
-        errorMsg.includes('stream') ||
-        err?.name === 'TypeError';
-
-      if (isConnectionError) {
-        // Use the connection error handler for retry UI
-        handleStreamError(errorMsg);
-      } else {
-        // For non-connection errors, show as system message
-        const errorMessage: ChatMessage = {
-          id: makeMessageId("system"),
-          role: "system",
-          content: `Error talking to Navi: ${errorMsg}`,
-          createdAt: nowIso(),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-        showToast("Error talking to Navi backend.", "error");
-      }
+      const errorMessage: ChatMessage = {
+        id: makeMessageId("system"),
+        role: "system",
+        content: `Error talking to Navi: ${err?.message ?? String(err ?? "Unknown error")
+          }`,
+        createdAt: nowIso(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+      showToast("Error talking to Navi backend.", "error");
     } finally {
       setSending(false);
       if (sendTimeoutRef.current) {
@@ -6104,41 +5737,15 @@ Please continue completing this task from where it was interrupted.
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  /* ---------- textarea auto-resize ---------- */
-
-  const autoResizeTextarea = useCallback(() => {
-    const textarea = inputRef.current;
-    if (!textarea) return;
-
-    const minHeight = 22;
-    const maxHeight = 120;
-
-    // Reset to minimum to get accurate scrollHeight
-    textarea.style.height = `${minHeight}px`;
-
-    // Calculate new height based on content
-    const scrollHeight = textarea.scrollHeight;
-    const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
-
-    textarea.style.height = `${newHeight}px`;
-    textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
-  }, []);
-
-  // Auto-resize on input change
-  useEffect(() => {
-    autoResizeTextarea();
-  }, [input, autoResizeTextarea]);
-
   /* ---------- keyboard ---------- */
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter to send (without Shift), Shift+Enter for new line
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // Enter to send
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
       return;
     }
-    // Shift+Enter - allow default behavior for new line (no preventDefault)
 
     // Up arrow - navigate through history
     if (e.key === "ArrowUp") {
@@ -6205,23 +5812,14 @@ Please continue completing this task from where it was interrupted.
     }
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? el.value.length;
-    const newValue = el.value.slice(0, start) + text + el.value.slice(end);
-    setInput(newValue);
-
-    // Use double requestAnimationFrame to ensure DOM is updated before setting selection and resizing
+    setInput((prev) => prev.slice(0, start) + text + prev.slice(end));
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        try {
-          const pos = start + text.length;
-          el.setSelectionRange(pos, pos);
-          // Explicitly trigger resize after paste to handle multiline text
-          el.style.height = 'auto';
-          const newHeight = Math.min(el.scrollHeight, 150);
-          el.style.height = `${newHeight}px`;
-        } catch {
-          // ignore
-        }
-      });
+      try {
+        const pos = start + text.length;
+        el.setSelectionRange(pos, pos);
+      } catch {
+        // ignore
+      }
     });
   };
 
@@ -6247,7 +5845,7 @@ Please continue completing this task from where it was interrupted.
     return false;
   };
 
-  const handlePaste = async (e: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = async (e: ClipboardEvent<HTMLInputElement>) => {
     // Check for image files in clipboard first
     const items = e.clipboardData?.items;
     if (items) {
@@ -6285,20 +5883,7 @@ Please continue completing this task from where it was interrupted.
 
     // Handle text paste
     const nativeText = e.clipboardData?.getData("text/plain") ?? "";
-    if (nativeText) {
-      // Let native paste handle it, but ensure resize happens after
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          const el = inputRef.current;
-          if (el) {
-            el.style.height = 'auto';
-            const newHeight = Math.min(el.scrollHeight, 150);
-            el.style.height = `${newHeight}px`;
-          }
-        });
-      });
-      return;
-    }
+    if (nativeText) return; // Let native paste handle it
     const canReadNative =
       typeof navigator !== "undefined" && !!navigator.clipboard?.readText;
     if (!vscodeApi.hasVsCodeHost() && !canReadNative) return;
@@ -7651,17 +7236,6 @@ Please continue completing this task from where it was interrupted.
   };
 
   return (
-    <>
-    {/* Checkpoint Resume Dialog - Modal overlay */}
-    {resumeDialogCheckpoint && (
-      <CheckpointResumeDialog
-        checkpoint={resumeDialogCheckpoint}
-        onContinue={handleResumeContinue}
-        onRevert={handleResumeRevert}
-        onStartFresh={handleResumeStartFresh}
-        onDismiss={handleResumeDismiss}
-      />
-    )}
     <div className="navi-chat-root navi-chat-root--no-header" data-testid="navi-interface">
       {/* Working Indicator - Floating with dynamic content */}
       {sending && (
@@ -7775,16 +7349,6 @@ Please continue completing this task from where it was interrupted.
                 <Archive className="h-3.5 w-3.5 navi-icon-animated navi-icon-archive" />
                 <span>Archived</span>
               </button>
-              {sessionCheckpoints.size > 0 && (
-                <button
-                  type="button"
-                  className={`navi-history-filter-btn navi-filter-interrupted ${historyFilter === "interrupted" ? "is-active" : ""}`}
-                  onClick={() => setHistoryFilter("interrupted")}
-                >
-                  <AlertTriangle className="h-3.5 w-3.5 navi-icon-animated" />
-                  <span>Interrupted ({sessionCheckpoints.size})</span>
-                </button>
-              )}
             </div>
             <div className="navi-history-sort-container">
               <button
@@ -7833,9 +7397,7 @@ Please continue completing this task from where it was interrupted.
                   ? listStarredSessions()
                   : historyFilter === "archived"
                     ? listArchivedSessions()
-                    : historyFilter === "interrupted"
-                      ? listActiveSessions().filter(s => sessionCheckpoints.has(s.id))
-                      : listActiveSessions();
+                    : listActiveSessions();
 
               // Apply search filter
               if (historySearch.trim()) {
@@ -7874,22 +7436,16 @@ Please continue completing this task from where it was interrupted.
                             ? "No starred conversations"
                             : historyFilter === "archived"
                               ? "No archived conversations"
-                              : historyFilter === "interrupted"
-                                ? "No interrupted tasks to resume"
-                                : "No conversations yet"}
+                              : "No conversations yet"}
                     </span>
                   </div>
                 );
               }
 
-              return sessions.map((session) => {
-                const checkpoint = sessionCheckpoints.get(session.id);
-                const hasCheckpoint = !!checkpoint;
-
-                return (
+              return sessions.map((session) => (
                 <div
                   key={session.id}
-                  className={`navi-history-item${session.id === activeSessionId ? " is-active" : ""}${session.isPinned ? " is-pinned" : ""}${hasCheckpoint ? " has-checkpoint" : ""}`}
+                  className={`navi-history-item${session.id === activeSessionId ? " is-active" : ""}${session.isPinned ? " is-pinned" : ""}`}
                   onClick={() => {
                     persistActiveSessionId(session.id);
                     setActiveSessionId(session.id);
@@ -7902,13 +7458,6 @@ Please continue completing this task from where it was interrupted.
                   {session.isPinned && (
                     <div className="navi-history-pin-indicator">
                       <Pin className="h-3 w-3" />
-                    </div>
-                  )}
-
-                  {/* Checkpoint indicator */}
-                  {hasCheckpoint && (
-                    <div className="navi-history-checkpoint-indicator" title="Has interrupted task">
-                      <AlertTriangle className="h-3 w-3" />
                     </div>
                   )}
 
@@ -7955,34 +7504,6 @@ Please continue completing this task from where it was interrupted.
 
                   {/* Action buttons - show on hover with animated icons */}
                   <div className="navi-history-item-actions">
-                    {/* Resume button for interrupted checkpoints */}
-                    {hasCheckpoint && checkpoint && (
-                      <>
-                        <button
-                          type="button"
-                          className="navi-history-action-btn navi-action-resume"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleResumeFromCheckpoint(checkpoint);
-                          }}
-                          title={`Resume: ${checkpoint.userMessage.slice(0, 50)}...`}
-                        >
-                          <RotateCw className="h-3.5 w-3.5 navi-icon-animated" />
-                          <span className="navi-action-label">Resume</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="navi-history-action-btn navi-action-discard"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDiscardCheckpoint(session.id);
-                          }}
-                          title="Discard checkpoint"
-                        >
-                          <XCircle className="h-3.5 w-3.5 navi-icon-animated" />
-                        </button>
-                      </>
-                    )}
                     <button
                       type="button"
                       className={`navi-history-action-btn navi-action-pin ${session.isPinned ? "is-active" : ""}`}
@@ -8061,8 +7582,7 @@ Please continue completing this task from where it was interrupted.
                     )}
                   </div>
                 </div>
-              );
-              });
+              ));
             })()}
           </div>
 
@@ -8220,6 +7740,52 @@ Please continue completing this task from where it was interrupted.
                       onClick={() => setAiSettings(prev => ({ ...prev, streamResponses: !prev.streamResponses }))}
                     >
                       {aiSettings.streamResponses ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="navi-settings-group">
+                  <h4 className="navi-settings-group-title">
+                    <Activity className="h-4 w-4" />
+                    Activity Panel
+                  </h4>
+                  <div className="navi-settings-item">
+                    <div className="navi-settings-item-info">
+                      <span className="navi-settings-item-label">Show commands</span>
+                      <span className="navi-settings-item-desc">Display commands in the Activity panel</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`navi-settings-toggle ${activityPanelPreferences.showCommands ? "is-on" : ""}`}
+                      onClick={() => setActivityPanelPreferences({ showCommands: !activityPanelPreferences.showCommands })}
+                    >
+                      {activityPanelPreferences.showCommands ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                    </button>
+                  </div>
+                  <div className="navi-settings-item">
+                    <div className="navi-settings-item-info">
+                      <span className="navi-settings-item-label">Show command output</span>
+                      <span className="navi-settings-item-desc">Include stdout/stderr preview in Activity panel</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`navi-settings-toggle ${activityPanelPreferences.showCommandOutput ? "is-on" : ""}`}
+                      onClick={() => setActivityPanelPreferences({ showCommandOutput: !activityPanelPreferences.showCommandOutput })}
+                      disabled={!activityPanelPreferences.showCommands}
+                    >
+                      {activityPanelPreferences.showCommandOutput ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                    </button>
+                  </div>
+                  <div className="navi-settings-item">
+                    <div className="navi-settings-item-info">
+                      <span className="navi-settings-item-label">Show file changes</span>
+                      <span className="navi-settings-item-desc">Display file changes in the Activity panel</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`navi-settings-toggle ${activityPanelPreferences.showFileChanges ? "is-on" : ""}`}
+                      onClick={() => setActivityPanelPreferences({ showFileChanges: !activityPanelPreferences.showFileChanges })}
+                    >
+                      {activityPanelPreferences.showFileChanges ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
                     </button>
                   </div>
                 </div>
@@ -8471,9 +8037,31 @@ Please continue completing this task from where it was interrupted.
                       // Only show actual tool activities - filter out meta/thinking activities
                       // Keep: read, edit, create, command (real file/command operations)
                       // Filter out: info, thinking, analysis, etc. (meta activities)
-                      const filteredActivities = activitiesToUse.filter(
+                      // Also deduplicate: if same command has both running and done, only show done
+                      const toolActivities = activitiesToUse.filter(
                         (evt) => evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create' || evt.kind === 'command'
                       );
+
+                      // Deduplicate command activities - prefer done/error over running
+                      const seenCommands = new Map<string, ActivityEvent>();
+                      for (const evt of toolActivities) {
+                        if (evt.kind === 'command') {
+                          const key = evt.detail || evt.id;
+                          const existing = seenCommands.get(key);
+                          // Keep if: no existing, or existing is running and this is done/error
+                          if (!existing || (existing.status === 'running' && evt.status !== 'running')) {
+                            seenCommands.set(key, evt);
+                          }
+                        }
+                      }
+
+                      const filteredActivities = toolActivities.filter((evt) => {
+                        if (evt.kind === 'command') {
+                          const key = evt.detail || evt.id;
+                          return seenCommands.get(key) === evt;
+                        }
+                        return true;
+                      });
 
                       // Check if we have any tool activities to show
                       const hasActivities = filteredActivities.length > 0 || narrativesToUse.length > 0;
@@ -8504,7 +8092,7 @@ Please continue completing this task from where it was interrupted.
                       });
 
                       // Combine consecutive narrative items to prevent broken markdown patterns
-                      // (e.g., [text](url) split across chunks) and mid-word splits
+                      // (e.g., [text](url) split across chunks)
                       type MergedItem =
                         | { itemType: 'narrative'; id: string; text: string; timestamp: string }
                         | { itemType: 'activity'; data: ActivityEvent };
@@ -8514,24 +8102,10 @@ Please continue completing this task from where it was interrupted.
                         if (item.itemType === 'narrative') {
                           const lastItem = mergedItems[mergedItems.length - 1];
                           if (lastItem && lastItem.itemType === 'narrative') {
-                            // Combine with previous narrative - determine if we need a separator
+                            // Combine with previous narrative - no space if last ends with opening bracket/paren
                             const lastChar = lastItem.text.slice(-1);
-                            const firstChar = item.text.charAt(0);
-
-                            // No separator needed if:
-                            // 1. Last char is whitespace, newline, or opening bracket/paren
-                            // 2. First char is whitespace or newline
-                            // 3. We're in the middle of a word (last char is letter/digit AND first char is letter/digit)
-                            const noSeparatorChars = ['[', '(', '\n', ' ', '\t'];
-                            const isLastCharWhitespace = /\s/.test(lastChar);
-                            const isFirstCharWhitespace = /\s/.test(firstChar);
-                            const isMidWord = /[a-zA-Z0-9]/.test(lastChar) && /[a-zA-Z0-9]/.test(firstChar);
-                            const needsSeparator = !noSeparatorChars.includes(lastChar) &&
-                                                   !isLastCharWhitespace &&
-                                                   !isFirstCharWhitespace &&
-                                                   !isMidWord;
-
-                            lastItem.text += (needsSeparator ? ' ' : '') + item.text;
+                            const separator = ['[', '(', '\n'].includes(lastChar) ? '' : ' ';
+                            lastItem.text += separator + item.text;
                           } else {
                             mergedItems.push({ ...item });
                           }
@@ -8585,41 +8159,31 @@ Please continue completing this task from where it was interrupted.
                                 </span>
                               )}
                             </div>
-                            {isCommand && evt.detail && (
-                              <div className="navi-claude-command-block">
-                                {/* Purpose: Why this command is being run */}
-                                {evt.purpose && (
-                                  <div className="navi-command-purpose">
-                                    <span className="navi-command-purpose-icon">💡</span>
-                                    <span className="navi-command-purpose-text">{evt.purpose}</span>
-                                  </div>
-                                )}
-                                <div className="navi-claude-command-row">
-                                  <span className="navi-claude-io-label">IN</span>
-                                  <code className="navi-claude-command-text">{evt.detail}</code>
-                                </div>
-                                {evt.output && (
-                                  <div className="navi-claude-command-row">
-                                    <span className="navi-claude-io-label">OUT</span>
-                                    <code className="navi-claude-output-text">{evt.output}</code>
-                                  </div>
-                                )}
-                                {/* Explanation: What the result means */}
-                                {evt.explanation && (
-                                  <div className="navi-command-explanation">
-                                    <span className="navi-command-explanation-icon">📋</span>
-                                    <span className="navi-command-explanation-text">{evt.explanation}</span>
-                                  </div>
-                                )}
-                                {/* Next action: What will happen next */}
-                                {evt.nextAction && (
-                                  <div className="navi-command-next">
-                                    <span className="navi-command-next-icon">→</span>
-                                    <span className="navi-command-next-text">{evt.nextAction}</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            {isCommand && evt.detail && (() => {
+                              // Look up output from terminalEntries as fallback
+                              const terminalEntry = [...terminalEntries].reverse().find(
+                                (te) => te.command === evt.detail
+                              );
+                              const commandOutput = evt.output || terminalEntry?.output || '';
+                              const commandExitCode = evt.exitCode ?? terminalEntry?.exitCode;
+                              const commandStatus = evt.status || terminalEntry?.status || 'done';
+
+                              return (
+                                <NaviInlineCommand
+                                  commandId={terminalEntry?.id}
+                                  command={evt.detail}
+                                  output={commandOutput}
+                                  status={commandStatus}
+                                  showOutput={false}
+                                  purpose={evt.purpose}
+                                  explanation={evt.explanation}
+                                  nextAction={evt.nextAction}
+                                  exitCode={commandExitCode}
+                                  onOpenActivity={onOpenActivityForCommand}
+                                  highlighted={terminalEntry?.id === inlineCommandHighlightId}
+                                />
+                              );
+                            })()}
                           </div>
                         );
                       };
@@ -8825,73 +8389,7 @@ Please continue completing this task from where it was interrupted.
                         ))}
                       </div>
                     )}
-                    {/* Collapsible user message for long content */}
-                    {(() => {
-                      const content = m.content;
-                      const MAX_LINES = 3;
-                      const MAX_CHARS = 250;
-                      const lines = content.split('\n');
-                      const isLong = lines.length > MAX_LINES || content.length > MAX_CHARS;
-                      const isExpanded = expandedUserMessages.has(m.id);
-
-                      if (!isLong) {
-                        return renderMessageContent(m);
-                      }
-
-                      // Truncate to first 3 lines or MAX_CHARS, whichever is shorter
-                      const truncatedLines = lines.slice(0, MAX_LINES);
-                      let truncatedContent = truncatedLines.join('\n');
-                      if (truncatedContent.length > MAX_CHARS) {
-                        truncatedContent = truncatedContent.slice(0, MAX_CHARS);
-                      }
-
-                      return (
-                        <div className="navi-user-message-collapsible">
-                          <div
-                            className={`navi-user-message-content ${!isExpanded ? 'navi-user-message-content--truncated' : ''}`}
-                            style={{
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-word',
-                            }}
-                          >
-                            {isExpanded ? renderMessageContent(m) : (
-                              <>
-                                {truncatedContent}
-                                {(lines.length > MAX_LINES || content.length > MAX_CHARS) && '...'}
-                              </>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            className="navi-user-message-toggle"
-                            onClick={() => {
-                              setExpandedUserMessages(prev => {
-                                const next = new Set(prev);
-                                if (next.has(m.id)) {
-                                  next.delete(m.id);
-                                } else {
-                                  next.add(m.id);
-                                }
-                                return next;
-                              });
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: 'hsl(var(--primary))',
-                              cursor: 'pointer',
-                              padding: '4px 0',
-                              fontSize: 12,
-                              fontWeight: 500,
-                              marginTop: 4,
-                              display: 'block',
-                            }}
-                          >
-                            {isExpanded ? 'Show less' : 'Show more'}
-                          </button>
-                        </div>
-                      );
-                    })()}
+                    {renderMessageContent(m)}
                   </div>
                 )}
 
@@ -9567,20 +9065,11 @@ Please continue completing this task from where it was interrupted.
 
         {/* Task Complete Panel - shows after task finishes */}
         {!sending && taskSummary && (
-          <div className={`navi-task-complete-panel ${taskSummary.stoppedReason ? 'navi-task-complete-panel--error' : ''}`}>
+          <div className="navi-task-complete-panel">
             <div className="navi-task-complete-header">
               <div className="navi-task-complete-title">
-                {taskSummary.stoppedReason ? (
-                  <>
-                    <AlertCircle className="h-4 w-4 text-orange-400" />
-                    <span>Task Stopped</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-4 w-4 text-green-400" />
-                    <span>Task Complete</span>
-                  </>
-                )}
+                <CheckCircle className="h-4 w-4 text-green-400" />
+                <span>Task Complete</span>
               </div>
               <button
                 type="button"
@@ -9590,38 +9079,6 @@ Please continue completing this task from where it was interrupted.
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
-
-            {/* Error reason banner */}
-            {taskSummary.stoppedReason && (
-              <div className="navi-task-error-banner">
-                <div className="navi-task-error-reason">
-                  {taskSummary.stoppedReason === 'iteration_loop_detected' ? (
-                    <>
-                      <strong>Loop Detected:</strong> The same error occurred {taskSummary.loopCount || 5} times.
-                      NAVI couldn't automatically resolve this issue.
-                    </>
-                  ) : taskSummary.stoppedReason === 'max_iterations' ? (
-                    <>
-                      <strong>Max Attempts Reached:</strong> NAVI tried {taskSummary.iterations} times but couldn't complete the task.
-                    </>
-                  ) : (
-                    <>
-                      <strong>Task Stopped:</strong> {taskSummary.stoppedReason}
-                    </>
-                  )}
-                </div>
-                {taskSummary.remainingErrors && taskSummary.remainingErrors.length > 0 && (
-                  <div className="navi-task-error-details">
-                    <div className="navi-task-error-details-label">Unresolved errors:</div>
-                    <ul className="navi-task-error-list">
-                      {taskSummary.remainingErrors.slice(0, 3).map((err, idx) => (
-                        <li key={idx} className="navi-task-error-item">{err}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Summary text */}
             {taskSummary.summaryText && (
@@ -10386,6 +9843,40 @@ Please continue completing this task from where it was interrupted.
       </div>
 
       <div className="navi-chat-footer">
+        {/* Execution Plan Panel - shows steps being executed */}
+        {executionSteps.length > 0 && (
+          <div className={`navi-execution-panel ${planCollapsed ? 'collapsed' : ''}`}>
+            <div
+              className="navi-execution-header"
+              onClick={() => setPlanCollapsed((p) => !p)}
+            >
+              <ChevronDown
+                className={`navi-execution-chevron ${planCollapsed ? 'collapsed' : ''}`}
+                size={14}
+              />
+              <span className="navi-execution-title">Execution Plan</span>
+              <span className="navi-execution-progress">
+                {executionSteps.filter((s) => s.status === 'done').length}/{executionSteps.length}
+              </span>
+            </div>
+            {!planCollapsed && (
+              <div className="navi-execution-steps">
+                {executionSteps.map((step) => (
+                  <div key={step.id} className={`navi-step navi-step--${step.status}`}>
+                    <span className="navi-step-icon">
+                      {step.status === 'pending' && <Circle size={14} />}
+                      {step.status === 'running' && <Loader2 size={14} className="spin" />}
+                      {step.status === 'done' && <CheckCircle2 size={14} />}
+                      {step.status === 'error' && <XCircle size={14} />}
+                    </span>
+                    <span className="navi-step-title">{step.title}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Hide QuickActionsBar when we have specific next steps from the response */}
         {lastNextSteps.length === 0 && (
           <QuickActionsBar
@@ -10477,26 +9968,8 @@ Please continue completing this task from where it was interrupted.
               planId={executionPlan.planId}
               steps={executionPlan.steps}
               isExecuting={executionPlan.isExecuting}
-              isExpanded={!planCollapsed}
-              onToggle={(expanded) => setPlanCollapsed(!expanded)}
-              autoCollapseMs={4000}
             />
           </div>
-        )}
-
-        {/* Connection Error Banner - Shows when streaming connection is lost */}
-        {connectionError && (
-          <ConnectionErrorBanner
-            error={connectionError.message}
-            checkpoint={currentCheckpoint}
-            onRetry={handleRetry}
-            onResume={currentCheckpoint?.status === 'interrupted' ? handleResume : undefined}
-            onDismiss={handleDismissError}
-            retryCount={connectionError.retryCount}
-            maxRetries={maxRetries}
-            isRetrying={isRetrying}
-            nextRetryIn={nextRetryIn ?? undefined}
-          />
         )}
 
         <div className="navi-chat-input-row">
@@ -10555,12 +10028,11 @@ Please continue completing this task from where it was interrupted.
             </div>
           )}
 
-          <textarea
+          <input
             ref={inputRef}
             className="navi-chat-input navi-chat-input--animated-placeholder"
             placeholder={input ? "Ask NAVI..." : NAVI_SUGGESTIONS[placeholderIndex]}
             value={input}
-            rows={1}
             onChange={(e) => {
               const newValue = e.target.value;
               setInput(newValue);
@@ -10785,12 +10257,6 @@ Please continue completing this task from where it was interrupted.
           </div>
         </div>
 
-        {/* Futuristic Command Panel */}
-        <NaviCommandPanel
-          entries={terminalEntries as CommandTerminalEntry[]}
-          onClear={() => setTerminalEntries([])}
-          defaultOpen={terminalOpen}
-        />
       </div>
 
       {/* Inline toast */}
@@ -10887,7 +10353,6 @@ Please continue completing this task from where it was interrupted.
       {/* Modern Toast Notifications - Temporarily disabled */}
       {/* <Toaster /> */}
     </div>
-    </>
   );
 }
 

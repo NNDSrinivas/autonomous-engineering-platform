@@ -11,13 +11,15 @@ from typing import Any
 from datetime import datetime
 
 from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 # ---- Observability imports ----
-from backend.core.obs.obs_logging import configure_json_logging
+from backend.core.obs.obs_logging import configure_json_logging, logger
+from backend.core.obs.error_taxonomy import error_code_for_status
 
 # Try to import tracing module, provide no-op implementations if not available
 try:
@@ -39,8 +41,11 @@ from backend.core.obs.obs_middleware import ObservabilityMiddleware
 from backend.core.health.router import router as health_router
 from backend.core.health.shutdown import on_startup, on_shutdown
 from backend.core.resilience.resilience_middleware import ResilienceMiddleware
+from backend.core.rate_limit.middleware import RateLimitMiddleware
+from backend.core.auth.vscode_middleware import VscodeAuthMiddleware
 
 from backend.core.config import settings
+from backend.core.settings import settings as core_settings
 
 # removed unused: setup_logging (using obs logging instead)
 # removed unused: metrics_router (using new /metrics mount)
@@ -95,10 +100,13 @@ from ..search.router import router as search_router
 from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
 from .routers.memory import router as memory_router
+from .routers.memory_graph import router as memory_graph_router
+from .routers.saas import router as saas_router
 from .routers.plan import router as live_plan_router
 from .apply_fix import router as apply_fix_router  # Batch 6: Auto-Fix Engine
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
+from .routers.admin_security import router as admin_security_router
 from backend.marketplace import marketplace_router  # Phase 7.2: Extension Platform
 from backend.extensions.api import (
     router as extensions_router,
@@ -108,7 +116,12 @@ from .routers.github_webhook import router as github_webhook_router
 from .routers.advanced_operations import (
     router as advanced_operations_router,
 )  # MCP Tools
+from .routers.navi_planner import router as navi_planner_router
 from .review_stream import router as review_stream_router  # SSE streaming for reviews
+from .review import router as review_router
+from .smart import router as smart_router
+from .smart_review import router as smart_review_router
+from .diff import router as diff_router
 from .real_review_stream import (
     router as real_review_stream_router,
 )  # Real git-based review streaming
@@ -192,6 +205,55 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
 
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    error_code = error_code_for_status(exc.status_code)
+    logger.warning(
+        "http_error",
+        extra={
+            "request_id": getattr(request.state, "request_id", None),
+            "trace_id": getattr(request.state, "trace_id", None),
+            "route": request.url.path,
+            "method": request.method,
+            "status": exc.status_code,
+            "error_code": error_code,
+        },
+    )
+    headers = dict(exc.headers or {})
+    headers.setdefault("X-Error-Code", error_code)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "error_code": error_code, "request_id": getattr(request.state, "request_id", None)},
+        headers=headers,
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    error_code = error_code_for_status(500)
+    logger.error(
+        "unhandled_error",
+        extra={
+            "request_id": getattr(request.state, "request_id", None),
+            "trace_id": getattr(request.state, "trace_id", None),
+            "route": request.url.path,
+            "method": request.method,
+            "status": 500,
+            "error_code": error_code,
+        },
+        exc_info=True,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "error_code": error_code,
+            "request_id": getattr(request.state, "request_id", None),
+        },
+        headers={"X-Error-Code": error_code},
+    )
+
 # Instrument app with OpenTelemetry after creation (PR-28)
 instrument_fastapi_app(app)
 
@@ -203,8 +265,7 @@ app.add_middleware(
     ResilienceMiddleware
 )  # PR-29: Circuit breaker support with 503 responses
 
-# CORS configuration - always explicit for dev to work properly
-# FastAPI CORSMiddleware doesn't send CORS headers with ["*"] reliably
+# CORS configuration - strict by default, dev override is explicit
 dev_origins = [
     "http://localhost:3000",
     "http://localhost:3001",
@@ -226,19 +287,28 @@ dev_origins = [
     "http://127.0.0.1:3007",
     "http://127.0.0.1:3008",
     "http://127.0.0.1:3009",
-    "vscode-webview://",
 ]
 
-if settings.cors_origins == "*":
-    # Development: allow all localhost + pattern + vscode-webview
-    cors_origins = dev_origins + ["*"]  # Allow all origins in dev
-    cors_regex = r"^(https?://(localhost|127\.0\.0\.1):\d+|vscode-webview://.*)$"
+cors_origins = settings.cors_origins_list
+cors_regex = None
+allow_creds = True
+
+if settings.allow_dev_cors:
+    cors_origins = sorted(set(cors_origins + dev_origins))
+    if settings.allow_vscode_webview:
+        cors_regex = (
+            r"^(https?://(localhost|127\.0\.0\.1):\d+"
+            r"|vscode-webview://.*|https://.*\.vscode-cdn\.net)$"
+        )
+    else:
+        cors_regex = r"^(https?://(localhost|127\.0\.0\.1):\d+)$"
     allow_creds = False
-else:
-    # Production: use explicit list
-    cors_origins = settings.cors_origins_list
+elif settings.allow_vscode_webview:
     cors_regex = r"^(https://.*\.vscode-cdn\.net|vscode-webview://.*)$"
-    allow_creds = True
+
+if settings.cors_origins == "*" and not settings.allow_dev_cors:
+    cors_origins = []
+    cors_regex = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -249,9 +319,14 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+# VS Code/webview auth enforcement
+app.add_middleware(
+    VscodeAuthMiddleware,
+    enabled=settings.vscode_auth_required,
+    allow_dev_bypass=settings.allow_dev_auth_bypass,
+)
 # RequestIDMiddleware removed - ObservabilityMiddleware provides this functionality
-# Temporarily disabled for local dev while debugging connector issues
-# app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
+app.add_middleware(RateLimitMiddleware, enabled=core_settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 
 # Conditional audit logging (disabled in test/CI environments to prevent DB errors)
@@ -404,6 +479,7 @@ app.include_router(
 app.include_router(
     navi_router  # PR-5B/PR-6: NAVI VS Code extension (already has /api/navi prefix)
 )
+app.include_router(navi_planner_router)  # NAVI planner endpoints (/api/navi/plan/*)
 app.include_router(
     navi_engine_router
 )  # Aggressive NAVI engine with code generation, git ops, dependency management
@@ -441,8 +517,14 @@ app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+app.include_router(memory_graph_router)  # Memory graph queries (/api/memory/*)
+app.include_router(saas_router)  # SaaS management endpoints (/saas/*)
 app.include_router(events_router, prefix="/api")  # Universal event ingestion
 app.include_router(internal_router, prefix="/api")  # System info and diagnostics
+app.include_router(review_router)
+app.include_router(smart_router)
+app.include_router(smart_review_router)
+app.include_router(diff_router)
 app.include_router(review_stream_router)  # SSE streaming for code reviews
 app.include_router(
     real_review_stream_router, prefix="/api"
@@ -492,6 +574,7 @@ app.include_router(auth_routes_router)
 
 # Admin RBAC endpoints (PR-24)
 app.include_router(admin_rbac_router)
+app.include_router(admin_security_router)
 
 # Rate limiting admin endpoints (PR-26)
 app.include_router(rate_limit_admin_router)

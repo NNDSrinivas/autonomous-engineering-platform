@@ -29,13 +29,16 @@ class TestSSEStreaming:
         """Test SSE connection establishment for review stream."""
         with client.stream("GET", "/api/review/stream") as response:
             assert response.status_code == 200
-            assert response.headers["content-type"] == "text/plain; charset=utf-8"
+            assert response.headers["content-type"].startswith("text/event-stream")
 
             # Read first few events
             events = []
             for line in response.iter_lines():
                 if line:
-                    events.append(line.decode())
+                    if isinstance(line, bytes):
+                        events.append(line.decode())
+                    else:
+                        events.append(line)
                 if len(events) >= 3:  # Get first few events
                     break
 
@@ -73,7 +76,7 @@ class TestSSEStreaming:
                 events = []
                 for line in response.iter_lines():
                     if line:
-                        decoded_line = line.decode()
+                        decoded_line = line.decode() if isinstance(line, bytes) else line
                         events.append(decoded_line)
 
                         # Stop after getting mode selection event
@@ -133,7 +136,7 @@ class TestSSEStreaming:
             events = []
             for line in response.iter_lines():
                 if line:
-                    decoded_line = line.decode()
+                    decoded_line = line.decode() if isinstance(line, bytes) else line
                     events.append(decoded_line)
 
                     # Look for error event
@@ -153,7 +156,7 @@ class TestSSEStreaming:
 
             for line in response.iter_lines():
                 if line:
-                    decoded_line = line.decode()
+                    decoded_line = line.decode() if isinstance(line, bytes) else line
                     events.append(decoded_line)
 
                     # Look for heartbeat events
@@ -203,7 +206,7 @@ class TestSSEStreaming:
 
             for line in response.iter_lines():
                 if line:
-                    decoded_line = line.decode()
+                    decoded_line = line.decode() if isinstance(line, bytes) else line
                     events.append(decoded_line)
 
                     # Collect progress events
@@ -233,7 +236,7 @@ class TestSSEStreaming:
                     events = []
                     for line in response.iter_lines():
                         if line:
-                            events.append(line.decode())
+                            events.append(line.decode() if isinstance(line, bytes) else line)
                         if len(events) >= 5:  # Collect a few events
                             break
                     results.append({"success": True, "events": len(events)})

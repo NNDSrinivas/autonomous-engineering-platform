@@ -107,24 +107,35 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
 
             # Handle decision
             if decision == DecisionType.BLOCKED:
+                message = f"Action blocked by governance policy: {', '.join(reasons)}"
                 return ExecutionResult(
                     action=action,
                     status=ExecutionStatus.BLOCKED,
-                    error_message=f"Action blocked by governance policy: {', '.join(reasons)}",
+                    error_message=message,
+                    message=message,
                     result_data={"risk_score": risk_score, "reasons": reasons},
+                    metadata={"risk_score": risk_score, "reasons": reasons},
                 )
 
             elif decision == DecisionType.APPROVAL:
                 # Store pending approval
                 action_id = generate_action_id(action)
                 if approval_id:  # Only store if approval_id is not None
-                    self.pending_approvals[action_id] = approval_id
+                    # Track by approval_id for lookup consistency
+                    self.pending_approvals[approval_id] = action_id
 
+                message = f"Action requires approval: {', '.join(reasons)}"
                 return ExecutionResult(
                     action=action,
                     status=ExecutionStatus.WAITING_APPROVAL,
-                    error_message=f"Action requires approval: {', '.join(reasons)}",
+                    error_message=message,
+                    message=message,
                     result_data={
+                        "approval_id": approval_id,
+                        "risk_score": risk_score,
+                        "reasons": reasons,
+                    },
+                    metadata={
                         "approval_id": approval_id,
                         "risk_score": risk_score,
                         "reasons": reasons,
@@ -187,9 +198,18 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
         """Execute an action after it has been approved"""
 
         try:
-            # Get approval ID
-            approval_id = self.pending_approvals.get(action_id)
-            if not approval_id:
+            # Accept either action_id or approval_id for backwards compatibility.
+            approval_id = action_id
+            resolved_action_id = self.pending_approvals.get(approval_id)
+            if not resolved_action_id:
+                for pending_approval_id, pending_action_id in (
+                    self.pending_approvals.items()
+                ):
+                    if pending_action_id == action_id:
+                        approval_id = pending_approval_id
+                        resolved_action_id = pending_action_id
+                        break
+            if not resolved_action_id:
                 # Create a dummy action for the error result
                 dummy_action = PlannedAction(
                     action_type=ActionType.ESCALATE_ISSUE,
@@ -218,15 +238,18 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
                     action=dummy_action,
                     status=ExecutionStatus.FAILED,
                     error_message="No pending approval found for this action",
+                    message="No pending approval found for this action",
                 )
 
             # TODO: Retrieve original action and context from storage
             # For now, we'll need to modify the architecture to store these
 
-            logger.info(f"Executing approved action {action_id} by {approver_id}")
+            logger.info(
+                f"Executing approved action {resolved_action_id} by {approver_id}"
+            )
 
             # Remove from pending
-            del self.pending_approvals[action_id]
+            del self.pending_approvals[approval_id]
 
             # Execute using parent's execution controller
             # This is a simplified version - in practice, we'd need to reconstruct the action
@@ -237,7 +260,7 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
                 confidence_score=1.0,
                 context_completeness=1.0,
                 historical_success=1.0,
-                target=action_id,
+                target=resolved_action_id,
                 parameters={},
                 prerequisites=[],
                 safety_checks=[],
@@ -254,7 +277,10 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
                 created_at=datetime.now(),
             )
             result = ExecutionResult(
-                action=dummy_action, status=ExecutionStatus.COMPLETED, success=True
+                action=dummy_action,
+                status=ExecutionStatus.COMPLETED,
+                success=True,
+                message="Approved action executed",
             )
 
             # Log execution
@@ -264,9 +290,10 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
                 action_type="approved_execution",
                 execution_result=result.status.value,
                 artifacts={
-                    "action_id": action_id,
+                    "action_id": resolved_action_id,
                     "approver_id": approver_id,
                     "original_requester": self.user_id,
+                    "approval_id": approval_id,
                 },
             )
 

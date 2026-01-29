@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend.core.database import get_db
+from backend.core.db import get_db
 from backend.core.reasoning.temporal_reasoner import TemporalReasoner
 from backend.workers.graph_builder import GraphBuilder
 from backend.database.models.memory_graph import MemoryNode, MemoryEdge
@@ -236,7 +236,7 @@ async def get_node_neighborhood(
         # Get 1-hop neighborhood (using helper to get AIService instance)
         ai_service = get_ai_service()
         reasoner = TemporalReasoner(db, ai_service)
-        nodes, edges = reasoner.get_node_neighborhood(node, depth=1)
+        nodes, edges = reasoner.get_node_neighborhood(node, depth=2)
 
         elapsed_ms = (time.time() - start_time) * 1000
 
@@ -315,10 +315,10 @@ async def query_graph(
 @router.get("/timeline")
 async def get_timeline(
     entity_id: str,
+    request: Request,
     org_id: str = Depends(get_org_id),
     db: Session = Depends(get_db),
     window: str = "30d",
-    request: Request = Depends(),
 ):
     """Get timeline for an entity
 
@@ -345,7 +345,17 @@ async def get_timeline(
         # Audit log
         audit_log(request, org_id, "timeline", {"entity_id": entity_id}, elapsed_ms)
 
-        return result
+        timeline_items = []
+        for item in result.get("timeline", []):
+            node = item.get("node", {})
+            if not node:
+                continue
+            entry = dict(node)
+            entry["created_at"] = node.get("created_at") or item.get("timestamp")
+            entry["related_edges"] = item.get("related_edges", [])
+            timeline_items.append(entry)
+
+        return timeline_items
 
     except Exception as e:
         logger.error(

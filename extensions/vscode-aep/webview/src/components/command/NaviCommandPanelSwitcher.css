@@ -1,0 +1,200 @@
+/* =============================================================================
+   NAVI COMMAND PANEL SWITCHER
+   =============================================================================
+   Theme switcher component for toggling between panel designs
+   ============================================================================= */
+
+.navi-panel-switcher {
+  position: relative;
+  --switcher-bg: #1a1a2e;
+  --switcher-border: #3d3d5c;
+  --switcher-text: #e0e0e0;
+  --switcher-text-dim: #8888aa;
+  --switcher-accent: #7b68ee;
+  --switcher-accent-glow: rgba(123, 104, 238, 0.3);
+  --switcher-hover: #252544;
+}
+
+/* -----------------------------------------------------------------------------
+   Theme Switcher Container
+   ----------------------------------------------------------------------------- */
+.theme-switcher-container {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+/* -----------------------------------------------------------------------------
+   Theme Switcher Button
+   ----------------------------------------------------------------------------- */
+.theme-switcher-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--switcher-bg);
+  border: 1px solid var(--switcher-border);
+  border-radius: 8px;
+  color: var(--switcher-text);
+  font-family: 'Segoe UI', -apple-system, sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-switcher-button:hover {
+  border-color: var(--switcher-accent);
+  box-shadow: 0 0 12px var(--switcher-accent-glow);
+}
+
+.theme-icon {
+  font-size: 16px;
+}
+
+.theme-name {
+  flex: 1;
+  text-align: left;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.theme-chevron {
+  font-size: 10px;
+  color: var(--switcher-text-dim);
+  transition: transform 0.2s ease;
+}
+
+/* -----------------------------------------------------------------------------
+   Theme Selector Dropdown
+   ----------------------------------------------------------------------------- */
+.theme-selector-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--switcher-bg);
+  border: 1px solid var(--switcher-border);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  animation: dropdown-appear 0.2s ease;
+}
+
+@keyframes dropdown-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.theme-selector-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, #252544 0%, var(--switcher-bg) 100%);
+  border-bottom: 1px solid var(--switcher-border);
+  font-size: 10px;
+  color: var(--switcher-text-dim);
+  letter-spacing: 1.5px;
+}
+
+.header-icon {
+  font-size: 12px;
+}
+
+.theme-options {
+  padding: 8px;
+}
+
+/* -----------------------------------------------------------------------------
+   Theme Option
+   ----------------------------------------------------------------------------- */
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--switcher-text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.theme-option:hover {
+  background: var(--switcher-hover);
+  border-color: var(--switcher-border);
+}
+
+.theme-option--active {
+  background: rgba(123, 104, 238, 0.15);
+  border-color: var(--switcher-accent);
+}
+
+.theme-option--active:hover {
+  background: rgba(123, 104, 238, 0.2);
+}
+
+.option-icon {
+  font-size: 20px;
+  width: 32px;
+  text-align: center;
+}
+
+.option-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.option-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.option-description {
+  font-size: 10px;
+  color: var(--switcher-text-dim);
+}
+
+.option-check {
+  font-size: 14px;
+  color: var(--switcher-accent);
+  font-weight: bold;
+}
+
+/* -----------------------------------------------------------------------------
+   Panel Container
+   ----------------------------------------------------------------------------- */
+.panel-container {
+  position: relative;
+}
+
+/* -----------------------------------------------------------------------------
+   Mobile Responsive
+   ----------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .theme-switcher-button {
+    padding: 8px 12px;
+  }
+
+  .theme-name {
+    font-size: 11px;
+  }
+
+  .option-description {
+    display: none;
+  }
+}

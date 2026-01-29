@@ -15,7 +15,7 @@ try:
     from backend.core.settings import settings
     sys.exit(1)  # Should not reach here
 except ValueError as e:
-    if 'JWT_SECRET must be set when JWT_ENABLED=true' in str(e):
+    if 'JWT_SECRET (or JWT_SECRET_PREVIOUS) must be set when JWT_ENABLED=true' in str(e):
         sys.exit(0)  # Expected error
     sys.exit(2)  # Wrong error
 """

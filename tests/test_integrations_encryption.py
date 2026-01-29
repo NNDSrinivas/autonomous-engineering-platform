@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.core.db import Base
+from backend.models.integrations import GhConnection, JiraConnection
 from backend.services.github import GitHubService
 from backend.services.jira import JiraService
 
@@ -22,7 +23,10 @@ class TestIntegrationEncryption:
 
         # Create in-memory SQLite database for testing
         self.engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(self.engine)
+        Base.metadata.create_all(
+            self.engine,
+            tables=[GhConnection.__table__, JiraConnection.__table__],
+        )
 
         Session = sessionmaker(bind=self.engine)
         self.db = Session()

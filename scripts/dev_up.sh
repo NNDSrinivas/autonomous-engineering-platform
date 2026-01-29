@@ -9,6 +9,10 @@ MAIN_PID=$!
 python -m backend.api.realtime &
 REALTIME_PID=$!
 
+# Give servers a moment to start, then run a health check
+sleep 3
+bash scripts/backend_health.sh http://127.0.0.1:8000
+
 # Trap signals and kill background processes on exit
 trap "echo 'Stopping background processes...'; kill ${MAIN_PID:+$MAIN_PID} ${REALTIME_PID:+$REALTIME_PID} 2>/dev/null || true" SIGINT SIGTERM EXIT
 

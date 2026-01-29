@@ -484,7 +484,7 @@ async def setup_error_tracking(
             lines.append(config["js_init"])
             lines.append("```")
     else:
-        framework = "fastapi" if project_type == "fastapi" else "flask" if project_type == "flask" else "django"
+        framework = {"fastapi": "fastapi", "flask": "flask"}.get(project_type, "django")
         init_code = config["py_init"].format(framework=framework, Framework=framework.title())
         lines.append("**Initialize in your main app:**")
         lines.append("```python")

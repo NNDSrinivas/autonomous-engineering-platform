@@ -15,12 +15,8 @@ echo ">>> [2/4] Building Docker image..."
 docker build -f Dockerfile.minimal -t "$IMAGE_NAME" .
 
 echo ">>> [3/4] Stopping existing container (if any)..."
-if docker ps -q -f "name=$APP_NAME" >/dev/null; then
-  docker stop "$APP_NAME"
-fi
-if docker ps -aq -f "name=$APP_NAME" >/dev/null; then
-  docker rm "$APP_NAME"
-fi
+docker stop "$APP_NAME" 2>/dev/null || true
+docker rm "$APP_NAME" 2>/dev/null || true
 
 echo ">>> [4/4] Starting new container..."
 docker run -d --name "$APP_NAME" \

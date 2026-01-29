@@ -56,7 +56,7 @@ class ComplianceReport:
 # PCI-DSS compliance patterns
 PCI_DSS_PATTERNS = {
     "hardcoded_card_number": {
-        "pattern": r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b",
+        "pattern": r"(?<!#)(?<!//)(?<!/\*)\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b",
         "description": "Potential credit card number found in code",
         "severity": "critical",
         "recommendation": "Never store card numbers in code. Use tokenization services like Stripe or Braintree.",

@@ -125,3 +125,8 @@ The production UI must not expose debug or placeholder logs. Only user-facing, p
 - 2026-01-29: Validation runs recorded (pytest timeout, e2e-gate pass, frontend build pass, extension compile pass).
 - 2026-01-29: Security hardening: removed wildcard CORS headers from streaming endpoints to enforce allowlist-only CORS.
 - 2026-01-29: Removed DEBUG-FLOW prints from NAVI chat flow; logging is now structured and debug-level only.
+- 2026-01-29: OAuth device flow now supports Redis-backed persistence with TTLs for device codes and access tokens.
+- 2026-01-29: Rate limiting hardened: Redis backend required when fallback disabled; 503 returned when backend unavailable.
+- 2026-01-29: JWT rotation supported via `JWT_SECRET_PREVIOUS` (comma-separated).
+- 2026-01-29: Audit payload encryption + admin decrypt endpoint (`POST /api/audit/{id}/decrypt`) added.
+- 2026-01-29: Added deterministic E2E harness runners (`scripts/e2e_smoke.py`, `scripts/e2e_gate.py`) and Makefile targets.

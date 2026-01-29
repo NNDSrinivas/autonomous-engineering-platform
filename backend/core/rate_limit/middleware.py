@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.core.auth.models import User
+<<<<<<< HEAD
 from backend.core.rate_limit.config import (
     RateLimitCategory,
     DEFAULT_RATE_LIMITS,
@@ -25,6 +26,12 @@ from backend.core.rate_limit.config import (
 from backend.core.rate_limit.service import (
     RateLimitUnavailableError,
     rate_limit_service,
+=======
+from backend.core.rate_limit.config import RateLimitCategory, DEFAULT_RATE_LIMITS
+from backend.core.rate_limit.service import (
+    rate_limit_service,
+    RateLimitBackendUnavailable,
+>>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 )
 from backend.core.rate_limit.metrics import (
     rate_limit_metrics,
@@ -414,6 +421,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
             return response
 
+<<<<<<< HEAD
         except RateLimitUnavailableError:
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -423,6 +431,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "path": path,
                 },
                 headers={"Retry-After": "5"},
+=======
+        except RateLimitBackendUnavailable as e:
+            log_rate_limit_middleware_error(str(e), path, method)
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={
+                    "detail": "Rate limiting backend unavailable",
+                    "error_code": "RATE_LIMIT_BACKEND_UNAVAILABLE",
+                    "path": path,
+                    "category": category.value,
+                },
+>>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
             )
         except Exception as e:
             log_rate_limit_middleware_error(str(e), path, method)

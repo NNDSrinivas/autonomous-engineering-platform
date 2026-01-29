@@ -16,8 +16,12 @@ from backend.core.auth.deps import require_role
 from backend.core.auth.models import User, Role
 from backend.core.eventstore.service import replay, get_plan_event_count
 from backend.core.eventstore.models import AuditLog
+<<<<<<< HEAD
 from backend.core.audit_service.crypto import AuditEncryptionError, decrypt_payload
 from backend.core.settings import settings
+=======
+from backend.core.crypto import decrypt_audit_payload, AuditEncryptionError
+>>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
 router = APIRouter(tags=["audit"])
 
@@ -94,6 +98,7 @@ class AuditOut(BaseModel):
     created_at: str
 
 
+<<<<<<< HEAD
 class AuditPurgeOut(BaseModel):
     """Audit purge response model"""
 
@@ -107,6 +112,16 @@ class AuditPayloadOut(BaseModel):
     id: int
     encrypted: bool
     payload: dict
+=======
+class AuditDecryptRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class AuditDecryptOut(BaseModel):
+    id: int
+    payload: dict
+    key_id: Optional[str] = None
+>>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
 
 @router.get("/audit", response_model=list[AuditOut])
@@ -157,6 +172,7 @@ def list_audit_logs(
         )
 
 
+<<<<<<< HEAD
 @router.post("/audit/purge", response_model=AuditPurgeOut)
 def purge_audit_logs(
     days: Optional[int] = Query(
@@ -194,10 +210,17 @@ def get_audit_payload(
     reason: Optional[str] = Query(
         None, max_length=256, description="Reason for decrypt access"
     ),
+=======
+@router.post("/audit/{audit_id}/decrypt", response_model=AuditDecryptOut)
+def decrypt_audit_log(
+    audit_id: int,
+    req: AuditDecryptRequest,
+>>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
     db: Session = Depends(get_db),
     user: User = Depends(require_role(Role.ADMIN)),
 ):
     """
+<<<<<<< HEAD
     Fetch an audit payload. Optionally decrypts when enabled.
 
     Admin-only endpoint for security/compliance review.
@@ -241,6 +264,26 @@ def get_audit_payload(
             db.rollback()
 
     return {"id": record.id, "encrypted": is_encrypted, "payload": payload}
+=======
+    Decrypt an audit payload for authorized admin review.
+    """
+    row = db.get(AuditLog, audit_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Audit log not found")
+    if row.org_key and user.org_id and row.org_key != user.org_id:
+        raise HTTPException(status_code=404, detail="Audit log not found")
+
+    try:
+        payload = decrypt_audit_payload(row.payload)
+    except AuditEncryptionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    key_id = None
+    if isinstance(row.payload, dict):
+        key_id = row.payload.get("key_id")
+
+    return {"id": row.id, "payload": payload, "key_id": key_id}
+>>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
 
 @router.get("/plan/{plan_id}/events/count")

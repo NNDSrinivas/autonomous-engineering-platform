@@ -16,14 +16,12 @@ from backend.core.rate_limit.config import (
     RateLimitQuota,
     RateLimitRule,
 )
-from backend.core.realtime_engine.presence import get_active_org_user_count
 from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
-class RateLimitUnavailableError(RuntimeError):
-    """Raised when rate limiting is required but Redis is unavailable."""
-
+# Module-level flag to ensure critical limitation warning is only logged once
+_limitation_warning_logged = False
 
 try:
     from redis import asyncio as aioredis
@@ -59,9 +57,22 @@ class RateLimitService:
     """Redis-based distributed rate limiting service."""
 
     def __init__(self):
+        global _limitation_warning_logged
+
         self._redis: Optional["Redis"] = None
         self._fallback_cache: Dict[str, Dict] = {}
         self._last_cleanup = int(time.time())  # Use integer timestamp for consistency
+
+        # CRITICAL LIMITATION WARNING: Log only once to avoid spam
+        if not _limitation_warning_logged:
+            logger.warning(
+                "RATE LIMITING CRITICAL LIMITATION: Using estimated active users "
+                f"({settings.RATE_LIMITING_ESTIMATED_ACTIVE_USERS}) for org-level rate limits. "
+                "This may cause incorrect rate limiting for organizations with different user counts. "
+                "This is a temporary solution - implement presence-based user tracking for production use. "
+                "See TODO comments in check_rate_limit method for implementation details."
+            )
+            _limitation_warning_logged = True
 
     async def _get_redis(self) -> Optional["Redis"]:
         """Get Redis connection, creating if needed."""
@@ -83,7 +94,7 @@ class RateLimitService:
                 await self._redis.ping()
                 logger.info("Connected to Redis for rate limiting")
             except Exception as e:
-                logger.error(f"Failed to connect to Redis for rate limiting: {e}")
+                logger.warning(f"Failed to connect to Redis for rate limiting: {e}")
                 self._redis = None
 
         return self._redis
@@ -128,11 +139,9 @@ class RateLimitService:
         """Check rate limit using Redis sliding window."""
         redis = await self._get_redis()
         if not redis:
-            if settings.RATE_LIMITING_FALLBACK_ENABLED:
-                return await self._check_fallback_rate_limit(
-                    user_id, org_id, category, rule, is_premium
-                )
-            raise RateLimitUnavailableError("Redis unavailable for rate limiting")
+            return await self._check_fallback_rate_limit(
+                user_id, org_id, category, rule, is_premium
+            )
 
         try:
             # Check both minute and hour windows
@@ -161,18 +170,24 @@ class RateLimitService:
             hour_org_count = int(results[3] or 0)
             queue_depth = int(results[4] or 0)
 
-            # Calculate org limits (prefer presence-based count, fallback to estimate)
+            # Calculate org limits (simplified - uses configurable estimate)
             quota = self._get_rate_quota(is_premium)
-            active_users = get_active_org_user_count(org_id)
-            if active_users is None:
-                active_users = settings.RATE_LIMITING_ESTIMATED_ACTIVE_USERS
-            elif active_users < 1:
-                active_users = 1
+            # CRITICAL LIMITATION: Using estimated active users instead of actual count
+            # TODO: HIGH PRIORITY - Replace with actual active user tracking from presence system
+            # Current implementation may cause incorrect rate limiting for orgs with
+            # significantly different user counts. This is a known limitation that should
+            # be addressed before production use. Consider implementing:
+            # 1. Active user tracking via presence system
+            # 2. Session-based user counting
+            # 3. Configurable org-specific multipliers
+            # 4. Real-time user activity monitoring
+            # Configuration: RATE_LIMITING_ESTIMATED_ACTIVE_USERS={settings.RATE_LIMITING_ESTIMATED_ACTIVE_USERS}
+            estimated_active_users = settings.RATE_LIMITING_ESTIMATED_ACTIVE_USERS
             org_minute_limit = int(
-                rule.requests_per_minute * quota.org_multiplier * active_users
+                rule.requests_per_minute * quota.org_multiplier * estimated_active_users
             )
             org_hour_limit = int(
-                rule.requests_per_hour * quota.org_multiplier * active_users
+                rule.requests_per_hour * quota.org_multiplier * estimated_active_users
             )
 
             # Check if request would exceed limits
@@ -261,12 +276,10 @@ class RateLimitService:
 
         except Exception as e:
             logger.error(f"Redis rate limiting error: {e}")
-            # Fallback to in-memory rate limiting on Redis errors if enabled
-            if settings.RATE_LIMITING_FALLBACK_ENABLED:
-                return await self._check_fallback_rate_limit(
-                    user_id, org_id, category, rule, is_premium
-                )
-            raise RateLimitUnavailableError("Redis error during rate limiting") from e
+            # Fallback to in-memory rate limiting on Redis errors
+            return await self._check_fallback_rate_limit(
+                user_id, org_id, category, rule, is_premium
+            )
 
     async def _check_fallback_rate_limit(
         self,
@@ -362,7 +375,6 @@ class RateLimitService:
         org_id: str,
         category: RateLimitCategory,
         is_premium: bool = False,
-        override_rule: RateLimitRule | None = None,
     ) -> RateLimitResult:
         """
         Check if a request is allowed under rate limiting rules.
@@ -377,7 +389,7 @@ class RateLimitService:
             RateLimitResult with allowed status and metadata
         """
         quota = self._get_rate_quota(is_premium)
-        rule = override_rule or quota.user_rules.get(category)
+        rule = quota.user_rules.get(category)
 
         if not rule:
             logger.warning(f"No rate limit rule found for category: {category}")

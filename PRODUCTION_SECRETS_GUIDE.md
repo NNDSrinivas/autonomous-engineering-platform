@@ -16,10 +16,21 @@ Use the committed templates as references only:
 - `DATABASE_URL`
 - `OPENAI_API_KEY`
 - `BACKEND_PUBLIC_URL`
+- `REDIS_URL` (required for OAuth device flow + distributed rate limiting)
+- `JWT_SECRET` (required when JWT auth is enabled)
 
 **Required when enabling OAuth connectors:**
 - `<PROVIDER>_CLIENT_ID` and `<PROVIDER>_CLIENT_SECRET` (per provider)
 - `<PROVIDER>_WEBHOOK_SECRET` where applicable
+
+**Security/Compliance (recommended for enterprise):**
+- `AUDIT_ENCRYPTION_KEY` (Fernet key for audit payload encryption at rest)
+- `AUDIT_ENCRYPTION_KEY_ID` (optional key identifier for rotation tracking)
+- `JWT_SECRET_PREVIOUS` (comma-separated previous secrets for rotation)
+
+**Runtime safety flags (prod defaults):**
+- `OAUTH_DEVICE_USE_IN_MEMORY_STORE=false`
+- `RATE_LIMITING_FALLBACK_ENABLED=false`
 
 ---
 

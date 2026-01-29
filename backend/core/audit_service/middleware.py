@@ -4,6 +4,7 @@ Audit Middleware for capturing mutating HTTP requests
 
 from __future__ import annotations
 import logging
+import os
 from contextlib import contextmanager
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -12,8 +13,12 @@ import os
 from backend.core.db import get_db
 from backend.core.settings import settings
 from backend.core.eventstore.models import AuditLog
+<<<<<<< HEAD
 from backend.core.audit_service.crypto import AuditEncryptionError, encrypt_payload
 from sqlalchemy import inspect
+=======
+from backend.core.crypto import encrypt_audit_payload, AuditEncryptionError
+>>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +81,18 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
         # Process the request
         response = await call_next(request)
 
+        # Encrypt payload when configured for at-rest protection
+        payload_to_store = payload
+        if os.environ.get("AUDIT_ENCRYPTION_KEY"):
+            try:
+                payload_to_store = encrypt_audit_payload(payload)
+            except AuditEncryptionError as e:
+                logger.error(f"Audit payload encryption failed: {e}")
+                payload_to_store = {
+                    "encrypted": False,
+                    "error": "audit_encryption_failed",
+                }
+
         # Persist audit record (never block the response)
         try:
             # Use contextual session management to prevent leaks
@@ -104,7 +121,11 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
                     method=request.method,
                     event_type="http.request",
                     resource_id=_extract_resource_id(request),
+<<<<<<< HEAD
                     payload=audit_payload,
+=======
+                    payload=payload_to_store,
+>>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
                     status_code=response.status_code,
                 )
                 session.add(audit_record)

@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 from typing import Tuple
 
@@ -16,6 +17,10 @@ except ImportError:
 
 
 class TokenEncryptionError(Exception):
+    pass
+
+
+class AuditEncryptionError(Exception):
     pass
 
 
@@ -151,3 +156,33 @@ def decrypt_token(encrypted_blob: str) -> str:
         raise
     except Exception as e:
         raise TokenEncryptionError("decryption failed") from e
+
+
+def _get_audit_fernet() -> Fernet:
+    key = os.environ.get("AUDIT_ENCRYPTION_KEY")
+    if not key:
+        raise AuditEncryptionError("AUDIT_ENCRYPTION_KEY is not set")
+    return Fernet(key.encode())
+
+
+def encrypt_audit_payload(payload: dict) -> dict:
+    """Encrypt audit payload for at-rest protection."""
+    f = _get_audit_fernet()
+    token = f.encrypt(json.dumps(payload).encode()).decode()
+    wrapper: dict = {"encrypted": True, "ciphertext": token}
+    key_id = os.environ.get("AUDIT_ENCRYPTION_KEY_ID")
+    if key_id:
+        wrapper["key_id"] = key_id
+    return wrapper
+
+
+def decrypt_audit_payload(wrapper: dict) -> dict:
+    """Decrypt audit payload wrapper back to plaintext dict."""
+    if not wrapper or not isinstance(wrapper, dict) or not wrapper.get("encrypted"):
+        return wrapper
+    token = wrapper.get("ciphertext")
+    if not token:
+        raise AuditEncryptionError("Missing ciphertext")
+    f = _get_audit_fernet()
+    plaintext = f.decrypt(token.encode()).decode()
+    return json.loads(plaintext)

@@ -143,7 +143,11 @@ class Settings(BaseSettings):
     # OAuth Device Code Configuration
     oauth_device_use_in_memory_store: bool = False
     oauth_device_code_ttl_seconds: int = 600
+<<<<<<< HEAD
     oauth_device_token_ttl_seconds: int = 86400
+=======
+    oauth_device_access_token_ttl_seconds: int = 86400
+>>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
     redis_max_connections: int = (
         20  # Maximum connections in Redis pool (default 20 for high concurrency)
     )

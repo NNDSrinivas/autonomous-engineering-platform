@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     #       Typical expiration: 1 hour (3600 seconds). Configure this in your auth service.
     JWT_ENABLED: bool = False  # Default: use dev shim for local development
     JWT_SECRET: str | None = None  # Required when JWT_ENABLED=true
-    JWT_SECRET_PREVIOUS: str | None = None  # Comma-separated list of previous secrets
+    JWT_SECRET_PREVIOUS: str | None = None  # Optional previous secrets for rotation
     JWT_ALGORITHM: str = "HS256"  # Algorithm for JWT signature verification
     JWT_AUDIENCE: str | None = None  # Expected 'aud' claim (optional)
     JWT_ISSUER: str | None = None  # Expected 'iss' claim (optional)

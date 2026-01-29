@@ -572,7 +572,7 @@ async def detect_project_type(
                 detected["has_dockerfile"] = True
 
             # Parse package.json for more details
-            if filename == "package_json":
+            if filename == "package.json":
                 try:
                     with open(filepath, "r") as f:
                         pkg = json.load(f)
@@ -695,7 +695,7 @@ async def detect_project_type(
                 detected["language"] = "python"
 
                 try:
-                    if filename == "requirements_txt":
+                    if filename == "requirements.txt":
                         with open(filepath, "r") as f:
                             content = f.read().lower()
                     else:
@@ -738,7 +738,7 @@ async def detect_project_type(
                     )
 
             # Go project
-            elif filename == "go_mod":
+            elif filename == "go.mod":
                 detected["language"] = "go"
                 detected["type"] = "backend"
                 detected["recommended_platforms"] = ["fly", "railway", "render"]

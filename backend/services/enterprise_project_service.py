@@ -71,7 +71,9 @@ class EnterpriseProjectService:
             name=name,
             description=description,
             project_type=project_type,
-            workspace_session_id=UUID(workspace_session_id) if workspace_session_id else None,
+            workspace_session_id=(
+                UUID(workspace_session_id) if workspace_session_id else None
+            ),
             goals=goals or [],
             config=config or {},
             status="planning",
@@ -110,9 +112,7 @@ class EnterpriseProjectService:
         limit: int = 20,
     ) -> List[EnterpriseProject]:
         """Get all projects for a user."""
-        query = select(EnterpriseProject).where(
-            EnterpriseProject.user_id == user_id
-        )
+        query = select(EnterpriseProject).where(EnterpriseProject.user_id == user_id)
 
         if status:
             query = query.where(EnterpriseProject.status == status)
@@ -134,8 +134,14 @@ class EnterpriseProjectService:
             return None
 
         allowed_fields = {
-            "name", "description", "project_type", "goals", "milestones",
-            "config", "status", "progress_percentage",
+            "name",
+            "description",
+            "project_type",
+            "goals",
+            "milestones",
+            "config",
+            "status",
+            "progress_percentage",
         }
 
         for field, value in updates.items():
@@ -296,9 +302,7 @@ class EnterpriseProjectService:
 
         # Build set of completed task keys
         completed_keys = {
-            task.task_key
-            for task in all_tasks
-            if task.status == "completed"
+            task.task_key for task in all_tasks if task.status == "completed"
         }
 
         # Find ready tasks
@@ -333,9 +337,7 @@ class EnterpriseProjectService:
     ) -> Optional[ProjectTaskQueue]:
         """Update a task's status."""
         result = self.db.execute(
-            select(ProjectTaskQueue).where(
-                ProjectTaskQueue.id == UUID(task_id)
-            )
+            select(ProjectTaskQueue).where(ProjectTaskQueue.id == UUID(task_id))
         )
         task = result.scalar_one_or_none()
 
@@ -487,9 +489,7 @@ class EnterpriseProjectService:
     ) -> Optional[HumanCheckpointGate]:
         """Get a checkpoint gate by ID."""
         result = self.db.execute(
-            select(HumanCheckpointGate).where(
-                HumanCheckpointGate.id == UUID(gate_id)
-            )
+            select(HumanCheckpointGate).where(HumanCheckpointGate.id == UUID(gate_id))
         )
         return result.scalar_one_or_none()
 
@@ -524,34 +524,37 @@ class EnterpriseProjectService:
 
         # Store decision in project's human_decisions
         project = self.db.execute(
-            select(EnterpriseProject).where(
-                EnterpriseProject.id == gate.project_id
-            )
+            select(EnterpriseProject).where(EnterpriseProject.id == gate.project_id)
         ).scalar_one()
 
         decisions = project.human_decisions or []
-        decisions.append({
-            "gate_id": str(gate.id),
-            "gate_type": gate.gate_type,
-            "title": gate.title,
-            "chosen_option_id": chosen_option_id,
-            "decision_reason": decision_reason,
-            "decided_by": decided_by,
-            "decided_at": datetime.now(timezone.utc).isoformat(),
-        })
+        decisions.append(
+            {
+                "gate_id": str(gate.id),
+                "gate_type": gate.gate_type,
+                "title": gate.title,
+                "chosen_option_id": chosen_option_id,
+                "decision_reason": decision_reason,
+                "decided_by": decided_by,
+                "decided_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         project.human_decisions = decisions
 
         # Check if project can be unblocked
-        pending_blocking_gates = self.db.execute(
-            select(HumanCheckpointGate)
-            .where(
-                and_(
-                    HumanCheckpointGate.project_id == gate.project_id,
-                    HumanCheckpointGate.status == "pending",
-                    HumanCheckpointGate.blocks_progress == True,
+        pending_blocking_gates = (
+            self.db.execute(
+                select(HumanCheckpointGate).where(
+                    and_(
+                        HumanCheckpointGate.project_id == gate.project_id,
+                        HumanCheckpointGate.status == "pending",
+                        HumanCheckpointGate.blocks_progress,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         if not pending_blocking_gates:
             project.status = "active"
@@ -670,7 +673,9 @@ class EnterpriseProjectService:
         if project.architecture_decisions:
             lines.append("\n### Recent Architecture Decisions")
             for adr in project.architecture_decisions[-3:]:  # Last 3 ADRs
-                lines.append(f"- **{adr.get('title')}**: {adr.get('decision', '')[:100]}...")
+                lines.append(
+                    f"- **{adr.get('title')}**: {adr.get('decision', '')[:100]}..."
+                )
 
         # Completed components
         if project.completed_components:
@@ -697,7 +702,9 @@ class EnterpriseProjectService:
             completed = sum(1 for t in tasks if t.status == "completed")
             in_progress = sum(1 for t in tasks if t.status == "in_progress")
             pending = sum(1 for t in tasks if t.status in ("pending", "ready"))
-            lines.append(f"\n### Task Progress: {completed}/{len(tasks)} completed, {in_progress} in progress, {pending} pending")
+            lines.append(
+                f"\n### Task Progress: {completed}/{len(tasks)} completed, {in_progress} in progress, {pending} pending"
+            )
 
         return "\n".join(lines)
 

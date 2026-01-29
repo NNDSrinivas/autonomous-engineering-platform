@@ -24,18 +24,30 @@ logger = structlog.get_logger(__name__)
 # Common secret patterns to detect
 SECRET_PATTERNS = [
     (r'(?i)(api[_-]?key|apikey)\s*[:=]\s*["\']?([a-zA-Z0-9_-]{20,})["\']?', "API_KEY"),
-    (r'(?i)(secret[_-]?key|secretkey)\s*[:=]\s*["\']?([a-zA-Z0-9_-]{20,})["\']?', "SECRET_KEY"),
+    (
+        r'(?i)(secret[_-]?key|secretkey)\s*[:=]\s*["\']?([a-zA-Z0-9_-]{20,})["\']?',
+        "SECRET_KEY",
+    ),
     (r'(?i)(password|passwd|pwd)\s*[:=]\s*["\']?([^\s"\']{8,})["\']?', "PASSWORD"),
     (r'(?i)(token|auth[_-]?token)\s*[:=]\s*["\']?([a-zA-Z0-9_.-]{20,})["\']?', "TOKEN"),
-    (r'(?i)(aws[_-]?access[_-]?key[_-]?id)\s*[:=]\s*["\']?(AKIA[0-9A-Z]{16})["\']?', "AWS_ACCESS_KEY"),
-    (r'(?i)(aws[_-]?secret[_-]?access[_-]?key)\s*[:=]\s*["\']?([a-zA-Z0-9/+=]{40})["\']?', "AWS_SECRET_KEY"),
-    (r'(?i)(database[_-]?url|db[_-]?url)\s*[:=]\s*["\']?(postgres|mysql|mongodb)://[^\s"\']+["\']?', "DATABASE_URL"),
+    (
+        r'(?i)(aws[_-]?access[_-]?key[_-]?id)\s*[:=]\s*["\']?(AKIA[0-9A-Z]{16})["\']?',
+        "AWS_ACCESS_KEY",
+    ),
+    (
+        r'(?i)(aws[_-]?secret[_-]?access[_-]?key)\s*[:=]\s*["\']?([a-zA-Z0-9/+=]{40})["\']?',
+        "AWS_SECRET_KEY",
+    ),
+    (
+        r'(?i)(database[_-]?url|db[_-]?url)\s*[:=]\s*["\']?(postgres|mysql|mongodb)://[^\s"\']+["\']?',
+        "DATABASE_URL",
+    ),
     (r'(?i)(private[_-]?key)\s*[:=]\s*["\']?-----BEGIN[^\s"\']+["\']?', "PRIVATE_KEY"),
-    (r'sk_live_[a-zA-Z0-9]{24,}', "STRIPE_SECRET_KEY"),
-    (r'sk_test_[a-zA-Z0-9]{24,}', "STRIPE_TEST_KEY"),
-    (r'ghp_[a-zA-Z0-9]{36}', "GITHUB_TOKEN"),
-    (r'glpat-[a-zA-Z0-9\-_]{20,}', "GITLAB_TOKEN"),
-    (r'xox[baprs]-[a-zA-Z0-9-]+', "SLACK_TOKEN"),
+    (r"sk_live_[a-zA-Z0-9]{24,}", "STRIPE_SECRET_KEY"),
+    (r"sk_test_[a-zA-Z0-9]{24,}", "STRIPE_TEST_KEY"),
+    (r"ghp_[a-zA-Z0-9]{36}", "GITHUB_TOKEN"),
+    (r"glpat-[a-zA-Z0-9\-_]{20,}", "GITLAB_TOKEN"),
+    (r"xox[baprs]-[a-zA-Z0-9-]+", "SLACK_TOKEN"),
 ]
 
 # Platform CLI commands for setting secrets
@@ -87,8 +99,16 @@ PLATFORM_SECRET_COMMANDS = {
 FRAMEWORK_ENV_VARS = {
     "nextjs": {
         "required": [
-            ("NEXT_PUBLIC_API_URL", "Public API URL for frontend", "https://api.example.com"),
-            ("DATABASE_URL", "PostgreSQL connection string", "postgresql://user:pass@host:5432/db"),
+            (
+                "NEXT_PUBLIC_API_URL",
+                "Public API URL for frontend",
+                "https://api.example.com",
+            ),
+            (
+                "DATABASE_URL",
+                "PostgreSQL connection string",
+                "postgresql://user:pass@host:5432/db",
+            ),
         ],
         "optional": [
             ("NEXT_PUBLIC_SENTRY_DSN", "Sentry DSN for error tracking", ""),
@@ -110,7 +130,11 @@ FRAMEWORK_ENV_VARS = {
     },
     "fastapi": {
         "required": [
-            ("DATABASE_URL", "Database connection string", "postgresql://user:pass@host:5432/db"),
+            (
+                "DATABASE_URL",
+                "Database connection string",
+                "postgresql://user:pass@host:5432/db",
+            ),
             ("SECRET_KEY", "Application secret key", ""),
         ],
         "optional": [
@@ -177,7 +201,11 @@ async def generate_env_template(
     # Add framework optional vars
     for name, desc, default in framework_vars.get("optional", []):
         if name not in all_vars:
-            all_vars[name] = {"description": desc, "default": default, "required": False}
+            all_vars[name] = {
+                "description": desc,
+                "default": default,
+                "required": False,
+            }
 
     # Generate .env.example content
     env_content = [
@@ -278,7 +306,9 @@ async def setup_secrets_provider(
         lines.append("  token: process.env.VAULT_TOKEN,")
         lines.append("});")
         lines.append("")
-        lines.append('const secrets = await vault.read("secret/data/myapp/production");')
+        lines.append(
+            'const secrets = await vault.read("secret/data/myapp/production");'
+        )
         lines.append("const dbUrl = secrets.data.data.DATABASE_URL;")
         lines.append("```")
 
@@ -288,14 +318,20 @@ async def setup_secrets_provider(
         lines.append("```bash")
         lines.append("aws secretsmanager create-secret \\")
         lines.append('  --name "myapp/production" \\')
-        lines.append('  --secret-string \'{"DATABASE_URL":"postgresql://...","API_KEY":"..."}\'')
+        lines.append(
+            '  --secret-string \'{"DATABASE_URL":"postgresql://...","API_KEY":"..."}\''
+        )
         lines.append("```")
 
         lines.append("\n**2. Read in Application (Node.js)**")
         lines.append("```typescript")
-        lines.append('import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";')
+        lines.append(
+            'import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";'
+        )
         lines.append("")
-        lines.append("const client = new SecretsManagerClient({ region: 'us-east-1' });")
+        lines.append(
+            "const client = new SecretsManagerClient({ region: 'us-east-1' });"
+        )
         lines.append("")
         lines.append("async function getSecrets() {")
         lines.append("  const response = await client.send(")
@@ -311,8 +347,12 @@ async def setup_secrets_provider(
         lines.append("import json")
         lines.append("")
         lines.append("def get_secrets():")
-        lines.append("    client = boto3.client('secretsmanager', region_name='us-east-1')")
-        lines.append("    response = client.get_secret_value(SecretId='myapp/production')")
+        lines.append(
+            "    client = boto3.client('secretsmanager', region_name='us-east-1')"
+        )
+        lines.append(
+            "    response = client.get_secret_value(SecretId='myapp/production')"
+        )
         lines.append("    return json.loads(response['SecretString'])")
         lines.append("```")
 
@@ -325,7 +365,9 @@ async def setup_secrets_provider(
 
         lines.append("\n**2. Create Secret**")
         lines.append("```bash")
-        lines.append('echo -n "postgresql://..." | gcloud secrets create DATABASE_URL --data-file=-')
+        lines.append(
+            'echo -n "postgresql://..." | gcloud secrets create DATABASE_URL --data-file=-'
+        )
         lines.append("```")
 
         lines.append("\n**3. Read in Application**")
@@ -334,7 +376,9 @@ async def setup_secrets_provider(
         lines.append("")
         lines.append("def get_secret(secret_id: str, version: str = 'latest'):")
         lines.append("    client = secretmanager.SecretManagerServiceClient()")
-        lines.append("    name = f'projects/{project_id}/secrets/{secret_id}/versions/{version}'")
+        lines.append(
+            "    name = f'projects/{project_id}/secrets/{secret_id}/versions/{version}'"
+        )
         lines.append("    response = client.access_secret_version(name=name)")
         lines.append("    return response.payload.data.decode('UTF-8')")
         lines.append("```")
@@ -415,7 +459,9 @@ async def sync_env_to_platform(
             lines.append("")
     else:
         lines.append("# No variables found in env file")
-        lines.append(commands["set"].format(key="KEY", value="VALUE", environment=environment))
+        lines.append(
+            commands["set"].format(key="KEY", value="VALUE", environment=environment)
+        )
 
     lines.append("```")
 
@@ -428,7 +474,9 @@ async def sync_env_to_platform(
     # Platform-specific notes
     lines.append(f"\n### Notes for {platform.title()}")
     if platform == "vercel":
-        lines.append("- Variables with `NEXT_PUBLIC_` prefix are exposed to the browser")
+        lines.append(
+            "- Variables with `NEXT_PUBLIC_` prefix are exposed to the browser"
+        )
         lines.append("- Redeploy after changing environment variables")
         lines.append("- Use `vercel env pull .env.local` to sync from Vercel")
     elif platform == "railway":
@@ -478,33 +526,49 @@ async def audit_secrets_exposure(
             pass
 
     if not env_ignored:
-        findings.append({
-            "severity": "high",
-            "type": "configuration",
-            "message": ".env is not in .gitignore - secrets may be committed",
-            "file": ".gitignore",
-            "fix": "Add '.env' and '.env.*' to .gitignore",
-        })
+        findings.append(
+            {
+                "severity": "high",
+                "type": "configuration",
+                "message": ".env is not in .gitignore - secrets may be committed",
+                "file": ".gitignore",
+                "fix": "Add '.env' and '.env.*' to .gitignore",
+            }
+        )
 
     # Check for .env files
     for env_file in [".env", ".env.local", ".env.production"]:
         env_path = os.path.join(workspace_path, env_file)
         if os.path.exists(env_path):
-            findings.append({
-                "severity": "warning",
-                "type": "file",
-                "message": f"{env_file} exists - ensure it's not committed",
-                "file": env_file,
-                "fix": f"Ensure {env_file} is in .gitignore",
-            })
+            findings.append(
+                {
+                    "severity": "warning",
+                    "type": "file",
+                    "message": f"{env_file} exists - ensure it's not committed",
+                    "file": env_file,
+                    "fix": f"Ensure {env_file} is in .gitignore",
+                }
+            )
 
     # Scan source files for hardcoded secrets
     for root, dirs, files in os.walk(workspace_path):
         # Skip common non-source directories
-        dirs[:] = [d for d in dirs if d not in (
-            "node_modules", ".git", "dist", "build", "__pycache__",
-            ".next", "venv", ".venv", "coverage"
-        )]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d
+            not in (
+                "node_modules",
+                ".git",
+                "dist",
+                "build",
+                "__pycache__",
+                ".next",
+                "venv",
+                ".venv",
+                "coverage",
+            )
+        ]
 
         for filename in files:
             if not _is_source_file(filename):
@@ -521,20 +585,28 @@ async def audit_secrets_exposure(
                     matches = re.finditer(pattern, content)
                     for match in matches:
                         # Skip if it's an env var reference
-                        if "process.env" in content[max(0, match.start()-20):match.start()]:
+                        if (
+                            "process.env"
+                            in content[max(0, match.start() - 20) : match.start()]
+                        ):
                             continue
-                        if "os.environ" in content[max(0, match.start()-20):match.start()]:
+                        if (
+                            "os.environ"
+                            in content[max(0, match.start() - 20) : match.start()]
+                        ):
                             continue
 
-                        line_num = content[:match.start()].count("\n") + 1
-                        findings.append({
-                            "severity": "critical",
-                            "type": "hardcoded",
-                            "message": f"Potential {secret_type} found",
-                            "file": rel_path,
-                            "line": line_num,
-                            "fix": "Move to environment variable",
-                        })
+                        line_num = content[: match.start()].count("\n") + 1
+                        findings.append(
+                            {
+                                "severity": "critical",
+                                "type": "hardcoded",
+                                "message": f"Potential {secret_type} found",
+                                "file": rel_path,
+                                "line": line_num,
+                                "fix": "Move to environment variable",
+                            }
+                        )
             except IOError:
                 continue
 
@@ -554,7 +626,10 @@ async def audit_secrets_exposure(
         lines.append("\n### Critical Issues")
         for finding in critical:
             lines.append(f"\n**{finding['message']}**")
-            lines.append(f"- File: `{finding['file']}`" + (f":{finding.get('line', '')}" if finding.get('line') else ""))
+            lines.append(
+                f"- File: `{finding['file']}`"
+                + (f":{finding.get('line', '')}" if finding.get("line") else "")
+            )
             lines.append(f"- Fix: {finding['fix']}")
 
     if high:
@@ -665,6 +740,7 @@ async def rotate_secrets(
 
 # Helper functions
 
+
 def _detect_framework(workspace_path: str) -> Optional[str]:
     """Detect project framework."""
     package_json_path = os.path.join(workspace_path, "package.json")
@@ -706,7 +782,7 @@ def _scan_for_env_vars(workspace_path: str) -> Set[str]:
 
     # Patterns to match env var usage
     patterns = [
-        r'process\.env\.([A-Z][A-Z0-9_]+)',
+        r"process\.env\.([A-Z][A-Z0-9_]+)",
         r'process\.env\[["\']([A-Z][A-Z0-9_]+)["\']\]',
         r'os\.environ\.get\(["\']([A-Z][A-Z0-9_]+)["\']',
         r'os\.environ\[["\']([A-Z][A-Z0-9_]+)["\']\]',
@@ -715,10 +791,21 @@ def _scan_for_env_vars(workspace_path: str) -> Set[str]:
     ]
 
     for root, dirs, files in os.walk(workspace_path):
-        dirs[:] = [d for d in dirs if d not in (
-            "node_modules", ".git", "dist", "build", "__pycache__",
-            ".next", "venv", ".venv"
-        )]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d
+            not in (
+                "node_modules",
+                ".git",
+                "dist",
+                "build",
+                "__pycache__",
+                ".next",
+                "venv",
+                ".venv",
+            )
+        ]
 
         for filename in files:
             if not _is_source_file(filename):
@@ -741,9 +828,21 @@ def _scan_for_env_vars(workspace_path: str) -> Set[str]:
 def _is_source_file(filename: str) -> bool:
     """Check if a file is a source code file."""
     extensions = {
-        ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs",
-        ".java", ".rb", ".php", ".env", ".yaml", ".yml",
-        ".json", ".toml"
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".py",
+        ".go",
+        ".rs",
+        ".java",
+        ".rb",
+        ".php",
+        ".env",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".toml",
     }
     _, ext = os.path.splitext(filename)
     return ext.lower() in extensions
@@ -752,8 +851,15 @@ def _is_source_file(filename: str) -> bool:
 def _is_sensitive(key: str) -> bool:
     """Check if a key name indicates sensitive data."""
     sensitive_patterns = [
-        "password", "secret", "key", "token", "auth",
-        "credential", "private", "api_key", "apikey"
+        "password",
+        "secret",
+        "key",
+        "token",
+        "auth",
+        "credential",
+        "private",
+        "api_key",
+        "apikey",
     ]
     key_lower = key.lower()
     return any(pattern in key_lower for pattern in sensitive_patterns)

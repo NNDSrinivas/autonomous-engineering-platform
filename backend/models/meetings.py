@@ -17,7 +17,9 @@ class Meeting(Base):
     ended_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    participants: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, nullable=True)
+    participants: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(
+        JSON, nullable=True
+    )
     org_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     segments: Mapped[List["TranscriptSegment"]] = relationship(

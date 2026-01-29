@@ -33,6 +33,7 @@ try:
         InfrastructureProvider,
         InfrastructureAction,
     )
+
     EXECUTION_SERVICES_AVAILABLE = True
 except ImportError:
     EXECUTION_SERVICES_AVAILABLE = False
@@ -42,7 +43,7 @@ except ImportError:
 # Cloud provider resource templates
 TERRAFORM_TEMPLATES = {
     "aws": {
-        "provider": '''terraform {
+        "provider": """terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -71,9 +72,9 @@ variable "project_name" {
   description = "Project name"
   type        = string
 }
-''',
+""",
         "resources": {
-            "ec2": '''# EC2 Instance
+            "ec2": """# EC2 Instance
 resource "aws_instance" "{name}" {
   ami           = var.ami_id
   instance_type = var.instance_type
@@ -132,8 +133,8 @@ variable "vpc_id" {
   description = "VPC ID"
   type        = string
 }
-''',
-            "rds": '''# RDS Database
+""",
+            "rds": """# RDS Database
 resource "aws_db_instance" "{name}" {
   identifier           = "${{var.project_name}}-{name}"
   allocated_storage    = var.db_storage
@@ -233,8 +234,8 @@ variable "allowed_cidr_blocks" {
   type        = list(string)
   default     = ["10.0.0.0/8"]
 }
-''',
-            "s3": '''# S3 Bucket
+""",
+            "s3": """# S3 Bucket
 resource "aws_s3_bucket" "{name}" {
   bucket = "${{var.project_name}}-{name}-${{var.environment}}"
 
@@ -277,8 +278,8 @@ output "{name}_bucket_name" {
 output "{name}_bucket_arn" {
   value = aws_s3_bucket.{name}.arn
 }
-''',
-            "lambda": '''# Lambda Function
+""",
+            "lambda": """# Lambda Function
 resource "aws_lambda_function" "{name}" {
   function_name = "${{var.project_name}}-{name}"
   role          = aws_iam_role.{name}_lambda_role.arn
@@ -362,8 +363,8 @@ output "{name}_function_name" {
 output "{name}_function_arn" {
   value = aws_lambda_function.{name}.arn
 }
-''',
-            "ecs": '''# ECS Cluster and Service
+""",
+            "ecs": """# ECS Cluster and Service
 resource "aws_ecs_cluster" "{name}" {
   name = "${{var.project_name}}-{name}"
 
@@ -610,11 +611,11 @@ resource "aws_security_group" "{name}_alb_sg" {
 output "{name}_alb_dns_name" {
   value = aws_lb.{name}.dns_name
 }
-''',
+""",
         },
     },
     "gcp": {
-        "provider": '''terraform {
+        "provider": """terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -649,9 +650,9 @@ variable "project_name" {
   description = "Project name"
   type        = string
 }
-''',
+""",
         "resources": {
-            "cloud_run": '''# Cloud Run Service
+            "cloud_run": """# Cloud Run Service
 resource "google_cloud_run_service" "{name}" {
   name     = "${{var.project_name}}-{name}"
   location = var.gcp_region
@@ -747,8 +748,8 @@ resource "google_cloud_run_service_iam_member" "{name}_invoker" {
 output "{name}_url" {
   value = google_cloud_run_service.{name}.status[0].url
 }
-''',
-            "cloud_sql": '''# Cloud SQL Instance
+""",
+            "cloud_sql": """# Cloud SQL Instance
 resource "google_sql_database_instance" "{name}" {
   name             = "${{var.project_name}}-{name}"
   database_version = var.db_version
@@ -818,8 +819,8 @@ variable "db_password" {
 output "{name}_connection_name" {
   value = google_sql_database_instance.{name}.connection_name
 }
-''',
-            "gcs": '''# Google Cloud Storage Bucket
+""",
+            "gcs": """# Google Cloud Storage Bucket
 resource "google_storage_bucket" "{name}" {
   name     = "${{var.project_name}}-{name}-${{var.environment}}"
   location = var.gcp_region
@@ -842,14 +843,14 @@ output "{name}_bucket_name" {
 output "{name}_bucket_url" {
   value = google_storage_bucket.{name}.url
 }
-''',
+""",
         },
     },
 }
 
 # Kubernetes manifest templates
 K8S_TEMPLATES = {
-    "deployment": '''apiVersion: apps/v1
+    "deployment": """apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {name}
@@ -891,8 +892,8 @@ spec:
           periodSeconds: 5
         env:
 {env_vars}
-''',
-    "service": '''apiVersion: v1
+""",
+    "service": """apiVersion: v1
 kind: Service
 metadata:
   name: {name}
@@ -904,8 +905,8 @@ spec:
     port: 80
     targetPort: {port}
   type: ClusterIP
-''',
-    "ingress": '''apiVersion: networking.k8s.io/v1
+""",
+    "ingress": """apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {name}
@@ -928,8 +929,8 @@ spec:
             name: {name}
             port:
               number: 80
-''',
-    "hpa": '''apiVersion: autoscaling/v2
+""",
+    "hpa": """apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {name}
@@ -953,27 +954,27 @@ spec:
       target:
         type: Utilization
         averageUtilization: 80
-''',
-    "configmap": '''apiVersion: v1
+""",
+    "configmap": """apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {name}-config
 data:
 {config_data}
-''',
-    "secret": '''apiVersion: v1
+""",
+    "secret": """apiVersion: v1
 kind: Secret
 metadata:
   name: {name}-secrets
 type: Opaque
 stringData:
 {secret_data}
-''',
+""",
 }
 
 # Docker Compose templates
 DOCKER_COMPOSE_TEMPLATES = {
-    "web": '''  {name}:
+    "web": """  {name}:
     build:
       context: .
       dockerfile: Dockerfile
@@ -984,8 +985,8 @@ DOCKER_COMPOSE_TEMPLATES = {
     depends_on:
 {depends_on}
     restart: unless-stopped
-''',
-    "database": '''  {name}:
+""",
+    "database": """  {name}:
     image: {image}
     ports:
       - "{host_port}:{container_port}"
@@ -994,15 +995,15 @@ DOCKER_COMPOSE_TEMPLATES = {
     volumes:
       - {name}_data:/var/lib/{volume_path}
     restart: unless-stopped
-''',
-    "redis": '''  redis:
+""",
+    "redis": """  redis:
     image: redis:alpine
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
-''',
+""",
 }
 
 
@@ -1056,7 +1057,9 @@ async def generate_terraform(
         if res_type not in templates.get("resources", {}):
             available_resources = ", ".join(templates.get("resources", {}).keys())
             resource_contents.append(f"# Unknown resource type: {res_type}")
-            resource_contents.append(f"# Available resources for {cloud_provider}: {available_resources}")
+            resource_contents.append(
+                f"# Available resources for {cloud_provider}: {available_resources}"
+            )
             continue
 
         template = templates["resources"][res_type]
@@ -1071,7 +1074,7 @@ async def generate_terraform(
         resource_contents.append(formatted)
 
     # Generate outputs.tf
-    outputs_tf = '''# Outputs
+    outputs_tf = """# Outputs
 output "environment" {
   value = var.environment
 }
@@ -1079,25 +1082,25 @@ output "environment" {
 output "project_name" {
   value = var.project_name
 }
-'''
+"""
 
     # Generate terraform.tfvars.example
-    tfvars_example = '''# Example Terraform variables
+    tfvars_example = """# Example Terraform variables
 # Copy this file to terraform.tfvars and fill in your values
 
 project_name = "my-project"
 environment  = "production"
-'''
+"""
 
     if cloud_provider == "aws":
-        tfvars_example += '''aws_region   = "us-east-1"
+        tfvars_example += """aws_region   = "us-east-1"
 vpc_id       = "vpc-xxxxxxxx"
 subnet_id    = "subnet-xxxxxxxx"
-'''
+"""
     elif cloud_provider == "gcp":
-        tfvars_example += '''gcp_project  = "my-gcp-project"
+        tfvars_example += """gcp_project  = "my-gcp-project"
 gcp_region   = "us-central1"
-'''
+"""
 
     # Build output
     lines = [f"## Generated Terraform Configuration ({cloud_provider.upper()})\n"]
@@ -1187,7 +1190,10 @@ async def generate_cloudformation(
                     "InstanceType": res_config.get("instance_type", "t3.micro"),
                     "ImageId": {"Ref": "AMI"},
                     "Tags": [
-                        {"Key": "Name", "Value": {"Fn::Sub": "${ProjectName}-" + res_name}},
+                        {
+                            "Key": "Name",
+                            "Value": {"Fn::Sub": "${ProjectName}-" + res_name},
+                        },
                         {"Key": "Environment", "Value": {"Ref": "Environment"}},
                     ],
                 },
@@ -1201,14 +1207,20 @@ async def generate_cloudformation(
             template["Resources"][f"{res_name}Bucket"] = {
                 "Type": "AWS::S3::Bucket",
                 "Properties": {
-                    "BucketName": {"Fn::Sub": "${ProjectName}-" + res_name.lower() + "-${Environment}"},
+                    "BucketName": {
+                        "Fn::Sub": "${ProjectName}-"
+                        + res_name.lower()
+                        + "-${Environment}"
+                    },
                     "VersioningConfiguration": {"Status": "Enabled"},
                     "BucketEncryption": {
-                        "ServerSideEncryptionConfiguration": [{
-                            "ServerSideEncryptionByDefault": {
-                                "SSEAlgorithm": "AES256",
-                            },
-                        }],
+                        "ServerSideEncryptionConfiguration": [
+                            {
+                                "ServerSideEncryptionByDefault": {
+                                    "SSEAlgorithm": "AES256",
+                                },
+                            }
+                        ],
                     },
                     "PublicAccessBlockConfiguration": {
                         "BlockPublicAcls": True,
@@ -1239,11 +1251,13 @@ async def generate_cloudformation(
                 "Properties": {
                     "AssumeRolePolicyDocument": {
                         "Version": "2012-10-17",
-                        "Statement": [{
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }],
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
                     },
                     "ManagedPolicyArns": [
                         "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
@@ -1253,6 +1267,7 @@ async def generate_cloudformation(
 
     # Convert to YAML
     import yaml
+
     try:
         yaml_content = yaml.dump(template, default_flow_style=False, sort_keys=False)
     except ImportError:
@@ -1272,7 +1287,9 @@ async def generate_cloudformation(
     lines.append("aws cloudformation deploy \\")
     lines.append("  --template-file cloudformation.yaml \\")
     lines.append("  --stack-name my-stack \\")
-    lines.append("  --parameter-overrides ProjectName=my-project Environment=production \\")
+    lines.append(
+        "  --parameter-overrides ProjectName=my-project Environment=production \\"
+    )
     lines.append("  --capabilities CAPABILITY_IAM")
     lines.append("```")
 
@@ -1324,6 +1341,7 @@ async def generate_kubernetes_manifests(
             with open(dockerfile_path, "r") as f:
                 content = f.read()
             import re
+
             expose_match = re.search(r"EXPOSE\s+(\d+)", content)
             if expose_match:
                 port = int(expose_match.group(1))
@@ -1334,7 +1352,7 @@ async def generate_kubernetes_manifests(
     env_yaml = ""
     if env_vars:
         for key, value in env_vars.items():
-            env_yaml += f"        - name: {key}\n          value: \"{value}\"\n"
+            env_yaml += f'        - name: {key}\n          value: "{value}"\n'
     else:
         env_yaml = "        []"
 
@@ -1448,7 +1466,9 @@ async def generate_docker_compose(
         if svc_type == "web":
             compose["services"][svc_name] = {
                 "build": {"context": ".", "dockerfile": "Dockerfile"},
-                "ports": [f"{svc_config.get('host_port', 3000)}:{svc_config.get('container_port', 3000)}"],
+                "ports": [
+                    f"{svc_config.get('host_port', 3000)}:{svc_config.get('container_port', 3000)}"
+                ],
                 "environment": svc_config.get("env", {}),
                 "restart": "unless-stopped",
             }
@@ -1493,6 +1513,7 @@ async def generate_docker_compose(
 
     # Convert to YAML
     import yaml
+
     try:
         yaml_content = yaml.dump(compose, default_flow_style=False, sort_keys=False)
     except ImportError:
@@ -1542,16 +1563,16 @@ async def generate_helm_chart(
     logger.info("generate_helm_chart", chart_name=chart_name)
 
     # Chart.yaml
-    chart_yaml = f'''apiVersion: v2
+    chart_yaml = f"""apiVersion: v2
 name: {chart_name}
 description: A Helm chart for {chart_name}
 type: application
 version: 0.1.0
 appVersion: "{app_version}"
-'''
+"""
 
     # values.yaml
-    values_yaml = f'''# Default values for {chart_name}
+    values_yaml = f"""# Default values for {chart_name}
 replicaCount: 2
 
 image:
@@ -1594,10 +1615,10 @@ autoscaling:
   targetMemoryUtilizationPercentage: 80
 
 env: []
-'''
+"""
 
     # templates/deployment.yaml
-    deployment_template = '''apiVersion: apps/v1
+    deployment_template = """apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "{name}.fullname" . }}
@@ -1635,7 +1656,9 @@ spec:
             {{{{- toYaml .Values.resources | nindent 12 }}}}
           env:
             {{{{- toYaml .Values.env | nindent 12 }}}}
-'''.format(name=chart_name)
+""".format(
+        name=chart_name
+    )
 
     lines = ["## Generated Helm Chart\n"]
     lines.append(f"**Chart Name**: {chart_name}")
@@ -1707,42 +1730,56 @@ async def analyze_infrastructure_needs(
 
                 # Next.js
                 if "next" in deps:
-                    recommendations["compute"].append({
-                        "type": "Serverless/Container",
-                        "options": ["Vercel (recommended)", "AWS ECS/Fargate", "Cloud Run"],
-                        "reason": "Next.js works best with serverless or container deployment",
-                    })
+                    recommendations["compute"].append(
+                        {
+                            "type": "Serverless/Container",
+                            "options": [
+                                "Vercel (recommended)",
+                                "AWS ECS/Fargate",
+                                "Cloud Run",
+                            ],
+                            "reason": "Next.js works best with serverless or container deployment",
+                        }
+                    )
 
                 # Database dependencies
                 if "prisma" in deps or "typeorm" in deps or "pg" in deps:
-                    recommendations["database"].append({
-                        "type": "PostgreSQL",
-                        "options": ["AWS RDS", "Cloud SQL", "Railway Postgres"],
-                        "reason": "Detected PostgreSQL ORM/client",
-                    })
+                    recommendations["database"].append(
+                        {
+                            "type": "PostgreSQL",
+                            "options": ["AWS RDS", "Cloud SQL", "Railway Postgres"],
+                            "reason": "Detected PostgreSQL ORM/client",
+                        }
+                    )
 
                 if "mongoose" in deps or "mongodb" in deps:
-                    recommendations["database"].append({
-                        "type": "MongoDB",
-                        "options": ["MongoDB Atlas", "AWS DocumentDB"],
-                        "reason": "Detected MongoDB client",
-                    })
+                    recommendations["database"].append(
+                        {
+                            "type": "MongoDB",
+                            "options": ["MongoDB Atlas", "AWS DocumentDB"],
+                            "reason": "Detected MongoDB client",
+                        }
+                    )
 
                 # Redis
                 if "redis" in deps or "ioredis" in deps:
-                    recommendations["database"].append({
-                        "type": "Redis",
-                        "options": ["AWS ElastiCache", "Upstash", "Redis Cloud"],
-                        "reason": "Detected Redis client for caching/sessions",
-                    })
+                    recommendations["database"].append(
+                        {
+                            "type": "Redis",
+                            "options": ["AWS ElastiCache", "Upstash", "Redis Cloud"],
+                            "reason": "Detected Redis client for caching/sessions",
+                        }
+                    )
 
                 # File uploads
                 if "@aws-sdk/client-s3" in deps or "aws-sdk" in deps:
-                    recommendations["storage"].append({
-                        "type": "Object Storage",
-                        "options": ["AWS S3", "GCS", "Cloudflare R2"],
-                        "reason": "Detected AWS SDK for file storage",
-                    })
+                    recommendations["storage"].append(
+                        {
+                            "type": "Object Storage",
+                            "options": ["AWS S3", "GCS", "Cloudflare R2"],
+                            "reason": "Detected AWS SDK for file storage",
+                        }
+                    )
 
         except (json.JSONDecodeError, IOError):
             pass
@@ -1755,49 +1792,65 @@ async def analyze_infrastructure_needs(
                 content = f.read().lower()
 
             if "fastapi" in content or "django" in content:
-                recommendations["compute"].append({
-                    "type": "Container",
-                    "options": ["AWS ECS/Fargate", "Cloud Run", "Railway"],
-                    "reason": "Python web frameworks work well containerized",
-                })
+                recommendations["compute"].append(
+                    {
+                        "type": "Container",
+                        "options": ["AWS ECS/Fargate", "Cloud Run", "Railway"],
+                        "reason": "Python web frameworks work well containerized",
+                    }
+                )
 
             if "psycopg" in content or "sqlalchemy" in content:
-                recommendations["database"].append({
-                    "type": "PostgreSQL",
-                    "options": ["AWS RDS", "Cloud SQL", "Railway Postgres"],
-                    "reason": "Detected PostgreSQL dependencies",
-                })
+                recommendations["database"].append(
+                    {
+                        "type": "PostgreSQL",
+                        "options": ["AWS RDS", "Cloud SQL", "Railway Postgres"],
+                        "reason": "Detected PostgreSQL dependencies",
+                    }
+                )
 
             if "celery" in content:
-                recommendations["compute"].append({
-                    "type": "Background Workers",
-                    "options": ["AWS SQS + Lambda", "Cloud Tasks", "Railway Workers"],
-                    "reason": "Detected Celery for task processing",
-                })
+                recommendations["compute"].append(
+                    {
+                        "type": "Background Workers",
+                        "options": [
+                            "AWS SQS + Lambda",
+                            "Cloud Tasks",
+                            "Railway Workers",
+                        ],
+                        "reason": "Detected Celery for task processing",
+                    }
+                )
 
         except IOError:
             pass
 
     # Check for Dockerfile
     if os.path.exists(os.path.join(workspace_path, "Dockerfile")):
-        recommendations["compute"].append({
-            "type": "Container Orchestration",
-            "options": ["Kubernetes (EKS/GKE)", "AWS ECS", "Fly.io"],
-            "reason": "Dockerfile present - ready for containerized deployment",
-        })
+        recommendations["compute"].append(
+            {
+                "type": "Container Orchestration",
+                "options": ["Kubernetes (EKS/GKE)", "AWS ECS", "Fly.io"],
+                "reason": "Dockerfile present - ready for containerized deployment",
+            }
+        )
 
     # Default recommendations
-    recommendations["networking"].append({
-        "type": "Load Balancer",
-        "options": ["AWS ALB", "Cloud Load Balancing", "Cloudflare"],
-        "reason": "Recommended for production traffic",
-    })
+    recommendations["networking"].append(
+        {
+            "type": "Load Balancer",
+            "options": ["AWS ALB", "Cloud Load Balancing", "Cloudflare"],
+            "reason": "Recommended for production traffic",
+        }
+    )
 
-    recommendations["monitoring"].append({
-        "type": "Application Monitoring",
-        "options": ["Datadog", "New Relic", "Sentry + Grafana"],
-        "reason": "Essential for production observability",
-    })
+    recommendations["monitoring"].append(
+        {
+            "type": "Application Monitoring",
+            "options": ["Datadog", "New Relic", "Sentry + Grafana"],
+            "reason": "Essential for production observability",
+        }
+    )
 
     # Build output
     lines = ["## Infrastructure Recommendations\n"]
@@ -1893,7 +1946,7 @@ async def terraform_plan(
     if not EXECUTION_SERVICES_AVAILABLE:
         return ToolResult(
             output="⚠️ Infrastructure execution services not available.\n\n"
-                   "To create a plan manually, run:\n```bash\nterraform plan\n```",
+            "To create a plan manually, run:\n```bash\nterraform plan\n```",
             sources=[],
         )
 
@@ -1915,12 +1968,19 @@ async def terraform_plan(
     if plan.changes:
         output += "### Changes\n"
         for change in plan.changes:
-            icon = {"create": "➕", "update": "🔄", "delete": "❌", "replace": "🔁"}.get(change.action, "•")
+            icon = {
+                "create": "➕",
+                "update": "🔄",
+                "delete": "❌",
+                "replace": "🔁",
+            }.get(change.action, "•")
             output += f"{icon} `{change.resource_address}` ({change.action})\n"
 
     if plan.plan_file:
         output += f"\n**Plan file**: `{plan.plan_file}`\n"
-        output += "\nTo apply this plan, use `infra.terraform_apply` with this plan file."
+        output += (
+            "\nTo apply this plan, use `infra.terraform_apply` with this plan file."
+        )
 
     return ToolResult(output=output, sources=[])
 
@@ -1975,13 +2035,13 @@ async def terraform_apply(
 
         return ToolResult(
             output=f"## ⚠️ CRITICAL: Infrastructure Change Confirmation Required\n\n"
-                   f"**Operation**: Terraform Apply\n"
-                   f"**Risk Level**: {request.risk_level.value.upper()}\n\n"
-                   f"### ⚠️ Warnings\n"
-                   + "\n".join([f"- {w.message}" for w in request.warnings]) +
-                   f"\n\n**Request ID**: `{request.id}`\n"
-                   f"**Confirmation Phrase**: `{request.confirmation_phrase}`\n\n"
-                   f"To proceed, call `infra.confirm_apply` with the request ID and confirmation phrase.",
+            f"**Operation**: Terraform Apply\n"
+            f"**Risk Level**: {request.risk_level.value.upper()}\n\n"
+            f"### ⚠️ Warnings\n"
+            + "\n".join([f"- {w.message}" for w in request.warnings])
+            + f"\n\n**Request ID**: `{request.id}`\n"
+            f"**Confirmation Phrase**: `{request.confirmation_phrase}`\n\n"
+            f"To proceed, call `infra.confirm_apply` with the request ID and confirmation phrase.",
             sources=[{"type": "execution_request", "data": ui_data}],
         )
 
@@ -2010,7 +2070,7 @@ async def terraform_apply(
     else:
         return ToolResult(
             output=f"## ❌ Terraform Apply Failed\n\n{result.error}\n\n"
-                   f"### Logs\n```\n" + "\n".join(result.logs[-30:]) + "\n```",
+            f"### Logs\n```\n" + "\n".join(result.logs[-30:]) + "\n```",
             sources=[],
         )
 
@@ -2053,15 +2113,15 @@ async def terraform_destroy(
 
         return ToolResult(
             output=f"## ⚠️⚠️⚠️ CRITICAL: DESTRUCTIVE OPERATION ⚠️⚠️⚠️\n\n"
-                   f"**Operation**: Terraform Destroy\n"
-                   f"**Risk Level**: CRITICAL\n\n"
-                   f"### ❌ THIS WILL PERMANENTLY DELETE:\n"
-                   f"- All Terraform-managed infrastructure\n"
-                   f"- All data in those resources\n"
-                   f"- This action CANNOT be undone\n\n"
-                   f"**Request ID**: `{request.id}`\n"
-                   f"**Type**: `{request.confirmation_phrase}` to confirm\n\n"
-                   f"⚠️ THINK CAREFULLY BEFORE PROCEEDING ⚠️",
+            f"**Operation**: Terraform Destroy\n"
+            f"**Risk Level**: CRITICAL\n\n"
+            f"### ❌ THIS WILL PERMANENTLY DELETE:\n"
+            f"- All Terraform-managed infrastructure\n"
+            f"- All data in those resources\n"
+            f"- This action CANNOT be undone\n\n"
+            f"**Request ID**: `{request.id}`\n"
+            f"**Type**: `{request.confirmation_phrase}` to confirm\n\n"
+            f"⚠️ THINK CAREFULLY BEFORE PROCEEDING ⚠️",
             sources=[],
         )
 
@@ -2074,8 +2134,8 @@ async def terraform_destroy(
     if result.success:
         return ToolResult(
             output=f"## ✅ Infrastructure Destroyed\n\n"
-                   f"All Terraform-managed resources have been deleted.\n"
-                   f"**Duration**: {result.duration_seconds:.1f}s",
+            f"All Terraform-managed resources have been deleted.\n"
+            f"**Duration**: {result.duration_seconds:.1f}s",
             sources=[],
         )
     else:
@@ -2117,12 +2177,15 @@ async def kubectl_apply(
         )
         return ToolResult(
             output=f"## 🔍 Dry Run - Kubernetes Apply Preview\n\n"
-                   f"Would apply manifests from: `{manifest_path}`\n"
-                   f"Namespace: `{namespace or 'default'}`\n\n"
-                   f"### Changes\n" + "\n".join([
-                       f"- {c.action} {c.resource_type}/{c.resource_name}"
-                       for c in result.changes_applied
-                   ]),
+            f"Would apply manifests from: `{manifest_path}`\n"
+            f"Namespace: `{namespace or 'default'}`\n\n"
+            f"### Changes\n"
+            + "\n".join(
+                [
+                    f"- {c.action} {c.resource_type}/{c.resource_name}"
+                    for c in result.changes_applied
+                ]
+            ),
             sources=[],
         )
 
@@ -2135,10 +2198,10 @@ async def kubectl_apply(
         )
         return ToolResult(
             output=f"## ⚠️ Kubernetes Apply Confirmation Required\n\n"
-                   f"**Manifest**: `{manifest_path}`\n"
-                   f"**Namespace**: `{namespace or 'default'}`\n\n"
-                   f"**Request ID**: `{request.id}`\n\n"
-                   f"To proceed, approve this request.",
+            f"**Manifest**: `{manifest_path}`\n"
+            f"**Namespace**: `{namespace or 'default'}`\n\n"
+            f"**Request ID**: `{request.id}`\n\n"
+            f"To proceed, approve this request.",
             sources=[],
         )
 
@@ -2202,9 +2265,9 @@ async def helm_install(
         )
         return ToolResult(
             output=f"## 🔍 Dry Run - Helm Install Preview\n\n"
-                   f"**Release**: `{release_name}`\n"
-                   f"**Chart**: `{chart}`\n"
-                   f"**Namespace**: `{namespace or 'default'}`\n",
+            f"**Release**: `{release_name}`\n"
+            f"**Chart**: `{chart}`\n"
+            f"**Namespace**: `{namespace or 'default'}`\n",
             sources=[],
         )
 
@@ -2221,9 +2284,9 @@ async def helm_install(
         )
         return ToolResult(
             output=f"## ⚠️ Helm Install Confirmation Required\n\n"
-                   f"**Release**: `{release_name}`\n"
-                   f"**Chart**: `{chart}`\n\n"
-                   f"**Request ID**: `{request.id}`",
+            f"**Release**: `{release_name}`\n"
+            f"**Chart**: `{chart}`\n\n"
+            f"**Request ID**: `{request.id}`",
             sources=[],
         )
 
@@ -2238,9 +2301,9 @@ async def helm_install(
     if result.success:
         return ToolResult(
             output=f"## ✅ Helm Install Successful\n\n"
-                   f"**Release**: `{release_name}`\n"
-                   f"**Duration**: {result.duration_seconds:.1f}s\n\n"
-                   f"### Rollback\n`{result.rollback_command}`",
+            f"**Release**: `{release_name}`\n"
+            f"**Duration**: {result.duration_seconds:.1f}s\n\n"
+            f"### Rollback\n`{result.rollback_command}`",
             sources=[],
         )
     else:

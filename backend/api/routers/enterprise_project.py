@@ -37,7 +37,9 @@ class ProjectGoal(BaseModel):
 
     id: str = Field(..., description="Unique goal ID")
     description: str = Field(..., description="Goal description")
-    status: str = Field(default="pending", description="pending, in_progress, completed")
+    status: str = Field(
+        default="pending", description="pending, in_progress, completed"
+    )
 
 
 class ProjectMilestone(BaseModel):
@@ -47,7 +49,9 @@ class ProjectMilestone(BaseModel):
     name: str = Field(..., description="Milestone name")
     description: Optional[str] = Field(None, description="Milestone description")
     target_date: Optional[str] = Field(None, description="Target completion date")
-    task_keys: List[str] = Field(default_factory=list, description="Tasks in this milestone")
+    task_keys: List[str] = Field(
+        default_factory=list, description="Tasks in this milestone"
+    )
 
 
 class CreateProjectRequest(BaseModel):
@@ -59,9 +63,15 @@ class CreateProjectRequest(BaseModel):
         default="general",
         description="Project type: e-commerce, microservices, api, frontend, mobile, etc.",
     )
-    workspace_session_id: Optional[str] = Field(None, description="Link to workspace session")
-    goals: Optional[List[ProjectGoal]] = Field(None, description="Initial project goals")
-    milestones: Optional[List[ProjectMilestone]] = Field(None, description="Initial milestones")
+    workspace_session_id: Optional[str] = Field(
+        None, description="Link to workspace session"
+    )
+    goals: Optional[List[ProjectGoal]] = Field(
+        None, description="Initial project goals"
+    )
+    milestones: Optional[List[ProjectMilestone]] = Field(
+        None, description="Initial milestones"
+    )
     config: Optional[Dict[str, Any]] = Field(None, description="Project configuration")
 
 
@@ -74,7 +84,9 @@ class UpdateProjectRequest(BaseModel):
     goals: Optional[List[Dict[str, Any]]] = None
     milestones: Optional[List[Dict[str, Any]]] = None
     config: Optional[Dict[str, Any]] = None
-    status: Optional[str] = Field(None, description="planning, active, paused, blocked, completed")
+    status: Optional[str] = Field(
+        None, description="planning, active, paused, blocked, completed"
+    )
     progress_percentage: Optional[int] = Field(None, ge=0, le=100)
 
 
@@ -90,7 +102,9 @@ class TaskVerificationCriteria(BaseModel):
 class CreateTaskRequest(BaseModel):
     """Request to create a task."""
 
-    task_key: str = Field(..., min_length=1, max_length=100, description="Unique task key")
+    task_key: str = Field(
+        ..., min_length=1, max_length=100, description="Unique task key"
+    )
     title: str = Field(..., min_length=1, max_length=255, description="Task title")
     description: Optional[str] = Field(None, description="Task description")
     task_type: str = Field(
@@ -98,8 +112,12 @@ class CreateTaskRequest(BaseModel):
         description="development, testing, documentation, deployment, review, etc.",
     )
     priority: int = Field(default=50, ge=0, le=100, description="Task priority (0-100)")
-    dependencies: Optional[List[str]] = Field(None, description="List of dependent task_keys")
-    can_parallelize: bool = Field(default=False, description="Can run in parallel with others")
+    dependencies: Optional[List[str]] = Field(
+        None, description="List of dependent task_keys"
+    )
+    can_parallelize: bool = Field(
+        default=False, description="Can run in parallel with others"
+    )
     verification_criteria: Optional[List[TaskVerificationCriteria]] = Field(
         None, description="How to verify task completion"
     )
@@ -116,11 +134,19 @@ class BulkCreateTasksRequest(BaseModel):
 class UpdateTaskRequest(BaseModel):
     """Request to update a task status."""
 
-    status: str = Field(..., description="pending, ready, in_progress, completed, failed, skipped")
+    status: str = Field(
+        ..., description="pending, ready, in_progress, completed, failed, skipped"
+    )
     error_message: Optional[str] = Field(None, description="Error message if failed")
-    verification_result: Optional[Dict[str, Any]] = Field(None, description="Verification results")
-    outputs: Optional[List[Dict[str, Any]]] = Field(None, description="Task outputs/artifacts")
-    modified_files: Optional[List[str]] = Field(None, description="Files modified by task")
+    verification_result: Optional[Dict[str, Any]] = Field(
+        None, description="Verification results"
+    )
+    outputs: Optional[List[Dict[str, Any]]] = Field(
+        None, description="Task outputs/artifacts"
+    )
+    modified_files: Optional[List[str]] = Field(
+        None, description="Files modified by task"
+    )
     progress_percentage: Optional[int] = Field(None, ge=0, le=100)
 
 
@@ -130,8 +156,12 @@ class GateOption(BaseModel):
     id: str = Field(..., description="Option ID")
     label: str = Field(..., description="Option label")
     description: str = Field(..., description="Detailed description")
-    trade_offs: Optional[List[str]] = Field(None, description="Trade-offs for this option")
-    recommended: bool = Field(default=False, description="Whether this is the recommended option")
+    trade_offs: Optional[List[str]] = Field(
+        None, description="Trade-offs for this option"
+    )
+    recommended: bool = Field(
+        default=False, description="Whether this is the recommended option"
+    )
 
 
 class CreateGateRequest(BaseModel):
@@ -143,11 +173,17 @@ class CreateGateRequest(BaseModel):
     )
     title: str = Field(..., min_length=1, max_length=255, description="Decision title")
     description: Optional[str] = Field(None, description="Detailed description")
-    options: List[GateOption] = Field(..., min_length=2, max_length=10, description="Decision options")
-    trigger_context: Optional[Dict[str, Any]] = Field(None, description="Context that triggered gate")
+    options: List[GateOption] = Field(
+        ..., min_length=2, max_length=10, description="Decision options"
+    )
+    trigger_context: Optional[Dict[str, Any]] = Field(
+        None, description="Context that triggered gate"
+    )
     task_id: Optional[str] = Field(None, description="Associated task")
     priority: str = Field(default="normal", description="low, normal, high, critical")
-    blocks_progress: bool = Field(default=True, description="Whether this blocks execution")
+    blocks_progress: bool = Field(
+        default=True, description="Whether this blocks execution"
+    )
 
 
 class ProcessGateDecisionRequest(BaseModel):
@@ -163,7 +199,9 @@ class CreateADRRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255, description="ADR title")
     context: str = Field(..., description="Context and problem statement")
     decision: str = Field(..., description="The decision made")
-    consequences: List[str] = Field(..., min_length=1, description="Consequences of the decision")
+    consequences: List[str] = Field(
+        ..., min_length=1, description="Consequences of the decision"
+    )
     alternatives: Optional[List[Dict[str, str]]] = Field(
         None, description="Alternatives considered: [{option, reason_rejected}]"
     )
@@ -266,7 +304,9 @@ def _project_to_response(project) -> ProjectResponse:
         config=project.config or {},
         created_at=project.created_at.isoformat() if project.created_at else "",
         updated_at=project.updated_at.isoformat() if project.updated_at else "",
-        last_active_at=project.last_active_at.isoformat() if project.last_active_at else None,
+        last_active_at=(
+            project.last_active_at.isoformat() if project.last_active_at else None
+        ),
     )
 
 
@@ -523,9 +563,11 @@ def create_task(
         priority=request.priority,
         dependencies=request.dependencies,
         can_parallelize=request.can_parallelize,
-        verification_criteria=[v.model_dump() for v in request.verification_criteria]
-        if request.verification_criteria
-        else None,
+        verification_criteria=(
+            [v.model_dump() for v in request.verification_criteria]
+            if request.verification_criteria
+            else None
+        ),
         milestone_id=request.milestone_id,
         parent_task_id=request.parent_task_id,
     )
@@ -561,9 +603,11 @@ def create_tasks_bulk(
             "priority": t.priority,
             "dependencies": t.dependencies or [],
             "can_parallelize": t.can_parallelize,
-            "verification_criteria": [v.model_dump() for v in t.verification_criteria]
-            if t.verification_criteria
-            else [],
+            "verification_criteria": (
+                [v.model_dump() for v in t.verification_criteria]
+                if t.verification_criteria
+                else []
+            ),
             "milestone_id": t.milestone_id,
         }
         for t in request.tasks
@@ -789,7 +833,9 @@ def get_gate(
     return _gate_to_response(gate)
 
 
-@router.post("/projects/{project_id}/gates/{gate_id}/decide", response_model=GateResponse)
+@router.post(
+    "/projects/{project_id}/gates/{gate_id}/decide", response_model=GateResponse
+)
 def process_gate_decision(
     project_id: str,
     gate_id: str,

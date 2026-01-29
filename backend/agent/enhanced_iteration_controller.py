@@ -235,9 +235,7 @@ class EnterpriseIterationState:
         # Human gate requires attention
         if config.stop_on_human_gate and self.current_gate:
             self.stopped_reason = "human_gate_pending"
-            logger.info(
-                "[ENTERPRISE_ITERATION] Pausing: human checkpoint gate pending"
-            )
+            logger.info("[ENTERPRISE_ITERATION] Pausing: human checkpoint gate pending")
             return False
 
         # Max iterations reached (if set)
@@ -452,9 +450,11 @@ class EnhancedIterationController:
 
         # For backwards compatibility with base controller
         self._base_config = IterationConfig(
-            mode=IterationMode.MAX_ITERATIONS
-            if self.config.max_iterations
-            else IterationMode.ONE_SHOT,
+            mode=(
+                IterationMode.MAX_ITERATIONS
+                if self.config.max_iterations
+                else IterationMode.ONE_SHOT
+            ),
             max_iterations=self.config.max_iterations or 999999,
             stop_on_same_error=self.config.stop_on_same_error,
             stop_on_no_progress=self.config.stop_on_no_progress,
@@ -607,9 +607,7 @@ class EnhancedIterationController:
     ) -> Optional[str]:
         """Create a checkpoint for resume capability."""
         if not self.checkpoint_callback:
-            logger.warning(
-                "[ENTERPRISE_ITERATION] No checkpoint callback configured"
-            )
+            logger.warning("[ENTERPRISE_ITERATION] No checkpoint callback configured")
             return None
 
         checkpoint_id = f"chk_{self.config.enterprise_project_id or 'default'}_{self.state.iteration_count}"
@@ -645,9 +643,7 @@ class EnhancedIterationController:
     async def summarize_context(self, current_context: str) -> Optional[str]:
         """Summarize context to reduce token usage."""
         if not self.summarize_callback:
-            logger.warning(
-                "[ENTERPRISE_ITERATION] No summarize callback configured"
-            )
+            logger.warning("[ENTERPRISE_ITERATION] No summarize callback configured")
             return None
 
         try:

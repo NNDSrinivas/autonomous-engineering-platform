@@ -51,9 +51,7 @@ async def review_stream_post(payload: Dict[str, Any], request: Request):
             progress_events: List[Dict[str, Any]] = []
 
             def progress_callback(message: str, progress: int | None = None):
-                progress_events.append(
-                    {"message": message, "progress": progress or 0}
-                )
+                progress_events.append({"message": message, "progress": progress or 0})
 
             service = ReviewService()
             reviews = service.review_files(
@@ -74,6 +72,7 @@ async def review_stream_post(payload: Dict[str, Any], request: Request):
                         review_payload = None
 
                 if review_payload is None:
+
                     def _safe_value(value: Any) -> Any:
                         if value is None or isinstance(value, (str, int, float, bool)):
                             return value

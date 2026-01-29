@@ -62,12 +62,14 @@ def _get_node_environment_setup(cwd: Optional[str] = None) -> str:
     fnm_path = os.path.join(home, ".fnm")
     if os.path.exists(fnm_path):
         setup_commands.append(f'export PATH="{fnm_path}:$PATH"')
-        setup_commands.append('eval "$(fnm env --use-on-cd 2>/dev/null)" 2>/dev/null || true')
+        setup_commands.append(
+            'eval "$(fnm env --use-on-cd 2>/dev/null)" 2>/dev/null || true'
+        )
 
     # Add common Node paths as fallback
     common_paths = [
         "/opt/homebrew/bin",  # macOS ARM homebrew
-        "/usr/local/bin",     # macOS Intel / Linux
+        "/usr/local/bin",  # macOS Intel / Linux
         os.path.join(home, ".npm-global/bin"),  # npm global
         os.path.join(home, ".yarn/bin"),  # yarn global
     ]
@@ -89,11 +91,28 @@ def _get_node_environment_setup(cwd: Optional[str] = None) -> str:
 def _is_node_command(command: str) -> bool:
     """Check if command requires Node.js environment."""
     node_commands = [
-        "npm", "npx", "node", "yarn", "pnpm", "bun",
-        "tsc", "tsx", "ts-node",
-        "jest", "vitest", "mocha",
-        "webpack", "vite", "esbuild", "rollup", "parcel",
-        "eslint", "prettier", "next", "nuxt", "gatsby",
+        "npm",
+        "npx",
+        "node",
+        "yarn",
+        "pnpm",
+        "bun",
+        "tsc",
+        "tsx",
+        "ts-node",
+        "jest",
+        "vitest",
+        "mocha",
+        "webpack",
+        "vite",
+        "esbuild",
+        "rollup",
+        "parcel",
+        "eslint",
+        "prettier",
+        "next",
+        "nuxt",
+        "gatsby",
     ]
     cmd_parts = command.split()
     if not cmd_parts:
@@ -104,7 +123,19 @@ def _is_node_command(command: str) -> bool:
 
 def _is_python_command(command: str) -> bool:
     """Check if command requires Python environment."""
-    python_commands = ["python", "python3", "pip", "pip3", "poetry", "pipenv", "pytest", "mypy", "black", "ruff", "flake8"]
+    python_commands = [
+        "python",
+        "python3",
+        "pip",
+        "pip3",
+        "poetry",
+        "pipenv",
+        "pytest",
+        "mypy",
+        "black",
+        "ruff",
+        "flake8",
+    ]
     cmd_parts = command.split()
     if not cmd_parts:
         return False
@@ -558,7 +589,7 @@ SAFE_COMMANDS = {
 # Commands that are ALWAYS blocked (no permission bypass)
 # System-level commands have been moved to DANGEROUS_COMMANDS for permission-based execution
 BLOCKED_COMMANDS = {
-    ">",   # Prevent redirect that could overwrite files
+    ">",  # Prevent redirect that could overwrite files
     ">>",  # Prevent append redirect
 }
 
@@ -678,16 +709,16 @@ async def run_command(
                     "requires_permission": True,
                     "permission_request": permission_request,
                     "message": f"⚠️ **DANGEROUS COMMAND DETECTED**\n\n"
-                               f"**Command:** `{command}`\n"
-                               f"**Risk Level:** {permission_request['risk_icon']} {cmd_info.risk_level.value.upper()}\n\n"
-                               f"**What this does:** {cmd_info.description}\n\n"
-                               f"**⚠️ Consequences:**\n" +
-                               "\n".join(f"  • {c}" for c in cmd_info.consequences) +
-                               f"\n\n**Rollback possible:** {'Yes ✅' if cmd_info.rollback_possible else 'No ❌'}\n"
-                               f"**Backup strategy:** {cmd_info.backup_strategy}\n\n"
-                               f"**Alternatives:**\n" +
-                               "\n".join(f"  • {a}" for a in cmd_info.alternatives) +
-                               "\n\n**To proceed, use:** `run_dangerous_command` with `approved=True`",
+                    f"**Command:** `{command}`\n"
+                    f"**Risk Level:** {permission_request['risk_icon']} {cmd_info.risk_level.value.upper()}\n\n"
+                    f"**What this does:** {cmd_info.description}\n\n"
+                    f"**⚠️ Consequences:**\n"
+                    + "\n".join(f"  • {c}" for c in cmd_info.consequences)
+                    + f"\n\n**Rollback possible:** {'Yes ✅' if cmd_info.rollback_possible else 'No ❌'}\n"
+                    f"**Backup strategy:** {cmd_info.backup_strategy}\n\n"
+                    f"**Alternatives:**\n"
+                    + "\n".join(f"  • {a}" for a in cmd_info.alternatives)
+                    + "\n\n**To proceed, use:** `run_dangerous_command` with `approved=True`",
                     "error": "Permission required for dangerous command",
                 }
 
@@ -709,9 +740,9 @@ async def run_command(
                 allowed = CONDITIONAL_COMMANDS[cmd_name]
                 return {
                     "success": False,
-                    "message": f"❌ `{cmd_name}` only allowed for specific patterns:\n" +
-                               "\n".join(f"  - `{p}`" for p in allowed[:5]) +
-                               ("\n  ..." if len(allowed) > 5 else ""),
+                    "message": f"❌ `{cmd_name}` only allowed for specific patterns:\n"
+                    + "\n".join(f"  - `{p}`" for p in allowed[:5])
+                    + ("\n  ..." if len(allowed) > 5 else ""),
                     "error": "Command pattern not allowed",
                 }
             # Check if it's a dangerous command that could be allowed with permission
@@ -734,7 +765,9 @@ async def run_command(
         env_setup = ""
         if _is_node_command(command):
             env_setup = _get_node_environment_setup(cwd)
-            logger.info(f"[TOOL:run_command] Node environment setup: {env_setup[:100]}...")
+            logger.info(
+                f"[TOOL:run_command] Node environment setup: {env_setup[:100]}..."
+            )
         elif _is_python_command(command):
             env_setup = _get_python_environment_setup(cwd)
             if env_setup:
@@ -836,7 +869,9 @@ async def run_dangerous_command(
             "error": str (if failure)
         }
     """
-    logger.info(f"[TOOL:run_dangerous_command] user={user_id}, command={command}, approved={approved}")
+    logger.info(
+        f"[TOOL:run_dangerous_command] user={user_id}, command={command}, approved={approved}"
+    )
 
     # CRITICAL: Require explicit approval
     if not approved:
@@ -848,10 +883,10 @@ async def run_dangerous_command(
                 "requires_permission": True,
                 "permission_request": permission_request,
                 "message": "❌ **APPROVAL REQUIRED**\n\n"
-                          f"You must set `approved=True` to execute this dangerous command.\n\n"
-                          f"**Command:** `{command}`\n"
-                          f"**Risk:** {cmd_info.risk_level.value.upper()}\n\n"
-                          "Review the consequences carefully before approving.",
+                f"You must set `approved=True` to execute this dangerous command.\n\n"
+                f"**Command:** `{command}`\n"
+                f"**Risk:** {cmd_info.risk_level.value.upper()}\n\n"
+                "Review the consequences carefully before approving.",
                 "error": "Approval required",
             }
         return {
@@ -867,7 +902,9 @@ async def run_dangerous_command(
 
     # Create backup before execution (unless skipped)
     if not skip_backup and cmd_info and cmd_info.backup_strategy != "none":
-        logger.info(f"[TOOL:run_dangerous_command] Creating backup with strategy: {cmd_info.backup_strategy}")
+        logger.info(
+            f"[TOOL:run_dangerous_command] Creating backup with strategy: {cmd_info.backup_strategy}"
+        )
 
         workspace = cwd or os.getcwd()
         backup_manager = BackupManager(workspace)
@@ -876,23 +913,29 @@ async def run_dangerous_command(
         cmd_parts = command.split()
         target = cmd_parts[-1] if len(cmd_parts) > 1 else None
 
-        backup_result = backup_manager.create_backup(target or "", cmd_info.backup_strategy)
+        backup_result = backup_manager.create_backup(
+            target or "", cmd_info.backup_strategy
+        )
 
         if not backup_result.get("success"):
             return {
                 "success": False,
                 "message": f"❌ **BACKUP FAILED** - Command NOT executed for safety\n\n"
-                          f"Backup error: {backup_result.get('error', 'Unknown error')}\n\n"
-                          "Fix the backup issue or use `skip_backup=True` (not recommended).",
+                f"Backup error: {backup_result.get('error', 'Unknown error')}\n\n"
+                "Fix the backup issue or use `skip_backup=True` (not recommended).",
                 "error": "Backup failed",
                 "backup": backup_result,
             }
 
         # Prepare rollback instructions
         if backup_result.get("backup_path"):
-            rollback_instructions = f"**To restore:** Copy from `{backup_result['backup_path']}`"
+            rollback_instructions = (
+                f"**To restore:** Copy from `{backup_result['backup_path']}`"
+            )
         elif backup_result.get("restore_command"):
-            rollback_instructions = f"**To restore:** Run `{backup_result['restore_command']}`"
+            rollback_instructions = (
+                f"**To restore:** Run `{backup_result['restore_command']}`"
+            )
 
     # Execute the command
     try:
@@ -957,7 +1000,7 @@ async def run_dangerous_command(
         return {
             "success": False,
             "message": f"❌ Command timed out after {timeout}s: `{command}`\n\n"
-                      f"📦 Backup was created: {backup_result.get('backup_path') if backup_result else 'None'}",
+            f"📦 Backup was created: {backup_result.get('backup_path') if backup_result else 'None'}",
             "error": "Command timeout",
             "backup": backup_result,
         }
@@ -967,7 +1010,7 @@ async def run_dangerous_command(
         return {
             "success": False,
             "message": f"❌ Error executing command: {str(e)}\n\n"
-                      f"📦 Backup was created: {backup_result.get('backup_path') if backup_result else 'None'}",
+            f"📦 Backup was created: {backup_result.get('backup_path') if backup_result else 'None'}",
             "error": str(e),
             "backup": backup_result,
         }
@@ -988,13 +1031,15 @@ async def list_backups(workspace_path: str) -> Dict[str, Any]:
     for item in os.listdir(backup_dir):
         item_path = os.path.join(backup_dir, item)
         stat = os.stat(item_path)
-        backups.append({
-            "name": item,
-            "path": item_path,
-            "size": stat.st_size,
-            "created": stat.st_mtime,
-            "is_directory": os.path.isdir(item_path),
-        })
+        backups.append(
+            {
+                "name": item,
+                "path": item_path,
+                "size": stat.st_size,
+                "created": stat.st_mtime,
+                "is_directory": os.path.isdir(item_path),
+            }
+        )
 
     backups.sort(key=lambda x: x["created"], reverse=True)
 
@@ -1114,7 +1159,9 @@ async def run_interactive_command(
             "error": str (if failure)
         }
     """
-    logger.info(f"[TOOL:run_interactive_command] user={user_id}, command={command}, auto_yes={auto_yes}")
+    logger.info(
+        f"[TOOL:run_interactive_command] user={user_id}, command={command}, auto_yes={auto_yes}"
+    )
 
     try:
         # Parse command
@@ -1188,7 +1235,9 @@ async def run_interactive_command(
             message_parts.append("\n*Auto-answered prompts with 'yes'*")
 
         if prompts_answered:
-            message_parts.append(f"\n**Prompts detected:** {', '.join(prompts_answered)}")
+            message_parts.append(
+                f"\n**Prompts detected:** {', '.join(prompts_answered)}"
+            )
 
         if stdout:
             message_parts.append(f"\n**Output:**\n```\n{stdout[:2000]}\n```")
@@ -1208,7 +1257,7 @@ async def run_interactive_command(
         return {
             "success": False,
             "message": f"❌ Interactive command timed out after {timeout}s: `{command}`\n"
-                      "This might be waiting for input that couldn't be auto-answered.",
+            "This might be waiting for input that couldn't be auto-answered.",
             "error": "Command timeout",
         }
 
@@ -1310,7 +1359,9 @@ async def run_parallel_commands(
             "error": str (if failure)
         }
     """
-    logger.info(f"[TOOL:run_parallel_commands] user={user_id}, commands={len(commands)}, workers={max_workers}")
+    logger.info(
+        f"[TOOL:run_parallel_commands] user={user_id}, commands={len(commands)}, workers={max_workers}"
+    )
 
     if not commands:
         return {
@@ -1363,12 +1414,14 @@ async def run_parallel_commands(
                     break
 
             except Exception as e:
-                results.append({
-                    "command": futures[future],
-                    "success": False,
-                    "error": str(e),
-                    "exit_code": -1,
-                })
+                results.append(
+                    {
+                        "command": futures[future],
+                        "success": False,
+                        "error": str(e),
+                        "exit_code": -1,
+                    }
+                )
 
     # Calculate summary
     succeeded = sum(1 for r in results if r.get("success"))
@@ -1435,7 +1488,9 @@ async def run_command_with_retry(
             "error": str (if all attempts failed)
         }
     """
-    logger.info(f"[TOOL:run_command_with_retry] user={user_id}, command={command}, max_retries={max_retries}")
+    logger.info(
+        f"[TOOL:run_command_with_retry] user={user_id}, command={command}, max_retries={max_retries}"
+    )
 
     last_result = None
 
@@ -1448,11 +1503,17 @@ async def run_command_with_retry(
         if result.get("success"):
             result["attempts"] = attempt
             if attempt > 1:
-                result["message"] = f"✅ Succeeded on attempt {attempt}/{max_retries}\n\n" + result.get("message", "")
+                result["message"] = (
+                    f"✅ Succeeded on attempt {attempt}/{max_retries}\n\n"
+                    + result.get("message", "")
+                )
             return result
 
         # Don't retry if it's a permission/safety issue
-        if result.get("requires_permission") or "blocked" in result.get("error", "").lower():
+        if (
+            result.get("requires_permission")
+            or "blocked" in result.get("error", "").lower()
+        ):
             result["attempts"] = attempt
             return result
 
@@ -1463,6 +1524,9 @@ async def run_command_with_retry(
 
     # All attempts failed
     last_result["attempts"] = max_retries
-    last_result["message"] = f"❌ **Failed after {max_retries} attempts**\n\n" + last_result.get("message", "")
+    last_result["message"] = (
+        f"❌ **Failed after {max_retries} attempts**\n\n"
+        + last_result.get("message", "")
+    )
 
     return last_result

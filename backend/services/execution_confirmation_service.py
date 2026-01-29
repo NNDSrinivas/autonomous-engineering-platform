@@ -18,14 +18,16 @@ logger = logging.getLogger(__name__)
 
 class RiskLevel(Enum):
     """Risk levels for operations."""
-    LOW = "low"           # Read-only, no side effects
-    MEDIUM = "medium"     # Local file changes, reversible
-    HIGH = "high"         # External system changes, partially reversible
-    CRITICAL = "critical" # Production changes, potentially irreversible
+
+    LOW = "low"  # Read-only, no side effects
+    MEDIUM = "medium"  # Local file changes, reversible
+    HIGH = "high"  # External system changes, partially reversible
+    CRITICAL = "critical"  # Production changes, potentially irreversible
 
 
 class OperationCategory(Enum):
     """Categories of operations."""
+
     DEPLOYMENT = "deployment"
     INFRASTRUCTURE = "infrastructure"
     DATABASE = "database"
@@ -38,6 +40,7 @@ class OperationCategory(Enum):
 @dataclass
 class ExecutionWarning:
     """Warning message for user review."""
+
     level: RiskLevel
     title: str
     message: str
@@ -50,6 +53,7 @@ class ExecutionWarning:
 @dataclass
 class ExecutionRequest:
     """Request for execution approval."""
+
     id: str
     operation_name: str
     operation_category: OperationCategory
@@ -61,7 +65,9 @@ class ExecutionRequest:
     affected_resources: List[str] = field(default_factory=list)
     rollback_plan: Optional[str] = None
     requires_confirmation: bool = True
-    confirmation_phrase: Optional[str] = None  # User must type this to confirm critical ops
+    confirmation_phrase: Optional[str] = (
+        None  # User must type this to confirm critical ops
+    )
     created_at: datetime = field(default_factory=datetime.utcnow)
     expires_at: Optional[datetime] = None
     approved: bool = False
@@ -74,6 +80,7 @@ class ExecutionRequest:
 @dataclass
 class ExecutionResult:
     """Result of an executed operation."""
+
     success: bool
     output: str
     error: Optional[str] = None
@@ -107,7 +114,6 @@ OPERATION_RISK_MATRIX: Dict[str, Dict[str, Any]] = {
         ],
         "confirmation_required": True,
     },
-
     # Infrastructure operations
     "infra.terraform_apply": {
         "category": OperationCategory.INFRASTRUCTURE,
@@ -144,7 +150,6 @@ OPERATION_RISK_MATRIX: Dict[str, Dict[str, Any]] = {
         ],
         "confirmation_required": True,
     },
-
     # Database operations
     "db.run_migration": {
         "category": OperationCategory.DATABASE,
@@ -182,7 +187,6 @@ OPERATION_RISK_MATRIX: Dict[str, Dict[str, Any]] = {
         "confirmation_required": True,
         "confirmation_phrase": "MODIFY PRODUCTION DATA",
     },
-
     # Secrets operations
     "secrets.rotate": {
         "category": OperationCategory.SECRETS,
@@ -204,7 +208,6 @@ OPERATION_RISK_MATRIX: Dict[str, Dict[str, Any]] = {
         ],
         "confirmation_required": True,
     },
-
     # Code execution
     "code.run_command": {
         "category": OperationCategory.CODE_EXECUTION,
@@ -240,7 +243,7 @@ class ExecutionConfirmationService:
         self,
         operation_name: str,
         parameters: Dict[str, Any],
-        environment: str = "development"
+        environment: str = "development",
     ) -> RiskLevel:
         """
         Classify the risk level of an operation.
@@ -271,7 +274,7 @@ class ExecutionConfirmationService:
         self,
         operation_name: str,
         parameters: Dict[str, Any],
-        environment: str = "development"
+        environment: str = "development",
     ) -> List[ExecutionWarning]:
         """Generate warnings for an operation."""
         warnings = []
@@ -280,32 +283,39 @@ class ExecutionConfirmationService:
 
         # Add operation-specific warnings
         for warning_msg in matrix.get("warnings", []):
-            warnings.append(ExecutionWarning(
-                level=risk_level,
-                title=f"{operation_name} Warning",
-                message=warning_msg,
-            ))
+            warnings.append(
+                ExecutionWarning(
+                    level=risk_level,
+                    title=f"{operation_name} Warning",
+                    message=warning_msg,
+                )
+            )
 
         # Add environment-specific warnings
         if environment.lower() in ["production", "prod", "live"]:
-            warnings.insert(0, ExecutionWarning(
-                level=RiskLevel.CRITICAL,
-                title="⚠️ PRODUCTION ENVIRONMENT ⚠️",
-                message="You are about to modify a PRODUCTION environment. This may affect live users.",
-                details=[
-                    "All changes will be immediately visible to users",
-                    "Ensure you have tested in staging first",
-                    "Have a rollback plan ready",
-                    "Consider notifying the team before proceeding",
-                ],
-                mitigation="Consider deploying during low-traffic hours",
-            ))
+            warnings.insert(
+                0,
+                ExecutionWarning(
+                    level=RiskLevel.CRITICAL,
+                    title="⚠️ PRODUCTION ENVIRONMENT ⚠️",
+                    message="You are about to modify a PRODUCTION environment. This may affect live users.",
+                    details=[
+                        "All changes will be immediately visible to users",
+                        "Ensure you have tested in staging first",
+                        "Have a rollback plan ready",
+                        "Consider notifying the team before proceeding",
+                    ],
+                    mitigation="Consider deploying during low-traffic hours",
+                ),
+            )
 
         # Add rollback information if available
         if self._has_rollback_capability(operation_name):
             for warning in warnings:
                 warning.rollback_available = True
-                warning.rollback_instructions = self._get_rollback_instructions(operation_name)
+                warning.rollback_instructions = self._get_rollback_instructions(
+                    operation_name
+                )
 
         return warnings
 
@@ -335,7 +345,9 @@ class ExecutionConfirmationService:
             if environment.lower() in ["production", "prod", "live"]:
                 confirmation_phrase = matrix.get(
                     "production_confirmation_phrase",
-                    matrix.get("confirmation_phrase", f"CONFIRM {operation_name.upper()}")
+                    matrix.get(
+                        "confirmation_phrase", f"CONFIRM {operation_name.upper()}"
+                    ),
                 )
             else:
                 confirmation_phrase = matrix.get("confirmation_phrase")
@@ -350,7 +362,11 @@ class ExecutionConfirmationService:
             parameters=parameters,
             estimated_duration=estimated_duration,
             affected_resources=affected_resources or [],
-            rollback_plan=self._get_rollback_instructions(operation_name) if self._has_rollback_capability(operation_name) else None,
+            rollback_plan=(
+                self._get_rollback_instructions(operation_name)
+                if self._has_rollback_capability(operation_name)
+                else None
+            ),
             requires_confirmation=matrix.get("confirmation_required", True),
             confirmation_phrase=confirmation_phrase,
             expires_at=datetime.utcnow() + timedelta(minutes=self._expiry_minutes),
@@ -392,8 +408,14 @@ class ExecutionConfirmationService:
         if request.confirmation_phrase:
             if not confirmation_input:
                 return False, f"Please type '{request.confirmation_phrase}' to confirm"
-            if confirmation_input.strip().upper() != request.confirmation_phrase.upper():
-                return False, f"Confirmation phrase does not match. Expected: '{request.confirmation_phrase}'"
+            if (
+                confirmation_input.strip().upper()
+                != request.confirmation_phrase.upper()
+            ):
+                return (
+                    False,
+                    f"Confirmation phrase does not match. Expected: '{request.confirmation_phrase}'",
+                )
 
         # Mark as approved
         request.approved = True
@@ -404,7 +426,7 @@ class ExecutionConfirmationService:
             "Execution approved: %s by %s at %s",
             request.operation_name,
             user_id,
-            request.approved_at
+            request.approved_at,
         )
 
         return True, "Execution approved successfully"
@@ -455,7 +477,9 @@ class ExecutionConfirmationService:
 
         try:
             if progress_callback:
-                await progress_callback(f"Starting execution of {request.operation_name}...")
+                await progress_callback(
+                    f"Starting execution of {request.operation_name}..."
+                )
 
             # Execute the operation
             result = await executor(request.parameters)
@@ -480,13 +504,15 @@ class ExecutionConfirmationService:
                 "Execution completed: %s - Success: %s - Duration: %.2fs",
                 request.operation_name,
                 result.success,
-                duration
+                duration,
             )
 
             return result
 
         except Exception as e:
-            logger.error("Execution failed: %s - Error: %s", request.operation_name, str(e))
+            logger.error(
+                "Execution failed: %s - Error: %s", request.operation_name, str(e)
+            )
             return ExecutionResult(
                 success=False,
                 output="",
@@ -502,18 +528,21 @@ class ExecutionConfirmationService:
                 "Execution rejected: %s by %s - Reason: %s",
                 request.operation_name,
                 user_id,
-                reason
+                reason,
             )
             del self._pending_requests[request_id]
             return True
         return False
 
-    def get_pending_requests(self, user_id: Optional[str] = None) -> List[ExecutionRequest]:
+    def get_pending_requests(
+        self, user_id: Optional[str] = None
+    ) -> List[ExecutionRequest]:
         """Get all pending execution requests."""
         # Clean up expired requests
         now = datetime.utcnow()
         expired = [
-            rid for rid, req in self._pending_requests.items()
+            rid
+            for rid, req in self._pending_requests.items()
             if req.expires_at and now > req.expires_at
         ]
         for rid in expired:
@@ -578,7 +607,9 @@ class ExecutionConfirmationService:
             "rollback_plan": request.rollback_plan,
             "requires_confirmation": request.requires_confirmation,
             "confirmation_phrase": request.confirmation_phrase,
-            "expires_at": request.expires_at.isoformat() if request.expires_at else None,
+            "expires_at": (
+                request.expires_at.isoformat() if request.expires_at else None
+            ),
             "ui_config": self._get_ui_config(request.risk_level),
         }
 

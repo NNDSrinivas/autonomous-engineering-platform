@@ -198,10 +198,10 @@ class CodeValidator:
         nvm_dir = env.get("NVM_DIR", os.path.join(home, ".nvm"))
         if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
             full_cmd = (
-                f'unset npm_config_prefix 2>/dev/null; '
+                f"unset npm_config_prefix 2>/dev/null; "
                 f'export NVM_DIR="{nvm_dir}" && '
                 f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-                f'nvm use default 2>/dev/null || true && {cmd_str}'
+                f"nvm use default 2>/dev/null || true && {cmd_str}"
             )
         else:
             full_cmd = cmd_str
@@ -434,7 +434,9 @@ class CodeValidator:
 
         try:
             # Use shell command with nvm setup for proper Node.js environment
-            full_cmd, env = self._get_node_command_with_setup(["node", "--check", temp_path])
+            full_cmd, env = self._get_node_command_with_setup(
+                ["node", "--check", temp_path]
+            )
             proc = subprocess.run(
                 full_cmd,
                 shell=True,

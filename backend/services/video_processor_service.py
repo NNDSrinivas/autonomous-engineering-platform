@@ -57,7 +57,14 @@ FRAME_QUALITY = 85  # JPEG quality (1-100)
 
 # Supported video formats
 SUPPORTED_VIDEO_FORMATS = {
-    ".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v", ".wmv", ".flv"
+    ".mp4",
+    ".webm",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".m4v",
+    ".wmv",
+    ".flv",
 }
 
 # Audio extraction settings
@@ -69,9 +76,11 @@ AUDIO_BITRATE = "64k"  # Lower bitrate for transcription (saves tokens)
 # DATA CLASSES
 # ============================================================
 
+
 @dataclass
 class ExtractedFrame:
     """A single extracted video frame"""
+
     timestamp: float  # seconds from start
     base64_data: str  # base64-encoded image
     description: Optional[str] = None  # Vision model description
@@ -80,6 +89,7 @@ class ExtractedFrame:
 @dataclass
 class VideoTranscription:
     """Transcribed audio from video"""
+
     full_text: str
     segments: List[Dict[str, Any]] = field(default_factory=list)
     language: str = "en"
@@ -89,6 +99,7 @@ class VideoTranscription:
 @dataclass
 class VideoAnalysis:
     """Complete analysis of a video file"""
+
     duration: float
     frame_count: int
     frames: List[ExtractedFrame] = field(default_factory=list)
@@ -109,11 +120,21 @@ class VideoAnalysis:
                 }
                 for f in self.frames
             ],
-            "transcription": {
-                "text": self.transcription.full_text if self.transcription else None,
-                "segments": self.transcription.segments if self.transcription else [],
-                "language": self.transcription.language if self.transcription else None,
-            } if self.transcription else None,
+            "transcription": (
+                {
+                    "text": (
+                        self.transcription.full_text if self.transcription else None
+                    ),
+                    "segments": (
+                        self.transcription.segments if self.transcription else []
+                    ),
+                    "language": (
+                        self.transcription.language if self.transcription else None
+                    ),
+                }
+                if self.transcription
+                else None
+            ),
             "summary": self.summary,
             "key_moments": self.key_moments,
             "metadata": self.metadata,
@@ -131,7 +152,9 @@ class VideoAnalysis:
             parts.append(f"\n**Summary**: {self.summary}")
 
         if self.transcription and self.transcription.full_text:
-            parts.append(f"\n**Audio Transcription**:\n{self.transcription.full_text[:2000]}")
+            parts.append(
+                f"\n**Audio Transcription**:\n{self.transcription.full_text[:2000]}"
+            )
             if len(self.transcription.full_text) > 2000:
                 parts.append("... (truncated)")
 
@@ -155,6 +178,7 @@ class VideoAnalysis:
 # ============================================================
 # FFMPEG UTILITIES
 # ============================================================
+
 
 def check_ffmpeg_available() -> bool:
     """Check if ffmpeg is available on the system"""
@@ -191,9 +215,12 @@ async def get_video_duration(video_path: str) -> float:
             subprocess.run,
             [
                 "ffprobe",
-                "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
                 video_path,
             ],
             capture_output=True,
@@ -215,8 +242,10 @@ async def get_video_metadata(video_path: str) -> Dict[str, Any]:
             subprocess.run,
             [
                 "ffprobe",
-                "-v", "quiet",
-                "-print_format", "json",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
                 "-show_format",
                 "-show_streams",
                 video_path,
@@ -231,11 +260,11 @@ async def get_video_metadata(video_path: str) -> Dict[str, Any]:
             format_info = data.get("format", {})
             video_stream = next(
                 (s for s in data.get("streams", []) if s.get("codec_type") == "video"),
-                {}
+                {},
             )
             audio_stream = next(
                 (s for s in data.get("streams", []) if s.get("codec_type") == "audio"),
-                {}
+                {},
             )
             return {
                 "duration": float(format_info.get("duration", 0)),
@@ -245,13 +274,21 @@ async def get_video_metadata(video_path: str) -> Dict[str, Any]:
                     "codec": video_stream.get("codec_name", ""),
                     "width": video_stream.get("width", 0),
                     "height": video_stream.get("height", 0),
-                    "fps": eval(video_stream.get("r_frame_rate", "0/1")) if "/" in video_stream.get("r_frame_rate", "") else 0,
+                    "fps": (
+                        eval(video_stream.get("r_frame_rate", "0/1"))
+                        if "/" in video_stream.get("r_frame_rate", "")
+                        else 0
+                    ),
                 },
-                "audio": {
-                    "codec": audio_stream.get("codec_name", ""),
-                    "channels": audio_stream.get("channels", 0),
-                    "sample_rate": audio_stream.get("sample_rate", ""),
-                } if audio_stream else None,
+                "audio": (
+                    {
+                        "codec": audio_stream.get("codec_name", ""),
+                        "channels": audio_stream.get("channels", 0),
+                        "sample_rate": audio_stream.get("sample_rate", ""),
+                    }
+                    if audio_stream
+                    else None
+                ),
             }
     except Exception as e:
         logger.warning(f"Failed to get video metadata: {e}")
@@ -261,6 +298,7 @@ async def get_video_metadata(video_path: str) -> Dict[str, Any]:
 # ============================================================
 # FRAME EXTRACTION
 # ============================================================
+
 
 async def extract_frames(
     video_path: str,
@@ -306,10 +344,14 @@ async def extract_frames(
                 subprocess.run,
                 [
                     "ffmpeg",
-                    "-ss", str(ts),
-                    "-i", video_path,
-                    "-vframes", "1",
-                    "-q:v", str(int((100 - FRAME_QUALITY) / 10) + 1),  # ffmpeg quality scale
+                    "-ss",
+                    str(ts),
+                    "-i",
+                    video_path,
+                    "-vframes",
+                    "1",
+                    "-q:v",
+                    str(int((100 - FRAME_QUALITY) / 10) + 1),  # ffmpeg quality scale
                     "-y",  # Overwrite
                     frame_path,
                 ],
@@ -322,7 +364,9 @@ async def extract_frames(
                 frames.append((ts, frame_path))
                 logger.debug(f"Extracted frame at {ts}s")
             else:
-                logger.warning(f"Failed to extract frame at {ts}s: {result.stderr.decode()[:200]}")
+                logger.warning(
+                    f"Failed to extract frame at {ts}s: {result.stderr.decode()[:200]}"
+                )
 
         except Exception as e:
             logger.warning(f"Error extracting frame at {ts}s: {e}")
@@ -339,6 +383,7 @@ def frame_to_base64(frame_path: str) -> str:
 # ============================================================
 # AUDIO EXTRACTION & TRANSCRIPTION
 # ============================================================
+
 
 async def extract_audio(video_path: str, output_path: str) -> bool:
     """
@@ -359,12 +404,17 @@ async def extract_audio(video_path: str, output_path: str) -> bool:
             subprocess.run,
             [
                 "ffmpeg",
-                "-i", video_path,
+                "-i",
+                video_path,
                 "-vn",  # No video
-                "-acodec", "libmp3lame",
-                "-ab", AUDIO_BITRATE,
-                "-ar", "16000",  # 16kHz for Whisper
-                "-ac", "1",  # Mono
+                "-acodec",
+                "libmp3lame",
+                "-ab",
+                AUDIO_BITRATE,
+                "-ar",
+                "16000",  # 16kHz for Whisper
+                "-ac",
+                "1",  # Mono
                 "-y",
                 output_path,
             ],
@@ -403,7 +453,9 @@ async def transcribe_audio_whisper(
                 response = await client.post(
                     "https://api.openai.com/v1/audio/transcriptions",
                     headers={"Authorization": f"Bearer {api_key}"},
-                    files={"file": (os.path.basename(audio_path), audio_file, "audio/mpeg")},
+                    files={
+                        "file": (os.path.basename(audio_path), audio_file, "audio/mpeg")
+                    },
                     data={
                         "model": "whisper-1",
                         "response_format": "verbose_json",
@@ -421,7 +473,9 @@ async def transcribe_audio_whisper(
                     duration=data.get("duration", 0.0),
                 )
             else:
-                logger.error(f"Whisper API error: {response.status_code} - {response.text[:200]}")
+                logger.error(
+                    f"Whisper API error: {response.status_code} - {response.text[:200]}"
+                )
 
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
@@ -432,6 +486,7 @@ async def transcribe_audio_whisper(
 # ============================================================
 # FRAME ANALYSIS WITH VISION
 # ============================================================
+
 
 async def analyze_frames_with_vision(
     frames: List[ExtractedFrame],
@@ -500,6 +555,7 @@ Keep the description concise (1-2 sentences)."""
 # VIDEO PROCESSOR
 # ============================================================
 
+
 class VideoProcessor:
     """Main video processing service"""
 
@@ -553,7 +609,9 @@ class VideoProcessor:
 
         try:
             # Extract frames
-            logger.info(f"Extracting frames (interval: {frame_interval}s, max: {max_frames})")
+            logger.info(
+                f"Extracting frames (interval: {frame_interval}s, max: {max_frames})"
+            )
             frame_paths = await extract_frames(
                 video_path,
                 temp_dir,
@@ -580,7 +638,9 @@ class VideoProcessor:
                 if await extract_audio(video_path, audio_path):
                     transcription = await transcribe_audio_whisper(audio_path)
                     if transcription:
-                        logger.info(f"Transcription complete: {len(transcription.full_text)} chars")
+                        logger.info(
+                            f"Transcription complete: {len(transcription.full_text)} chars"
+                        )
 
             # Analyze frames with vision if requested
             if analyze_frames and frames:
@@ -650,21 +710,25 @@ class VideoProcessor:
         # Add frame-based moments
         for frame in frames:
             if frame.description:
-                moments.append({
-                    "timestamp": frame.timestamp,
-                    "type": "visual",
-                    "description": frame.description,
-                })
+                moments.append(
+                    {
+                        "timestamp": frame.timestamp,
+                        "type": "visual",
+                        "description": frame.description,
+                    }
+                )
 
         # Add transcription-based moments
         if transcription and transcription.segments:
             for segment in transcription.segments:
                 if segment.get("text", "").strip():
-                    moments.append({
-                        "timestamp": segment.get("start", 0),
-                        "type": "audio",
-                        "description": segment.get("text", "").strip()[:200],
-                    })
+                    moments.append(
+                        {
+                            "timestamp": segment.get("start", 0),
+                            "type": "audio",
+                            "description": segment.get("text", "").strip()[:200],
+                        }
+                    )
 
         # Sort by timestamp and deduplicate
         moments.sort(key=lambda x: x["timestamp"])
@@ -676,6 +740,7 @@ class VideoProcessor:
 # ============================================================
 # PUBLIC API
 # ============================================================
+
 
 async def process_video(
     video_path: str,

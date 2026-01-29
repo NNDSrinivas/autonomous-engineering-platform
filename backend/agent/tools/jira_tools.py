@@ -195,12 +195,14 @@ async def create_jira_issue(
 
             sources = []
             if issue_url:
-                sources.append({
-                    "name": f"{issue_key}: {summary[:50]}",
-                    "type": "jira",
-                    "connector": "jira",
-                    "url": issue_url,
-                })
+                sources.append(
+                    {
+                        "name": f"{issue_key}: {summary[:50]}",
+                        "type": "jira",
+                        "connector": "jira",
+                        "url": issue_url,
+                    }
+                )
 
             jira_logger.info(
                 "jira_tools.create_issue.done",
@@ -222,9 +224,7 @@ async def create_jira_issue(
 
     except Exception as exc:
         jira_logger.error("jira_tools.create_issue.error", error=str(exc))
-        return ToolResult(
-            output=f"Error creating Jira issue: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error creating Jira issue: {str(exc)}", sources=[])
 
 
 async def update_jira_issue(
@@ -346,9 +346,7 @@ async def update_jira_issue(
 
     except Exception as exc:
         jira_logger.error("jira_tools.update_issue.error", error=str(exc))
-        return ToolResult(
-            output=f"Error updating Jira issue: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error updating Jira issue: {str(exc)}", sources=[])
 
 
 async def add_jira_comment(
@@ -422,9 +420,7 @@ async def add_jira_comment(
 
     except Exception as exc:
         jira_logger.error("jira_tools.add_comment.error", error=str(exc))
-        return ToolResult(
-            output=f"Error adding comment: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error adding comment: {str(exc)}", sources=[])
 
 
 async def search_jira_issues(
@@ -496,7 +492,9 @@ async def search_jira_issues(
         if issues:
             output = f"Found {len(issues)} Jira issues:\n\n"
             for issue in issues:
-                output += f"• **{issue['issue_key']}**: {issue.get('summary', 'No title')}\n"
+                output += (
+                    f"• **{issue['issue_key']}**: {issue.get('summary', 'No title')}\n"
+                )
                 output += f"  Status: {issue.get('status', 'Unknown')}"
                 if issue.get("assignee"):
                     output += f" | Assignee: {issue['assignee']}"
@@ -513,9 +511,7 @@ async def search_jira_issues(
 
     except Exception as exc:
         jira_logger.error("jira_tools.search_issues.error", error=str(exc))
-        return ToolResult(
-            output=f"Error searching Jira issues: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error searching Jira issues: {str(exc)}", sources=[])
 
 
 # Tool function registry for NAVI

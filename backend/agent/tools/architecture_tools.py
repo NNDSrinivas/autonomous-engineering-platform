@@ -31,7 +31,12 @@ TECH_STACKS = {
         "frameworks": {
             "next_js": {
                 "description": "React framework with SSR/SSG, API routes, and excellent DX",
-                "best_for": ["SEO-critical apps", "marketing sites", "e-commerce", "dashboards"],
+                "best_for": [
+                    "SEO-critical apps",
+                    "marketing sites",
+                    "e-commerce",
+                    "dashboards",
+                ],
                 "learning_curve": "medium",
                 "ecosystem": "excellent",
                 "performance": "excellent",
@@ -52,7 +57,11 @@ TECH_STACKS = {
             },
             "svelte": {
                 "description": "Compiler-based framework with minimal runtime",
-                "best_for": ["performance-critical apps", "smaller bundles", "animations"],
+                "best_for": [
+                    "performance-critical apps",
+                    "smaller bundles",
+                    "animations",
+                ],
                 "learning_curve": "easy",
                 "ecosystem": "growing",
                 "performance": "excellent",
@@ -114,7 +123,11 @@ TECH_STACKS = {
         "nosql": {
             "mongodb": {
                 "description": "Document database with flexible schema",
-                "best_for": ["rapid iteration", "unstructured data", "horizontal scaling"],
+                "best_for": [
+                    "rapid iteration",
+                    "unstructured data",
+                    "horizontal scaling",
+                ],
                 "scaling": "horizontal (sharding)",
             },
             "redis": {
@@ -159,21 +172,56 @@ TECH_STACKS = {
 ARCHITECTURE_PATTERNS = {
     "monolith": {
         "description": "Single deployable unit containing all functionality",
-        "pros": ["Simple deployment", "Easy debugging", "Lower latency", "Easier testing"],
+        "pros": [
+            "Simple deployment",
+            "Easy debugging",
+            "Lower latency",
+            "Easier testing",
+        ],
         "cons": ["Scaling challenges", "Technology lock-in", "Deployment risk"],
         "best_for": ["Startups", "Small teams", "MVPs", "Simple domains"],
     },
     "microservices": {
         "description": "Distributed system of small, independent services",
-        "pros": ["Independent scaling", "Technology flexibility", "Team autonomy", "Fault isolation"],
-        "cons": ["Operational complexity", "Network latency", "Data consistency", "Debugging difficulty"],
-        "best_for": ["Large teams", "Complex domains", "High scale", "Different scaling needs"],
+        "pros": [
+            "Independent scaling",
+            "Technology flexibility",
+            "Team autonomy",
+            "Fault isolation",
+        ],
+        "cons": [
+            "Operational complexity",
+            "Network latency",
+            "Data consistency",
+            "Debugging difficulty",
+        ],
+        "best_for": [
+            "Large teams",
+            "Complex domains",
+            "High scale",
+            "Different scaling needs",
+        ],
     },
     "serverless": {
         "description": "Event-driven functions without server management",
-        "pros": ["No server management", "Auto-scaling", "Pay-per-use", "Quick deployment"],
-        "cons": ["Cold starts", "Vendor lock-in", "Debugging difficulty", "Execution limits"],
-        "best_for": ["Event processing", "APIs", "Scheduled tasks", "Variable workloads"],
+        "pros": [
+            "No server management",
+            "Auto-scaling",
+            "Pay-per-use",
+            "Quick deployment",
+        ],
+        "cons": [
+            "Cold starts",
+            "Vendor lock-in",
+            "Debugging difficulty",
+            "Execution limits",
+        ],
+        "best_for": [
+            "Event processing",
+            "APIs",
+            "Scheduled tasks",
+            "Variable workloads",
+        ],
     },
     "event_driven": {
         "description": "Asynchronous communication through events",
@@ -183,14 +231,19 @@ ARCHITECTURE_PATTERNS = {
     },
     "modular_monolith": {
         "description": "Monolith with clear module boundaries",
-        "pros": ["Simple deployment", "Clear boundaries", "Easy to evolve", "Good for extraction"],
+        "pros": [
+            "Simple deployment",
+            "Clear boundaries",
+            "Easy to evolve",
+            "Good for extraction",
+        ],
         "cons": ["Still single deployment", "Discipline required"],
         "best_for": ["Growing teams", "Evolving domains", "Future microservices"],
     },
 }
 
 # ADR template
-ADR_TEMPLATE = '''# {number}. {title}
+ADR_TEMPLATE = """# {number}. {title}
 
 Date: {date}
 
@@ -217,12 +270,13 @@ Date: {date}
 ## Alternatives Considered
 
 {alternatives}
-'''
+"""
 
 
 @dataclass
 class ArchitectureRecommendation:
     """Architecture recommendation result."""
+
     pattern: str
     frontend: Optional[str]
     backend: Optional[str]
@@ -293,9 +347,15 @@ async def recommend_tech_stack(
         elif "go" in [s.lower() for s in existing_skills]:
             backend_rec = ("Go + Chi/Gin", "High performance, excellent concurrency")
         elif scale == "enterprise":
-            backend_rec = ("Go or Java/Spring", "Enterprise-grade performance and tooling")
+            backend_rec = (
+                "Go or Java/Spring",
+                "Enterprise-grade performance and tooling",
+            )
         else:
-            backend_rec = ("Node.js + Express/Fastify", "JavaScript ecosystem, rapid development")
+            backend_rec = (
+                "Node.js + Express/Fastify",
+                "JavaScript ecosystem, rapid development",
+            )
 
     # Recommend database
     db_rec = None
@@ -414,7 +474,7 @@ async def design_system_architecture(
             lines.append(f"\n#### {comp['name']}")
             lines.append(f"- **Responsibility**: {comp['responsibility']}")
             lines.append(f"- **Type**: {comp['type']}")
-            if comp.get('dependencies'):
+            if comp.get("dependencies"):
                 lines.append(f"- **Dependencies**: {', '.join(comp['dependencies'])}")
     else:
         # Default components based on description
@@ -469,7 +529,9 @@ async def design_system_architecture(
         lines.append("- **Event Store**: EventStoreDB or custom")
         lines.append("- **Saga Orchestration**: Temporal or custom")
     elif pattern == "serverless":
-        lines.append("- **Functions**: AWS Lambda, Vercel Functions, or Cloudflare Workers")
+        lines.append(
+            "- **Functions**: AWS Lambda, Vercel Functions, or Cloudflare Workers"
+        )
         lines.append("- **API**: AWS API Gateway or Vercel")
         lines.append("- **Database**: DynamoDB, Fauna, or PlanetScale")
     else:
@@ -479,10 +541,23 @@ async def design_system_architecture(
 
     # Non-functional requirements
     lines.append("\n### Non-Functional Considerations")
-    lines.append("- **Scalability**: " + ("Horizontal scaling via service replication" if pattern == "microservices" else "Vertical scaling + read replicas"))
-    lines.append("- **Availability**: Multi-AZ deployment, health checks, auto-recovery")
-    lines.append("- **Security**: TLS everywhere, authentication at gateway, principle of least privilege")
-    lines.append("- **Observability**: Distributed tracing, centralized logging, metrics dashboards")
+    lines.append(
+        "- **Scalability**: "
+        + (
+            "Horizontal scaling via service replication"
+            if pattern == "microservices"
+            else "Vertical scaling + read replicas"
+        )
+    )
+    lines.append(
+        "- **Availability**: Multi-AZ deployment, health checks, auto-recovery"
+    )
+    lines.append(
+        "- **Security**: TLS everywhere, authentication at gateway, principle of least privilege"
+    )
+    lines.append(
+        "- **Observability**: Distributed tracing, centralized logging, metrics dashboards"
+    )
 
     return ToolResult(output="\n".join(lines), sources=[])
 
@@ -564,7 +639,9 @@ async def decompose_to_microservices(
     Returns:
         ToolResult with decomposition plan
     """
-    logger.info("decompose_to_microservices", workspace_path=workspace_path, strategy=strategy)
+    logger.info(
+        "decompose_to_microservices", workspace_path=workspace_path, strategy=strategy
+    )
 
     if not os.path.exists(workspace_path):
         return ToolResult(output=f"Directory not found: {workspace_path}", sources=[])
@@ -663,7 +740,9 @@ async def generate_adr(
 
     # Format alternatives
     if alternatives:
-        alt_text = "\n".join(f"- **{alt}**: Considered but rejected because..." for alt in alternatives)
+        alt_text = "\n".join(
+            f"- **{alt}**: Considered but rejected because..." for alt in alternatives
+        )
     else:
         alt_text = "No alternatives were formally evaluated."
 
@@ -689,7 +768,9 @@ async def generate_adr(
     lines.append("```")
 
     lines.append("\n### Next Steps")
-    lines.append(f"1. Save to `docs/adr/{adr_number}-{title.lower().replace(' ', '-')}.md`")
+    lines.append(
+        f"1. Save to `docs/adr/{adr_number}-{title.lower().replace(' ', '-')}.md`"
+    )
     lines.append("2. Review with team")
     lines.append("3. Update status to 'Accepted' or 'Rejected'")
     lines.append("4. Link to related ADRs if applicable")
@@ -741,20 +822,24 @@ async def analyze_dependencies(
             large_deps = ["moment", "lodash", "jquery", "rxjs"]
             for dep in large_deps:
                 if dep in deps:
-                    analysis["large_deps"].append({
-                        "name": dep,
-                        "suggestion": _get_lightweight_alternative(dep),
-                    })
+                    analysis["large_deps"].append(
+                        {
+                            "name": dep,
+                            "suggestion": _get_lightweight_alternative(dep),
+                        }
+                    )
 
             # Check for duplicate functionality
             date_libs = ["moment", "dayjs", "date-fns", "luxon"]
             found_date = [d for d in date_libs if d in deps]
             if len(found_date) > 1:
-                analysis["duplicate_functionality"].append({
-                    "category": "Date manipulation",
-                    "packages": found_date,
-                    "suggestion": "Consider using only one (date-fns recommended)",
-                })
+                analysis["duplicate_functionality"].append(
+                    {
+                        "category": "Date manipulation",
+                        "packages": found_date,
+                        "suggestion": "Consider using only one (date-fns recommended)",
+                    }
+                )
 
         except (json.JSONDecodeError, IOError):
             pass
@@ -765,7 +850,9 @@ async def analyze_dependencies(
         try:
             with open(requirements_path, "r") as f:
                 lines_content = f.readlines()
-                analysis["direct_deps"] = len([l for l in lines_content if l.strip() and not l.startswith("#")])
+                analysis["direct_deps"] = len(
+                    [l for l in lines_content if l.strip() and not l.startswith("#")]
+                )
         except IOError:
             pass
 
@@ -797,31 +884,34 @@ async def analyze_dependencies(
 
 # Helper functions
 
+
 def _extract_components(description: str) -> List[Dict]:
     """Extract system components from description."""
     components = []
 
     # Common component patterns
     patterns = [
-        (r'\b(user|auth|authentication)\b', "Authentication Service", "security"),
-        (r'\b(payment|billing|checkout)\b', "Payment Service", "business"),
-        (r'\b(notification|email|sms)\b', "Notification Service", "infrastructure"),
-        (r'\b(product|catalog|inventory)\b', "Product Service", "business"),
-        (r'\b(order|cart|shopping)\b', "Order Service", "business"),
-        (r'\b(search|filter)\b', "Search Service", "infrastructure"),
-        (r'\b(analytics|reporting|metrics)\b', "Analytics Service", "infrastructure"),
-        (r'\b(api|gateway)\b', "API Gateway", "infrastructure"),
+        (r"\b(user|auth|authentication)\b", "Authentication Service", "security"),
+        (r"\b(payment|billing|checkout)\b", "Payment Service", "business"),
+        (r"\b(notification|email|sms)\b", "Notification Service", "infrastructure"),
+        (r"\b(product|catalog|inventory)\b", "Product Service", "business"),
+        (r"\b(order|cart|shopping)\b", "Order Service", "business"),
+        (r"\b(search|filter)\b", "Search Service", "infrastructure"),
+        (r"\b(analytics|reporting|metrics)\b", "Analytics Service", "infrastructure"),
+        (r"\b(api|gateway)\b", "API Gateway", "infrastructure"),
     ]
 
     desc_lower = description.lower()
     for pattern, name, comp_type in patterns:
         if re.search(pattern, desc_lower):
-            components.append({
-                "name": name,
-                "responsibility": f"Handles {name.lower().replace(' service', '')} functionality",
-                "type": comp_type,
-                "dependencies": [],
-            })
+            components.append(
+                {
+                    "name": name,
+                    "responsibility": f"Handles {name.lower().replace(' service', '')} functionality",
+                    "type": comp_type,
+                    "dependencies": [],
+                }
+            )
 
     return components
 
@@ -952,12 +1042,12 @@ def _generate_c4_diagram(structure: Dict) -> str:
     lines = ["C4Context"]
     lines.append("    title System Context Diagram")
     lines.append("")
-    lines.append("    Person(user, \"User\", \"A user of the system\")")
-    lines.append("    System(system, \"System\", \"The main application\")")
-    lines.append("    System_Ext(email, \"Email Service\", \"Sends emails\")")
+    lines.append('    Person(user, "User", "A user of the system")')
+    lines.append('    System(system, "System", "The main application")')
+    lines.append('    System_Ext(email, "Email Service", "Sends emails")')
     lines.append("")
-    lines.append("    Rel(user, system, \"Uses\")")
-    lines.append("    Rel(system, email, \"Sends emails via\")")
+    lines.append('    Rel(user, system, "Uses")')
+    lines.append('    Rel(system, email, "Sends emails via")')
 
     return "\n".join(lines)
 
@@ -965,11 +1055,13 @@ def _generate_c4_diagram(structure: Dict) -> str:
 def _generate_plantuml_from_structure(structure: Dict) -> str:
     """Generate PlantUML diagram."""
     lines = ["@startuml"]
-    lines.append("!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml")
+    lines.append(
+        "!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml"
+    )
     lines.append("")
-    lines.append("Person(user, \"User\")")
-    lines.append("System(system, \"Application\")")
-    lines.append("Rel(user, system, \"Uses\")")
+    lines.append('Person(user, "User")')
+    lines.append('System(system, "Application")')
+    lines.append('Rel(user, system, "Uses")')
     lines.append("")
     lines.append("@enduml")
 
@@ -1004,14 +1096,39 @@ def _identify_bounded_contexts(structure: Dict, strategy: str) -> List[Dict]:
         ]
     elif strategy == "feature":
         contexts = [
-            {"name": "Feature A Service", "responsibility": "Handle feature A", "entities": [], "endpoints": []},
-            {"name": "Feature B Service", "responsibility": "Handle feature B", "entities": [], "endpoints": []},
+            {
+                "name": "Feature A Service",
+                "responsibility": "Handle feature A",
+                "entities": [],
+                "endpoints": [],
+            },
+            {
+                "name": "Feature B Service",
+                "responsibility": "Handle feature B",
+                "entities": [],
+                "endpoints": [],
+            },
         ]
     else:  # layer
         contexts = [
-            {"name": "API Gateway", "responsibility": "Handle all incoming requests", "entities": [], "endpoints": ["/*"]},
-            {"name": "Business Service", "responsibility": "Business logic", "entities": [], "endpoints": []},
-            {"name": "Data Service", "responsibility": "Data access", "entities": [], "endpoints": []},
+            {
+                "name": "API Gateway",
+                "responsibility": "Handle all incoming requests",
+                "entities": [],
+                "endpoints": ["/*"],
+            },
+            {
+                "name": "Business Service",
+                "responsibility": "Business logic",
+                "entities": [],
+                "endpoints": [],
+            },
+            {
+                "name": "Data Service",
+                "responsibility": "Data access",
+                "entities": [],
+                "endpoints": [],
+            },
         ]
 
     return contexts

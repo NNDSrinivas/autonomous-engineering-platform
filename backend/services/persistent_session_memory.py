@@ -162,14 +162,19 @@ class PersistentSessionMemory:
         workspace_session = result.scalar_one_or_none()
 
         if not workspace_session:
-            return {"is_new_workspace": True, "facts": {}, "errors": [], "dependencies": []}
+            return {
+                "is_new_workspace": True,
+                "facts": {},
+                "errors": [],
+                "dependencies": [],
+            }
 
         # Load current facts
         facts_result = await self.db.execute(
             select(SessionFact).where(
                 and_(
                     SessionFact.workspace_session_id == workspace_session.id,
-                    SessionFact.is_current == True,
+                    SessionFact.is_current,
                 )
             )
         )
@@ -180,7 +185,9 @@ class PersistentSessionMemory:
             select(ErrorResolution)
             .where(ErrorResolution.workspace_session_id == workspace_session.id)
             .order_by(
-                (ErrorResolution.times_successful / ErrorResolution.times_applied).desc()
+                (
+                    ErrorResolution.times_successful / ErrorResolution.times_applied
+                ).desc()
             )
             .limit(20)
         )
@@ -198,7 +205,11 @@ class PersistentSessionMemory:
         context = {
             "is_new_workspace": False,
             "workspace_name": workspace_session.workspace_name,
-            "last_active": workspace_session.last_active.isoformat() if workspace_session.last_active else None,
+            "last_active": (
+                workspace_session.last_active.isoformat()
+                if workspace_session.last_active
+                else None
+            ),
             "last_known_state": workspace_session.last_known_state or {},
             "facts": self._format_facts(facts),
             "error_resolutions": [
@@ -206,7 +217,11 @@ class PersistentSessionMemory:
                     "error_type": er.error_type,
                     "error_signature": er.error_signature,
                     "resolution_summary": er.resolution_summary,
-                    "success_rate": er.times_successful / er.times_applied if er.times_applied > 0 else 0,
+                    "success_rate": (
+                        er.times_successful / er.times_applied
+                        if er.times_applied > 0
+                        else 0
+                    ),
                 }
                 for er in error_resolutions
             ],
@@ -344,7 +359,9 @@ class PersistentSessionMemory:
             user_message, assistant_response, actions or []
         )
         if error_resolutions:
-            await self._persist_error_resolutions(workspace_session.id, error_resolutions)
+            await self._persist_error_resolutions(
+                workspace_session.id, error_resolutions
+            )
 
         # Check for dependency installations
         dependencies = self._extract_dependency_installs(actions or [])
@@ -382,7 +399,7 @@ class PersistentSessionMemory:
                         SessionFact.workspace_session_id == workspace_session_id,
                         SessionFact.category == fact.category,
                         SessionFact.fact_key == fact.key,
-                        SessionFact.is_current == True,
+                        SessionFact.is_current,
                     )
                 )
                 .values(is_current=False)
@@ -459,7 +476,8 @@ class PersistentSessionMemory:
             result = await self.db.execute(
                 select(InstalledDependency).where(
                     and_(
-                        InstalledDependency.workspace_session_id == workspace_session_id,
+                        InstalledDependency.workspace_session_id
+                        == workspace_session_id,
                         InstalledDependency.package_manager == dep["manager"],
                         InstalledDependency.package_name == dep["name"],
                     )
@@ -497,7 +515,9 @@ class PersistentSessionMemory:
         # Remove file paths (keep just filename)
         normalized = re.sub(r"[/\\][\w.-]+[/\\]", "/", normalized)
         # Remove timestamps
-        normalized = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", "TIMESTAMP", normalized)
+        normalized = re.sub(
+            r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", "TIMESTAMP", normalized
+        )
         # Remove hex addresses
         normalized = re.sub(r"0x[0-9a-fA-F]+", "0xHEX", normalized)
         # Create hash
@@ -546,16 +566,21 @@ class PersistentSessionMemory:
                     resolution_steps = []
                     for action in actions:
                         if action.get("type") in ["command", "edit", "create"]:
-                            resolution_steps.append({
-                                "type": action.get("type"),
-                                "content": action.get("command") or action.get("file"),
-                            })
+                            resolution_steps.append(
+                                {
+                                    "type": action.get("type"),
+                                    "content": action.get("command")
+                                    or action.get("file"),
+                                }
+                            )
 
                     if resolution_steps:
                         resolutions.append(
                             ErrorResolutionRecord(
                                 error_type=error_type,
-                                error_message=matches[0] if matches else user_message[:200],
+                                error_message=(
+                                    matches[0] if matches else user_message[:200]
+                                ),
                                 resolution_steps=resolution_steps,
                                 resolution_summary=self._extract_resolution_summary(
                                     assistant_response
@@ -617,12 +642,14 @@ class PersistentSessionMemory:
                     for match in matches:
                         # Clean up package name (remove version specifier)
                         package = re.sub(r"@[\d.]+$", "", match)
-                        dependencies.append({
-                            "manager": manager,
-                            "name": package,
-                            "is_dev": is_dev,
-                            "command": command,
-                        })
+                        dependencies.append(
+                            {
+                                "manager": manager,
+                                "name": package,
+                                "is_dev": is_dev,
+                                "command": command,
+                            }
+                        )
 
         return dependencies
 
@@ -720,7 +747,9 @@ class PersistentSessionMemory:
     ) -> List[FactUpdate]:
         """Extract important file paths."""
         facts = []
-        path_pattern = r"(?:^|[\s`\"'])(/[^\s`\"']+\.[a-z]{1,5}|[a-z]+/[^\s`\"']+\.[a-z]{1,5})"
+        path_pattern = (
+            r"(?:^|[\s`\"'])(/[^\s`\"']+\.[a-z]{1,5}|[a-z]+/[^\s`\"']+\.[a-z]{1,5})"
+        )
         matches = re.findall(path_pattern, text, re.MULTILINE | re.IGNORECASE)
 
         seen = set()
@@ -989,7 +1018,9 @@ class PersistentSessionMemory:
                 )
             )
             .order_by(
-                (ErrorResolution.times_successful / ErrorResolution.times_applied).desc()
+                (
+                    ErrorResolution.times_successful / ErrorResolution.times_applied
+                ).desc()
             )
             .limit(1)
         )

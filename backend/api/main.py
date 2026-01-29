@@ -172,8 +172,12 @@ from .routers.meet_webhook import router as meet_webhook_router
 # Removed: navi_chat_enhanced_router - unused duplicate of chat.py navi_router
 from .routers.memory_enhanced import router as memory_enhanced_router
 from .routers.media import router as media_router  # Video/media processing for NAVI
-from .routers.checkpoint import router as checkpoint_router  # Task checkpoint management
-from .routers.enterprise_project import router as enterprise_project_router  # Enterprise project management
+from .routers.checkpoint import (
+    router as checkpoint_router,
+)  # Task checkpoint management
+from .routers.enterprise_project import (
+    router as enterprise_project_router,
+)  # Enterprise project management
 
 # from .refactor_stream_api import router as refactor_stream_router  # Batch 8 Part 4: SSE Live Refactor Streaming - TODO: Implement
 # from .orchestrator import router as orchestrator_router  # Multi-Agent Orchestrator API
@@ -224,7 +228,11 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     headers.setdefault("X-Error-Code", error_code)
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail, "error_code": error_code, "request_id": getattr(request.state, "request_id", None)},
+        content={
+            "detail": exc.detail,
+            "error_code": error_code,
+            "request_id": getattr(request.state, "request_id", None),
+        },
         headers=headers,
     )
 
@@ -253,6 +261,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         },
         headers={"X-Error-Code": error_code},
     )
+
 
 # Instrument app with OpenTelemetry after creation (PR-28)
 instrument_fastapi_app(app)
@@ -551,7 +560,9 @@ app.include_router(meet_webhook_router)  # Meet webhook ingestion
 # app.include_router(orchestrator_router)  # Multi-Agent Orchestrator API
 app.include_router(media_router)  # Video/media processing for NAVI
 app.include_router(checkpoint_router)  # Task checkpoint management for recovery
-app.include_router(enterprise_project_router)  # Enterprise project management for long-running projects
+app.include_router(
+    enterprise_project_router
+)  # Enterprise project management for long-running projects
 
 app.include_router(oauth_device_auth0_router)
 

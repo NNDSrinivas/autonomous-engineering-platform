@@ -71,8 +71,14 @@ logger = std_logging.getLogger("aep")
 
 _REDACT_PATTERNS = [
     (re.compile(r"(?i)bearer\s+[a-z0-9\-\._~\+/]+=*"), "Bearer [REDACTED]"),
-    (re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*[^\\s,]+"), r"\\1=[REDACTED]"),
-    (re.compile(r"(?i)\"(api[_-]?key|token|secret|password)\"\\s*:\\s*\"[^\"]+\""), r"\"\\1\":\"[REDACTED]\""),
+    (
+        re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*[^\\s,]+"),
+        r"\\1=[REDACTED]",
+    ),
+    (
+        re.compile(r"(?i)\"(api[_-]?key|token|secret|password)\"\\s*:\\s*\"[^\"]+\""),
+        r"\"\\1\":\"[REDACTED]\"",
+    ),
 ]
 
 
@@ -93,7 +99,9 @@ def _redact_value(value: Any) -> Any:
     return value
 
 
-def _redact_event(_logger: Any, _method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+def _redact_event(
+    _logger: Any, _method_name: str, event_dict: Dict[str, Any]
+) -> Dict[str, Any]:
     for key, value in list(event_dict.items()):
         event_dict[key] = _redact_value(value)
     return event_dict

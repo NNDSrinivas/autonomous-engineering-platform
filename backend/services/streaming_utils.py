@@ -543,6 +543,7 @@ def cleanup_session(session_id: str) -> Optional[Dict[str, Any]]:
 # EXECUTION STREAMING UTILITIES - For real operation execution
 # =============================================================================
 
+
 @dataclass
 class ExecutionRequestEvent:
     """Event for execution request requiring user confirmation."""

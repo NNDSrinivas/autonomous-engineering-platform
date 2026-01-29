@@ -43,28 +43,58 @@ class CheckpointGateDetector:
     # Architecture decision patterns
     ARCHITECTURE_PATTERNS = [
         # Database choices
-        (r"(?:choosing|selecting|using|implementing)\s+(?:postgres|mysql|mongodb|redis|dynamodb|sqlite)", "database_choice"),
-        (r"(?:create|setup|configure)\s+(?:database|db)\s+(?:schema|tables?|models?)", "database_schema"),
+        (
+            r"(?:choosing|selecting|using|implementing)\s+(?:postgres|mysql|mongodb|redis|dynamodb|sqlite)",
+            "database_choice",
+        ),
+        (
+            r"(?:create|setup|configure)\s+(?:database|db)\s+(?:schema|tables?|models?)",
+            "database_schema",
+        ),
         # Framework choices
-        (r"(?:using|implementing|choosing)\s+(?:react|vue|angular|next\.?js|express|fastapi|django|flask)", "framework_choice"),
+        (
+            r"(?:using|implementing|choosing)\s+(?:react|vue|angular|next\.?js|express|fastapi|django|flask)",
+            "framework_choice",
+        ),
         # Infrastructure choices
-        (r"(?:deploying to|using|setting up)\s+(?:aws|gcp|azure|kubernetes|docker|terraform)", "infrastructure_choice"),
+        (
+            r"(?:deploying to|using|setting up)\s+(?:aws|gcp|azure|kubernetes|docker|terraform)",
+            "infrastructure_choice",
+        ),
         # Authentication choices
-        (r"(?:implementing|adding|using)\s+(?:oauth|jwt|auth0|cognito|firebase auth|authentication)", "auth_choice"),
+        (
+            r"(?:implementing|adding|using)\s+(?:oauth|jwt|auth0|cognito|firebase auth|authentication)",
+            "auth_choice",
+        ),
         # Major architectural patterns
-        (r"(?:implementing|using)\s+(?:microservices?|monolith|serverless|event[- ]?driven|cqrs)", "architecture_pattern"),
+        (
+            r"(?:implementing|using)\s+(?:microservices?|monolith|serverless|event[- ]?driven|cqrs)",
+            "architecture_pattern",
+        ),
     ]
 
     # Security-sensitive patterns
     SECURITY_PATTERNS = [
         # Payment processing
-        (r"(?:stripe|paypal|braintree|payment|billing|credit card|checkout)", "payment_processing"),
+        (
+            r"(?:stripe|paypal|braintree|payment|billing|credit card|checkout)",
+            "payment_processing",
+        ),
         # User authentication
-        (r"(?:password|login|signup|register|authentication|authorization)", "user_auth"),
+        (
+            r"(?:password|login|signup|register|authentication|authorization)",
+            "user_auth",
+        ),
         # Personal data handling
-        (r"(?:pii|personal\s+(?:data|information)|gdpr|ccpa|user\s+data|email|phone|address)", "personal_data"),
+        (
+            r"(?:pii|personal\s+(?:data|information)|gdpr|ccpa|user\s+data|email|phone|address)",
+            "personal_data",
+        ),
         # API keys and secrets
-        (r"(?:api[_\s]?key|secret|credential|token|password)\s*(?:=|:)", "secrets_handling"),
+        (
+            r"(?:api[_\s]?key|secret|credential|token|password)\s*(?:=|:)",
+            "secrets_handling",
+        ),
         # Encryption
         (r"(?:encrypt|decrypt|hash|bcrypt|argon2|aes|rsa)", "encryption"),
     ]
@@ -72,26 +102,46 @@ class CheckpointGateDetector:
     # Cost-sensitive patterns
     COST_PATTERNS = [
         # Expensive cloud resources
-        (r"(?:provision|create|launch)\s+(?:rds|aurora|redshift|bigquery|elasticsearch)", "expensive_database"),
-        (r"(?:provision|create|launch)\s+(?:eks|ecs|gke|aks|kubernetes cluster)", "kubernetes_cluster"),
+        (
+            r"(?:provision|create|launch)\s+(?:rds|aurora|redshift|bigquery|elasticsearch)",
+            "expensive_database",
+        ),
+        (
+            r"(?:provision|create|launch)\s+(?:eks|ecs|gke|aks|kubernetes cluster)",
+            "kubernetes_cluster",
+        ),
         (r"(?:ml|machine learning|ai|gpu|sagemaker|vertex)", "ml_resources"),
         # Storage
         (r"(?:s3|gcs|azure blob)\s+(?:bucket|storage)", "cloud_storage"),
         # High-tier instances
-        (r"(?:m5|c5|r5|p3|g4)\.(?:xlarge|2xlarge|4xlarge|8xlarge|metal)", "large_instances"),
+        (
+            r"(?:m5|c5|r5|p3|g4)\.(?:xlarge|2xlarge|4xlarge|8xlarge|metal)",
+            "large_instances",
+        ),
     ]
 
     # Deployment patterns
     DEPLOYMENT_PATTERNS = [
-        (r"(?:deploy|release|push)\s+(?:to|into)\s+(?:prod|production)", "production_deploy"),
-        (r"(?:kubectl apply|helm install|terraform apply)\s+.*(?:prod|production)", "infra_deploy"),
-        (r"(?:merge|push)\s+(?:to|into)\s+(?:main|master|release)", "main_branch_merge"),
+        (
+            r"(?:deploy|release|push)\s+(?:to|into)\s+(?:prod|production)",
+            "production_deploy",
+        ),
+        (
+            r"(?:kubectl apply|helm install|terraform apply)\s+.*(?:prod|production)",
+            "infra_deploy",
+        ),
+        (
+            r"(?:merge|push)\s+(?:to|into)\s+(?:main|master|release)",
+            "main_branch_merge",
+        ),
     ]
 
     def __init__(self, enterprise_project_id: Optional[str] = None):
         """Initialize detector with optional enterprise project link."""
         self.enterprise_project_id = enterprise_project_id
-        self._detected_gates: List[str] = []  # Track already detected gates to avoid duplicates
+        self._detected_gates: List[str] = (
+            []
+        )  # Track already detected gates to avoid duplicates
 
     def detect_gates(
         self,
@@ -124,7 +174,9 @@ class CheckpointGateDetector:
             triggers.append(arch_trigger)
 
         # Check security patterns
-        security_trigger = self._check_security_gates(text_to_analyze, files_to_create, files_to_modify)
+        security_trigger = self._check_security_gates(
+            text_to_analyze, files_to_create, files_to_modify
+        )
         if security_trigger:
             triggers.append(security_trigger)
 
@@ -159,9 +211,15 @@ class CheckpointGateDetector:
         if files_to_create:
             for file in files_to_create:
                 file_lower = file.lower()
-                if any(x in file_lower for x in ["schema", "migration", "models.py", "entities"]):
+                if any(
+                    x in file_lower
+                    for x in ["schema", "migration", "models.py", "entities"]
+                ):
                     matches.append("database_schema")
-                if any(x in file_lower for x in ["docker", "kubernetes", "k8s", "terraform", "helm"]):
+                if any(
+                    x in file_lower
+                    for x in ["docker", "kubernetes", "k8s", "terraform", "helm"]
+                ):
                     matches.append("infrastructure_choice")
 
         if not matches:
@@ -230,8 +288,17 @@ class CheckpointGateDetector:
             description=f"Architecture decisions detected: {', '.join(set(matches))}. Please review.",
             trigger_context={"detected_patterns": matches},
             options=[
-                {"id": "approve", "label": "Approve", "description": "Proceed with the approach", "recommended": True},
-                {"id": "discuss", "label": "Discuss", "description": "Pause for discussion"},
+                {
+                    "id": "approve",
+                    "label": "Approve",
+                    "description": "Proceed with the approach",
+                    "recommended": True,
+                },
+                {
+                    "id": "discuss",
+                    "label": "Discuss",
+                    "description": "Pause for discussion",
+                },
             ],
             priority="normal",
         )
@@ -254,7 +321,9 @@ class CheckpointGateDetector:
             file_lower = file.lower()
             if any(x in file_lower for x in ["auth", "login", "password", "security"]):
                 matches.append("user_auth")
-            if any(x in file_lower for x in ["payment", "billing", "checkout", "stripe"]):
+            if any(
+                x in file_lower for x in ["payment", "billing", "checkout", "stripe"]
+            ):
                 matches.append("payment_processing")
 
         if not matches:
@@ -301,8 +370,16 @@ class CheckpointGateDetector:
                 description="Code handling secrets/credentials detected. Please verify secure practices.",
                 trigger_context={"detected_patterns": matches},
                 options=[
-                    {"id": "approve", "label": "Approve", "description": "Secrets handling is secure"},
-                    {"id": "modify", "label": "Improve Security", "description": "Request more secure approach"},
+                    {
+                        "id": "approve",
+                        "label": "Approve",
+                        "description": "Secrets handling is secure",
+                    },
+                    {
+                        "id": "modify",
+                        "label": "Improve Security",
+                        "description": "Request more secure approach",
+                    },
                 ],
                 priority="high",
             )
@@ -314,8 +391,17 @@ class CheckpointGateDetector:
             description=f"Security-sensitive operations detected: {', '.join(set(matches))}.",
             trigger_context={"detected_patterns": matches},
             options=[
-                {"id": "approve", "label": "Approve", "description": "Security approach is acceptable", "recommended": True},
-                {"id": "review", "label": "Request Review", "description": "Need security team review"},
+                {
+                    "id": "approve",
+                    "label": "Approve",
+                    "description": "Security approach is acceptable",
+                    "recommended": True,
+                },
+                {
+                    "id": "review",
+                    "label": "Request Review",
+                    "description": "Need security team review",
+                },
             ],
             priority="high",
         )
@@ -335,7 +421,15 @@ class CheckpointGateDetector:
         if commands_to_run:
             for cmd in commands_to_run:
                 cmd_lower = cmd.lower()
-                if any(x in cmd_lower for x in ["terraform apply", "pulumi up", "aws create", "gcloud create"]):
+                if any(
+                    x in cmd_lower
+                    for x in [
+                        "terraform apply",
+                        "pulumi up",
+                        "aws create",
+                        "gcloud create",
+                    ]
+                ):
                     matches.append("infrastructure_provision")
 
         if not matches:
@@ -386,8 +480,17 @@ class CheckpointGateDetector:
             description=f"Cloud resources being provisioned: {', '.join(set(matches))}.",
             trigger_context={"detected_patterns": matches},
             options=[
-                {"id": "approve", "label": "Approve", "description": "Proceed with provisioning", "recommended": True},
-                {"id": "review", "label": "Review Costs", "description": "Review cost implications first"},
+                {
+                    "id": "approve",
+                    "label": "Approve",
+                    "description": "Proceed with provisioning",
+                    "recommended": True,
+                },
+                {
+                    "id": "review",
+                    "label": "Review Costs",
+                    "description": "Review cost implications first",
+                },
             ],
             priority="normal",
         )
@@ -407,9 +510,9 @@ class CheckpointGateDetector:
         if commands_to_run:
             for cmd in commands_to_run:
                 cmd_lower = cmd.lower()
-                if any(x in cmd_lower for x in ["deploy", "release", "publish"]) and any(
-                    x in cmd_lower for x in ["prod", "production", "live"]
-                ):
+                if any(
+                    x in cmd_lower for x in ["deploy", "release", "publish"]
+                ) and any(x in cmd_lower for x in ["prod", "production", "live"]):
                     matches.append("production_deploy")
 
         if not matches:
@@ -455,8 +558,17 @@ class CheckpointGateDetector:
             description=f"Deployment actions detected: {', '.join(set(matches))}.",
             trigger_context={"detected_patterns": matches},
             options=[
-                {"id": "approve", "label": "Approve", "description": "Proceed with deployment", "recommended": True},
-                {"id": "review", "label": "Review First", "description": "Review deployment plan"},
+                {
+                    "id": "approve",
+                    "label": "Approve",
+                    "description": "Proceed with deployment",
+                    "recommended": True,
+                },
+                {
+                    "id": "review",
+                    "label": "Review First",
+                    "description": "Review deployment plan",
+                },
             ],
             priority="high",
         )

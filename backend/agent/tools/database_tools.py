@@ -36,14 +36,14 @@ logger = structlog.get_logger(__name__)
 # ORM templates for different frameworks
 ORM_TEMPLATES = {
     "prisma": {
-        "model": '''model {name} {{
+        "model": """model {name} {{
   id        Int      @id @default(autoincrement())
 {fields}
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 {relations}
 }}
-''',
+""",
         "field_types": {
             "string": "String",
             "text": "String",
@@ -58,11 +58,11 @@ ORM_TEMPLATES = {
             "json": "Json",
             "uuid": "String @default(uuid())",
         },
-        "relation_one": '  {field}   {model}?  @relation(fields: [{field}Id], references: [id])\n  {field}Id Int?',
-        "relation_many": '  {field} {model}[]',
+        "relation_one": "  {field}   {model}?  @relation(fields: [{field}Id], references: [id])\n  {field}Id Int?",
+        "relation_many": "  {field} {model}[]",
     },
     "drizzle": {
-        "model": '''export const {name_lower} = pgTable("{name_plural}", {{
+        "model": """export const {name_lower} = pgTable("{name_plural}", {{
   id: serial("id").primaryKey(),
 {fields}
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -71,7 +71,7 @@ ORM_TEMPLATES = {
 
 export type {name} = typeof {name_lower}.$inferSelect;
 export type New{name} = typeof {name_lower}.$inferInsert;
-''',
+""",
         "field_types": {
             "string": 'varchar("{field}", {{ length: 255 }})',
             "text": 'text("{field}")',
@@ -121,7 +121,7 @@ export type New{name} = typeof {name_lower}.$inferInsert;
         "relation_many": '    {field} = relationship("{model}", back_populates="{name_lower}")',
     },
     "typeorm": {
-        "model": '''@Entity("{name_lower}s")
+        "model": """@Entity("{name_lower}s")
 export class {name} {{
   @PrimaryGeneratedColumn()
   id: number;
@@ -135,7 +135,7 @@ export class {name} {{
   updatedAt: Date;
 {relations}
 }}
-''',
+""",
         "field_types": {
             "string": "@Column({{ length: 255 }})\n  {field}: string;",
             "text": "@Column('text')\n  {field}: string;",
@@ -183,7 +183,7 @@ export class {name} {{
             "uuid": "models.UUIDField(default=uuid.uuid4, editable=False)",
         },
         "relation_one": '    {field} = models.ForeignKey("{model}", on_delete=models.CASCADE, related_name="{name_lower}s")',
-        "relation_many": '    # See {model} model for reverse relation',
+        "relation_many": "    # See {model} model for reverse relation",
     },
 }
 
@@ -237,6 +237,7 @@ SQL_TYPES = {
 @dataclass
 class SchemaField:
     """Represents a database field."""
+
     name: str
     type: str
     nullable: bool = True
@@ -248,6 +249,7 @@ class SchemaField:
 @dataclass
 class SchemaModel:
     """Represents a database model/table."""
+
     name: str
     fields: List[SchemaField]
     relations: List[Dict[str, Any]]
@@ -286,9 +288,9 @@ async def design_schema(
     if not models:
         return ToolResult(
             output="Could not extract schema from description.\n\n"
-                   "Try a format like:\n"
-                   "- 'Users with email, name, and password. Posts with title, content, and author (user).'\n"
-                   "- 'Products (name, price, description), Categories (name), and OrderItems (product, quantity, price)'",
+            "Try a format like:\n"
+            "- 'Users with email, name, and password. Posts with title, content, and author (user).'\n"
+            "- 'Products (name, price, description), Categories (name), and OrderItems (product, quantity, price)'",
             sources=[],
         )
 
@@ -366,7 +368,7 @@ async def generate_migration(
     if not orm:
         return ToolResult(
             output="Could not detect ORM/migration tool in project.\n\n"
-                   "Looking for: Prisma, Drizzle, Alembic, Django, or TypeORM",
+            "Looking for: Prisma, Drizzle, Alembic, Django, or TypeORM",
             sources=[],
         )
 
@@ -395,7 +397,11 @@ async def generate_migration(
         lines.append(f"- {action}: {target}")
 
     lines.append("\n**Migration Code**:")
-    lines.append("```python" if orm in ("alembic", "django") else "```typescript" if orm in ("drizzle", "typeorm") else "```sql")
+    lines.append(
+        "```python"
+        if orm in ("alembic", "django")
+        else "```typescript" if orm in ("drizzle", "typeorm") else "```sql"
+    )
     lines.append(migration_code)
     lines.append("```")
 
@@ -511,7 +517,9 @@ async def generate_seed_data(
     lines.append(f"**ORM**: {orm or 'prisma'}")
 
     lines.append("\n**Seed Code**:")
-    lines.append("```typescript" if orm in ("prisma", "drizzle", "typeorm") else "```python")
+    lines.append(
+        "```typescript" if orm in ("prisma", "drizzle", "typeorm") else "```python"
+    )
     lines.append(seed_code)
     lines.append("```")
 
@@ -557,7 +565,7 @@ async def analyze_schema(
     if not schema_files:
         return ToolResult(
             output=f"No schema files found for {orm or 'any ORM'}.\n\n"
-                   f"Looking for: schema.prisma, models.py, schema.ts, or *.entity.ts",
+            f"Looking for: schema.prisma, models.py, schema.ts, or *.entity.ts",
             sources=[],
         )
 
@@ -570,11 +578,15 @@ async def analyze_schema(
         # Check for missing timestamps
         field_names = [f["name"].lower() for f in model.get("fields", [])]
         if "createdat" not in field_names and "created_at" not in field_names:
-            analysis["issues"].append(f"{model['name']}: Missing createdAt/created_at timestamp")
+            analysis["issues"].append(
+                f"{model['name']}: Missing createdAt/created_at timestamp"
+            )
 
         # Check for missing indexes
         if len(model.get("fields", [])) > 5:
-            analysis["suggestions"].append(f"{model['name']}: Consider adding indexes for frequently queried fields")
+            analysis["suggestions"].append(
+                f"{model['name']}: Consider adding indexes for frequently queried fields"
+            )
 
     lines = ["## Schema Analysis\n"]
     lines.append(f"**ORM**: {orm}")
@@ -584,7 +596,9 @@ async def analyze_schema(
     if analysis["models"]:
         lines.append("\n### Models")
         for model in analysis["models"]:
-            lines.append(f"- **{model['name']}**: {len(model.get('fields', []))} fields")
+            lines.append(
+                f"- **{model['name']}**: {len(model.get('fields', []))} fields"
+            )
 
     if analysis["issues"]:
         lines.append("\n### Issues")
@@ -662,12 +676,13 @@ async def generate_erd(
 
 # Helper functions
 
+
 def _parse_schema_description(description: str) -> List[SchemaModel]:
     """Parse natural language description into schema models."""
     models = []
 
     # Split by common delimiters
-    parts = re.split(r'[.;]|\band\b|\bwith\b', description, flags=re.IGNORECASE)
+    parts = re.split(r"[.;]|\band\b|\bwith\b", description, flags=re.IGNORECASE)
 
     current_model = None
     current_fields = []
@@ -678,18 +693,20 @@ def _parse_schema_description(description: str) -> List[SchemaModel]:
             continue
 
         # Look for model names (capitalized words)
-        model_match = re.match(r'^([A-Z][a-z]+(?:s)?)\s*(?:\(([^)]+)\))?', part)
+        model_match = re.match(r"^([A-Z][a-z]+(?:s)?)\s*(?:\(([^)]+)\))?", part)
         if model_match:
             # Save previous model
             if current_model:
-                models.append(SchemaModel(
-                    name=current_model,
-                    fields=current_fields,
-                    relations=[],
-                ))
+                models.append(
+                    SchemaModel(
+                        name=current_model,
+                        fields=current_fields,
+                        relations=[],
+                    )
+                )
 
             current_model = model_match.group(1)
-            if current_model.endswith('s'):
+            if current_model.endswith("s"):
                 current_model = current_model[:-1]  # Remove plural
 
             current_fields = []
@@ -697,34 +714,40 @@ def _parse_schema_description(description: str) -> List[SchemaModel]:
             # Extract fields from parentheses
             if model_match.group(2):
                 field_str = model_match.group(2)
-                for field in re.split(r',\s*', field_str):
+                for field in re.split(r",\s*", field_str):
                     field = field.strip()
                     if field:
                         field_name, field_type = _parse_field(field)
-                        current_fields.append(SchemaField(
-                            name=field_name,
-                            type=field_type,
-                        ))
+                        current_fields.append(
+                            SchemaField(
+                                name=field_name,
+                                type=field_type,
+                            )
+                        )
 
         # Look for fields mentioned with "with"
         elif current_model:
-            for field in re.split(r',\s*', part):
+            for field in re.split(r",\s*", part):
                 field = field.strip()
-                if field and not field.startswith('and'):
+                if field and not field.startswith("and"):
                     field_name, field_type = _parse_field(field)
                     if field_name:
-                        current_fields.append(SchemaField(
-                            name=field_name,
-                            type=field_type,
-                        ))
+                        current_fields.append(
+                            SchemaField(
+                                name=field_name,
+                                type=field_type,
+                            )
+                        )
 
     # Save last model
     if current_model:
-        models.append(SchemaModel(
-            name=current_model,
-            fields=current_fields,
-            relations=[],
-        ))
+        models.append(
+            SchemaModel(
+                name=current_model,
+                fields=current_fields,
+                relations=[],
+            )
+        )
 
     return models
 
@@ -763,7 +786,7 @@ def _parse_field(field_str: str) -> tuple:
             return name, type_val
 
     # Default to string type
-    name = re.sub(r'[^a-z0-9]', '', field_str)
+    name = re.sub(r"[^a-z0-9]", "", field_str)
     if name:
         return name, "string"
 
@@ -816,7 +839,9 @@ def _generate_orm_schema(models: List[SchemaModel], orm: str) -> str:
         # Generate fields
         fields_code = []
         for field in model.fields:
-            field_type = template["field_types"].get(field.type, template["field_types"]["string"])
+            field_type = template["field_types"].get(
+                field.type, template["field_types"]["string"]
+            )
 
             if orm == "prisma":
                 nullable = "?" if field.nullable else ""
@@ -827,7 +852,9 @@ def _generate_orm_schema(models: List[SchemaModel], orm: str) -> str:
                     field_def += ".notNull()"
                 fields_code.append(f"  {field.name}: {field_def},")
             elif orm == "sqlalchemy":
-                nullable_str = ", nullable=True" if field.nullable else ", nullable=False"
+                nullable_str = (
+                    ", nullable=True" if field.nullable else ", nullable=False"
+                )
                 fields_code.append(f"    {field.name} = {field_type}{nullable_str}")
             elif orm == "django":
                 null_blank = ", null=True, blank=True" if field.nullable else ""
@@ -913,7 +940,7 @@ def _parse_schema_file(file_path: str, orm: Optional[str]) -> List[Dict]:
 
         if orm == "prisma":
             # Parse Prisma schema
-            model_pattern = r'model\s+(\w+)\s*\{([^}]+)\}'
+            model_pattern = r"model\s+(\w+)\s*\{([^}]+)\}"
             for match in re.finditer(model_pattern, content):
                 name = match.group(1)
                 body = match.group(2)
@@ -928,7 +955,7 @@ def _parse_schema_file(file_path: str, orm: Optional[str]) -> List[Dict]:
 
         elif orm in ("alembic", "django"):
             # Parse Python class definitions
-            class_pattern = r'class\s+(\w+)\s*\([^)]*\):'
+            class_pattern = r"class\s+(\w+)\s*\([^)]*\):"
             for match in re.finditer(class_pattern, content):
                 name = match.group(1)
                 if name not in ("Base", "Model"):
@@ -968,7 +995,9 @@ def _generate_plantuml_erd(models: List[Dict]) -> str:
         lines.append(f"entity {name} {{")
         lines.append("  *id : int")
         for field in model.get("fields", [])[:10]:
-            lines.append(f"  {field.get('name', 'unknown')} : {field.get('type', 'string')}")
+            lines.append(
+                f"  {field.get('name', 'unknown')} : {field.get('type', 'string')}"
+            )
         lines.append("}")
 
     lines.append("@enduml")
@@ -984,7 +1013,9 @@ def _generate_dbml(models: List[Dict]) -> str:
         lines.append(f"Table {name} {{")
         lines.append("  id int [pk, increment]")
         for field in model.get("fields", []):
-            lines.append(f"  {field.get('name', 'unknown')} {field.get('type', 'varchar')}")
+            lines.append(
+                f"  {field.get('name', 'unknown')} {field.get('type', 'varchar')}"
+            )
         lines.append("  created_at timestamp [default: `now()`]")
         lines.append("  updated_at timestamp")
         lines.append("}")
@@ -1001,21 +1032,22 @@ def _generate_prisma_migration(changes: List[Dict]) -> str:
         if action == "add_table":
             table = change.get("name", "new_table")
             output.append("\n-- CreateTable")
-            output.append(f"CREATE TABLE \"{table}\" (")
+            output.append(f'CREATE TABLE "{table}" (')
             output.append('  "id" SERIAL PRIMARY KEY')
             output.append(");")
         elif action == "add_column":
             table = change.get("table", "table")
             column = change.get("column", "new_column")
             col_type = change.get("type", "VARCHAR(255)")
-            output.append(f"\nALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {col_type};")
+            output.append(f'\nALTER TABLE "{table}" ADD COLUMN "{column}" {col_type};')
     return "\n".join(output)
 
 
 def _generate_alembic_migration(changes: List[Dict], name: str) -> str:
     """Generate Alembic migration."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output = [f'''"""
+    output = [
+        f'''"""
 {name}
 
 Revision ID: {timestamp}
@@ -1024,21 +1056,26 @@ from alembic import op
 import sqlalchemy as sa
 
 
-def upgrade() -> None:''']
+def upgrade() -> None:'''
+    ]
 
     for change in changes:
         action = change.get("action")
         if action == "add_table":
             table = change.get("name", "new_table")
-            output.append(f'''    op.create_table(
+            output.append(
+                f"""    op.create_table(
         "{table}",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("created_at", sa.DateTime(), default=sa.func.now()),
-    )''')
+    )"""
+            )
         elif action == "add_column":
             table = change.get("table")
             column = change.get("column")
-            output.append(f'    op.add_column("{table}", sa.Column("{column}", sa.String(255)))')
+            output.append(
+                f'    op.add_column("{table}", sa.Column("{column}", sa.String(255)))'
+            )
 
     output.append("\n\ndef downgrade() -> None:")
     output.append("    pass")
@@ -1053,7 +1090,8 @@ def _generate_drizzle_migration(changes: List[Dict]) -> str:
 
 def _generate_django_migration(changes: List[Dict], name: str) -> str:
     """Generate Django migration."""
-    output = ['''from django.db import migrations, models
+    output = [
+        """from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
@@ -1061,26 +1099,31 @@ class Migration(migrations.Migration):
         # Add dependencies
     ]
 
-    operations = [''']
+    operations = ["""
+    ]
 
     for change in changes:
         action = change.get("action")
         if action == "add_table":
             model = change.get("name", "NewModel")
-            output.append(f'''        migrations.CreateModel(
+            output.append(
+                f"""        migrations.CreateModel(
             name="{model}",
             fields=[
                 ("id", models.AutoField(primary_key=True)),
             ],
-        ),''')
+        ),"""
+            )
         elif action == "add_column":
             model = change.get("table")
             field = change.get("column")
-            output.append(f'''        migrations.AddField(
+            output.append(
+                f"""        migrations.AddField(
             model_name="{model.lower()}",
             name="{field}",
             field=models.CharField(max_length=255, null=True),
-        ),''')
+        ),"""
+            )
 
     output.append("    ]")
     return "\n".join(output)
@@ -1091,16 +1134,19 @@ def _generate_typeorm_migration(changes: List[Dict], name: str) -> str:
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     class_name = name.replace("-", "").replace("_", "").title()
 
-    output = [f'''import {{ MigrationInterface, QueryRunner, Table }} from "typeorm";
+    output = [
+        f"""import {{ MigrationInterface, QueryRunner, Table }} from "typeorm";
 
 export class {class_name}{timestamp} implements MigrationInterface {{
-    public async up(queryRunner: QueryRunner): Promise<void> {{''']
+    public async up(queryRunner: QueryRunner): Promise<void> {{"""
+    ]
 
     for change in changes:
         action = change.get("action")
         if action == "add_table":
             table = change.get("name", "new_table")
-            output.append(f'''        await queryRunner.createTable(
+            output.append(
+                f"""        await queryRunner.createTable(
             new Table({{
                 name: "{table}",
                 columns: [
@@ -1108,14 +1154,17 @@ export class {class_name}{timestamp} implements MigrationInterface {{
                 ],
             }}),
             true
-        );''')
+        );"""
+            )
 
-    output.append('''    }
+    output.append(
+        """    }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
         // Rollback
     }
-}''')
+}"""
+    )
 
     return "\n".join(output)
 
@@ -1142,15 +1191,18 @@ def _generate_sql_migration(changes: List[Dict]) -> str:
 def _generate_seed_code(models: List[str], count: int, orm: str) -> str:
     """Generate seed data code."""
     if orm == "prisma":
-        output = ['''import { PrismaClient } from "@prisma/client";
+        output = [
+            """import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-async function main() {''']
+async function main() {"""
+        ]
 
         for model in models:
             model_lower = model.lower()
-            output.append(f'''
+            output.append(
+                f"""
   // Seed {model}
   for (let i = 0; i < {count}; i++) {{
     await prisma.{model_lower}.create({{
@@ -1158,9 +1210,11 @@ async function main() {''']
         // Add seed data fields
       }},
     }});
-  }}''')
+  }}"""
+            )
 
-        output.append('''
+        output.append(
+            """
 }
 
 main()
@@ -1170,11 +1224,13 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
-  });''')
+  });"""
+        )
         return "\n".join(output)
 
     elif orm in ("alembic", "django"):
-        output = ['''"""
+        output = [
+            '''"""
 Database seed script
 """
 from app.database import SessionLocal
@@ -1182,24 +1238,29 @@ from app.database import SessionLocal
 
 def seed():
     db = SessionLocal()
-    try:''']
+    try:'''
+        ]
 
         for model in models:
-            output.append(f'''
+            output.append(
+                f"""
         # Seed {model}
         for i in range({count}):
             obj = {model}(
                 # Add seed data fields
             )
-            db.add(obj)''')
+            db.add(obj)"""
+            )
 
-        output.append('''
+        output.append(
+            """
         db.commit()
     finally:
         db.close()
 
 if __name__ == "__main__":
-    seed()''')
+    seed()"""
+        )
         return "\n".join(output)
 
     return "// Seed code not available for this ORM"
@@ -1208,6 +1269,7 @@ if __name__ == "__main__":
 # =============================================================================
 # REAL EXECUTION FUNCTIONS - Actually run database operations
 # =============================================================================
+
 
 async def execute_migration(
     context: Dict[str, Any],
@@ -1239,18 +1301,19 @@ async def execute_migration(
     )
 
     # Detect migration tool
-    migration_info = await database_executor_service.detect_migration_tool(workspace_path)
+    migration_info = await database_executor_service.detect_migration_tool(
+        workspace_path
+    )
 
     if not migration_info.get("tool"):
         return ToolResult(
             output="❌ No migration tool detected in project.\n\n"
-                   "Looking for: Prisma, Drizzle, Alembic, Django, Knex, TypeORM, Sequelize, Flyway, Goose\n\n"
-                   "Make sure you have a migration tool configured.",
+            "Looking for: Prisma, Drizzle, Alembic, Django, Knex, TypeORM, Sequelize, Flyway, Goose\n\n"
+            "Make sure you have a migration tool configured.",
             sources=[],
         )
 
     tool_name = migration_info["tool"]
-    migration_dir = MigrationDirection.UP if direction == "up" else MigrationDirection.DOWN
 
     # Determine risk level based on direction and environment
     if direction == "down":
@@ -1293,10 +1356,18 @@ async def execute_migration(
                 ],
                 "mitigation": "Ensure you have a database backup before proceeding",
                 "rollback_available": direction == "up",
-                "rollback_instructions": "Run migration down: db.execute_migration with direction='down'" if direction == "up" else None,
+                "rollback_instructions": (
+                    "Run migration down: db.execute_migration with direction='down'"
+                    if direction == "up"
+                    else None
+                ),
             }
         ],
-        rollback_plan=f"Run migration in opposite direction ({('down' if direction == 'up' else 'up')})" if not dry_run else None,
+        rollback_plan=(
+            f"Run migration in opposite direction ({('down' if direction == 'up' else 'up')})"
+            if not dry_run
+            else None
+        ),
     )
 
     lines = ["## Database Migration Request Created\n"]
@@ -1323,7 +1394,7 @@ async def execute_migration(
                 "confirmation_phrase": request.confirmation_phrase,
                 "ui_config": request.ui_config,
             }
-        }
+        },
     )
 
 
@@ -1350,7 +1421,7 @@ async def confirm_database_operation(
     if not request:
         return ToolResult(
             output=f"❌ No pending request found with ID: {request_id}\n\n"
-                   "The request may have expired or already been processed.",
+            "The request may have expired or already been processed.",
             sources=[],
         )
 
@@ -1359,14 +1430,14 @@ async def confirm_database_operation(
         if not confirmation_input:
             return ToolResult(
                 output=f"❌ Confirmation phrase required.\n\n"
-                       f"Please provide the phrase: `{request.confirmation_phrase}`",
+                f"Please provide the phrase: `{request.confirmation_phrase}`",
                 sources=[],
             )
         if confirmation_input.upper() != request.confirmation_phrase.upper():
             return ToolResult(
                 output=f"❌ Invalid confirmation phrase.\n\n"
-                       f"Expected: `{request.confirmation_phrase}`\n"
-                       f"Received: `{confirmation_input}`",
+                f"Expected: `{request.confirmation_phrase}`\n"
+                f"Received: `{confirmation_input}`",
                 sources=[],
             )
 
@@ -1380,7 +1451,9 @@ async def confirm_database_operation(
     target = params.get("target")
     dry_run = params.get("dry_run", False)
 
-    migration_dir = MigrationDirection.UP if direction == "up" else MigrationDirection.DOWN
+    migration_dir = (
+        MigrationDirection.UP if direction == "up" else MigrationDirection.DOWN
+    )
 
     # Run the migration
     result = await database_executor_service.run_migration(
@@ -1433,7 +1506,7 @@ async def confirm_database_operation(
                 "migrations_applied": result.migrations_applied,
                 "error": result.error,
             }
-        }
+        },
     )
 
 
@@ -1492,7 +1565,9 @@ async def backup_database(
     lines.append(f"**Request ID**: `{request.id}`")
     lines.append("**Risk Level**: LOW")
     lines.append(f"**Compression**: {compression}")
-    lines.append(f"\nCall `db.confirm` with request_id='{request.id}' to execute backup.")
+    lines.append(
+        f"\nCall `db.confirm` with request_id='{request.id}' to execute backup."
+    )
 
     return ToolResult(
         output="\n".join(lines),
@@ -1502,7 +1577,7 @@ async def backup_database(
                 "id": request.id,
                 "risk_level": request.risk_level.value,
             }
-        }
+        },
     )
 
 
@@ -1525,7 +1600,9 @@ async def restore_database(
     Returns:
         ToolResult with confirmation request
     """
-    logger.info("restore_database", workspace_path=workspace_path, backup_path=backup_path)
+    logger.info(
+        "restore_database", workspace_path=workspace_path, backup_path=backup_path
+    )
 
     # Verify backup file exists
     if not os.path.exists(backup_path):
@@ -1574,7 +1651,9 @@ async def restore_database(
     lines.append("\n**⚠️ WARNING**: This will overwrite ALL current database data!")
     lines.append("\n**Confirmation Required**")
     lines.append(f"Type the phrase: `{request.confirmation_phrase}`")
-    lines.append(f"\nCall `db.confirm` with request_id='{request.id}' and confirmation_input='{request.confirmation_phrase}'")
+    lines.append(
+        f"\nCall `db.confirm` with request_id='{request.id}' and confirmation_input='{request.confirmation_phrase}'"
+    )
 
     return ToolResult(
         output="\n".join(lines),
@@ -1587,7 +1666,7 @@ async def restore_database(
                 "confirmation_phrase": request.confirmation_phrase,
                 "ui_config": request.ui_config,
             }
-        }
+        },
     )
 
 
@@ -1607,7 +1686,9 @@ async def get_migration_status(
     logger.info("get_migration_status", workspace_path=workspace_path)
 
     # Detect migration tool
-    migration_info = await database_executor_service.detect_migration_tool(workspace_path)
+    migration_info = await database_executor_service.detect_migration_tool(
+        workspace_path
+    )
 
     if not migration_info.get("tool"):
         return ToolResult(

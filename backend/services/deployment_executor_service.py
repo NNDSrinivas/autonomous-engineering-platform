@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 class DeploymentPlatform(Enum):
     """Supported deployment platforms - 150+ platforms across all cloud providers."""
+
     # =========================================================================
     # MODERN PAAS PLATFORMS
     # =========================================================================
@@ -432,6 +433,7 @@ class DeploymentPlatform(Enum):
 
 class DeploymentStatus(Enum):
     """Deployment status states."""
+
     PENDING = "pending"
     BUILDING = "building"
     DEPLOYING = "deploying"
@@ -444,6 +446,7 @@ class DeploymentStatus(Enum):
 @dataclass
 class DeploymentConfig:
     """Configuration for a deployment."""
+
     platform: DeploymentPlatform
     workspace_path: str
     environment: str = "production"
@@ -459,6 +462,7 @@ class DeploymentConfig:
 @dataclass
 class DeploymentResult:
     """Result of a deployment operation."""
+
     success: bool
     platform: DeploymentPlatform
     status: DeploymentStatus
@@ -489,7 +493,9 @@ class DeploymentExecutorService:
         self._deployment_history: List[DeploymentResult] = []
         self._active_deployments: Dict[str, DeploymentResult] = {}
 
-    async def check_prerequisites(self, platform: DeploymentPlatform) -> Tuple[bool, str]:
+    async def check_prerequisites(
+        self, platform: DeploymentPlatform
+    ) -> Tuple[bool, str]:
         """
         Check if all prerequisites are met for deploying to a platform.
 
@@ -567,13 +573,17 @@ class DeploymentExecutorService:
 
         try:
             if progress_callback:
-                progress_callback(f"Starting deployment to {config.platform.value}...", 0)
+                progress_callback(
+                    f"Starting deployment to {config.platform.value}...", 0
+                )
 
             result = await executor(config, result, progress_callback)
 
             result.completed_at = datetime.utcnow()
             if result.started_at:
-                result.duration_seconds = (result.completed_at - result.started_at).total_seconds()
+                result.duration_seconds = (
+                    result.completed_at - result.started_at
+                ).total_seconds()
 
             # Store in history
             self._deployment_history.append(result)
@@ -604,13 +614,21 @@ class DeploymentExecutorService:
 
         try:
             if platform == DeploymentPlatform.VERCEL:
-                result = await self._rollback_vercel(deployment_id, result, progress_callback)
+                result = await self._rollback_vercel(
+                    deployment_id, result, progress_callback
+                )
             elif platform == DeploymentPlatform.RAILWAY:
-                result = await self._rollback_railway(deployment_id, result, progress_callback)
+                result = await self._rollback_railway(
+                    deployment_id, result, progress_callback
+                )
             elif platform == DeploymentPlatform.FLY:
-                result = await self._rollback_fly(deployment_id, workspace_path, result, progress_callback)
+                result = await self._rollback_fly(
+                    deployment_id, workspace_path, result, progress_callback
+                )
             elif platform == DeploymentPlatform.KUBERNETES:
-                result = await self._rollback_kubernetes(deployment_id, workspace_path, result, progress_callback)
+                result = await self._rollback_kubernetes(
+                    deployment_id, workspace_path, result, progress_callback
+                )
             else:
                 result.error = f"Rollback not supported for {platform.value}"
                 result.status = DeploymentStatus.FAILED
@@ -671,7 +689,10 @@ class DeploymentExecutorService:
     async def _check_fly(self) -> Tuple[bool, str]:
         """Check Fly.io CLI and authentication."""
         if not shutil.which("fly") and not shutil.which("flyctl"):
-            return False, "Fly CLI not installed. Run: curl -L https://fly.io/install.sh | sh"
+            return (
+                False,
+                "Fly CLI not installed. Run: curl -L https://fly.io/install.sh | sh",
+            )
 
         try:
             cmd = "fly" if shutil.which("fly") else "flyctl"
@@ -698,7 +719,10 @@ class DeploymentExecutorService:
     async def _check_heroku(self) -> Tuple[bool, str]:
         """Check Heroku CLI and authentication."""
         if not shutil.which("heroku"):
-            return False, "Heroku CLI not installed. See: https://devcenter.heroku.com/articles/heroku-cli"
+            return (
+                False,
+                "Heroku CLI not installed. See: https://devcenter.heroku.com/articles/heroku-cli",
+            )
 
         try:
             result = await self._run_command(["heroku", "auth:whoami"])
@@ -741,12 +765,17 @@ class DeploymentExecutorService:
             return False, "gcloud CLI not installed"
 
         try:
-            result = await self._run_command(["gcloud", "auth", "list", "--format=json"])
+            result = await self._run_command(
+                ["gcloud", "auth", "list", "--format=json"]
+            )
             if result["returncode"] == 0:
                 accounts = json.loads(result["stdout"])
                 active = [a for a in accounts if a.get("status") == "ACTIVE"]
                 if active:
-                    return True, f"Authenticated as: {active[0].get('account', 'unknown')}"
+                    return (
+                        True,
+                        f"Authenticated as: {active[0].get('account', 'unknown')}",
+                    )
             return False, "Not authenticated. Run: gcloud auth login"
         except Exception as e:
             return False, f"Failed to check GCP auth: {e}"
@@ -820,18 +849,20 @@ class DeploymentExecutorService:
             result.success = True
 
             # Extract deployment URL from output
-            url_match = re.search(r'https://[^\s]+\.vercel\.app', output["stdout"])
+            url_match = re.search(r"https://[^\s]+\.vercel\.app", output["stdout"])
             if url_match:
                 result.deployment_url = url_match.group(0)
 
             # Extract deployment ID
-            id_match = re.search(r'Deployment ID: ([a-zA-Z0-9]+)', output["stdout"])
+            id_match = re.search(r"Deployment ID: ([a-zA-Z0-9]+)", output["stdout"])
             if id_match:
                 result.deployment_id = id_match.group(1)
                 result.rollback_id = id_match.group(1)
 
             if progress_callback:
-                progress_callback(f"Deployed successfully: {result.deployment_url}", 100)
+                progress_callback(
+                    f"Deployed successfully: {result.deployment_url}", 100
+                )
         else:
             result.status = DeploymentStatus.FAILED
             result.error = output["stderr"] or "Deployment failed"
@@ -869,14 +900,15 @@ class DeploymentExecutorService:
 
             # Get deployment URL
             url_result = await self._run_command(
-                ["railway", "domain"],
-                cwd=config.workspace_path
+                ["railway", "domain"], cwd=config.workspace_path
             )
             if url_result["returncode"] == 0:
                 result.deployment_url = url_result["stdout"].strip()
 
             if progress_callback:
-                progress_callback(f"Deployed successfully: {result.deployment_url}", 100)
+                progress_callback(
+                    f"Deployed successfully: {result.deployment_url}", 100
+                )
         else:
             result.status = DeploymentStatus.FAILED
             result.error = output["stderr"] or "Deployment failed"
@@ -918,12 +950,14 @@ class DeploymentExecutorService:
             result.success = True
 
             # Extract app URL
-            url_match = re.search(r'(https://[^\s]+\.fly\.dev)', output["stdout"])
+            url_match = re.search(r"(https://[^\s]+\.fly\.dev)", output["stdout"])
             if url_match:
                 result.deployment_url = url_match.group(1)
 
             if progress_callback:
-                progress_callback(f"Deployed successfully: {result.deployment_url}", 100)
+                progress_callback(
+                    f"Deployed successfully: {result.deployment_url}", 100
+                )
         else:
             result.status = DeploymentStatus.FAILED
             result.error = output["stderr"] or "Deployment failed"
@@ -963,12 +997,14 @@ class DeploymentExecutorService:
             result.success = True
 
             # Extract URLs
-            url_match = re.search(r'Website URL:\s*(https://[^\s]+)', output["stdout"])
+            url_match = re.search(r"Website URL:\s*(https://[^\s]+)", output["stdout"])
             if url_match:
                 result.deployment_url = url_match.group(1)
 
             if progress_callback:
-                progress_callback(f"Deployed successfully: {result.deployment_url}", 100)
+                progress_callback(
+                    f"Deployed successfully: {result.deployment_url}", 100
+                )
         else:
             result.status = DeploymentStatus.FAILED
             result.error = output["stderr"] or "Deployment failed"
@@ -1005,15 +1041,16 @@ class DeploymentExecutorService:
 
             # Get app URL
             app_result = await self._run_command(
-                ["heroku", "apps:info", "--json"],
-                cwd=config.workspace_path
+                ["heroku", "apps:info", "--json"], cwd=config.workspace_path
             )
             if app_result["returncode"] == 0:
                 app_info = json.loads(app_result["stdout"])
                 result.deployment_url = app_info.get("web_url")
 
             if progress_callback:
-                progress_callback(f"Deployed successfully: {result.deployment_url}", 100)
+                progress_callback(
+                    f"Deployed successfully: {result.deployment_url}", 100
+                )
         else:
             result.status = DeploymentStatus.FAILED
             result.error = output["stderr"] or "Deployment failed"
@@ -1060,8 +1097,16 @@ class DeploymentExecutorService:
                 progress_callback("Waiting for rollout to complete...", 60)
 
             # Wait for deployment rollout
-            rollout_cmd = ["kubectl", "rollout", "status", "deployment", "--timeout=300s"]
-            rollout_output = await self._run_command(rollout_cmd, cwd=config.workspace_path)
+            rollout_cmd = [
+                "kubectl",
+                "rollout",
+                "status",
+                "deployment",
+                "--timeout=300s",
+            ]
+            rollout_output = await self._run_command(
+                rollout_cmd, cwd=config.workspace_path
+            )
 
             if rollout_output["returncode"] == 0:
                 result.status = DeploymentStatus.SUCCESS
@@ -1069,14 +1114,17 @@ class DeploymentExecutorService:
 
                 # Get service URL if LoadBalancer
                 svc_result = await self._run_command(
-                    ["kubectl", "get", "svc", "-o", "json"],
-                    cwd=config.workspace_path
+                    ["kubectl", "get", "svc", "-o", "json"], cwd=config.workspace_path
                 )
                 if svc_result["returncode"] == 0:
                     services = json.loads(svc_result["stdout"])
                     for svc in services.get("items", []):
                         if svc.get("spec", {}).get("type") == "LoadBalancer":
-                            ingress = svc.get("status", {}).get("loadBalancer", {}).get("ingress", [])
+                            ingress = (
+                                svc.get("status", {})
+                                .get("loadBalancer", {})
+                                .get("ingress", [])
+                            )
                             if ingress:
                                 ip = ingress[0].get("ip") or ingress[0].get("hostname")
                                 port = svc["spec"]["ports"][0]["port"]
@@ -1084,7 +1132,10 @@ class DeploymentExecutorService:
                                 break
 
                 if progress_callback:
-                    progress_callback(f"Deployed successfully: {result.deployment_url or 'Check kubectl get svc'}", 100)
+                    progress_callback(
+                        f"Deployed successfully: {result.deployment_url or 'Check kubectl get svc'}",
+                        100,
+                    )
             else:
                 result.status = DeploymentStatus.FAILED
                 result.error = rollout_output["stderr"] or "Rollout failed"
@@ -1109,8 +1160,7 @@ class DeploymentExecutorService:
         # Build Docker image
         image_name = f"{config.workspace_path.split('/')[-1]}:latest"
         build_output = await self._run_command(
-            ["docker", "build", "-t", image_name, "."],
-            cwd=config.workspace_path
+            ["docker", "build", "-t", image_name, "."], cwd=config.workspace_path
         )
 
         if build_output["returncode"] != 0:
@@ -1124,9 +1174,15 @@ class DeploymentExecutorService:
             progress_callback("Pushing to ECR...", 40)
 
         # Get ECR login
-        ecr_login = await self._run_command([
-            "aws", "ecr", "get-login-password", "--region", config.region or "us-east-1"
-        ])
+        ecr_login = await self._run_command(
+            [
+                "aws",
+                "ecr",
+                "get-login-password",
+                "--region",
+                config.region or "us-east-1",
+            ]
+        )
 
         if ecr_login["returncode"] != 0:
             result.status = DeploymentStatus.FAILED
@@ -1134,15 +1190,34 @@ class DeploymentExecutorService:
             return result
 
         # Tag and push to ECR (assuming ECR repo exists)
-        account_id = (await self._run_command(["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"]))["stdout"].strip()
+        account_id = (
+            await self._run_command(
+                [
+                    "aws",
+                    "sts",
+                    "get-caller-identity",
+                    "--query",
+                    "Account",
+                    "--output",
+                    "text",
+                ]
+            )
+        )["stdout"].strip()
         region = config.region or "us-east-1"
         ecr_repo = f"{account_id}.dkr.ecr.{region}.amazonaws.com/{image_name}"
 
         # Docker login to ECR
-        await self._run_command([
-            "docker", "login", "--username", "AWS", "--password-stdin",
-            f"{account_id}.dkr.ecr.{region}.amazonaws.com"
-        ], input_data=ecr_login["stdout"])
+        await self._run_command(
+            [
+                "docker",
+                "login",
+                "--username",
+                "AWS",
+                "--password-stdin",
+                f"{account_id}.dkr.ecr.{region}.amazonaws.com",
+            ],
+            input_data=ecr_login["stdout"],
+        )
 
         # Tag and push
         await self._run_command(["docker", "tag", image_name, ecr_repo])
@@ -1161,13 +1236,20 @@ class DeploymentExecutorService:
         cluster_name = config.env_vars.get("ECS_CLUSTER", "default")
         service_name = config.env_vars.get("ECS_SERVICE", image_name.split(":")[0])
 
-        update_output = await self._run_command([
-            "aws", "ecs", "update-service",
-            "--cluster", cluster_name,
-            "--service", service_name,
-            "--force-new-deployment",
-            "--region", region
-        ])
+        update_output = await self._run_command(
+            [
+                "aws",
+                "ecs",
+                "update-service",
+                "--cluster",
+                cluster_name,
+                "--service",
+                service_name,
+                "--force-new-deployment",
+                "--region",
+                region,
+            ]
+        )
 
         if update_output["returncode"] == 0:
             result.status = DeploymentStatus.SUCCESS
@@ -1200,10 +1282,13 @@ class DeploymentExecutorService:
 
         # Zip the workspace
         import zipfile
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             workspace = Path(config.workspace_path)
-            for file in workspace.rglob('*'):
-                if file.is_file() and not any(p in str(file) for p in ['node_modules', '.git', '__pycache__']):
+            for file in workspace.rglob("*"):
+                if file.is_file() and not any(
+                    p in str(file) for p in ["node_modules", ".git", "__pycache__"]
+                ):
                     zipf.write(file, file.relative_to(workspace))
 
         if progress_callback:
@@ -1211,19 +1296,28 @@ class DeploymentExecutorService:
 
         # Update Lambda function
         region = config.region or "us-east-1"
-        update_output = await self._run_command([
-            "aws", "lambda", "update-function-code",
-            "--function-name", function_name,
-            "--zip-file", f"fileb://{zip_path}",
-            "--region", region
-        ])
+        update_output = await self._run_command(
+            [
+                "aws",
+                "lambda",
+                "update-function-code",
+                "--function-name",
+                function_name,
+                "--zip-file",
+                f"fileb://{zip_path}",
+                "--region",
+                region,
+            ]
+        )
 
         if update_output["returncode"] == 0:
             result.status = DeploymentStatus.SUCCESS
             result.success = True
             lambda_info = json.loads(update_output["stdout"])
             result.deployment_id = lambda_info.get("FunctionArn")
-            result.deployment_url = f"arn:aws:lambda:{region}:*:function:{function_name}"
+            result.deployment_url = (
+                f"arn:aws:lambda:{region}:*:function:{function_name}"
+            )
 
             if progress_callback:
                 progress_callback("Lambda deployed successfully", 100)
@@ -1245,18 +1339,25 @@ class DeploymentExecutorService:
         """Deploy to Google Cloud Run."""
         result.status = DeploymentStatus.BUILDING
 
-        service_name = config.env_vars.get("SERVICE_NAME", config.workspace_path.split("/")[-1])
+        service_name = config.env_vars.get(
+            "SERVICE_NAME", config.workspace_path.split("/")[-1]
+        )
         region = config.region or "us-central1"
 
         if progress_callback:
             progress_callback("Deploying to Cloud Run...", 20)
 
         cmd = [
-            "gcloud", "run", "deploy", service_name,
-            "--source", ".",
-            "--region", region,
+            "gcloud",
+            "run",
+            "deploy",
+            service_name,
+            "--source",
+            ".",
+            "--region",
+            region,
             "--allow-unauthenticated",
-            "--quiet"
+            "--quiet",
         ]
 
         output = await self._run_command_streaming(
@@ -1273,12 +1374,14 @@ class DeploymentExecutorService:
             result.success = True
 
             # Extract service URL
-            url_match = re.search(r'Service URL: (https://[^\s]+)', output["stdout"])
+            url_match = re.search(r"Service URL: (https://[^\s]+)", output["stdout"])
             if url_match:
                 result.deployment_url = url_match.group(1)
 
             if progress_callback:
-                progress_callback(f"Deployed successfully: {result.deployment_url}", 100)
+                progress_callback(
+                    f"Deployed successfully: {result.deployment_url}", 100
+                )
         else:
             result.status = DeploymentStatus.FAILED
             result.error = output["stderr"] or "Cloud Run deployment failed"
@@ -1319,9 +1422,13 @@ class DeploymentExecutorService:
         # Run container
         port = config.env_vars.get("PORT", "3000")
         run_cmd = [
-            "docker", "run", "-d",
-            "-p", f"{port}:{port}",
-            "--name", f"{image_name}-container",
+            "docker",
+            "run",
+            "-d",
+            "-p",
+            f"{port}:{port}",
+            "--name",
+            f"{image_name}-container",
         ]
 
         # Add environment variables
@@ -1360,9 +1467,7 @@ class DeploymentExecutorService:
         if progress_callback:
             progress_callback("Rolling back Vercel deployment...", 50)
 
-        output = await self._run_command([
-            "vercel", "rollback", deployment_id, "--yes"
-        ])
+        output = await self._run_command(["vercel", "rollback", deployment_id, "--yes"])
 
         if output["returncode"] == 0:
             result.status = DeploymentStatus.SUCCESS
@@ -1383,9 +1488,7 @@ class DeploymentExecutorService:
         if progress_callback:
             progress_callback("Rolling back Railway deployment...", 50)
 
-        output = await self._run_command([
-            "railway", "rollback", deployment_id
-        ])
+        output = await self._run_command(["railway", "rollback", deployment_id])
 
         if output["returncode"] == 0:
             result.status = DeploymentStatus.SUCCESS
@@ -1408,9 +1511,9 @@ class DeploymentExecutorService:
             progress_callback("Rolling back Fly deployment...", 50)
 
         cmd_name = "fly" if shutil.which("fly") else "flyctl"
-        output = await self._run_command([
-            cmd_name, "releases", "rollback", deployment_id
-        ], cwd=workspace_path)
+        output = await self._run_command(
+            [cmd_name, "releases", "rollback", deployment_id], cwd=workspace_path
+        )
 
         if output["returncode"] == 0:
             result.status = DeploymentStatus.SUCCESS
@@ -1432,9 +1535,10 @@ class DeploymentExecutorService:
         if progress_callback:
             progress_callback("Rolling back Kubernetes deployment...", 50)
 
-        output = await self._run_command([
-            "kubectl", "rollout", "undo", f"deployment/{deployment_name}"
-        ], cwd=workspace_path)
+        output = await self._run_command(
+            ["kubectl", "rollout", "undo", f"deployment/{deployment_name}"],
+            cwd=workspace_path,
+        )
 
         if output["returncode"] == 0:
             result.status = DeploymentStatus.SUCCESS
@@ -1451,18 +1555,14 @@ class DeploymentExecutorService:
 
     async def _get_vercel_status(self, deployment_id: str) -> Dict[str, Any]:
         """Get Vercel deployment status."""
-        output = await self._run_command([
-            "vercel", "inspect", deployment_id, "--json"
-        ])
+        output = await self._run_command(["vercel", "inspect", deployment_id, "--json"])
         if output["returncode"] == 0:
             return json.loads(output["stdout"])
         return {"status": "error", "message": output["stderr"]}
 
     async def _get_railway_status(self, deployment_id: str) -> Dict[str, Any]:
         """Get Railway deployment status."""
-        output = await self._run_command([
-            "railway", "status", "--json"
-        ])
+        output = await self._run_command(["railway", "status", "--json"])
         if output["returncode"] == 0:
             return json.loads(output["stdout"])
         return {"status": "error", "message": output["stderr"]}
@@ -1470,9 +1570,7 @@ class DeploymentExecutorService:
     async def _get_fly_status(self, app_name: str) -> Dict[str, Any]:
         """Get Fly.io deployment status."""
         cmd_name = "fly" if shutil.which("fly") else "flyctl"
-        output = await self._run_command([
-            cmd_name, "status", "--json"
-        ])
+        output = await self._run_command([cmd_name, "status", "--json"])
         if output["returncode"] == 0:
             return json.loads(output["stdout"])
         return {"status": "error", "message": output["stderr"]}
@@ -1573,7 +1671,6 @@ class DeploymentExecutorService:
                 "logs": logs,
             }
 
-
     # -------------------------------------------------------------------------
     # Health Verification & Smoke Testing
     # -------------------------------------------------------------------------
@@ -1630,9 +1727,13 @@ class DeploymentExecutorService:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(
                         full_url,
-                        timeout=aiohttp.ClientTimeout(total=timeout_seconds / retry_count),
+                        timeout=aiohttp.ClientTimeout(
+                            total=timeout_seconds / retry_count
+                        ),
                     ) as response:
-                        latency = (datetime.utcnow() - start_time).total_seconds() * 1000
+                        latency = (
+                            datetime.utcnow() - start_time
+                        ).total_seconds() * 1000
                         health_result["latency_ms"] = latency
                         health_result["status_code"] = response.status
 
@@ -1647,7 +1748,7 @@ class DeploymentExecutorService:
                             if progress_callback:
                                 progress_callback(
                                     f"Health check passed (status: {response.status}, latency: {latency:.0f}ms)",
-                                    100
+                                    100,
                                 )
                             return health_result
 
@@ -1662,7 +1763,7 @@ class DeploymentExecutorService:
                 if progress_callback:
                     progress_callback(
                         f"Health check attempt {attempt + 1} failed, retrying...",
-                        (attempt + 1) * 100 / retry_count
+                        (attempt + 1) * 100 / retry_count,
                     )
                 await asyncio.sleep(retry_delay_seconds)
 
@@ -1725,9 +1826,13 @@ class DeploymentExecutorService:
 
                     method = test.get("method", "GET").upper()
                     if method == "GET":
-                        async with session.get(full_url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                        async with session.get(
+                            full_url, timeout=aiohttp.ClientTimeout(total=30)
+                        ) as response:
                             test_result["status_code"] = response.status
-                            test_result["latency_ms"] = (datetime.utcnow() - start_time).total_seconds() * 1000
+                            test_result["latency_ms"] = (
+                                datetime.utcnow() - start_time
+                            ).total_seconds() * 1000
 
                             body = await response.text()
 
@@ -1738,20 +1843,26 @@ class DeploymentExecutorService:
                                     if expected_body in body:
                                         test_result["passed"] = True
                                     else:
-                                        test_result["error"] = f"Expected body to contain: {expected_body}"
+                                        test_result["error"] = (
+                                            f"Expected body to contain: {expected_body}"
+                                        )
                                 else:
                                     test_result["passed"] = True
                             else:
-                                test_result["error"] = f"Expected status {expected_status}, got {response.status}"
+                                test_result["error"] = (
+                                    f"Expected status {expected_status}, got {response.status}"
+                                )
 
                     elif method == "POST":
                         async with session.post(
                             full_url,
                             json=test.get("body", {}),
-                            timeout=aiohttp.ClientTimeout(total=30)
+                            timeout=aiohttp.ClientTimeout(total=30),
                         ) as response:
                             test_result["status_code"] = response.status
-                            test_result["latency_ms"] = (datetime.utcnow() - start_time).total_seconds() * 1000
+                            test_result["latency_ms"] = (
+                                datetime.utcnow() - start_time
+                            ).total_seconds() * 1000
                             test_result["passed"] = response.status == expected_status
 
                 except Exception as e:
@@ -1774,7 +1885,7 @@ class DeploymentExecutorService:
         if progress_callback:
             progress_callback(
                 f"Smoke tests complete: {results['passed']}/{results['total']} passed",
-                100
+                100,
             )
 
         return results
@@ -1820,7 +1931,9 @@ class DeploymentExecutorService:
 
         deploy_result = await self.execute_deployment(
             config,
-            progress_callback=lambda msg, pct: progress_callback(msg, pct * 0.4) if progress_callback else None
+            progress_callback=lambda msg, pct: (
+                progress_callback(msg, pct * 0.4) if progress_callback else None
+            ),
         )
 
         result["deployment"] = {
@@ -1846,7 +1959,11 @@ class DeploymentExecutorService:
             health_result = await self.verify_deployment_health(
                 url=deploy_result.deployment_url,
                 health_endpoint=health_endpoint,
-                progress_callback=lambda msg, pct: progress_callback(msg, 40 + pct * 0.3) if progress_callback else None
+                progress_callback=lambda msg, pct: (
+                    progress_callback(msg, 40 + pct * 0.3)
+                    if progress_callback
+                    else None
+                ),
             )
             result["health_check"] = health_result
 
@@ -1862,12 +1979,18 @@ class DeploymentExecutorService:
                 smoke_result = await self.run_smoke_tests(
                     url=deploy_result.deployment_url,
                     smoke_tests=smoke_tests,
-                    progress_callback=lambda msg, pct: progress_callback(msg, 70 + pct * 0.3) if progress_callback else None
+                    progress_callback=lambda msg, pct: (
+                        progress_callback(msg, 70 + pct * 0.3)
+                        if progress_callback
+                        else None
+                    ),
                 )
                 result["smoke_tests"] = smoke_result
 
                 if not smoke_result["all_passed"]:
-                    result["error"] = f"Smoke tests failed: {smoke_result['failed']}/{smoke_result['total']} tests failed"
+                    result["error"] = (
+                        f"Smoke tests failed: {smoke_result['failed']}/{smoke_result['total']} tests failed"
+                    )
                     return result
 
         result["success"] = True
@@ -1910,13 +2033,19 @@ class DeploymentExecutorService:
                 progress_callback("Verification failed, initiating rollback...", 85)
 
             try:
-                deployment_id = result.get("deployment", {}).get("deployment_id", "unknown")
+                deployment_id = result.get("deployment", {}).get(
+                    "deployment_id", "unknown"
+                )
 
                 rollback_result = await self.rollback_deployment(
                     platform=config.platform,
                     deployment_id=deployment_id,
                     workspace_path=config.workspace_path,
-                    progress_callback=lambda msg, pct: progress_callback(msg, 85 + pct * 0.15) if progress_callback else None
+                    progress_callback=lambda msg, pct: (
+                        progress_callback(msg, 85 + pct * 0.15)
+                        if progress_callback
+                        else None
+                    ),
                 )
 
                 result["rollback"] = {
@@ -1928,7 +2057,9 @@ class DeploymentExecutorService:
                     if rollback_result.success:
                         progress_callback("Rollback completed successfully", 100)
                     else:
-                        progress_callback(f"Rollback failed: {rollback_result.error}", 100)
+                        progress_callback(
+                            f"Rollback failed: {rollback_result.error}", 100
+                        )
 
             except Exception as e:
                 result["rollback"] = {

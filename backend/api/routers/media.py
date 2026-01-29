@@ -26,18 +26,23 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 # REQUEST/RESPONSE MODELS
 # ============================================================
 
+
 class VideoProcessRequest(BaseModel):
     """Request to process a video file"""
+
     video_path: str = Field(..., description="Path to video file on disk")
     frame_interval: float = Field(default=5.0, description="Seconds between frames")
     max_frames: int = Field(default=20, description="Maximum frames to extract")
     transcribe: bool = Field(default=True, description="Whether to transcribe audio")
-    analyze_frames: bool = Field(default=True, description="Whether to analyze frames with vision")
+    analyze_frames: bool = Field(
+        default=True, description="Whether to analyze frames with vision"
+    )
     vision_provider: str = Field(default="anthropic", description="Vision provider")
 
 
 class VideoProcessResponse(BaseModel):
     """Response from video processing"""
+
     success: bool
     duration: float
     frame_count: int
@@ -49,6 +54,7 @@ class VideoProcessResponse(BaseModel):
 
 class VideoChatRequest(BaseModel):
     """Request to process video for chat context"""
+
     video_path: str
     frame_interval: float = 10.0
     max_frames: int = 10
@@ -56,6 +62,7 @@ class VideoChatRequest(BaseModel):
 
 class VideoChatResponse(BaseModel):
     """Response with video context for chat"""
+
     success: bool
     context: str  # Text context for LLM
     frame_images: list[str]  # Base64-encoded frames for vision
@@ -64,6 +71,7 @@ class VideoChatResponse(BaseModel):
 
 class VideoCapabilityResponse(BaseModel):
     """Response for video capability check"""
+
     available: bool
     message: str
     supported_formats: list[str]
@@ -72,6 +80,7 @@ class VideoCapabilityResponse(BaseModel):
 # ============================================================
 # ENDPOINTS
 # ============================================================
+
 
 @router.get("/video/capabilities")
 async def check_video_capabilities() -> VideoCapabilityResponse:
@@ -100,7 +109,9 @@ async def process_video_endpoint(request: VideoProcessRequest) -> VideoProcessRe
 
         # Check if file exists
         if not os.path.exists(request.video_path):
-            raise HTTPException(status_code=404, detail=f"Video file not found: {request.video_path}")
+            raise HTTPException(
+                status_code=404, detail=f"Video file not found: {request.video_path}"
+            )
 
         # Process video
         from backend.services.video_processor_service import VideoProcessor
@@ -132,11 +143,15 @@ async def process_video_endpoint(request: VideoProcessRequest) -> VideoProcessRe
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.error(f"Video processing error: {e}")
-        raise HTTPException(status_code=500, detail=f"Video processing failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Video processing failed: {str(e)}"
+        )
 
 
 @router.post("/video/process-for-chat")
-async def process_video_for_chat_endpoint(request: VideoChatRequest) -> VideoChatResponse:
+async def process_video_for_chat_endpoint(
+    request: VideoChatRequest,
+) -> VideoChatResponse:
     """
     Process a video for use in chat context.
 
@@ -249,4 +264,6 @@ async def upload_and_process_video(
         raise
     except Exception as e:
         logger.error(f"Video upload processing error: {e}")
-        raise HTTPException(status_code=500, detail=f"Video processing failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Video processing failed: {str(e)}"
+        )

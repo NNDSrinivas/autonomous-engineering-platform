@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 class DesignFormat(Enum):
     """Supported design input formats"""
+
     IMAGE = "image"  # PNG, JPG, WebP
     FIGMA = "figma"  # Figma URL
     SCREENSHOT = "screenshot"  # Screenshot file
@@ -41,6 +42,7 @@ class DesignFormat(Enum):
 
 class ComponentFramework(Enum):
     """Target component frameworks"""
+
     REACT = "react"
     NEXTJS = "nextjs"
     VUE = "vue"
@@ -50,6 +52,7 @@ class ComponentFramework(Enum):
 
 class StylingApproach(Enum):
     """CSS styling approaches"""
+
     TAILWIND = "tailwind"
     CSS_MODULES = "css_modules"
     STYLED_COMPONENTS = "styled_components"
@@ -60,6 +63,7 @@ class StylingApproach(Enum):
 @dataclass
 class ColorPalette:
     """Extracted color palette from design"""
+
     primary: str
     secondary: str
     accent: str
@@ -76,6 +80,7 @@ class ColorPalette:
 @dataclass
 class ComponentSpec:
     """Specification for a generated component"""
+
     name: str
     description: str
     props: Dict[str, str]  # prop_name -> type
@@ -87,6 +92,7 @@ class ComponentSpec:
 @dataclass
 class DesignAnalysis:
     """Complete analysis of a design"""
+
     components: List[ComponentSpec]
     color_palette: ColorPalette
     typography: Dict[str, Any]
@@ -100,6 +106,7 @@ class DesignAnalysis:
 @dataclass
 class GeneratedComponent:
     """A generated component with code"""
+
     name: str
     filename: str
     code: str
@@ -292,19 +299,23 @@ class DesignToCodeService:
 
         prompt = COMPONENT_GENERATION_PROMPT.format(
             component_name=component_spec.name,
-            component_spec=json.dumps({
-                "name": component_spec.name,
-                "description": component_spec.description,
-                "props": component_spec.props,
-                "children": component_spec.children,
-            }),
-            color_palette=json.dumps({
-                "primary": color_palette.primary,
-                "secondary": color_palette.secondary,
-                "accent": color_palette.accent,
-                "background": color_palette.background,
-                "text_primary": color_palette.text_primary,
-            }),
+            component_spec=json.dumps(
+                {
+                    "name": component_spec.name,
+                    "description": component_spec.description,
+                    "props": component_spec.props,
+                    "children": component_spec.children,
+                }
+            ),
+            color_palette=json.dumps(
+                {
+                    "primary": color_palette.primary,
+                    "secondary": color_palette.secondary,
+                    "accent": color_palette.accent,
+                    "background": color_palette.background,
+                    "text_primary": color_palette.text_primary,
+                }
+            ),
             typography=json.dumps(typography),
         )
 
@@ -407,7 +418,7 @@ Only output the JSON, nothing else."""
         response = await self._call_vision_api(prompt, image_data)
 
         # Parse colors
-        json_match = re.search(r'\{[^}]+\}', response, re.DOTALL)
+        json_match = re.search(r"\{[^}]+\}", response, re.DOTALL)
         if json_match:
             colors = json.loads(json_match.group())
             return ColorPalette(**colors)
@@ -462,13 +473,13 @@ Only output the JSON, nothing else."""
 
         # Parse Figma URL to get file key and node ID
         # Example: https://www.figma.com/file/abc123/Design?node-id=1-2
-        match = re.search(r'/file/([^/]+)', figma_url)
+        match = re.search(r"/file/([^/]+)", figma_url)
         if not match:
             raise ValueError("Invalid Figma URL")
 
         file_key = match.group(1)
-        node_match = re.search(r'node-id=([^&]+)', figma_url)
-        node_id = node_match.group(1).replace('-', ':') if node_match else ""
+        node_match = re.search(r"node-id=([^&]+)", figma_url)
+        node_id = node_match.group(1).replace("-", ":") if node_match else ""
 
         # Get image from Figma
         headers = {"X-Figma-Token": figma_token}
@@ -612,12 +623,12 @@ Only output the JSON, nothing else."""
         """Parse vision API response into DesignAnalysis"""
 
         # Extract JSON from response
-        json_match = re.search(r'```json\s*(.*?)\s*```', response, re.DOTALL)
+        json_match = re.search(r"```json\s*(.*?)\s*```", response, re.DOTALL)
         if json_match:
             json_str = json_match.group(1)
         else:
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
             json_str = response[json_start:json_end]
 
         try:
@@ -627,10 +638,16 @@ Only output the JSON, nothing else."""
             return DesignAnalysis(
                 components=[],
                 color_palette=ColorPalette(
-                    primary="#3B82F6", secondary="#10B981", accent="#F59E0B",
-                    background="#FFFFFF", surface="#F3F4F6",
-                    text_primary="#111827", text_secondary="#6B7280",
-                    success="#10B981", warning="#F59E0B", error="#EF4444",
+                    primary="#3B82F6",
+                    secondary="#10B981",
+                    accent="#F59E0B",
+                    background="#FFFFFF",
+                    surface="#F3F4F6",
+                    text_primary="#111827",
+                    text_secondary="#6B7280",
+                    success="#10B981",
+                    warning="#F59E0B",
+                    error="#EF4444",
                 ),
                 typography={},
                 layout={},
@@ -643,14 +660,16 @@ Only output the JSON, nothing else."""
         # Parse components
         components = []
         for comp_data in data.get("components", []):
-            components.append(ComponentSpec(
-                name=comp_data.get("name", "Component"),
-                description=comp_data.get("description", ""),
-                props=comp_data.get("props", {}),
-                children=comp_data.get("children", []),
-                responsive_breakpoints=comp_data.get("responsive_breakpoints", {}),
-                accessibility=comp_data.get("accessibility", {}),
-            ))
+            components.append(
+                ComponentSpec(
+                    name=comp_data.get("name", "Component"),
+                    description=comp_data.get("description", ""),
+                    props=comp_data.get("props", {}),
+                    children=comp_data.get("children", []),
+                    responsive_breakpoints=comp_data.get("responsive_breakpoints", {}),
+                    accessibility=comp_data.get("accessibility", {}),
+                )
+            )
 
         # Parse color palette
         colors = data.get("color_palette", {})
@@ -681,7 +700,11 @@ Only output the JSON, nothing else."""
     def _extract_code(self, response: str) -> str:
         """Extract code from LLM response"""
         # Try to extract from code block
-        code_match = re.search(r'```(?:tsx?|jsx?|typescript|javascript)?\s*(.*?)\s*```', response, re.DOTALL)
+        code_match = re.search(
+            r"```(?:tsx?|jsx?|typescript|javascript)?\s*(.*?)\s*```",
+            response,
+            re.DOTALL,
+        )
         if code_match:
             return code_match.group(1).strip()
         return response.strip()
@@ -694,7 +717,7 @@ Only output the JSON, nothing else."""
         """Generate Tailwind/theme configuration"""
         palette = analysis.color_palette
 
-        return f'''// Generated theme configuration
+        return f"""// Generated theme configuration
 export const colors = {{
   primary: "{palette.primary}",
   secondary: "{palette.secondary}",
@@ -725,7 +748,7 @@ export const tailwindExtend = {{
     sans: [typography.font_family || "Inter", "sans-serif"],
   }},
 }};
-'''
+"""
 
 
 async def design_to_code(

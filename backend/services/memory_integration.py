@@ -114,11 +114,13 @@ def _load_workspace_memory_sync(
     try:
         # Check if workspace session exists
         result = db.execute(
-            text("""
+            text(
+                """
                 SELECT id, workspace_name, last_active, last_known_state
                 FROM navi_workspace_sessions
                 WHERE user_id = :user_id AND workspace_path = :workspace_path
-            """),
+            """
+            ),
             {"user_id": user_id_int, "workspace_path": normalized_path},
         )
         workspace_row = result.fetchone()
@@ -136,11 +138,13 @@ def _load_workspace_memory_sync(
 
         # Load facts
         facts_result = db.execute(
-            text("""
+            text(
+                """
                 SELECT category, fact_key, fact_value
                 FROM navi_session_facts
                 WHERE workspace_session_id = :ws_id AND is_current = true
-            """),
+            """
+            ),
             {"ws_id": workspace_session_id},
         )
         facts = {}
@@ -152,13 +156,15 @@ def _load_workspace_memory_sync(
 
         # Load error resolutions
         errors_result = db.execute(
-            text("""
+            text(
+                """
                 SELECT error_type, error_signature, resolution_summary, times_successful, times_applied
                 FROM navi_error_resolutions
                 WHERE workspace_session_id = :ws_id
                 ORDER BY (times_successful::float / NULLIF(times_applied, 0)) DESC NULLS LAST
                 LIMIT 20
-            """),
+            """
+            ),
             {"ws_id": workspace_session_id},
         )
         error_resolutions = [
@@ -173,11 +179,13 @@ def _load_workspace_memory_sync(
 
         # Load dependencies
         deps_result = db.execute(
-            text("""
+            text(
+                """
                 SELECT package_manager, package_name, package_version
                 FROM navi_installed_dependencies
                 WHERE workspace_session_id = :ws_id
-            """),
+            """
+            ),
             {"ws_id": workspace_session_id},
         )
         dependencies = [
@@ -335,10 +343,12 @@ def save_conversation_exchange_sync(
 
         # Get or create workspace session
         result = db.execute(
-            text("""
+            text(
+                """
                 SELECT id FROM navi_workspace_sessions
                 WHERE user_id = :user_id AND workspace_path = :workspace_path
-            """),
+            """
+            ),
             {"user_id": user_id_int, "workspace_path": normalized_path},
         )
         row = result.fetchone()
@@ -347,21 +357,25 @@ def save_conversation_exchange_sync(
             workspace_session_id = row[0]
             # Update last_active
             db.execute(
-                text("""
+                text(
+                    """
                     UPDATE navi_workspace_sessions
                     SET last_active = :now
                     WHERE id = :ws_id
-                """),
+                """
+                ),
                 {"now": datetime.utcnow(), "ws_id": workspace_session_id},
             )
         else:
             # Create new workspace session
             workspace_session_id = str(uuid.uuid4())
             db.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO navi_workspace_sessions (id, user_id, workspace_path, first_seen, last_active)
                     VALUES (:id, :user_id, :workspace_path, :now, :now)
-                """),
+                """
+                ),
                 {
                     "id": workspace_session_id,
                     "user_id": user_id_int,
@@ -376,14 +390,16 @@ def save_conversation_exchange_sync(
         for fact in facts:
             # Mark existing facts as not current
             db.execute(
-                text("""
+                text(
+                    """
                     UPDATE navi_session_facts
                     SET is_current = false
                     WHERE workspace_session_id = :ws_id
                     AND category = :category
                     AND fact_key = :fact_key
                     AND is_current = true
-                """),
+                """
+                ),
                 {
                     "ws_id": workspace_session_id,
                     "category": fact["category"],
@@ -393,11 +409,13 @@ def save_conversation_exchange_sync(
 
             # Insert new fact
             db.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO navi_session_facts
                     (id, workspace_session_id, category, fact_key, fact_value, is_current, created_at, last_verified)
                     VALUES (:id, :ws_id, :category, :fact_key, :fact_value, true, :now, :now)
-                """),
+                """
+                ),
                 {
                     "id": str(uuid.uuid4()),
                     "ws_id": workspace_session_id,
@@ -413,13 +431,15 @@ def save_conversation_exchange_sync(
         for dep in dependencies:
             # Upsert dependency
             db.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO navi_installed_dependencies
                     (id, workspace_session_id, package_manager, package_name, package_version, installed_at, last_verified)
                     VALUES (:id, :ws_id, :manager, :name, :version, :now, :now)
                     ON CONFLICT (workspace_session_id, package_manager, package_name)
                     DO UPDATE SET package_version = :version, last_verified = :now
-                """),
+                """
+                ),
                 {
                     "id": str(uuid.uuid4()),
                     "ws_id": workspace_session_id,
@@ -466,7 +486,9 @@ def _extract_facts_from_response(
             facts.append({"category": "server", "key": f"port_{match}", "value": match})
 
     # Extract server status
-    if re.search(r"server\s+is\s+(now\s+)?running|successfully\s+started", response.lower()):
+    if re.search(
+        r"server\s+is\s+(now\s+)?running|successfully\s+started", response.lower()
+    ):
         facts.append({"category": "server", "key": "status", "value": "running"})
 
     # Extract from actions
@@ -476,10 +498,22 @@ def _extract_facts_from_response(
             exit_code = action.get("exit_code", action.get("exitCode"))
             if exit_code == 0:
                 facts.append({"category": "task", "key": "last_command", "value": cmd})
-                facts.append({"category": "task", "key": "last_command_status", "value": "success"})
+                facts.append(
+                    {
+                        "category": "task",
+                        "key": "last_command_status",
+                        "value": "success",
+                    }
+                )
         elif action.get("type") in ["create", "edit"]:
             file_path = action.get("file") or action.get("path", "")
-            facts.append({"category": "file", "key": f"modified_{action['type']}", "value": file_path})
+            facts.append(
+                {
+                    "category": "file",
+                    "key": f"modified_{action['type']}",
+                    "value": file_path,
+                }
+            )
 
     return facts
 
@@ -552,7 +586,8 @@ async def find_similar_error_resolution(
         user_id_int = int(user_id) if user_id.isdigit() else 1
 
         result = db.execute(
-            text("""
+            text(
+                """
                 SELECT er.error_type, er.resolution_summary, er.resolution_steps,
                        er.times_successful, er.times_applied
                 FROM navi_error_resolutions er
@@ -562,7 +597,8 @@ async def find_similar_error_resolution(
                 AND er.error_signature = :signature
                 ORDER BY (er.times_successful::float / NULLIF(er.times_applied, 0)) DESC NULLS LAST
                 LIMIT 1
-            """),
+            """
+            ),
             {
                 "user_id": user_id_int,
                 "workspace_path": normalized_path,

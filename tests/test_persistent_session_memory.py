@@ -132,7 +132,9 @@ class TestSessionMemoryServiceExtractors:
 
     def test_extract_port_info_from_text(self):
         """Test extracting port numbers from text."""
-        text = "The server is running on port 3001. You can access it at localhost:3001."
+        text = (
+            "The server is running on port 3001. You can access it at localhost:3001."
+        )
         facts = self.service._extract_port_info(text, self.timestamp, None)
 
         assert len(facts) >= 1
@@ -194,7 +196,9 @@ class TestSessionMemoryServiceExtractors:
 
     def test_extract_decisions(self):
         """Test extracting decisions made."""
-        text = "I decided to use React for the frontend. The solution is to add caching."
+        text = (
+            "I decided to use React for the frontend. The solution is to add caching."
+        )
         facts = self.service._extract_decisions(text, self.timestamp, None)
 
         assert len(facts) >= 1
@@ -373,7 +377,9 @@ class TestPersistentSessionMemoryExtractors:
 
     def test_extract_resolution_summary(self):
         """Test resolution summary extraction."""
-        response = "To fix this, run npm install. This will resolve the dependency issue."
+        response = (
+            "To fix this, run npm install. This will resolve the dependency issue."
+        )
         summary = self.service._extract_resolution_summary(response)
 
         assert len(summary) > 0

@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DecomposedTask:
     """A task generated from goal decomposition"""
+
     id: str
     title: str
     description: str
@@ -50,6 +51,7 @@ class DecomposedTask:
 @dataclass
 class DecompositionResult:
     """Result of goal decomposition"""
+
     project_name: str
     project_type: str
     phases: List[str]
@@ -186,7 +188,9 @@ class TaskDecomposer:
         # Parse the JSON response
         result = self._parse_decomposition_response(response.content)
 
-        logger.info(f"Decomposed into {len(result.tasks)} tasks across {len(result.phases)} phases")
+        logger.info(
+            f"Decomposed into {len(result.tasks)} tasks across {len(result.phases)} phases"
+        )
 
         return result
 
@@ -233,13 +237,13 @@ Include realistic task IDs (t001, t002, etc.) and proper dependencies between ta
         """Parse the LLM response into a DecompositionResult"""
 
         # Extract JSON from response (may be wrapped in markdown)
-        json_match = re.search(r'```json\s*(.*?)\s*```', response, re.DOTALL)
+        json_match = re.search(r"```json\s*(.*?)\s*```", response, re.DOTALL)
         if json_match:
             json_str = json_match.group(1)
         else:
             # Try to find raw JSON
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 json_str = response[json_start:json_end]
             else:

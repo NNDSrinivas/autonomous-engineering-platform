@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 class LLMProvider(Enum):
     """Supported LLM providers"""
+
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
@@ -55,6 +56,7 @@ class LLMProvider(Enum):
 @dataclass
 class LLMMessage:
     """A message in the conversation"""
+
     role: str  # system, user, assistant, tool
     content: str
     name: Optional[str] = None
@@ -65,6 +67,7 @@ class LLMMessage:
 @dataclass
 class LLMResponse:
     """Response from an LLM"""
+
     content: str
     model: str
     provider: str
@@ -77,6 +80,7 @@ class LLMResponse:
 @dataclass
 class LLMConfig:
     """Configuration for LLM requests"""
+
     provider: LLMProvider
     model: str
     api_key: Optional[str] = None  # BYOK support
@@ -320,11 +324,13 @@ class AnthropicAdapter(BaseLLMAdapter):
             for tool in self.config.tools:
                 if tool.get("type") == "function":
                     func = tool["function"]
-                    anthropic_tools.append({
-                        "name": func["name"],
-                        "description": func.get("description", ""),
-                        "input_schema": func.get("parameters", {}),
-                    })
+                    anthropic_tools.append(
+                        {
+                            "name": func["name"],
+                            "description": func.get("description", ""),
+                            "input_schema": func.get("parameters", {}),
+                        }
+                    )
             if anthropic_tools:
                 payload["tools"] = anthropic_tools
 
@@ -343,14 +349,16 @@ class AnthropicAdapter(BaseLLMAdapter):
             if block["type"] == "text":
                 content += block["text"]
             elif block["type"] == "tool_use":
-                tool_calls.append({
-                    "id": block["id"],
-                    "type": "function",
-                    "function": {
-                        "name": block["name"],
-                        "arguments": json.dumps(block["input"]),
-                    },
-                })
+                tool_calls.append(
+                    {
+                        "id": block["id"],
+                        "type": "function",
+                        "function": {
+                            "name": block["name"],
+                            "arguments": json.dumps(block["input"]),
+                        },
+                    }
+                )
 
         return LLMResponse(
             content=content,
@@ -427,10 +435,12 @@ class GoogleAdapter(BaseLLMAdapter):
                 system_instruction = m.content
             else:
                 role = "user" if m.role == "user" else "model"
-                contents.append({
-                    "role": role,
-                    "parts": [{"text": m.content}],
-                })
+                contents.append(
+                    {
+                        "role": role,
+                        "parts": [{"text": m.content}],
+                    }
+                )
 
         payload = {
             "contents": contents,
@@ -479,10 +489,12 @@ class GoogleAdapter(BaseLLMAdapter):
                 system_instruction = m.content
             else:
                 role = "user" if m.role == "user" else "model"
-                contents.append({
-                    "role": role,
-                    "parts": [{"text": m.content}],
-                })
+                contents.append(
+                    {
+                        "role": role,
+                        "parts": [{"text": m.content}],
+                    }
+                )
 
         payload = {
             "contents": contents,
@@ -566,7 +578,9 @@ class OllamaAdapter(BaseLLMAdapter):
             "stream": True,
         }
 
-        async with self.client.stream("POST", f"{api_base}/chat", json=payload) as response:
+        async with self.client.stream(
+            "POST", f"{api_base}/chat", json=payload
+        ) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
                 try:

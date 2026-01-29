@@ -18,9 +18,7 @@ def _safe_json_value(value: Any) -> Any:
     return str(value)
 
 
-def _pick_typed_value(
-    obj: Any, primary: str, fallback: str, expected_type: Any
-) -> Any:
+def _pick_typed_value(obj: Any, primary: str, fallback: str, expected_type: Any) -> Any:
     primary_value = getattr(obj, primary, None)
     if isinstance(primary_value, expected_type):
         return primary_value

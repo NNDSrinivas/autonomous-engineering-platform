@@ -11,7 +11,10 @@ import os
 from typing import Optional
 from pathlib import Path
 
-from backend.services.review_service import RealReviewService, generate_mock_review_stream
+from backend.services.review_service import (
+    RealReviewService,
+    generate_mock_review_stream,
+)
 
 logger = logging.getLogger(__name__)
 

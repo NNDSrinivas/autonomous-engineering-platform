@@ -58,18 +58,22 @@ def _get_node_env_setup(workdir: Optional[str] = None) -> str:
         setup_parts.append(
             f'export NVM_DIR="{nvm_dir}" && '
             f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-            f'{nvm_use}'
+            f"{nvm_use}"
         )
 
     # Check for fnm
     fnm_path = os.path.join(home, ".fnm")
     if os.path.exists(fnm_path):
-        setup_parts.append(f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true')
+        setup_parts.append(
+            f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
+        )
 
     # Check for volta
     volta_home = os.environ.get("VOLTA_HOME", os.path.join(home, ".volta"))
     if os.path.exists(volta_home):
-        setup_parts.append(f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"')
+        setup_parts.append(
+            f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"'
+        )
 
     return " && ".join(setup_parts) if setup_parts else ""
 

@@ -37,7 +37,7 @@ def _get_command_env() -> dict:
 
 
 # Documentation templates
-README_TEMPLATE = '''# {project_name}
+README_TEMPLATE = """# {project_name}
 
 {badges}
 
@@ -86,9 +86,9 @@ README_TEMPLATE = '''# {project_name}
 ## License
 
 {license}
-'''
+"""
 
-API_DOC_TEMPLATE = '''# {api_name} API Documentation
+API_DOC_TEMPLATE = """# {api_name} API Documentation
 
 {description}
 
@@ -117,9 +117,9 @@ API_DOC_TEMPLATE = '''# {api_name} API Documentation
 ## Examples
 
 {examples}
-'''
+"""
 
-COMPONENT_DOC_TEMPLATE = '''# {component_name}
+COMPONENT_DOC_TEMPLATE = """# {component_name}
 
 {description}
 
@@ -146,9 +146,9 @@ COMPONENT_DOC_TEMPLATE = '''# {component_name}
 ## Related Components
 
 {related}
-'''
+"""
 
-ARCHITECTURE_DOC_TEMPLATE = '''# {project_name} Architecture
+ARCHITECTURE_DOC_TEMPLATE = """# {project_name} Architecture
 
 ## Overview
 
@@ -181,12 +181,13 @@ ARCHITECTURE_DOC_TEMPLATE = '''# {project_name} Architecture
 ## Diagrams
 
 {diagrams}
-'''
+"""
 
 
 @dataclass
 class ProjectInfo:
     """Information extracted from a project."""
+
     name: str
     description: Optional[str]
     language: str
@@ -317,10 +318,10 @@ async def generate_api_docs(
     if not routes:
         return ToolResult(
             output="No API routes found.\n\n"
-                   "Make sure your API follows standard patterns:\n"
-                   "- Express: app.get(), router.post(), etc.\n"
-                   "- FastAPI: @app.get(), @router.post(), etc.\n"
-                   "- Next.js: app/api/*/route.ts",
+            "Make sure your API follows standard patterns:\n"
+            "- Express: app.get(), router.post(), etc.\n"
+            "- FastAPI: @app.get(), @router.post(), etc.\n"
+            "- Next.js: app/api/*/route.ts",
             sources=[],
         )
 
@@ -377,22 +378,28 @@ async def generate_component_docs(
     if not components:
         return ToolResult(
             output="No components found.\n\n"
-                   "Looking for:\n"
-                   "- React: .tsx files in components/ or src/components/\n"
-                   "- Vue: .vue files in components/ or src/components/",
+            "Looking for:\n"
+            "- React: .tsx files in components/ or src/components/\n"
+            "- Vue: .vue files in components/ or src/components/",
             sources=[],
         )
 
     docs = []
     for comp_path in components[:10]:  # Limit to 10 components
-        full_path = os.path.join(workspace_path, comp_path) if not os.path.isabs(comp_path) else comp_path
+        full_path = (
+            os.path.join(workspace_path, comp_path)
+            if not os.path.isabs(comp_path)
+            else comp_path
+        )
         if os.path.exists(full_path):
             doc = _generate_single_component_doc(full_path)
             if doc:
                 docs.append(doc)
 
     if not docs:
-        return ToolResult(output="Could not extract documentation from components.", sources=[])
+        return ToolResult(
+            output="Could not extract documentation from components.", sources=[]
+        )
 
     lines = ["## Generated Component Documentation\n"]
     lines.append(f"**Components Found**: {len(docs)}")
@@ -516,7 +523,7 @@ async def generate_code_comments(
     for comment in comments:
         lines.append(f"\n### Line {comment['line']}: `{comment['name']}`")
         lines.append(f"```{language}")
-        lines.append(comment['comment'])
+        lines.append(comment["comment"])
         lines.append("```")
 
     return ToolResult(output="\n".join(lines), sources=[])
@@ -549,11 +556,23 @@ async def generate_changelog(
 
     try:
         if since_tag:
-            cmd = ["git", "log", f"{since_tag}..HEAD", "--pretty=format:%s|%h|%an|%ad", "--date=short"]
+            cmd = [
+                "git",
+                "log",
+                f"{since_tag}..HEAD",
+                "--pretty=format:%s|%h|%an|%ad",
+                "--date=short",
+            ]
         else:
             cmd = ["git", "log", "-50", "--pretty=format:%s|%h|%an|%ad", "--date=short"]
 
-        result = subprocess.run(cmd, cwd=workspace_path, capture_output=True, text=True, env=_get_command_env())
+        result = subprocess.run(
+            cmd,
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            env=_get_command_env(),
+        )
 
         if result.returncode != 0:
             return ToolResult(
@@ -617,7 +636,9 @@ async def generate_changelog(
             changelog.append(f"### {category}\n")
             for msg, hash_val, author, date in commits:
                 # Clean up commit message
-                clean_msg = re.sub(r"^(feat|fix|docs|perf|refactor|test|chore)(\(.+\))?:\s*", "", msg)
+                clean_msg = re.sub(
+                    r"^(feat|fix|docs|perf|refactor|test|chore)(\(.+\))?:\s*", "", msg
+                )
                 changelog.append(f"- {clean_msg} ({hash_val})")
             changelog.append("")
 
@@ -635,6 +656,7 @@ async def generate_changelog(
 
 
 # Helper functions
+
 
 def _extract_project_info(workspace_path: str) -> ProjectInfo:
     """Extract project information from configuration files."""
@@ -659,7 +681,10 @@ def _extract_project_info(workspace_path: str) -> ProjectInfo:
                 name = pkg.get("name", name)
                 description = pkg.get("description")
                 version = pkg.get("version")
-                dependencies = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+                dependencies = {
+                    **pkg.get("dependencies", {}),
+                    **pkg.get("devDependencies", {}),
+                }
                 scripts = pkg.get("scripts", {})
 
                 # Detect framework
@@ -679,7 +704,11 @@ def _extract_project_info(workspace_path: str) -> ProjectInfo:
                     language = "typescript"
 
                 # Check for tests
-                has_tests = "jest" in dependencies or "vitest" in dependencies or "test" in scripts
+                has_tests = (
+                    "jest" in dependencies
+                    or "vitest" in dependencies
+                    or "test" in scripts
+                )
         except (json.JSONDecodeError, IOError):
             pass
 
@@ -704,12 +733,14 @@ def _extract_project_info(workspace_path: str) -> ProjectInfo:
                 pass
 
     # Check for Docker
-    has_docker = os.path.exists(os.path.join(workspace_path, "Dockerfile")) or \
-                 os.path.exists(os.path.join(workspace_path, "docker-compose.yml"))
+    has_docker = os.path.exists(
+        os.path.join(workspace_path, "Dockerfile")
+    ) or os.path.exists(os.path.join(workspace_path, "docker-compose.yml"))
 
     # Check for CI
-    has_ci = os.path.exists(os.path.join(workspace_path, ".github", "workflows")) or \
-             os.path.exists(os.path.join(workspace_path, ".gitlab-ci.yml"))
+    has_ci = os.path.exists(
+        os.path.join(workspace_path, ".github", "workflows")
+    ) or os.path.exists(os.path.join(workspace_path, ".gitlab-ci.yml"))
 
     return ProjectInfo(
         name=name,
@@ -731,16 +762,24 @@ def _generate_badges(project_info: ProjectInfo) -> str:
     badges = []
 
     if project_info.version:
-        badges.append(f"![Version](https://img.shields.io/badge/version-{project_info.version}-blue)")
+        badges.append(
+            f"![Version](https://img.shields.io/badge/version-{project_info.version}-blue)"
+        )
 
     if project_info.language == "typescript":
-        badges.append("![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)")
+        badges.append(
+            "![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)"
+        )
     elif project_info.language == "python":
-        badges.append("![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)")
+        badges.append(
+            "![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)"
+        )
 
     if project_info.framework:
         badge_name = project_info.framework.replace(".", "").replace(" ", "")
-        badges.append(f"![{project_info.framework}](https://img.shields.io/badge/{badge_name}-000000?logo={badge_name.lower()}&logoColor=white)")
+        badges.append(
+            f"![{project_info.framework}](https://img.shields.io/badge/{badge_name}-000000?logo={badge_name.lower()}&logoColor=white)"
+        )
 
     if project_info.has_tests:
         badges.append("![Tests](https://img.shields.io/badge/tests-passing-green)")
@@ -809,7 +848,9 @@ npm install
 yarn install
 # or
 pnpm install
-```""".format(name=project_info.name)
+```""".format(
+            name=project_info.name
+        )
 
     elif project_info.language == "python":
         return """```bash
@@ -823,7 +864,9 @@ source venv/bin/activate  # On Windows: venv\\Scripts\\activate
 
 # Install dependencies
 pip install -r requirements.txt
-```""".format(name=project_info.name)
+```""".format(
+            name=project_info.name
+        )
 
     return "TODO: Add installation instructions"
 
@@ -864,7 +907,9 @@ def _generate_configuration(workspace_path: str) -> str:
     return "TODO: Add configuration details"
 
 
-def _generate_api_reference_brief(workspace_path: str, project_info: ProjectInfo) -> str:
+def _generate_api_reference_brief(
+    workspace_path: str, project_info: ProjectInfo
+) -> str:
     """Generate brief API reference."""
     if project_info.framework in ("Express", "FastAPI", "NestJS", "Next.js"):
         return "See [API Documentation](./docs/api.md) for detailed endpoint documentation."
@@ -926,7 +971,9 @@ def _generate_deployment_section(workspace_path: str, project_info: ProjectInfo)
     if project_info.framework == "Next.js":
         lines.append("\n### Vercel (Recommended)\n")
         lines.append("Deploy with one click:\n")
-        lines.append("[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)")
+        lines.append(
+            "[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)"
+        )
 
     if not lines:
         lines.append("TODO: Add deployment instructions")
@@ -1010,18 +1057,22 @@ def _extract_api_routes(workspace_path: str, project_info: ProjectInfo) -> List[
                     if f == "route.ts" or f == "route_js":
                         rel_path = os.path.relpath(root, api_dir)
                         route_path = f"/api/{rel_path}"
-                        routes.append({
-                            "path": route_path,
-                            "methods": ["GET", "POST", "PUT", "DELETE"],
-                            "file": os.path.join(root, f),
-                        })
+                        routes.append(
+                            {
+                                "path": route_path,
+                                "methods": ["GET", "POST", "PUT", "DELETE"],
+                                "file": os.path.join(root, f),
+                            }
+                        )
 
     elif project_info.framework in ("Express", "NestJS"):
         # Scan for router definitions
         for root, dirs, files in os.walk(workspace_path):
             dirs[:] = [d for d in dirs if d not in ("node_modules", ".git", "dist")]
             for f in files:
-                if f.endswith((".ts", ".js")) and ("route" in f.lower() or "controller" in f.lower()):
+                if f.endswith((".ts", ".js")) and (
+                    "route" in f.lower() or "controller" in f.lower()
+                ):
                     full_path = os.path.join(root, f)
                     try:
                         with open(full_path, "r") as file:
@@ -1029,18 +1080,22 @@ def _extract_api_routes(workspace_path: str, project_info: ProjectInfo) -> List[
                         # Extract routes using regex
                         route_pattern = r"(app|router)\.(get|post|put|patch|delete)\s*\(\s*['\"]([^'\"]+)['\"]"
                         for match in re.finditer(route_pattern, content, re.IGNORECASE):
-                            routes.append({
-                                "path": match.group(3),
-                                "methods": [match.group(2).upper()],
-                                "file": full_path,
-                            })
+                            routes.append(
+                                {
+                                    "path": match.group(3),
+                                    "methods": [match.group(2).upper()],
+                                    "file": full_path,
+                                }
+                            )
                     except IOError:
                         continue
 
     elif project_info.framework == "FastAPI":
         # Scan for FastAPI decorators
         for root, dirs, files in os.walk(workspace_path):
-            dirs[:] = [d for d in dirs if d not in ("venv", ".venv", "__pycache__", ".git")]
+            dirs[:] = [
+                d for d in dirs if d not in ("venv", ".venv", "__pycache__", ".git")
+            ]
             for f in files:
                 if f.endswith(".py"):
                     full_path = os.path.join(root, f)
@@ -1049,11 +1104,13 @@ def _extract_api_routes(workspace_path: str, project_info: ProjectInfo) -> List[
                             content = file.read()
                         route_pattern = r"@(app|router)\.(get|post|put|patch|delete)\s*\(\s*['\"]([^'\"]+)['\"]"
                         for match in re.finditer(route_pattern, content, re.IGNORECASE):
-                            routes.append({
-                                "path": match.group(3),
-                                "methods": [match.group(2).upper()],
-                                "file": full_path,
-                            })
+                            routes.append(
+                                {
+                                    "path": match.group(3),
+                                    "methods": [match.group(2).upper()],
+                                    "file": full_path,
+                                }
+                            )
                     except IOError:
                         continue
 
@@ -1088,6 +1145,7 @@ def _generate_openapi_spec(routes: List[Dict], project_info: ProjectInfo) -> str
             }
 
     import yaml
+
     try:
         return yaml.dump(spec, default_flow_style=False, sort_keys=False)
     except ImportError:
@@ -1119,12 +1177,18 @@ def _find_components(workspace_path: str) -> List[str]:
     components = []
 
     for root, dirs, files in os.walk(workspace_path):
-        dirs[:] = [d for d in dirs if d not in ("node_modules", ".git", "dist", ".next")]
+        dirs[:] = [
+            d for d in dirs if d not in ("node_modules", ".git", "dist", ".next")
+        ]
 
         for f in files:
             if f.endswith((".tsx", ".jsx", ".vue")):
                 # Skip test files and stories
-                if "test" not in f.lower() and "story" not in f.lower() and "spec" not in f.lower():
+                if (
+                    "test" not in f.lower()
+                    and "story" not in f.lower()
+                    and "spec" not in f.lower()
+                ):
                     rel_path = os.path.relpath(os.path.join(root, f), workspace_path)
                     if "component" in rel_path.lower():
                         components.append(rel_path)
@@ -1190,8 +1254,12 @@ def _analyze_project_structure(workspace_path: str) -> Dict:
 
     # Key files
     key_file_patterns = [
-        "package.json", "requirements.txt", "Dockerfile",
-        "docker-compose.yml", "tsconfig.json", "pyproject.toml",
+        "package.json",
+        "requirements.txt",
+        "Dockerfile",
+        "docker-compose.yml",
+        "tsconfig.json",
+        "pyproject.toml",
     ]
     for pattern in key_file_patterns:
         if os.path.exists(os.path.join(workspace_path, pattern)):
@@ -1237,7 +1305,15 @@ def _generate_tech_stack_section(project_info: ProjectInfo) -> str:
         lines.append(f"- **Framework**: {project_info.framework}")
 
     # Add notable dependencies
-    notable_deps = ["prisma", "typeorm", "sequelize", "mongoose", "redis", "postgresql", "mysql"]
+    notable_deps = [
+        "prisma",
+        "typeorm",
+        "sequelize",
+        "mongoose",
+        "redis",
+        "postgresql",
+        "mysql",
+    ]
     for dep in notable_deps:
         if dep in project_info.dependencies:
             lines.append(f"- **{dep.title()}**: Database/ORM")
@@ -1257,8 +1333,9 @@ def _generate_infrastructure_section(workspace_path: str) -> str:
         lines.append("\n### Docker Compose")
         lines.append("Multi-container setup with Docker Compose.")
 
-    if os.path.exists(os.path.join(workspace_path, "kubernetes")) or \
-       os.path.exists(os.path.join(workspace_path, "k8s")):
+    if os.path.exists(os.path.join(workspace_path, "kubernetes")) or os.path.exists(
+        os.path.join(workspace_path, "k8s")
+    ):
         lines.append("\n### Kubernetes")
         lines.append("Kubernetes manifests available for orchestration.")
 
@@ -1315,31 +1392,38 @@ def _generate_architecture_diagrams(structure: Dict, project_info: ProjectInfo) 
             safe_name = layer_name.replace(" ", "_")
             diagrams.append(f"    {safe_name}[{layer_name}]")
             if i > 0:
-                prev_name = structure["layers"][i-1][0].replace(" ", "_")
+                prev_name = structure["layers"][i - 1][0].replace(" ", "_")
                 diagrams.append(f"    {prev_name} --> {safe_name}")
         diagrams.append("```")
 
     return "\n".join(diagrams)
 
 
-def _generate_comments_for_file(source_code: str, language: str, style: str) -> List[Dict]:
+def _generate_comments_for_file(
+    source_code: str, language: str, style: str
+) -> List[Dict]:
     """Generate documentation comments for functions in a file."""
     comments = []
 
     if language == "python":
         import ast
+
         try:
             tree = ast.parse(source_code)
             for node in ast.walk(tree):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     if not ast.get_docstring(node):
-                        params = [arg.arg for arg in node.args.args if arg.arg != "self"]
+                        params = [
+                            arg.arg for arg in node.args.args if arg.arg != "self"
+                        ]
                         comment = _generate_python_docstring(node.name, params)
-                        comments.append({
-                            "line": node.lineno,
-                            "name": node.name,
-                            "comment": comment,
-                        })
+                        comments.append(
+                            {
+                                "line": node.lineno,
+                                "name": node.name,
+                                "comment": comment,
+                            }
+                        )
         except SyntaxError:
             pass
 
@@ -1347,15 +1431,21 @@ def _generate_comments_for_file(source_code: str, language: str, style: str) -> 
         func_pattern = r"(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)"
         for match in re.finditer(func_pattern, source_code):
             name = match.group(1)
-            params = [p.strip().split(":")[0].strip() for p in match.group(2).split(",") if p.strip()]
-            line = source_code[:match.start()].count("\n") + 1
+            params = [
+                p.strip().split(":")[0].strip()
+                for p in match.group(2).split(",")
+                if p.strip()
+            ]
+            line = source_code[: match.start()].count("\n") + 1
 
             comment = _generate_jsdoc_comment(name, params)
-            comments.append({
-                "line": line,
-                "name": name,
-                "comment": comment,
-            })
+            comments.append(
+                {
+                    "line": line,
+                    "name": name,
+                    "comment": comment,
+                }
+            )
 
     return comments
 

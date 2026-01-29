@@ -206,10 +206,14 @@ class TaskCheckpoint(Base):
             "executed_commands": self.executed_commands or [],
             "partial_content": self.partial_content,
             "streaming_state": self.streaming_state or {},
-            "interrupted_at": self.interrupted_at.isoformat() if self.interrupted_at else None,
+            "interrupted_at": (
+                self.interrupted_at.isoformat() if self.interrupted_at else None
+            ),
             "interrupt_reason": self.interrupt_reason,
             "retry_count": self.retry_count,
-            "last_retry_at": self.last_retry_at.isoformat() if self.last_retry_at else None,
+            "last_retry_at": (
+                self.last_retry_at.isoformat() if self.last_retry_at else None
+            ),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

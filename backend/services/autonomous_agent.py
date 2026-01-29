@@ -45,14 +45,11 @@ PLAN_INTRO_PATTERN = re.compile(
     r"\*\*(?:Steps|Plan)[:\s]*\*\*\n|"
     r"(?:Here(?:'s| is) (?:my |the )?plan|Let me (?:outline|plan)|I(?:'ll| will) (?:follow these|proceed with)|Steps to follow)[:\s]*\n)"
     r"((?:\s*\d+\..*(?:\n|$))+)",
-    re.IGNORECASE | re.MULTILINE
+    re.IGNORECASE | re.MULTILINE,
 )
 
 # Pattern to match individual numbered steps
-STEP_PATTERN = re.compile(
-    r"^\s*(\d+)\.\s*\**([^:\n*]+)\**(?::\s*(.*))?$",
-    re.MULTILINE
-)
+STEP_PATTERN = re.compile(r"^\s*(\d+)\.\s*\**([^:\n*]+)\**(?::\s*(.*))?$", re.MULTILINE)
 
 
 def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
@@ -105,7 +102,9 @@ class VerificationType(Enum):
 class TaskComplexity(Enum):
     """Complexity level of a task for adaptive optimization."""
 
-    SIMPLE = "simple"  # Single file, small change, high confidence (typo, rename, import)
+    SIMPLE = (
+        "simple"  # Single file, small change, high confidence (typo, rename, import)
+    )
     MEDIUM = "medium"  # Multiple files OR moderate changes
     COMPLEX = "complex"  # Multi-file refactor, new features, architecture changes
     ENTERPRISE = "enterprise"  # Long-running projects spanning weeks/months (unlimited iterations)
@@ -169,7 +168,9 @@ class TaskContext:
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
     project_type: Optional[str] = None
     framework: Optional[str] = None
-    complexity: TaskComplexity = TaskComplexity.MEDIUM  # Task complexity for adaptive optimization
+    complexity: TaskComplexity = (
+        TaskComplexity.MEDIUM
+    )  # Task complexity for adaptive optimization
     tool_calls_per_iteration: Dict[int, List[str]] = field(
         default_factory=dict
     )  # Track tool calls per iteration
@@ -186,18 +187,33 @@ class TaskContext:
     plan_id: Optional[str] = None  # Plan ID for execution plan stepper tracking
     current_step_index: int = 0  # Current step index for real-time progress tracking
     step_count: int = 0  # Total number of steps in the plan
-    step_progress_emitted: Dict[int, str] = field(default_factory=dict)  # Track which step updates have been emitted
+    step_progress_emitted: Dict[int, str] = field(
+        default_factory=dict
+    )  # Track which step updates have been emitted
     # Enterprise mode fields
-    enterprise_project_id: Optional[str] = None  # Link to EnterpriseProject if running in enterprise mode
-    enterprise_controller: Optional[EnhancedIterationController] = None  # Enterprise iteration controller
-    checkpoint_interval: int = 10  # Create checkpoint every N iterations in enterprise mode
+    enterprise_project_id: Optional[str] = (
+        None  # Link to EnterpriseProject if running in enterprise mode
+    )
+    enterprise_controller: Optional[EnhancedIterationController] = (
+        None  # Enterprise iteration controller
+    )
+    checkpoint_interval: int = (
+        10  # Create checkpoint every N iterations in enterprise mode
+    )
     last_checkpoint_iteration: int = 0  # Track when last checkpoint was created
-    gate_detector: Optional[CheckpointGateDetector] = None  # Human checkpoint gate detector
+    gate_detector: Optional[CheckpointGateDetector] = (
+        None  # Human checkpoint gate detector
+    )
     pending_gate: Optional[GateTrigger] = None  # Gate waiting for human decision
 
     @classmethod
     def with_adaptive_limits(
-        cls, complexity: TaskComplexity, task_id: str, original_request: str, workspace_path: str, **kwargs
+        cls,
+        complexity: TaskComplexity,
+        task_id: str,
+        original_request: str,
+        workspace_path: str,
+        **kwargs,
     ) -> "TaskContext":
         """Create context with iteration limits based on task complexity."""
         limits = {
@@ -243,7 +259,11 @@ class TaskContext:
         )
 
         # Create gate detector for human checkpoints
-        gate_detector = CheckpointGateDetector(enterprise_project_id) if enable_gate_detection else None
+        gate_detector = (
+            CheckpointGateDetector(enterprise_project_id)
+            if enable_gate_detection
+            else None
+        )
 
         return cls(
             task_id=task_id,
@@ -408,26 +428,36 @@ class VerificationRunner:
             if os.path.exists(nvmrc_path) or os.path.exists(node_version_path):
                 nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
             else:
-                nvm_use = "nvm use default 2>/dev/null || nvm use node 2>/dev/null || true"
+                nvm_use = (
+                    "nvm use default 2>/dev/null || nvm use node 2>/dev/null || true"
+                )
 
             setup_parts.append(
                 f'export NVM_DIR="{nvm_dir}" && '
                 f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-                f'{nvm_use}'
+                f"{nvm_use}"
             )
 
         # Check for fnm
         fnm_path = os.path.join(home, ".fnm")
         if os.path.exists(fnm_path):
-            setup_parts.append(f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true')
+            setup_parts.append(
+                f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
+            )
 
         # Check for volta
         volta_home = os.environ.get("VOLTA_HOME", os.path.join(home, ".volta"))
         if os.path.exists(volta_home):
-            setup_parts.append(f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"')
+            setup_parts.append(
+                f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"'
+            )
 
         # Add common paths as fallback
-        common_paths = ["/opt/homebrew/bin", "/usr/local/bin", os.path.join(home, ".npm-global/bin")]
+        common_paths = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            os.path.join(home, ".npm-global/bin"),
+        ]
         node_modules_bin = os.path.join(self.workspace_path, "node_modules", ".bin")
         if os.path.exists(node_modules_bin):
             common_paths.insert(0, node_modules_bin)
@@ -439,7 +469,17 @@ class VerificationRunner:
 
     def _is_node_command(self, command: str) -> bool:
         """Check if command requires Node.js environment."""
-        node_commands = ["npm", "npx", "node", "yarn", "pnpm", "tsc", "tsx", "jest", "vitest"]
+        node_commands = [
+            "npm",
+            "npx",
+            "node",
+            "yarn",
+            "pnpm",
+            "tsc",
+            "tsx",
+            "jest",
+            "vitest",
+        ]
         cmd_parts = command.split()
         return bool(cmd_parts and cmd_parts[0] in node_commands)
 
@@ -459,8 +499,12 @@ class VerificationRunner:
                 env_setup = self._get_node_env_setup()
                 if env_setup:
                     # Also unset npm_config_prefix in the shell
-                    full_command = f"unset npm_config_prefix 2>/dev/null; {env_setup} && {command}"
-                    logger.info(f"[VerificationRunner] Node env setup added for: {command}")
+                    full_command = (
+                        f"unset npm_config_prefix 2>/dev/null; {env_setup} && {command}"
+                    )
+                    logger.info(
+                        f"[VerificationRunner] Node env setup added for: {command}"
+                    )
 
             process = await asyncio.create_subprocess_shell(
                 full_command,
@@ -577,7 +621,7 @@ class VerificationRunner:
 
             elif ext == ".json":
                 # Quick JSON validation
-                cmd = f'python3 -c "import json; json.load(open(\'{file_path}\'))"'
+                cmd = f"python3 -c \"import json; json.load(open('{file_path}'))\""
                 success, output, _ = await self.run_command(cmd, timeout=5)
                 if not success:
                     return False, f"Invalid JSON in {file_path}: {output[:500]}"
@@ -1114,7 +1158,10 @@ class AutonomousAgent:
                 for kw in ["typo", "rename", "import", "missing", "unused", "spelling"]
             ),
             "fix" in request_lower and "all" not in request_lower,
-            any(kw in request_lower for kw in ["add import", "remove import", "update import"]),
+            any(
+                kw in request_lower
+                for kw in ["add import", "remove import", "update import"]
+            ),
         ]
 
         # Check files modified count if context available
@@ -1362,26 +1409,72 @@ class AutonomousAgent:
 
         # Patterns that indicate the user wants action taken
         action_patterns = [
-            "fix", "solve", "resolve", "repair", "debug",
-            "make it work", "get it working", "stop", "start",
-            "implement", "add", "create", "build", "set up", "setup",
-            "update", "change", "modify", "edit", "remove", "delete",
-            "install", "configure", "run", "execute", "deploy",
-            "not working", "doesn't work", "isn't working", "won't work",
-            "broken", "error", "issue", "problem", "bug", "stuck",
-            "failing", "failed", "crashed", "can't", "cannot",
-            "help me", "please", "need to", "want to", "trying to",
+            "fix",
+            "solve",
+            "resolve",
+            "repair",
+            "debug",
+            "make it work",
+            "get it working",
+            "stop",
+            "start",
+            "implement",
+            "add",
+            "create",
+            "build",
+            "set up",
+            "setup",
+            "update",
+            "change",
+            "modify",
+            "edit",
+            "remove",
+            "delete",
+            "install",
+            "configure",
+            "run",
+            "execute",
+            "deploy",
+            "not working",
+            "doesn't work",
+            "isn't working",
+            "won't work",
+            "broken",
+            "error",
+            "issue",
+            "problem",
+            "bug",
+            "stuck",
+            "failing",
+            "failed",
+            "crashed",
+            "can't",
+            "cannot",
+            "help me",
+            "please",
+            "need to",
+            "want to",
+            "trying to",
         ]
 
         # Patterns that indicate just a question (not needing action)
         question_only_patterns = [
-            "what is", "what are", "what does", "how does",
-            "why is", "why does", "explain", "tell me about",
-            "what's the difference", "can you explain",
+            "what is",
+            "what are",
+            "what does",
+            "how does",
+            "why is",
+            "why does",
+            "explain",
+            "tell me about",
+            "what's the difference",
+            "can you explain",
         ]
 
         # Check if it's primarily a question
-        is_question_only = any(pattern in request_lower for pattern in question_only_patterns)
+        is_question_only = any(
+            pattern in request_lower for pattern in question_only_patterns
+        )
         has_action_intent = any(pattern in request_lower for pattern in action_patterns)
 
         # If it has action patterns or is not purely a question, treat as fix request
@@ -1417,28 +1510,28 @@ class AutonomousAgent:
         fnm_activate = 'eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
 
         # Combined Node.js environment setup (tries all managers)
-        node_env_setup = f'{nvm_activate} || {volta_activate} || {fnm_activate}'
+        node_env_setup = f"{nvm_activate} || {volta_activate} || {fnm_activate}"
 
         checks = [
             # Node.js ecosystem - WITH proper environment activation
             (
                 "Node.js",
-                f'({node_env_setup}) && node --version 2>/dev/null || '
-                f'/opt/homebrew/bin/node --version 2>/dev/null || '
-                f'/usr/local/bin/node --version 2>/dev/null || '
+                f"({node_env_setup}) && node --version 2>/dev/null || "
+                f"/opt/homebrew/bin/node --version 2>/dev/null || "
+                f"/usr/local/bin/node --version 2>/dev/null || "
                 f"echo 'not found'",
             ),
             (
                 "npm",
-                f'({node_env_setup}) && npm --version 2>/dev/null || '
-                f'/opt/homebrew/bin/npm --version 2>/dev/null || '
-                f'/usr/local/bin/npm --version 2>/dev/null || '
+                f"({node_env_setup}) && npm --version 2>/dev/null || "
+                f"/opt/homebrew/bin/npm --version 2>/dev/null || "
+                f"/usr/local/bin/npm --version 2>/dev/null || "
                 f"echo 'not found'",
             ),
             (
                 "npx",
-                f'({node_env_setup}) && npx --version 2>/dev/null || '
-                f'/opt/homebrew/bin/npx --version 2>/dev/null || '
+                f"({node_env_setup}) && npx --version 2>/dev/null || "
+                f"/opt/homebrew/bin/npx --version 2>/dev/null || "
                 f"echo 'not found'",
             ),
             (
@@ -1587,7 +1680,12 @@ class AutonomousAgent:
                 "data": {
                     "plan_id": plan_id,
                     "steps": [
-                        {"index": 1, "title": label, "detail": desc, "status": "pending"}
+                        {
+                            "index": 1,
+                            "title": label,
+                            "detail": desc,
+                            "status": "pending",
+                        }
                     ],
                 },
             }
@@ -1728,7 +1826,11 @@ Return ONLY the JSON, no markdown or explanations."""
                 "data": {
                     "plan_id": plan_id,
                     "steps": [
-                        {"index": s["id"], "title": s["label"], "detail": s["description"]}
+                        {
+                            "index": s["id"],
+                            "title": s["label"],
+                            "detail": s["description"],
+                        }
                         for s in formatted_steps
                     ],
                 },
@@ -1847,7 +1949,11 @@ Return ONLY the JSON, no markdown or explanations."""
                 "data": {
                     "plan_id": plan_id,
                     "steps": [
-                        {"index": s["id"], "title": s["label"], "detail": s["description"]}
+                        {
+                            "index": s["id"],
+                            "title": s["label"],
+                            "detail": s["description"],
+                        }
                         for s in fallback_steps
                     ],
                 },
@@ -1860,7 +1966,9 @@ Return ONLY the JSON, no markdown or explanations."""
                 "is_complex": True,
             }
 
-    def _calculate_step_progress(self, context: TaskContext, tool_name: str) -> Optional[Dict]:
+    def _calculate_step_progress(
+        self, context: TaskContext, tool_name: str
+    ) -> Optional[Dict]:
         """
         Calculate step progress based on tool activity and emit step_update if needed.
 
@@ -1873,14 +1981,17 @@ Return ONLY the JSON, no markdown or explanations."""
             return None
 
         # Determine which step we should be on based on activities
-        has_reads = len(context.files_read) > 0
+        len(context.files_read) > 0
         has_writes = len(context.files_modified) + len(context.files_created) > 0
         has_commands = len(context.commands_run) > 0
 
         # Map tool types to step phases
-        read_tools = {"read_file", "search_files", "list_directory", "fetch_url", "web_search"}
         write_tools = {"write_file", "edit_file", "create_file"}
-        command_tools = {"run_command", "run_dangerous_command", "run_interactive_command"}
+        command_tools = {
+            "run_command",
+            "run_dangerous_command",
+            "run_interactive_command",
+        }
 
         # Determine target step based on current tool and overall progress
         if context.step_count == 1:
@@ -1910,14 +2021,16 @@ Return ONLY the JSON, no markdown or explanations."""
             # Complete previous steps
             for i in range(context.current_step_index, target_step):
                 if context.step_progress_emitted.get(i) != "completed":
-                    events.append({
-                        "type": "step_update",
-                        "data": {
-                            "plan_id": context.plan_id,
-                            "step_index": i,
-                            "status": "completed",
-                        },
-                    })
+                    events.append(
+                        {
+                            "type": "step_update",
+                            "data": {
+                                "plan_id": context.plan_id,
+                                "step_index": i,
+                                "status": "completed",
+                            },
+                        }
+                    )
                     context.step_progress_emitted[i] = "completed"
 
             # Mark new step as running
@@ -1925,14 +2038,16 @@ Return ONLY the JSON, no markdown or explanations."""
 
         # Ensure current step is marked as running
         if current_emitted != "running" and current_emitted != "completed":
-            events.append({
-                "type": "step_update",
-                "data": {
-                    "plan_id": context.plan_id,
-                    "step_index": target_step,
-                    "status": "running",
-                },
-            })
+            events.append(
+                {
+                    "type": "step_update",
+                    "data": {
+                        "plan_id": context.plan_id,
+                        "step_index": target_step,
+                        "status": "running",
+                    },
+                }
+            )
             context.step_progress_emitted[target_step] = "running"
 
         return events if events else None
@@ -1944,7 +2059,9 @@ Return ONLY the JSON, no markdown or explanations."""
         # === TOOL EXECUTION TRACING ===
         logger.info("-" * 40)
         logger.info(f"[AutonomousAgent] 🔧 TOOL CALL: {tool_name}")
-        logger.info(f"[AutonomousAgent] Arguments: {json.dumps(arguments, default=str)[:500]}")
+        logger.info(
+            f"[AutonomousAgent] Arguments: {json.dumps(arguments, default=str)[:500]}"
+        )
         logger.info(f"[AutonomousAgent] Iteration: {context.iteration}")
         logger.info("-" * 40)
 
@@ -2070,7 +2187,16 @@ Return ONLY the JSON, no markdown or explanations."""
                 env["SHELL"] = env.get("SHELL", "/bin/bash")
 
                 # Detect if this is a Node.js command that needs nvm setup
-                node_commands = ["npm", "npx", "node", "yarn", "pnpm", "bun", "tsc", "next"]
+                node_commands = [
+                    "npm",
+                    "npx",
+                    "node",
+                    "yarn",
+                    "pnpm",
+                    "bun",
+                    "tsc",
+                    "next",
+                ]
                 cmd_parts = command.split()
                 is_node_cmd = cmd_parts and any(
                     cmd_parts[0] == nc or cmd_parts[0].endswith(f"/{nc}")
@@ -2085,7 +2211,9 @@ Return ONLY the JSON, no markdown or explanations."""
                         # Check for .nvmrc in workspace
                         nvmrc_path = os.path.join(cwd, ".nvmrc")
                         node_version_path = os.path.join(cwd, ".node-version")
-                        if os.path.exists(nvmrc_path) or os.path.exists(node_version_path):
+                        if os.path.exists(nvmrc_path) or os.path.exists(
+                            node_version_path
+                        ):
                             nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
                         else:
                             nvm_use = "nvm use default 2>/dev/null || true"
@@ -2094,7 +2222,7 @@ Return ONLY the JSON, no markdown or explanations."""
                         command = (
                             f'export NVM_DIR="{nvm_dir}" && '
                             f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-                            f'{nvm_use} && {command}'
+                            f"{nvm_use} && {command}"
                         )
                         logger.info("[AutonomousAgent] Added nvm setup to command")
 
@@ -2103,6 +2231,7 @@ Return ONLY the JSON, no markdown or explanations."""
                 if command.strip().startswith("bash -c"):
                     # Extract command from bash -c '...' or bash -c "..."
                     import shlex
+
                     try:
                         parts = shlex.split(command)
                         if len(parts) >= 3 and parts[0] == "bash" and parts[1] == "-c":
@@ -2238,8 +2367,12 @@ Return ONLY the JSON, no markdown or explanations."""
                     if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
                         # Check for .nvmrc in workspace
                         nvmrc_path = os.path.join(self.workspace_path, ".nvmrc")
-                        node_version_path = os.path.join(self.workspace_path, ".node-version")
-                        if os.path.exists(nvmrc_path) or os.path.exists(node_version_path):
+                        node_version_path = os.path.join(
+                            self.workspace_path, ".node-version"
+                        )
+                        if os.path.exists(nvmrc_path) or os.path.exists(
+                            node_version_path
+                        ):
                             nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
                         else:
                             nvm_use = "nvm use default 2>/dev/null || true"
@@ -2248,17 +2381,17 @@ Return ONLY the JSON, no markdown or explanations."""
                         server_command = (
                             f'export NVM_DIR="{nvm_dir}" && '
                             f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-                            f'{nvm_use} && {command}'
+                            f"{nvm_use} && {command}"
                         )
-                        logger.info("[AutonomousAgent] Added nvm setup to start_server command")
+                        logger.info(
+                            "[AutonomousAgent] Added nvm setup to start_server command"
+                        )
 
                 # Start the server in background using nohup
                 log_file = os.path.join(self.workspace_path, ".navi-server.log")
                 # Escape single quotes in command for bash -c
                 escaped_command = server_command.replace("'", "'\\''")
-                bg_command = (
-                    f"cd {self.workspace_path} && nohup bash -c '{escaped_command}' > {log_file} 2>&1 &"
-                )
+                bg_command = f"cd {self.workspace_path} && nohup bash -c '{escaped_command}' > {log_file} 2>&1 &"
 
                 try:
                     subprocess.run(bg_command, shell=True, timeout=5, env=env)
@@ -2401,12 +2534,15 @@ Return ONLY the JSON, no markdown or explanations."""
 
             else:
                 logger.error(f"[AutonomousAgent] ❌ UNKNOWN TOOL: {tool_name}")
-                logger.error("[AutonomousAgent] Available tools: read_file, write_file, edit_file, run_command, search_files, list_directory, start_server, check_endpoint, stop_server")
+                logger.error(
+                    "[AutonomousAgent] Available tools: read_file, write_file, edit_file, run_command, search_files, list_directory, start_server, check_endpoint, stop_server"
+                )
                 return {"success": False, "error": f"Unknown tool: {tool_name}"}
 
         except Exception as e:
             logger.error(f"[AutonomousAgent] ❌ TOOL EXCEPTION: {tool_name} - {e}")
             import traceback
+
             logger.error(f"[AutonomousAgent] Traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e)}
 
@@ -2508,7 +2644,9 @@ Return ONLY the JSON, no markdown or explanations."""
                     result = await self._execute_tool(tool_name, args, context)
                     return {"tool": tool, "result": result, "success": True}
                 except Exception as e:
-                    logger.error(f"[AutonomousAgent] Parallel tool execution failed for {tool_name}: {e}")
+                    logger.error(
+                        f"[AutonomousAgent] Parallel tool execution failed for {tool_name}: {e}"
+                    )
                     return {"tool": tool, "result": {"error": str(e)}, "success": False}
 
         tasks = [execute_with_semaphore(t) for t in tools]
@@ -2519,11 +2657,13 @@ Return ONLY the JSON, no markdown or explanations."""
         for i, r in enumerate(results):
             if isinstance(r, Exception):
                 logger.error(f"[AutonomousAgent] Parallel execution exception: {r}")
-                processed.append({
-                    "tool": tools[i] if i < len(tools) else {},
-                    "result": {"error": str(r)},
-                    "success": False,
-                })
+                processed.append(
+                    {
+                        "tool": tools[i] if i < len(tools) else {},
+                        "result": {"error": str(r)},
+                        "success": False,
+                    }
+                )
             else:
                 processed.append(r)
 
@@ -2555,10 +2695,14 @@ Return ONLY the JSON, no markdown or explanations."""
         logger.info("[AutonomousAgent] 🤖 CALLING ANTHROPIC API")
         logger.info(f"[AutonomousAgent] Model: {self.model}")
         logger.info(f"[AutonomousAgent] Messages Count: {len(messages)}")
-        logger.info(f"[AutonomousAgent] Tools Available: {[t['name'] for t in NAVI_TOOLS]}")
-        logger.info(f"[AutonomousAgent] Last Message Role: {messages[-1]['role'] if messages else 'N/A'}")
+        logger.info(
+            f"[AutonomousAgent] Tools Available: {[t['name'] for t in NAVI_TOOLS]}"
+        )
+        logger.info(
+            f"[AutonomousAgent] Last Message Role: {messages[-1]['role'] if messages else 'N/A'}"
+        )
         if messages:
-            last_content = str(messages[-1].get('content', ''))[:200]
+            last_content = str(messages[-1].get("content", ""))[:200]
             logger.info(f"[AutonomousAgent] Last Message Preview: {last_content}...")
         logger.info("=" * 60)
 
@@ -2589,7 +2733,9 @@ Return ONLY the JSON, no markdown or explanations."""
                         total=600
                     ),  # 10 minutes for complex operations
                 ) as response:
-                    logger.info(f"[AutonomousAgent] 📥 Response Status: {response.status}")
+                    logger.info(
+                        f"[AutonomousAgent] 📥 Response Status: {response.status}"
+                    )
 
                     if response.status != 200:
                         error = await response.text()
@@ -2620,7 +2766,9 @@ Return ONLY the JSON, no markdown or explanations."""
                             if event_type == "content_block_start":
                                 block = data.get("content_block", {})
                                 if block.get("type") == "tool_use":
-                                    logger.info(f"[AutonomousAgent] 🔧 LLM requesting tool: {block.get('name')}")
+                                    logger.info(
+                                        f"[AutonomousAgent] 🔧 LLM requesting tool: {block.get('name')}"
+                                    )
                                     current_tool = {
                                         "id": block.get("id"),
                                         "name": block.get("name"),
@@ -2638,11 +2786,21 @@ Return ONLY the JSON, no markdown or explanations."""
                                     full_text_for_plan += text
 
                                     # Check for plan in accumulated text (only if not already detected)
-                                    if not detected_plan and len(full_text_for_plan) > 100:
-                                        detected_plan = parse_execution_plan(full_text_for_plan)
+                                    if (
+                                        not detected_plan
+                                        and len(full_text_for_plan) > 100
+                                    ):
+                                        detected_plan = parse_execution_plan(
+                                            full_text_for_plan
+                                        )
                                         if detected_plan:
-                                            logger.info(f"[AutonomousAgent] ⚡ Detected execution plan with {len(detected_plan['steps'])} steps")
-                                            yield {"type": "plan_start", "data": detected_plan}
+                                            logger.info(
+                                                f"[AutonomousAgent] ⚡ Detected execution plan with {len(detected_plan['steps'])} steps"
+                                            )
+                                            yield {
+                                                "type": "plan_start",
+                                                "data": detected_plan,
+                                            }
 
                                     if len(text_buffer) >= 30 or text.endswith(
                                         (".", "!", "?", "\n")
@@ -2678,13 +2836,19 @@ Return ONLY the JSON, no markdown or explanations."""
                                     }
 
                                     # Execute the tool
-                                    logger.info(f"[AutonomousAgent] ⚙️ Executing tool: {current_tool['name']}")
+                                    logger.info(
+                                        f"[AutonomousAgent] ⚙️ Executing tool: {current_tool['name']}"
+                                    )
                                     result = await self._execute_tool(
                                         current_tool["name"], args, context
                                     )
-                                    logger.info(f"[AutonomousAgent] ✅ Tool result: success={result.get('success', 'N/A')}")
-                                    if not result.get('success'):
-                                        logger.warning(f"[AutonomousAgent] ⚠️ Tool error: {result.get('error', 'Unknown error')}")
+                                    logger.info(
+                                        f"[AutonomousAgent] ✅ Tool result: success={result.get('success', 'N/A')}"
+                                    )
+                                    if not result.get("success"):
+                                        logger.warning(
+                                            f"[AutonomousAgent] ⚠️ Tool error: {result.get('error', 'Unknown error')}"
+                                        )
                                     yield {
                                         "type": "tool_result",
                                         "tool_result": {
@@ -2730,11 +2894,15 @@ Return ONLY the JSON, no markdown or explanations."""
                     logger.info(f"[AutonomousAgent] 🛑 LLM Stop Reason: {stop_reason}")
                     logger.info(f"[AutonomousAgent] Tool Calls Made: {len(tool_calls)}")
                     if tool_calls:
-                        logger.info(f"[AutonomousAgent] Tools Called: {[tc['name'] for tc in tool_calls]}")
+                        logger.info(
+                            f"[AutonomousAgent] Tools Called: {[tc['name'] for tc in tool_calls]}"
+                        )
 
                     # Continue if tool use
                     if stop_reason == "tool_use" and tool_calls:
-                        logger.info("[AutonomousAgent] 🔄 Continuing with tool results - sending back to LLM")
+                        logger.info(
+                            "[AutonomousAgent] 🔄 Continuing with tool results - sending back to LLM"
+                        )
                         assistant_content = []
                         for tc in tool_calls:
                             assistant_content.append(
@@ -2763,7 +2931,9 @@ Return ONLY the JSON, no markdown or explanations."""
                         tool_calls = []
                         continue
                     else:
-                        logger.info("[AutonomousAgent] ✅ LLM turn complete - stop_reason: end_turn")
+                        logger.info(
+                            "[AutonomousAgent] ✅ LLM turn complete - stop_reason: end_turn"
+                        )
                         return
 
     async def _call_openai(
@@ -2771,11 +2941,16 @@ Return ONLY the JSON, no markdown or explanations."""
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Call OpenAI with function calling."""
         import aiohttp
-        from backend.services.streaming_agent import NAVI_FUNCTIONS_OPENAI, OPENAI_TO_NAVI_TOOL_NAME
+        from backend.services.streaming_agent import (
+            NAVI_FUNCTIONS_OPENAI,
+            OPENAI_TO_NAVI_TOOL_NAME,
+        )
 
         # === LLM API CALL TRACING (OpenAI) ===
         logger.info("=" * 60)
-        logger.info(f"[AutonomousAgent] 🤖 CALLING OPENAI API (Provider: {self.provider})")
+        logger.info(
+            f"[AutonomousAgent] 🤖 CALLING OPENAI API (Provider: {self.provider})"
+        )
         logger.info(f"[AutonomousAgent] Model: {self.model}")
         logger.info(f"[AutonomousAgent] Messages Count: {len(messages)}")
         logger.info("=" * 60)
@@ -2799,14 +2974,14 @@ Return ONLY the JSON, no markdown or explanations."""
                 base_url = "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
-                    headers[
-                        "Authorization"
-                    ] = f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
+                    headers["Authorization"] = (
+                        f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
+                    )
                 elif self.provider == "groq":
                     base_url = "https://api.groq.com/openai/v1"
-                    headers[
-                        "Authorization"
-                    ] = f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                    headers["Authorization"] = (
+                        f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                    )
 
                 logger.info(f"[AutonomousAgent] 📡 Sending request to {base_url}...")
 
@@ -2818,7 +2993,9 @@ Return ONLY the JSON, no markdown or explanations."""
                         total=600
                     ),  # 10 minutes for complex operations
                 ) as response:
-                    logger.info(f"[AutonomousAgent] 📥 Response Status: {response.status}")
+                    logger.info(
+                        f"[AutonomousAgent] 📥 Response Status: {response.status}"
+                    )
 
                     if response.status != 200:
                         error = await response.text()
@@ -2854,10 +3031,17 @@ Return ONLY the JSON, no markdown or explanations."""
 
                                 # Check for plan in accumulated text (only if not already detected)
                                 if not detected_plan and len(full_text_for_plan) > 100:
-                                    detected_plan = parse_execution_plan(full_text_for_plan)
+                                    detected_plan = parse_execution_plan(
+                                        full_text_for_plan
+                                    )
                                     if detected_plan:
-                                        logger.info(f"[AutonomousAgent] ⚡ Detected execution plan with {len(detected_plan['steps'])} steps")
-                                        yield {"type": "plan_start", "data": detected_plan}
+                                        logger.info(
+                                            f"[AutonomousAgent] ⚡ Detected execution plan with {len(detected_plan['steps'])} steps"
+                                        )
+                                        yield {
+                                            "type": "plan_start",
+                                            "data": detected_plan,
+                                        }
 
                                 if len(text_buffer) >= 30 or text.endswith(
                                     (".", "!", "?", "\n")
@@ -2879,7 +3063,11 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if tc.get("function", {}).get("name"):
                                         # Convert OpenAI-sanitized name back to original NAVI name
                                         openai_name = tc["function"]["name"]
-                                        tool_calls[idx]["name"] = OPENAI_TO_NAVI_TOOL_NAME.get(openai_name, openai_name)
+                                        tool_calls[idx]["name"] = (
+                                            OPENAI_TO_NAVI_TOOL_NAME.get(
+                                                openai_name, openai_name
+                                            )
+                                        )
                                     if tc.get("function", {}).get("arguments"):
                                         tool_calls[idx]["arguments"] += tc["function"][
                                             "arguments"
@@ -2922,21 +3110,30 @@ Return ONLY the JSON, no markdown or explanations."""
                                 )
                             except json.JSONDecodeError:
                                 args = {}
-                            all_tools_parsed.append({
-                                "id": tc["id"],
-                                "name": tc["name"],
-                                "arguments": args,
-                            })
+                            all_tools_parsed.append(
+                                {
+                                    "id": tc["id"],
+                                    "name": tc["name"],
+                                    "arguments": args,
+                                }
+                            )
 
                         # Separate into parallel reads and sequential writes
-                        parallel_reads, sequential_writes = self._can_parallelize_tools(all_tools_parsed)
+                        parallel_reads, sequential_writes = self._can_parallelize_tools(
+                            all_tools_parsed
+                        )
 
                         # Execute read operations in parallel
                         if parallel_reads:
-                            logger.info(f"[AutonomousAgent] ⚡ Executing {len(parallel_reads)} read operations in parallel")
+                            logger.info(
+                                f"[AutonomousAgent] ⚡ Executing {len(parallel_reads)} read operations in parallel"
+                            )
                             parallel_results = await self._execute_tools_parallel(
-                                [{"name": t["name"], "input": t["arguments"]} for t in parallel_reads],
-                                context
+                                [
+                                    {"name": t["name"], "input": t["arguments"]}
+                                    for t in parallel_reads
+                                ],
+                                context,
                             )
 
                             # Yield events and add to messages in original order
@@ -2952,14 +3149,19 @@ Return ONLY the JSON, no markdown or explanations."""
                                 }
 
                                 # Emit step progress updates
-                                step_events = self._calculate_step_progress(context, tool_info["name"])
+                                step_events = self._calculate_step_progress(
+                                    context, tool_info["name"]
+                                )
                                 if step_events:
                                     for step_event in step_events:
                                         yield step_event
 
                                 yield {
                                     "type": "tool_result",
-                                    "tool_result": {"id": tool_info["id"], "result": pr["result"]},
+                                    "tool_result": {
+                                        "id": tool_info["id"],
+                                        "result": pr["result"],
+                                    },
                                 }
                                 full_messages.append(
                                     {
@@ -2981,12 +3183,16 @@ Return ONLY the JSON, no markdown or explanations."""
                             }
 
                             # Emit step progress updates BEFORE execution
-                            step_events = self._calculate_step_progress(context, tc["name"])
+                            step_events = self._calculate_step_progress(
+                                context, tc["name"]
+                            )
                             if step_events:
                                 for step_event in step_events:
                                     yield step_event
 
-                            result = await self._execute_tool(tc["name"], tc["arguments"], context)
+                            result = await self._execute_tool(
+                                tc["name"], tc["arguments"], context
+                            )
 
                             yield {
                                 "type": "tool_result",
@@ -3029,7 +3235,9 @@ Return ONLY the JSON, no markdown or explanations."""
         logger.info(f"[AutonomousAgent] Model: {self.model}")
         logger.info(f"[AutonomousAgent] Workspace: {self.workspace_path}")
         logger.info(f"[AutonomousAgent] API Key Set: {'YES' if self.api_key else 'NO'}")
-        logger.info(f"[AutonomousAgent] API Key Length: {len(self.api_key) if self.api_key else 0}")
+        logger.info(
+            f"[AutonomousAgent] API Key Length: {len(self.api_key) if self.api_key else 0}"
+        )
         logger.info("=" * 60)
 
         # Assess task complexity for adaptive optimization
@@ -3045,7 +3253,11 @@ Return ONLY the JSON, no markdown or explanations."""
             project_type=self.project_type,
             framework=self.framework,
         )
-        max_display = context.max_iterations if context.complexity != TaskComplexity.ENTERPRISE else "unlimited (checkpointed)"
+        max_display = (
+            context.max_iterations
+            if context.complexity != TaskComplexity.ENTERPRISE
+            else "unlimited (checkpointed)"
+        )
         logger.info(f"[AutonomousAgent] 🔄 Max iterations set to: {max_display}")
 
         yield {"type": "status", "status": "planning", "task_id": context.task_id}
@@ -3059,11 +3271,15 @@ Return ONLY the JSON, no markdown or explanations."""
             yield plan_event
             if plan_event.get("type") == "plan":
                 plan_steps = plan_event.get("steps", [])
-                context.step_count = len(plan_steps)  # Store step count for progress tracking
+                context.step_count = len(
+                    plan_steps
+                )  # Store step count for progress tracking
 
         # Update first step to in_progress (running)
         if plan_steps and context.plan_id:
-            context.step_progress_emitted[0] = "running"  # Track that we've emitted step 0 as running
+            context.step_progress_emitted[0] = (
+                "running"  # Track that we've emitted step 0 as running
+            )
             yield {
                 "type": "step_update",
                 "data": {
@@ -3089,10 +3305,14 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
             context.status = TaskStatus.EXECUTING
 
             # === ENTERPRISE MODE CHECKPOINTING ===
-            if context.complexity == TaskComplexity.ENTERPRISE and context.enterprise_controller:
+            if (
+                context.complexity == TaskComplexity.ENTERPRISE
+                and context.enterprise_controller
+            ):
                 # Record iteration in enterprise controller
-                controller = context.enterprise_controller
-                iterations_since_checkpoint = context.iteration - context.last_checkpoint_iteration
+                iterations_since_checkpoint = (
+                    context.iteration - context.last_checkpoint_iteration
+                )
 
                 # Check if we should create a checkpoint
                 if iterations_since_checkpoint >= context.checkpoint_interval:
@@ -3108,6 +3328,7 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                             from backend.services.checkpoint_persistence_service import (
                                 CheckpointPersistenceService,
                             )
+
                             checkpoint_service = CheckpointPersistenceService(
                                 db_session=self.db_session,
                                 project_id=context.enterprise_project_id,
@@ -3119,9 +3340,13 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                                 checkpoint_type="automatic",
                                 reason=f"Automatic checkpoint at iteration {context.iteration}",
                             )
-                            logger.info(f"[AutonomousAgent] ✅ Checkpoint {checkpoint_id} saved to database")
+                            logger.info(
+                                f"[AutonomousAgent] ✅ Checkpoint {checkpoint_id} saved to database"
+                            )
                         except Exception as e:
-                            logger.error(f"[AutonomousAgent] Failed to save checkpoint: {e}")
+                            logger.error(
+                                f"[AutonomousAgent] Failed to save checkpoint: {e}"
+                            )
 
                     # Emit checkpoint event for frontend
                     yield {
@@ -3138,13 +3363,25 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
 
             # === ITERATION TRACING ===
             logger.info("*" * 60)
-            max_display = context.max_iterations if context.complexity != TaskComplexity.ENTERPRISE else "∞"
-            logger.info(f"[AutonomousAgent] 🔁 ITERATION {context.iteration}/{max_display}")
+            max_display = (
+                context.max_iterations
+                if context.complexity != TaskComplexity.ENTERPRISE
+                else "∞"
+            )
+            logger.info(
+                f"[AutonomousAgent] 🔁 ITERATION {context.iteration}/{max_display}"
+            )
             logger.info(f"[AutonomousAgent] Files Read: {len(context.files_read)}")
-            logger.info(f"[AutonomousAgent] Files Modified: {len(context.files_modified)}")
-            logger.info(f"[AutonomousAgent] Files Created: {len(context.files_created)}")
+            logger.info(
+                f"[AutonomousAgent] Files Modified: {len(context.files_modified)}"
+            )
+            logger.info(
+                f"[AutonomousAgent] Files Created: {len(context.files_created)}"
+            )
             logger.info(f"[AutonomousAgent] Commands Run: {len(context.commands_run)}")
-            logger.info(f"[AutonomousAgent] Consecutive Errors: {context.consecutive_same_error_count}")
+            logger.info(
+                f"[AutonomousAgent] Consecutive Errors: {context.consecutive_same_error_count}"
+            )
             logger.info("*" * 60)
 
             # Check for unrecoverable loops - terminate early to avoid wasting iterations
@@ -3209,11 +3446,19 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 yield {
                     "type": "iteration",
                     "iteration": context.iteration,
-                    "max": context.max_iterations if context.complexity != TaskComplexity.ENTERPRISE else None,
+                    "max": (
+                        context.max_iterations
+                        if context.complexity != TaskComplexity.ENTERPRISE
+                        else None
+                    ),
                     "reason": reason,
                     "loop_count": context.consecutive_same_error_count,
                     "enterprise_mode": context.complexity == TaskComplexity.ENTERPRISE,
-                    "last_checkpoint": context.last_checkpoint_iteration if context.complexity == TaskComplexity.ENTERPRISE else None,
+                    "last_checkpoint": (
+                        context.last_checkpoint_iteration
+                        if context.complexity == TaskComplexity.ENTERPRISE
+                        else None
+                    ),
                 }
 
             # Call LLM with tools
@@ -3234,12 +3479,17 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                     context.conversation_history[-1]["content"] += event["text"]
 
             # === ENTERPRISE MODE: Human Checkpoint Gate Detection ===
-            if context.complexity == TaskComplexity.ENTERPRISE and context.gate_detector:
+            if (
+                context.complexity == TaskComplexity.ENTERPRISE
+                and context.gate_detector
+            ):
                 gates = context.gate_detector.detect_gates(
                     llm_output=llm_output_text,
                     files_to_create=context.files_created,
                     files_to_modify=context.files_modified,
-                    commands_to_run=[cmd.get("command", "") for cmd in context.commands_run],
+                    commands_to_run=[
+                        cmd.get("command", "") for cmd in context.commands_run
+                    ],
                     current_task=context.original_request,
                 )
 
@@ -3302,9 +3552,9 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
             # Check if any actions were taken (files modified, created, OR commands run)
             # Commands count as "doing something" - e.g., starting a server, running npm install
             has_taken_action = (
-                context.files_modified or
-                context.files_created or
-                context.commands_run  # Commands also count as action!
+                context.files_modified
+                or context.files_created
+                or context.commands_run  # Commands also count as action!
             )
 
             if not has_taken_action:
@@ -3387,8 +3637,13 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
             # OPTIMIZATION: Skip verification entirely if no files were modified
             if not (context.files_modified or context.files_created):
                 # No files changed - skip verification for info/status tasks
-                logger.info("[AutonomousAgent] ⏭️ Skipping verification - no files modified or created")
-                yield {"type": "text", "text": "\n✅ **Task completed** (no code changes needed)\n"}
+                logger.info(
+                    "[AutonomousAgent] ⏭️ Skipping verification - no files modified or created"
+                )
+                yield {
+                    "type": "text",
+                    "text": "\n✅ **Task completed** (no code changes needed)\n",
+                }
                 yield {"type": "status", "status": "completed"}
 
                 # Mark plan as complete if we have one
@@ -3452,10 +3707,18 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     }
 
                 # OPTIMIZATION: Use complexity-based verification strategy
-                if context.complexity == TaskComplexity.SIMPLE and context.files_modified:
+                if (
+                    context.complexity == TaskComplexity.SIMPLE
+                    and context.files_modified
+                ):
                     # For simple tasks: quick syntax validation only
-                    yield {"type": "text", "text": "\n\n**Quick validation (simple task)...**\n"}
-                    logger.info("[AutonomousAgent] 🚀 Using quick validation for simple task")
+                    yield {
+                        "type": "text",
+                        "text": "\n\n**Quick validation (simple task)...**\n",
+                    }
+                    logger.info(
+                        "[AutonomousAgent] 🚀 Using quick validation for simple task"
+                    )
 
                     is_valid, error_msg = await self.verifier.quick_validate(
                         list(context.files_modified)
@@ -3463,8 +3726,13 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
 
                     if is_valid:
                         # Quick validation passed - complete immediately
-                        logger.info("[AutonomousAgent] ✅ Quick validation passed - skipping full build")
-                        yield {"type": "text", "text": "\n✅ **Quick validation passed!**\n"}
+                        logger.info(
+                            "[AutonomousAgent] ✅ Quick validation passed - skipping full build"
+                        )
+                        yield {
+                            "type": "text",
+                            "text": "\n✅ **Quick validation passed!**\n",
+                        }
                         yield {"type": "status", "status": "completed"}
 
                         # Mark all plan steps as completed (0-indexed for frontend)
@@ -3504,20 +3772,27 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         return
                     else:
                         # Quick validation failed - syntax error
-                        yield {"type": "text", "text": f"\n⚠️ **Syntax error:** {error_msg}\n"}
+                        yield {
+                            "type": "text",
+                            "text": f"\n⚠️ **Syntax error:** {error_msg}\n",
+                        }
                         # Continue to retry loop - don't do full verification
-                        context.error_history.append({
-                            "type": "syntax",
-                            "errors": [error_msg],
-                            "iteration": context.iteration,
-                        })
+                        context.error_history.append(
+                            {
+                                "type": "syntax",
+                                "errors": [error_msg],
+                                "iteration": context.iteration,
+                            }
+                        )
                         context.status = TaskStatus.FIXING
                         yield {"type": "status", "status": "fixing"}
                         # Add error to messages for retry
-                        messages.append({
-                            "role": "user",
-                            "content": f"Syntax error detected: {error_msg}\nPlease fix and try again.",
-                        })
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": f"Syntax error detected: {error_msg}\nPlease fix and try again.",
+                            }
+                        )
                         continue  # Skip to next iteration
 
                 # For MEDIUM and COMPLEX tasks: run appropriate verification
@@ -3525,8 +3800,13 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
 
                 # Always run tests for MEDIUM and COMPLEX tasks (not just COMPLEX)
                 # Tests are crucial for validating changes work correctly
-                run_tests = context.complexity in (TaskComplexity.MEDIUM, TaskComplexity.COMPLEX)
-                logger.info(f"[AutonomousAgent] Running verification (run_tests={run_tests}) for {context.complexity.value} task")
+                run_tests = context.complexity in (
+                    TaskComplexity.MEDIUM,
+                    TaskComplexity.COMPLEX,
+                )
+                logger.info(
+                    f"[AutonomousAgent] Running verification (run_tests={run_tests}) for {context.complexity.value} task"
+                )
 
                 results = await self.verifier.verify_changes(
                     self.verification_commands, run_tests=run_tests
@@ -3550,7 +3830,9 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                 all_passed = all(r.success for r in results)
 
                 if all_passed:
-                    logger.info("[AutonomousAgent] ✅ ALL VERIFICATIONS PASSED - TASK COMPLETE")
+                    logger.info(
+                        "[AutonomousAgent] ✅ ALL VERIFICATIONS PASSED - TASK COMPLETE"
+                    )
                     yield {
                         "type": "text",
                         "text": "\n✅ **All verifications passed!**\n",
@@ -3595,7 +3877,9 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
 
                 # Verification failed - prepare for retry
                 logger.warning("[AutonomousAgent] ⚠️ VERIFICATION FAILED - Will retry")
-                logger.warning(f"[AutonomousAgent] Failed verifications: {[r.type.value for r in results if not r.success]}")
+                logger.warning(
+                    f"[AutonomousAgent] Failed verifications: {[r.type.value for r in results if not r.success]}"
+                )
                 context.status = TaskStatus.FIXING
                 yield {"type": "status", "status": "fixing"}
 

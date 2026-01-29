@@ -163,10 +163,10 @@ def _get_node_env_setup(workspace_path: str) -> str:
             nvm_use = "nvm use default 2>/dev/null || true"
 
         return (
-            f'unset npm_config_prefix 2>/dev/null; '
+            f"unset npm_config_prefix 2>/dev/null; "
             f'export NVM_DIR="{nvm_dir}" && '
             f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-            f'{nvm_use}'
+            f"{nvm_use}"
         )
     return ""
 
@@ -187,7 +187,9 @@ async def stream_with_tools_openai(
     from backend.services.llm_client import LLMClient, LLMMessage
 
     if not api_key:
-        yield StreamEvent(StreamEventType.DONE, {"summary": {}, "error": "Missing API key"})
+        yield StreamEvent(
+            StreamEventType.DONE, {"summary": {}, "error": "Missing API key"}
+        )
         return
 
     system_prompt = "You are NAVI, an autonomous engineering assistant."
@@ -232,7 +234,9 @@ async def stream_with_tools_anthropic(
     from backend.services.llm_client import LLMClient, LLMMessage
 
     if not api_key:
-        yield StreamEvent(StreamEventType.DONE, {"summary": {}, "error": "Missing API key"})
+        yield StreamEvent(
+            StreamEventType.DONE, {"summary": {}, "error": "Missing API key"}
+        )
         return
 
     system_prompt = "You are NAVI, an autonomous engineering assistant."
@@ -259,7 +263,10 @@ async def stream_with_tools_anthropic(
 
     yield StreamEvent(StreamEventType.DONE, {"summary": {}})
 
-async def detect_project_type_and_build_command(workspace_path: str) -> Optional[Dict[str, Any]]:
+
+async def detect_project_type_and_build_command(
+    workspace_path: str,
+) -> Optional[Dict[str, Any]]:
     """
     Detect the project type and return the appropriate build command.
     Returns None if no buildable project is detected.
@@ -271,6 +278,7 @@ async def detect_project_type_and_build_command(workspace_path: str) -> Optional
     if package_json.exists():
         try:
             import json
+
             with open(package_json) as f:
                 pkg = json.load(f)
                 scripts = pkg.get("scripts", {})
@@ -286,14 +294,30 @@ async def detect_project_type_and_build_command(workspace_path: str) -> Optional
 
                 # Priority: typecheck > build > tsc
                 if "typecheck" in scripts:
-                    return {"type": "node", "command": f"{pkg_manager} run typecheck", "name": "TypeScript type check"}
+                    return {
+                        "type": "node",
+                        "command": f"{pkg_manager} run typecheck",
+                        "name": "TypeScript type check",
+                    }
                 elif "build" in scripts:
-                    return {"type": "node", "command": f"{pkg_manager} run build", "name": "Build"}
+                    return {
+                        "type": "node",
+                        "command": f"{pkg_manager} run build",
+                        "name": "Build",
+                    }
                 elif "tsc" in scripts:
-                    return {"type": "node", "command": f"{pkg_manager} run tsc", "name": "TypeScript compile"}
+                    return {
+                        "type": "node",
+                        "command": f"{pkg_manager} run tsc",
+                        "name": "TypeScript compile",
+                    }
                 # Check if TypeScript is installed - run tsc directly
                 elif (workspace / "tsconfig.json").exists():
-                    return {"type": "node", "command": f"{pkg_manager} exec tsc --noEmit", "name": "TypeScript check"}
+                    return {
+                        "type": "node",
+                        "command": f"{pkg_manager} exec tsc --noEmit",
+                        "name": "TypeScript check",
+                    }
         except Exception as e:
             logger.warning(f"Error reading package.json: {e}")
 
@@ -303,18 +327,34 @@ async def detect_project_type_and_build_command(workspace_path: str) -> Optional
     if pyproject.exists() or setup_py.exists():
         # Check for mypy config
         if (workspace / "mypy.ini").exists() or (workspace / ".mypy.ini").exists():
-            return {"type": "python", "command": "python -m mypy .", "name": "MyPy type check"}
+            return {
+                "type": "python",
+                "command": "python -m mypy .",
+                "name": "MyPy type check",
+            }
         elif pyproject.exists():
             try:
                 with open(pyproject) as f:
                     content = f.read()
                     if "[tool.mypy]" in content:
-                        return {"type": "python", "command": "python -m mypy .", "name": "MyPy type check"}
+                        return {
+                            "type": "python",
+                            "command": "python -m mypy .",
+                            "name": "MyPy type check",
+                        }
                     if "ruff" in content:
-                        return {"type": "python", "command": "python -m ruff check .", "name": "Ruff lint"}
+                        return {
+                            "type": "python",
+                            "command": "python -m ruff check .",
+                            "name": "Ruff lint",
+                        }
             except Exception:
                 pass
-        return {"type": "python", "command": "python -m py_compile", "name": "Python syntax check"}
+        return {
+            "type": "python",
+            "command": "python -m py_compile",
+            "name": "Python syntax check",
+        }
 
     # Check for Go projects
     go_mod = workspace / "go.mod"
@@ -377,8 +417,7 @@ async def run_build_verification(workspace_path: str) -> Dict[str, Any]:
         )
 
         stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=120.0  # 2 minute timeout
+            process.communicate(), timeout=120.0  # 2 minute timeout
         )
 
         stdout_text = stdout.decode("utf-8", errors="replace") if stdout else ""
@@ -393,7 +432,10 @@ async def run_build_verification(workspace_path: str) -> Dict[str, Any]:
             combined = stdout_text + "\n" + stderr_text
             for line in combined.split("\n"):
                 line = line.strip()
-                if line and any(marker in line.lower() for marker in ["error:", "error[", "failed", "cannot find"]):
+                if line and any(
+                    marker in line.lower()
+                    for marker in ["error:", "error[", "failed", "cannot find"]
+                ):
                     errors.append(line)
 
         return {
@@ -508,11 +550,13 @@ class TaskContext:
             if path and path not in self.files_modified:
                 self.files_modified.append(path)
         elif tool_name == "run_command":
-            self.commands_executed.append({
-                "command": result.get("command", ""),
-                "success": result.get("success", False),
-                "exit_code": result.get("exit_code", -1),
-            })
+            self.commands_executed.append(
+                {
+                    "command": result.get("command", ""),
+                    "success": result.get("success", False),
+                    "exit_code": result.get("exit_code", -1),
+                }
+            )
 
     def complete_step(self, step_index: int):
         """Mark a step as completed."""
@@ -589,7 +633,9 @@ class StreamEventType(Enum):
     STEP_UPDATE = "step_update"  # Step status changed (running/completed/error)
     PLAN_COMPLETE = "plan_complete"  # All steps completed
     # Task State Events - for proper completion tracking
-    TASK_STATE = "task_state"  # Task state changed (planning, executing, complete, failed)
+    TASK_STATE = (
+        "task_state"  # Task state changed (planning, executing, complete, failed)
+    )
     TASK_COMPLETE = "task_complete"  # Explicit task completion signal
     # Build Verification Events
     BUILD_VERIFICATION = "build_verification"  # Build/type-check verification results
@@ -640,10 +686,14 @@ class StreamEvent:
             result["task_state"] = self.content  # {state, context}
         elif self.type == StreamEventType.TASK_COMPLETE:
             # Explicit task completion signal with full summary
-            result["task_complete"] = self.content  # {success, summary, files_modified, etc.}
+            result["task_complete"] = (
+                self.content
+            )  # {success, summary, files_modified, etc.}
         elif self.type == StreamEventType.BUILD_VERIFICATION:
             # Build/type-check verification results
-            result["build_verification"] = self.content  # {success, command, output, errors}
+            result["build_verification"] = (
+                self.content
+            )  # {success, command, output, errors}
         return result
 
 
@@ -918,8 +968,14 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "command": {"type": "string", "description": "The command to run"},
-                "auto_yes": {"type": "boolean", "description": "Auto-answer yes to prompts (default: true)"},
-                "cwd": {"type": "string", "description": "Working directory (optional)"},
+                "auto_yes": {
+                    "type": "boolean",
+                    "description": "Auto-answer yes to prompts (default: true)",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Working directory (optional)",
+                },
             },
             "required": ["command"],
         },
@@ -935,9 +991,18 @@ NAVI_TOOLS = [
                     "items": {"type": "string"},
                     "description": "List of commands to run in parallel",
                 },
-                "max_workers": {"type": "integer", "description": "Max parallel workers (default: 4)"},
-                "stop_on_failure": {"type": "boolean", "description": "Stop all if one fails (default: false)"},
-                "cwd": {"type": "string", "description": "Working directory (optional)"},
+                "max_workers": {
+                    "type": "integer",
+                    "description": "Max parallel workers (default: 4)",
+                },
+                "stop_on_failure": {
+                    "type": "boolean",
+                    "description": "Stop all if one fails (default: false)",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Working directory (optional)",
+                },
             },
             "required": ["commands"],
         },
@@ -949,9 +1014,18 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "command": {"type": "string", "description": "The command to run"},
-                "max_retries": {"type": "integer", "description": "Max retry attempts (default: 3)"},
-                "retry_delay": {"type": "number", "description": "Seconds between retries (default: 1.0)"},
-                "cwd": {"type": "string", "description": "Working directory (optional)"},
+                "max_retries": {
+                    "type": "integer",
+                    "description": "Max retry attempts (default: 3)",
+                },
+                "retry_delay": {
+                    "type": "number",
+                    "description": "Seconds between retries (default: 1.0)",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Working directory (optional)",
+                },
             },
             "required": ["command"],
         },
@@ -962,12 +1036,24 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "project_key": {"type": "string", "description": "Jira project key (e.g., 'PROJ')"},
+                "project_key": {
+                    "type": "string",
+                    "description": "Jira project key (e.g., 'PROJ')",
+                },
                 "summary": {"type": "string", "description": "Issue title"},
                 "description": {"type": "string", "description": "Issue description"},
-                "issue_type": {"type": "string", "description": "Type (Task, Bug, Story, etc.)"},
-                "priority": {"type": "string", "description": "Priority (Highest, High, Medium, Low)"},
-                "approve": {"type": "boolean", "description": "Must be true to execute"},
+                "issue_type": {
+                    "type": "string",
+                    "description": "Type (Task, Bug, Story, etc.)",
+                },
+                "priority": {
+                    "type": "string",
+                    "description": "Priority (Highest, High, Medium, Low)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
             },
             "required": ["project_key", "summary", "approve"],
         },
@@ -982,7 +1068,10 @@ NAVI_TOOLS = [
                 "project": {"type": "string", "description": "Filter by project key"},
                 "status": {"type": "string", "description": "Filter by status"},
                 "text": {"type": "string", "description": "Full-text search"},
-                "max_results": {"type": "integer", "description": "Max results (default: 20)"},
+                "max_results": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
             },
             "required": [],
         },
@@ -993,9 +1082,15 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "issue_key": {"type": "string", "description": "Jira issue key (e.g., 'PROJ-123')"},
+                "issue_key": {
+                    "type": "string",
+                    "description": "Jira issue key (e.g., 'PROJ-123')",
+                },
                 "comment": {"type": "string", "description": "Comment text"},
-                "approve": {"type": "boolean", "description": "Must be true to execute"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
             },
             "required": ["issue_key", "comment", "approve"],
         },
@@ -1006,10 +1101,20 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
                 "title": {"type": "string", "description": "Issue title"},
-                "body": {"type": "string", "description": "Issue description (markdown)"},
-                "labels": {"type": "array", "items": {"type": "string"}, "description": "Labels to add"},
+                "body": {
+                    "type": "string",
+                    "description": "Issue description (markdown)",
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Labels to add",
+                },
             },
             "required": ["repo", "title"],
         },
@@ -1020,9 +1125,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
-                "state": {"type": "string", "enum": ["open", "closed", "all"], "description": "Issue state"},
-                "limit": {"type": "integer", "description": "Max issues to return (default: 20)"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "state": {
+                    "type": "string",
+                    "enum": ["open", "closed", "all"],
+                    "description": "Issue state",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max issues to return (default: 20)",
+                },
             },
             "required": ["repo"],
         },
@@ -1033,7 +1148,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
                 "issue_number": {"type": "integer", "description": "Issue number"},
                 "body": {"type": "string", "description": "Comment text (markdown)"},
             },
@@ -1046,10 +1164,17 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
                 "pr_number": {"type": "integer", "description": "PR number"},
                 "body": {"type": "string", "description": "Review comment (markdown)"},
-                "event": {"type": "string", "enum": ["COMMENT", "APPROVE", "REQUEST_CHANGES"], "description": "Review type"},
+                "event": {
+                    "type": "string",
+                    "enum": ["COMMENT", "APPROVE", "REQUEST_CHANGES"],
+                    "description": "Review type",
+                },
             },
             "required": ["repo", "pr_number", "body"],
         },
@@ -1060,9 +1185,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
-                "state": {"type": "string", "enum": ["open", "closed", "all"], "description": "PR state"},
-                "limit": {"type": "integer", "description": "Max PRs to return (default: 20)"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "state": {
+                    "type": "string",
+                    "enum": ["open", "closed", "all"],
+                    "description": "PR state",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max PRs to return (default: 20)",
+                },
             },
             "required": ["repo"],
         },
@@ -1073,9 +1208,16 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
                 "pr_number": {"type": "integer", "description": "PR number"},
-                "merge_method": {"type": "string", "enum": ["merge", "squash", "rebase"], "description": "Merge method"},
+                "merge_method": {
+                    "type": "string",
+                    "enum": ["merge", "squash", "rebase"],
+                    "description": "Merge method",
+                },
             },
             "required": ["repo", "pr_number"],
         },
@@ -1089,9 +1231,20 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "enum": ["aws", "gcp", "azure", "digitalocean"], "description": "Cloud provider"},
-                "resources": {"type": "array", "items": {"type": "string"}, "description": "Resources to provision (e.g., 'ec2', 'rds', 's3')"},
-                "environment": {"type": "string", "description": "Environment name (dev, staging, prod)"},
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure", "digitalocean"],
+                    "description": "Cloud provider",
+                },
+                "resources": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Resources to provision (e.g., 'ec2', 'rds', 's3')",
+                },
+                "environment": {
+                    "type": "string",
+                    "description": "Environment name (dev, staging, prod)",
+                },
             },
             "required": ["provider"],
         },
@@ -1103,9 +1256,15 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "app_name": {"type": "string", "description": "Application name"},
-                "replicas": {"type": "integer", "description": "Number of replicas (default: 2)"},
+                "replicas": {
+                    "type": "integer",
+                    "description": "Number of replicas (default: 2)",
+                },
                 "port": {"type": "integer", "description": "Container port"},
-                "image": {"type": "string", "description": "Docker image (optional, will be inferred)"},
+                "image": {
+                    "type": "string",
+                    "description": "Docker image (optional, will be inferred)",
+                },
                 "namespace": {"type": "string", "description": "Kubernetes namespace"},
             },
             "required": ["app_name"],
@@ -1117,9 +1276,18 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "include_db": {"type": "boolean", "description": "Include database service"},
-                "include_redis": {"type": "boolean", "description": "Include Redis cache"},
-                "include_nginx": {"type": "boolean", "description": "Include Nginx reverse proxy"},
+                "include_db": {
+                    "type": "boolean",
+                    "description": "Include database service",
+                },
+                "include_redis": {
+                    "type": "boolean",
+                    "description": "Include Redis cache",
+                },
+                "include_nginx": {
+                    "type": "boolean",
+                    "description": "Include Nginx reverse proxy",
+                },
             },
             "required": [],
         },
@@ -1130,7 +1298,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "chart_name": {"type": "string", "description": "Name for the Helm chart"},
+                "chart_name": {
+                    "type": "string",
+                    "description": "Name for the Helm chart",
+                },
                 "app_version": {"type": "string", "description": "Application version"},
             },
             "required": ["chart_name"],
@@ -1142,8 +1313,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "working_dir": {"type": "string", "description": "Directory containing Terraform files"},
-                "var_file": {"type": "string", "description": "Path to tfvars file (optional)"},
+                "working_dir": {
+                    "type": "string",
+                    "description": "Directory containing Terraform files",
+                },
+                "var_file": {
+                    "type": "string",
+                    "description": "Path to tfvars file (optional)",
+                },
             },
             "required": [],
         },
@@ -1154,10 +1331,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "manifest_path": {"type": "string", "description": "Path to YAML manifest or directory"},
+                "manifest_path": {
+                    "type": "string",
+                    "description": "Path to YAML manifest or directory",
+                },
                 "namespace": {"type": "string", "description": "Target namespace"},
-                "dry_run": {"type": "boolean", "description": "Dry run mode (default: true for safety)"},
-                "approve": {"type": "boolean", "description": "Must be true to actually apply"},
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Dry run mode (default: true for safety)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply",
+                },
             },
             "required": ["manifest_path", "approve"],
         },
@@ -1168,8 +1354,15 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "resources": {"type": "array", "items": {"type": "string"}, "description": "AWS resources to provision (ec2, rds, lambda, etc.)"},
-                "environment": {"type": "string", "description": "Environment name (dev, staging, prod)"},
+                "resources": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "AWS resources to provision (ec2, rds, lambda, etc.)",
+                },
+                "environment": {
+                    "type": "string",
+                    "description": "Environment name (dev, staging, prod)",
+                },
                 "region": {"type": "string", "description": "AWS region"},
             },
             "required": ["resources"],
@@ -1181,8 +1374,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "include_scaling": {"type": "boolean", "description": "Include auto-scaling recommendations"},
-                "include_security": {"type": "boolean", "description": "Include security recommendations"},
+                "include_scaling": {
+                    "type": "boolean",
+                    "description": "Include auto-scaling recommendations",
+                },
+                "include_security": {
+                    "type": "boolean",
+                    "description": "Include security recommendations",
+                },
             },
             "required": [],
         },
@@ -1193,10 +1392,22 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "working_dir": {"type": "string", "description": "Directory containing Terraform files"},
-                "var_file": {"type": "string", "description": "Path to tfvars file (optional)"},
-                "auto_approve": {"type": "boolean", "description": "Skip interactive approval (not recommended)"},
-                "approve": {"type": "boolean", "description": "Must be true to execute"},
+                "working_dir": {
+                    "type": "string",
+                    "description": "Directory containing Terraform files",
+                },
+                "var_file": {
+                    "type": "string",
+                    "description": "Path to tfvars file (optional)",
+                },
+                "auto_approve": {
+                    "type": "boolean",
+                    "description": "Skip interactive approval (not recommended)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
             },
             "required": ["approve"],
         },
@@ -1207,9 +1418,18 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "working_dir": {"type": "string", "description": "Directory containing Terraform files"},
-                "target": {"type": "string", "description": "Specific resource to destroy (optional)"},
-                "approve": {"type": "boolean", "description": "Must be true to execute"},
+                "working_dir": {
+                    "type": "string",
+                    "description": "Directory containing Terraform files",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Specific resource to destroy (optional)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
             },
             "required": ["approve"],
         },
@@ -1223,8 +1443,14 @@ NAVI_TOOLS = [
                 "release_name": {"type": "string", "description": "Helm release name"},
                 "chart": {"type": "string", "description": "Chart name or path"},
                 "namespace": {"type": "string", "description": "Kubernetes namespace"},
-                "values_file": {"type": "string", "description": "Path to values.yaml file"},
-                "approve": {"type": "boolean", "description": "Must be true to install"},
+                "values_file": {
+                    "type": "string",
+                    "description": "Path to values.yaml file",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to install",
+                },
             },
             "required": ["release_name", "chart", "approve"],
         },
@@ -1238,9 +1464,20 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "description": {"type": "string", "description": "Natural language description of the data model"},
-                "orm": {"type": "string", "enum": ["prisma", "sqlalchemy", "drizzle", "typeorm", "raw_sql"], "description": "ORM/schema format"},
-                "database": {"type": "string", "enum": ["postgresql", "mysql", "sqlite", "mongodb"], "description": "Database type"},
+                "description": {
+                    "type": "string",
+                    "description": "Natural language description of the data model",
+                },
+                "orm": {
+                    "type": "string",
+                    "enum": ["prisma", "sqlalchemy", "drizzle", "typeorm", "raw_sql"],
+                    "description": "ORM/schema format",
+                },
+                "database": {
+                    "type": "string",
+                    "enum": ["postgresql", "mysql", "sqlite", "mongodb"],
+                    "description": "Database type",
+                },
             },
             "required": ["description"],
         },
@@ -1251,8 +1488,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "Migration name (e.g., 'add_users_table')"},
-                "changes": {"type": "string", "description": "Description of changes to make"},
+                "name": {
+                    "type": "string",
+                    "description": "Migration name (e.g., 'add_users_table')",
+                },
+                "changes": {
+                    "type": "string",
+                    "description": "Description of changes to make",
+                },
             },
             "required": ["name", "changes"],
         },
@@ -1263,9 +1506,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "direction": {"type": "string", "enum": ["up", "down"], "description": "Migration direction"},
-                "steps": {"type": "integer", "description": "Number of migrations to run (for rollback)"},
-                "approve": {"type": "boolean", "description": "Must be true to execute"},
+                "direction": {
+                    "type": "string",
+                    "enum": ["up", "down"],
+                    "description": "Migration direction",
+                },
+                "steps": {
+                    "type": "integer",
+                    "description": "Number of migrations to run (for rollback)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
             },
             "required": ["approve"],
         },
@@ -1276,9 +1529,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "tables": {"type": "array", "items": {"type": "string"}, "description": "Tables to seed"},
-                "count": {"type": "integer", "description": "Number of records per table (default: 10)"},
-                "realistic": {"type": "boolean", "description": "Generate realistic fake data (default: true)"},
+                "tables": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tables to seed",
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "Number of records per table (default: 10)",
+                },
+                "realistic": {
+                    "type": "boolean",
+                    "description": "Generate realistic fake data (default: true)",
+                },
             },
             "required": [],
         },
@@ -1289,9 +1552,18 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "check_indexes": {"type": "boolean", "description": "Check for missing indexes"},
-                "check_relations": {"type": "boolean", "description": "Validate foreign key relationships"},
-                "check_naming": {"type": "boolean", "description": "Check naming conventions"},
+                "check_indexes": {
+                    "type": "boolean",
+                    "description": "Check for missing indexes",
+                },
+                "check_relations": {
+                    "type": "boolean",
+                    "description": "Validate foreign key relationships",
+                },
+                "check_naming": {
+                    "type": "boolean",
+                    "description": "Check naming conventions",
+                },
             },
             "required": [],
         },
@@ -1302,7 +1574,11 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "format": {"type": "string", "enum": ["mermaid", "plantuml", "dbml"], "description": "Output format"},
+                "format": {
+                    "type": "string",
+                    "enum": ["mermaid", "plantuml", "dbml"],
+                    "description": "Output format",
+                },
             },
             "required": [],
         },
@@ -1314,9 +1590,19 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "database": {"type": "string", "description": "Database name"},
-                "format": {"type": "string", "enum": ["sql", "pg_dump", "custom"], "description": "Backup format"},
-                "destination": {"type": "string", "description": "Backup destination path"},
-                "approve": {"type": "boolean", "description": "Must be true to execute"},
+                "format": {
+                    "type": "string",
+                    "enum": ["sql", "pg_dump", "custom"],
+                    "description": "Backup format",
+                },
+                "destination": {
+                    "type": "string",
+                    "description": "Backup destination path",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
             },
             "required": ["approve"],
         },
@@ -1329,7 +1615,10 @@ NAVI_TOOLS = [
             "properties": {
                 "backup_file": {"type": "string", "description": "Path to backup file"},
                 "database": {"type": "string", "description": "Target database name"},
-                "approve": {"type": "boolean", "description": "Must be true to execute"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
             },
             "required": ["backup_file", "approve"],
         },
@@ -1340,7 +1629,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "verbose": {"type": "boolean", "description": "Show detailed migration info"},
+                "verbose": {
+                    "type": "boolean",
+                    "description": "Show detailed migration info",
+                },
             },
             "required": [],
         },
@@ -1353,8 +1645,15 @@ NAVI_TOOLS = [
             "properties": {
                 "query": {"type": "string", "description": "SQL query to execute"},
                 "database": {"type": "string", "description": "Database name"},
-                "params": {"type": "array", "items": {"type": "string"}, "description": "Query parameters"},
-                "approve": {"type": "boolean", "description": "Must be true for write operations"},
+                "params": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Query parameters",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true for write operations",
+                },
             },
             "required": ["query"],
         },
@@ -1368,9 +1667,18 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Path to the source file"},
-                "framework": {"type": "string", "description": "Test framework (pytest, jest, vitest, etc.)"},
-                "coverage_target": {"type": "number", "description": "Target coverage percentage (default: 80)"},
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the source file",
+                },
+                "framework": {
+                    "type": "string",
+                    "description": "Test framework (pytest, jest, vitest, etc.)",
+                },
+                "coverage_target": {
+                    "type": "number",
+                    "description": "Target coverage percentage (default: 80)",
+                },
             },
             "required": ["file_path"],
         },
@@ -1381,9 +1689,18 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Path to the source file"},
-                "function_name": {"type": "string", "description": "Name of the function to test"},
-                "include_edge_cases": {"type": "boolean", "description": "Include edge case tests (default: true)"},
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the source file",
+                },
+                "function_name": {
+                    "type": "string",
+                    "description": "Name of the function to test",
+                },
+                "include_edge_cases": {
+                    "type": "boolean",
+                    "description": "Include edge case tests (default: true)",
+                },
             },
             "required": ["file_path", "function_name"],
         },
@@ -1394,9 +1711,18 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Path to module or directory"},
-                "include_integration": {"type": "boolean", "description": "Include integration tests"},
-                "include_e2e": {"type": "boolean", "description": "Include end-to-end tests"},
+                "path": {
+                    "type": "string",
+                    "description": "Path to module or directory",
+                },
+                "include_integration": {
+                    "type": "boolean",
+                    "description": "Include integration tests",
+                },
+                "include_e2e": {
+                    "type": "boolean",
+                    "description": "Include end-to-end tests",
+                },
             },
             "required": ["path"],
         },
@@ -1416,8 +1742,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "test_file_path": {"type": "string", "description": "Path to the test file to analyze"},
-                "workspace_path": {"type": "string", "description": "Project root directory (optional)"},
+                "test_file_path": {
+                    "type": "string",
+                    "description": "Path to the test file to analyze",
+                },
+                "workspace_path": {
+                    "type": "string",
+                    "description": "Project root directory (optional)",
+                },
             },
             "required": ["test_file_path"],
         },
@@ -1431,9 +1763,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "include_docker": {"type": "boolean", "description": "Include Docker build stage"},
-                "include_security": {"type": "boolean", "description": "Include security scanning"},
-                "environments": {"type": "array", "items": {"type": "string"}, "description": "Deployment environments (staging, prod)"},
+                "include_docker": {
+                    "type": "boolean",
+                    "description": "Include Docker build stage",
+                },
+                "include_security": {
+                    "type": "boolean",
+                    "description": "Include security scanning",
+                },
+                "environments": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Deployment environments (staging, prod)",
+                },
             },
             "required": [],
         },
@@ -1445,8 +1787,15 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "workflow_name": {"type": "string", "description": "Workflow name"},
-                "triggers": {"type": "array", "items": {"type": "string"}, "description": "Trigger events (push, pull_request)"},
-                "include_deploy": {"type": "boolean", "description": "Include deployment job"},
+                "triggers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Trigger events (push, pull_request)",
+                },
+                "include_deploy": {
+                    "type": "boolean",
+                    "description": "Include deployment job",
+                },
             },
             "required": [],
         },
@@ -1457,7 +1806,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
             },
             "required": ["repo"],
         },
@@ -1468,9 +1820,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
-                "workflow_id": {"type": "string", "description": "Filter by workflow ID"},
-                "status": {"type": "string", "enum": ["queued", "in_progress", "completed"], "description": "Filter by status"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "workflow_id": {
+                    "type": "string",
+                    "description": "Filter by workflow ID",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["queued", "in_progress", "completed"],
+                    "description": "Filter by status",
+                },
             },
             "required": ["repo"],
         },
@@ -1481,7 +1843,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
                 "run_id": {"type": "string", "description": "Run ID"},
             },
             "required": ["repo", "run_id"],
@@ -1493,11 +1858,23 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "repo": {"type": "string", "description": "Repository (owner/repo format)"},
-                "workflow_id": {"type": "string", "description": "Workflow ID or filename"},
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "workflow_id": {
+                    "type": "string",
+                    "description": "Workflow ID or filename",
+                },
                 "ref": {"type": "string", "description": "Branch or tag to run on"},
-                "inputs": {"type": "object", "description": "Workflow input parameters"},
-                "approve": {"type": "boolean", "description": "Must be true to trigger"},
+                "inputs": {
+                    "type": "object",
+                    "description": "Workflow input parameters",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to trigger",
+                },
             },
             "required": ["repo", "workflow_id", "approve"],
         },
@@ -1508,8 +1885,15 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "project": {"type": "string", "description": "Project path (group/project)"},
-                "status": {"type": "string", "enum": ["running", "pending", "success", "failed", "canceled"], "description": "Filter by status"},
+                "project": {
+                    "type": "string",
+                    "description": "Project path (group/project)",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["running", "pending", "success", "failed", "canceled"],
+                    "description": "Filter by status",
+                },
             },
             "required": ["project"],
         },
@@ -1535,7 +1919,10 @@ NAVI_TOOLS = [
                 "project": {"type": "string", "description": "Project path"},
                 "ref": {"type": "string", "description": "Branch or tag"},
                 "variables": {"type": "object", "description": "Pipeline variables"},
-                "approve": {"type": "boolean", "description": "Must be true to trigger"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to trigger",
+                },
             },
             "required": ["project", "approve"],
         },
@@ -1562,9 +1949,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "include_badges": {"type": "boolean", "description": "Include status badges (build, coverage, etc.)"},
-                "include_toc": {"type": "boolean", "description": "Include table of contents"},
-                "style": {"type": "string", "enum": ["standard", "minimal", "detailed"], "description": "Documentation style"},
+                "include_badges": {
+                    "type": "boolean",
+                    "description": "Include status badges (build, coverage, etc.)",
+                },
+                "include_toc": {
+                    "type": "boolean",
+                    "description": "Include table of contents",
+                },
+                "style": {
+                    "type": "string",
+                    "enum": ["standard", "minimal", "detailed"],
+                    "description": "Documentation style",
+                },
             },
             "required": [],
         },
@@ -1575,9 +1972,20 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "format": {"type": "string", "enum": ["openapi", "markdown", "jsdoc"], "description": "Output format"},
-                "include_examples": {"type": "boolean", "description": "Include usage examples"},
-                "group_by": {"type": "string", "enum": ["endpoint", "resource", "tag"], "description": "How to group endpoints"},
+                "format": {
+                    "type": "string",
+                    "enum": ["openapi", "markdown", "jsdoc"],
+                    "description": "Output format",
+                },
+                "include_examples": {
+                    "type": "boolean",
+                    "description": "Include usage examples",
+                },
+                "group_by": {
+                    "type": "string",
+                    "enum": ["endpoint", "resource", "tag"],
+                    "description": "How to group endpoints",
+                },
             },
             "required": [],
         },
@@ -1588,9 +1996,18 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "component_path": {"type": "string", "description": "Path to the component file"},
-                "include_props_table": {"type": "boolean", "description": "Include props/types table"},
-                "include_examples": {"type": "boolean", "description": "Include usage examples"},
+                "component_path": {
+                    "type": "string",
+                    "description": "Path to the component file",
+                },
+                "include_props_table": {
+                    "type": "boolean",
+                    "description": "Include props/types table",
+                },
+                "include_examples": {
+                    "type": "boolean",
+                    "description": "Include usage examples",
+                },
             },
             "required": ["component_path"],
         },
@@ -1601,9 +2018,18 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "include_diagrams": {"type": "boolean", "description": "Include Mermaid diagrams"},
-                "include_tech_stack": {"type": "boolean", "description": "Include technology stack details"},
-                "include_security": {"type": "boolean", "description": "Include security considerations"},
+                "include_diagrams": {
+                    "type": "boolean",
+                    "description": "Include Mermaid diagrams",
+                },
+                "include_tech_stack": {
+                    "type": "boolean",
+                    "description": "Include technology stack details",
+                },
+                "include_security": {
+                    "type": "boolean",
+                    "description": "Include security considerations",
+                },
             },
             "required": [],
         },
@@ -1614,10 +2040,23 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Path to the source file"},
-                "style": {"type": "string", "enum": ["jsdoc", "tsdoc", "google", "numpy", "sphinx"], "description": "Comment style"},
-                "include_params": {"type": "boolean", "description": "Include parameter descriptions"},
-                "include_returns": {"type": "boolean", "description": "Include return value descriptions"},
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the source file",
+                },
+                "style": {
+                    "type": "string",
+                    "enum": ["jsdoc", "tsdoc", "google", "numpy", "sphinx"],
+                    "description": "Comment style",
+                },
+                "include_params": {
+                    "type": "boolean",
+                    "description": "Include parameter descriptions",
+                },
+                "include_returns": {
+                    "type": "boolean",
+                    "description": "Include return value descriptions",
+                },
             },
             "required": ["file_path"],
         },
@@ -1631,9 +2070,16 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "project_type": {"type": "string", "description": "Type of project (nextjs, react, fastapi, express, etc.)"},
+                "project_type": {
+                    "type": "string",
+                    "description": "Type of project (nextjs, react, fastapi, express, etc.)",
+                },
                 "name": {"type": "string", "description": "Project name"},
-                "features": {"type": "array", "items": {"type": "string"}, "description": "Features to include (auth, db, docker)"},
+                "features": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Features to include (auth, db, docker)",
+                },
             },
             "required": ["project_type", "name"],
         },
@@ -1644,7 +2090,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "description": {"type": "string", "description": "Natural language description of the project"},
+                "description": {
+                    "type": "string",
+                    "description": "Natural language description of the project",
+                },
             },
             "required": ["description"],
         },
@@ -1655,7 +2104,17 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "feature_type": {"type": "string", "enum": ["api-route", "component", "model", "service", "middleware"], "description": "Type of feature"},
+                "feature_type": {
+                    "type": "string",
+                    "enum": [
+                        "api-route",
+                        "component",
+                        "model",
+                        "service",
+                        "middleware",
+                    ],
+                    "description": "Type of feature",
+                },
                 "name": {"type": "string", "description": "Feature name"},
             },
             "required": ["feature_type", "name"],
@@ -1667,7 +2126,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "category": {"type": "string", "description": "Filter by category (frontend, backend, fullstack)"},
+                "category": {
+                    "type": "string",
+                    "description": "Filter by category (frontend, backend, fullstack)",
+                },
             },
             "required": [],
         },
@@ -1681,8 +2143,15 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "enum": ["sentry", "rollbar", "bugsnag"], "description": "Error tracking provider"},
-                "framework": {"type": "string", "description": "Project framework (nextjs, fastapi, express)"},
+                "provider": {
+                    "type": "string",
+                    "enum": ["sentry", "rollbar", "bugsnag"],
+                    "description": "Error tracking provider",
+                },
+                "framework": {
+                    "type": "string",
+                    "description": "Project framework (nextjs, fastapi, express)",
+                },
             },
             "required": ["provider"],
         },
@@ -1693,9 +2162,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "enum": ["datadog", "newrelic", "dynatrace"], "description": "APM provider"},
-                "enable_profiling": {"type": "boolean", "description": "Enable code profiling"},
-                "enable_tracing": {"type": "boolean", "description": "Enable distributed tracing"},
+                "provider": {
+                    "type": "string",
+                    "enum": ["datadog", "newrelic", "dynatrace"],
+                    "description": "APM provider",
+                },
+                "enable_profiling": {
+                    "type": "boolean",
+                    "description": "Enable code profiling",
+                },
+                "enable_tracing": {
+                    "type": "boolean",
+                    "description": "Enable distributed tracing",
+                },
             },
             "required": ["provider"],
         },
@@ -1706,9 +2185,21 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "library": {"type": "string", "enum": ["pino", "winston", "structlog", "loguru"], "description": "Logging library"},
-                "format": {"type": "string", "enum": ["json", "pretty", "compact"], "description": "Output format"},
-                "level": {"type": "string", "enum": ["debug", "info", "warn", "error"], "description": "Default log level"},
+                "library": {
+                    "type": "string",
+                    "enum": ["pino", "winston", "structlog", "loguru"],
+                    "description": "Logging library",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["json", "pretty", "compact"],
+                    "description": "Output format",
+                },
+                "level": {
+                    "type": "string",
+                    "enum": ["debug", "info", "warn", "error"],
+                    "description": "Default log level",
+                },
             },
             "required": [],
         },
@@ -1719,9 +2210,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "include_db": {"type": "boolean", "description": "Check database connectivity"},
-                "include_redis": {"type": "boolean", "description": "Check Redis connectivity"},
-                "include_external": {"type": "array", "items": {"type": "string"}, "description": "External services to check"},
+                "include_db": {
+                    "type": "boolean",
+                    "description": "Check database connectivity",
+                },
+                "include_redis": {
+                    "type": "boolean",
+                    "description": "Check Redis connectivity",
+                },
+                "include_external": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "External services to check",
+                },
             },
             "required": [],
         },
@@ -1732,8 +2233,15 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "enum": ["pagerduty", "opsgenie", "slack", "email"], "description": "Alert destination"},
-                "thresholds": {"type": "object", "description": "Alert thresholds (error_rate, latency_ms, etc.)"},
+                "provider": {
+                    "type": "string",
+                    "enum": ["pagerduty", "opsgenie", "slack", "email"],
+                    "description": "Alert destination",
+                },
+                "thresholds": {
+                    "type": "object",
+                    "description": "Alert thresholds (error_rate, latency_ms, etc.)",
+                },
             },
             "required": ["provider"],
         },
@@ -1747,8 +2255,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "include_descriptions": {"type": "boolean", "description": "Include descriptions for each variable"},
-                "group_by_service": {"type": "boolean", "description": "Group variables by service/feature"},
+                "include_descriptions": {
+                    "type": "boolean",
+                    "description": "Include descriptions for each variable",
+                },
+                "group_by_service": {
+                    "type": "boolean",
+                    "description": "Group variables by service/feature",
+                },
             },
             "required": [],
         },
@@ -1759,8 +2273,20 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "enum": ["vault", "aws_secrets_manager", "gcp_secret_manager", "azure_keyvault"], "description": "Secrets provider"},
-                "generate_config": {"type": "boolean", "description": "Generate configuration files"},
+                "provider": {
+                    "type": "string",
+                    "enum": [
+                        "vault",
+                        "aws_secrets_manager",
+                        "gcp_secret_manager",
+                        "azure_keyvault",
+                    ],
+                    "description": "Secrets provider",
+                },
+                "generate_config": {
+                    "type": "boolean",
+                    "description": "Generate configuration files",
+                },
             },
             "required": ["provider"],
         },
@@ -1771,9 +2297,17 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "platform": {"type": "string", "enum": ["vercel", "railway", "fly", "netlify", "heroku"], "description": "Target platform"},
+                "platform": {
+                    "type": "string",
+                    "enum": ["vercel", "railway", "fly", "netlify", "heroku"],
+                    "description": "Target platform",
+                },
                 "env_file": {"type": "string", "description": "Path to .env file"},
-                "environment": {"type": "string", "enum": ["development", "preview", "production"], "description": "Target environment"},
+                "environment": {
+                    "type": "string",
+                    "enum": ["development", "preview", "production"],
+                    "description": "Target environment",
+                },
             },
             "required": ["platform"],
         },
@@ -1784,8 +2318,15 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "scan_git_history": {"type": "boolean", "description": "Scan git history for secrets"},
-                "exclude_patterns": {"type": "array", "items": {"type": "string"}, "description": "Patterns to exclude from scan"},
+                "scan_git_history": {
+                    "type": "boolean",
+                    "description": "Scan git history for secrets",
+                },
+                "exclude_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Patterns to exclude from scan",
+                },
             },
             "required": [],
         },
@@ -1796,8 +2337,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "secret_type": {"type": "string", "description": "Type of secret (api_key, database, jwt, etc.)"},
-                "provider": {"type": "string", "description": "Service provider (aws, stripe, github, etc.)"},
+                "secret_type": {
+                    "type": "string",
+                    "description": "Type of secret (api_key, database, jwt, etc.)",
+                },
+                "provider": {
+                    "type": "string",
+                    "description": "Service provider (aws, stripe, github, etc.)",
+                },
             },
             "required": ["secret_type"],
         },
@@ -1811,10 +2358,25 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "project_type": {"type": "string", "description": "Type of project (web app, API, mobile, etc.)"},
-                "requirements": {"type": "array", "items": {"type": "string"}, "description": "Key requirements (realtime, high-scale, etc.)"},
-                "team_size": {"type": "string", "enum": ["solo", "small", "medium", "large"], "description": "Team size"},
-                "budget": {"type": "string", "enum": ["minimal", "moderate", "enterprise"], "description": "Infrastructure budget"},
+                "project_type": {
+                    "type": "string",
+                    "description": "Type of project (web app, API, mobile, etc.)",
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Key requirements (realtime, high-scale, etc.)",
+                },
+                "team_size": {
+                    "type": "string",
+                    "enum": ["solo", "small", "medium", "large"],
+                    "description": "Team size",
+                },
+                "budget": {
+                    "type": "string",
+                    "enum": ["minimal", "moderate", "enterprise"],
+                    "description": "Infrastructure budget",
+                },
             },
             "required": ["project_type"],
         },
@@ -1825,8 +2387,21 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "description": {"type": "string", "description": "System description and requirements"},
-                "pattern": {"type": "string", "enum": ["monolith", "microservices", "serverless", "event_driven", "modular_monolith"], "description": "Architecture pattern"},
+                "description": {
+                    "type": "string",
+                    "description": "System description and requirements",
+                },
+                "pattern": {
+                    "type": "string",
+                    "enum": [
+                        "monolith",
+                        "microservices",
+                        "serverless",
+                        "event_driven",
+                        "modular_monolith",
+                    ],
+                    "description": "Architecture pattern",
+                },
             },
             "required": ["description"],
         },
@@ -1837,8 +2412,22 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "diagram_type": {"type": "string", "enum": ["system", "sequence", "component", "deployment", "data_flow"], "description": "Type of diagram"},
-                "format": {"type": "string", "enum": ["mermaid", "plantuml", "d2"], "description": "Output format"},
+                "diagram_type": {
+                    "type": "string",
+                    "enum": [
+                        "system",
+                        "sequence",
+                        "component",
+                        "deployment",
+                        "data_flow",
+                    ],
+                    "description": "Type of diagram",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["mermaid", "plantuml", "d2"],
+                    "description": "Output format",
+                },
             },
             "required": ["diagram_type"],
         },
@@ -1849,8 +2438,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "analyze_dependencies": {"type": "boolean", "description": "Analyze code dependencies"},
-                "suggest_boundaries": {"type": "boolean", "description": "Suggest service boundaries"},
+                "analyze_dependencies": {
+                    "type": "boolean",
+                    "description": "Analyze code dependencies",
+                },
+                "suggest_boundaries": {
+                    "type": "boolean",
+                    "description": "Suggest service boundaries",
+                },
             },
             "required": [],
         },
@@ -1862,9 +2457,16 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "title": {"type": "string", "description": "Decision title"},
-                "context": {"type": "string", "description": "Context and problem statement"},
+                "context": {
+                    "type": "string",
+                    "description": "Context and problem statement",
+                },
                 "decision": {"type": "string", "description": "The decision made"},
-                "alternatives": {"type": "array", "items": {"type": "string"}, "description": "Alternatives considered"},
+                "alternatives": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Alternatives considered",
+                },
             },
             "required": ["title", "decision"],
         },
@@ -1887,7 +2489,19 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "platform": {"type": "string", "enum": ["vercel", "railway", "fly", "netlify", "heroku", "aws", "gcp"], "description": "Deployment platform"},
+                "platform": {
+                    "type": "string",
+                    "enum": [
+                        "vercel",
+                        "railway",
+                        "fly",
+                        "netlify",
+                        "heroku",
+                        "aws",
+                        "gcp",
+                    ],
+                    "description": "Deployment platform",
+                },
             },
             "required": ["platform"],
         },
@@ -1899,7 +2513,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "platform": {"type": "string", "description": "Deployment platform"},
-                "environment": {"type": "string", "description": "Environment (production, staging, preview)"},
+                "environment": {
+                    "type": "string",
+                    "description": "Environment (production, staging, preview)",
+                },
             },
             "required": ["platform"],
         },
@@ -1910,7 +2527,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "project_type": {"type": "string", "description": "Filter by project type (nextjs, fastapi, etc.)"},
+                "project_type": {
+                    "type": "string",
+                    "description": "Filter by project type (nextjs, fastapi, etc.)",
+                },
             },
             "required": [],
         },
@@ -1921,8 +2541,24 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "platform": {"type": "string", "enum": ["vercel", "railway", "fly", "netlify", "heroku", "aws", "gcp"], "description": "Target platform"},
-                "environment": {"type": "string", "enum": ["development", "preview", "production"], "description": "Target environment"},
+                "platform": {
+                    "type": "string",
+                    "enum": [
+                        "vercel",
+                        "railway",
+                        "fly",
+                        "netlify",
+                        "heroku",
+                        "aws",
+                        "gcp",
+                    ],
+                    "description": "Target platform",
+                },
+                "environment": {
+                    "type": "string",
+                    "enum": ["development", "preview", "production"],
+                    "description": "Target environment",
+                },
                 "approve": {"type": "boolean", "description": "Must be true to deploy"},
             },
             "required": ["platform", "approve"],
@@ -1935,8 +2571,14 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "platform": {"type": "string", "description": "Deployment platform"},
-                "deployment_id": {"type": "string", "description": "Deployment ID to rollback to"},
-                "approve": {"type": "boolean", "description": "Must be true to rollback"},
+                "deployment_id": {
+                    "type": "string",
+                    "description": "Deployment ID to rollback to",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to rollback",
+                },
             },
             "required": ["platform", "approve"],
         },
@@ -1948,7 +2590,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "platform": {"type": "string", "description": "Deployment platform"},
-                "environment": {"type": "string", "description": "Environment to check"},
+                "environment": {
+                    "type": "string",
+                    "description": "Environment to check",
+                },
             },
             "required": ["platform"],
         },
@@ -1961,7 +2606,10 @@ NAVI_TOOLS = [
             "properties": {
                 "platform": {"type": "string", "description": "Deployment platform"},
                 "deployment_id": {"type": "string", "description": "Deployment ID"},
-                "tail": {"type": "integer", "description": "Number of recent lines (default: 100)"},
+                "tail": {
+                    "type": "integer",
+                    "description": "Number of recent lines (default: 100)",
+                },
             },
             "required": ["platform"],
         },
@@ -1976,9 +2624,15 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search query"},
-                "channel": {"type": "string", "description": "Filter by channel name or ID"},
+                "channel": {
+                    "type": "string",
+                    "description": "Filter by channel name or ID",
+                },
                 "from_user": {"type": "string", "description": "Filter by sender"},
-                "max_results": {"type": "integer", "description": "Maximum results (default: 20)"},
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum results (default: 20)",
+                },
             },
             "required": ["query"],
         },
@@ -1990,7 +2644,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "channel": {"type": "string", "description": "Channel name or ID"},
-                "limit": {"type": "integer", "description": "Number of messages (default: 50)"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Number of messages (default: 50)",
+                },
             },
             "required": ["channel"],
         },
@@ -2002,7 +2659,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "channel": {"type": "string", "description": "Channel name or ID"},
-                "message": {"type": "string", "description": "Message text (supports Slack markdown)"},
+                "message": {
+                    "type": "string",
+                    "description": "Message text (supports Slack markdown)",
+                },
                 "approve": {"type": "boolean", "description": "Must be true to send"},
             },
             "required": ["channel", "message", "approve"],
@@ -2017,8 +2677,16 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "state": {"type": "string", "enum": ["opened", "closed", "merged", "all"], "description": "MR state filter"},
-                "scope": {"type": "string", "enum": ["created_by_me", "assigned_to_me", "all"], "description": "Scope filter"},
+                "state": {
+                    "type": "string",
+                    "enum": ["opened", "closed", "merged", "all"],
+                    "description": "MR state filter",
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["created_by_me", "assigned_to_me", "all"],
+                    "description": "Scope filter",
+                },
             },
             "required": [],
         },
@@ -2029,8 +2697,16 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "state": {"type": "string", "enum": ["opened", "closed", "all"], "description": "Issue state filter"},
-                "labels": {"type": "array", "items": {"type": "string"}, "description": "Filter by labels"},
+                "state": {
+                    "type": "string",
+                    "enum": ["opened", "closed", "all"],
+                    "description": "Issue state filter",
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by labels",
+                },
             },
             "required": [],
         },
@@ -2041,8 +2717,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "project": {"type": "string", "description": "Project path (group/project)"},
-                "pipeline_id": {"type": "integer", "description": "Pipeline ID (optional, defaults to latest)"},
+                "project": {
+                    "type": "string",
+                    "description": "Project path (group/project)",
+                },
+                "pipeline_id": {
+                    "type": "integer",
+                    "description": "Pipeline ID (optional, defaults to latest)",
+                },
             },
             "required": ["project"],
         },
@@ -2054,7 +2736,11 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search query"},
-                "scope": {"type": "string", "enum": ["projects", "issues", "merge_requests", "blobs"], "description": "Search scope"},
+                "scope": {
+                    "type": "string",
+                    "enum": ["projects", "issues", "merge_requests", "blobs"],
+                    "description": "Search scope",
+                },
             },
             "required": ["query"],
         },
@@ -2068,8 +2754,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "status": {"type": "string", "description": "Filter by status (backlog, todo, in_progress, done)"},
-                "limit": {"type": "integer", "description": "Max issues to return (default: 20)"},
+                "status": {
+                    "type": "string",
+                    "description": "Filter by status (backlog, todo, in_progress, done)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max issues to return (default: 20)",
+                },
             },
             "required": [],
         },
@@ -2093,9 +2785,15 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "title": {"type": "string", "description": "Issue title"},
-                "description": {"type": "string", "description": "Issue description (markdown)"},
+                "description": {
+                    "type": "string",
+                    "description": "Issue description (markdown)",
+                },
                 "team": {"type": "string", "description": "Team name or ID"},
-                "priority": {"type": "integer", "description": "Priority (0=None, 1=Urgent, 2=High, 3=Medium, 4=Low)"},
+                "priority": {
+                    "type": "integer",
+                    "description": "Priority (0=None, 1=Urgent, 2=High, 3=Medium, 4=Low)",
+                },
                 "approve": {"type": "boolean", "description": "Must be true to create"},
             },
             "required": ["title", "team", "approve"],
@@ -2108,7 +2806,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "issue_id": {"type": "string", "description": "Issue ID or identifier"},
-                "status": {"type": "string", "description": "New status (backlog, todo, in_progress, done, canceled)"},
+                "status": {
+                    "type": "string",
+                    "description": "New status (backlog, todo, in_progress, done, canceled)",
+                },
                 "approve": {"type": "boolean", "description": "Must be true to update"},
             },
             "required": ["issue_id", "status", "approve"],
@@ -2133,7 +2834,11 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search query"},
-                "filter_type": {"type": "string", "enum": ["page", "database"], "description": "Filter by type"},
+                "filter_type": {
+                    "type": "string",
+                    "enum": ["page", "database"],
+                    "description": "Filter by type",
+                },
             },
             "required": ["query"],
         },
@@ -2144,7 +2849,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "limit": {"type": "integer", "description": "Max pages to return (default: 20)"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max pages to return (default: 20)",
+                },
             },
             "required": [],
         },
@@ -2176,7 +2884,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "title": {"type": "string", "description": "Page title"},
-                "parent_id": {"type": "string", "description": "Parent page or database ID"},
+                "parent_id": {
+                    "type": "string",
+                    "description": "Parent page or database ID",
+                },
                 "content": {"type": "string", "description": "Page content (markdown)"},
                 "approve": {"type": "boolean", "description": "Must be true to create"},
             },
@@ -2194,7 +2905,10 @@ NAVI_TOOLS = [
             "properties": {
                 "query": {"type": "string", "description": "Search query"},
                 "space": {"type": "string", "description": "Filter by space key"},
-                "limit": {"type": "integer", "description": "Max results (default: 20)"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
             },
             "required": ["query"],
         },
@@ -2231,8 +2945,15 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "service_type": {"type": "string", "description": "Service type (compute, storage, database, serverless, etc.)"},
-                "providers": {"type": "array", "items": {"type": "string"}, "description": "Providers to compare (aws, gcp, azure)"},
+                "service_type": {
+                    "type": "string",
+                    "description": "Service type (compute, storage, database, serverless, etc.)",
+                },
+                "providers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Providers to compare (aws, gcp, azure)",
+                },
             },
             "required": ["service_type"],
         },
@@ -2243,10 +2964,26 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "enum": ["aws", "gcp", "azure"], "description": "Cloud provider"},
-                "regions": {"type": "array", "items": {"type": "string"}, "description": "Regions to deploy"},
-                "services": {"type": "array", "items": {"type": "string"}, "description": "Services to deploy"},
-                "strategy": {"type": "string", "enum": ["active-active", "active-passive", "pilot-light"], "description": "HA strategy"},
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Cloud provider",
+                },
+                "regions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Regions to deploy",
+                },
+                "services": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Services to deploy",
+                },
+                "strategy": {
+                    "type": "string",
+                    "enum": ["active-active", "active-passive", "pilot-light"],
+                    "description": "HA strategy",
+                },
             },
             "required": ["provider", "regions"],
         },
@@ -2257,9 +2994,21 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "source_provider": {"type": "string", "enum": ["aws", "gcp", "azure"], "description": "Source cloud"},
-                "target_provider": {"type": "string", "enum": ["aws", "gcp", "azure"], "description": "Target cloud"},
-                "services": {"type": "array", "items": {"type": "string"}, "description": "Services to migrate"},
+                "source_provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Source cloud",
+                },
+                "target_provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Target cloud",
+                },
+                "services": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Services to migrate",
+                },
             },
             "required": ["source_provider", "target_provider"],
         },
@@ -2270,9 +3019,16 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "enum": ["aws", "gcp", "azure"], "description": "Cloud provider"},
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Cloud provider",
+                },
                 "service_type": {"type": "string", "description": "Service type"},
-                "requirements": {"type": "object", "description": "Resource requirements (cpu, memory, storage)"},
+                "requirements": {
+                    "type": "object",
+                    "description": "Resource requirements (cpu, memory, storage)",
+                },
             },
             "required": ["provider", "service_type"],
         },
@@ -2283,10 +3039,24 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "enum": ["aws", "gcp", "azure"], "description": "Cloud provider"},
-                "environments": {"type": "array", "items": {"type": "string"}, "description": "Environments (dev, staging, prod)"},
-                "include_security": {"type": "boolean", "description": "Include security controls"},
-                "include_networking": {"type": "boolean", "description": "Include VPC/network config"},
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Cloud provider",
+                },
+                "environments": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Environments (dev, staging, prod)",
+                },
+                "include_security": {
+                    "type": "boolean",
+                    "description": "Include security controls",
+                },
+                "include_networking": {
+                    "type": "boolean",
+                    "description": "Include VPC/network config",
+                },
             },
             "required": ["provider"],
         },
@@ -2297,8 +3067,16 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "enum": ["aws", "gcp", "azure"], "description": "Cloud provider"},
-                "time_period": {"type": "string", "enum": ["7d", "30d", "90d"], "description": "Analysis period"},
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Cloud provider",
+                },
+                "time_period": {
+                    "type": "string",
+                    "enum": ["7d", "30d", "90d"],
+                    "description": "Analysis period",
+                },
             },
             "required": ["provider"],
         },
@@ -2314,7 +3092,10 @@ NAVI_TOOLS = [
             "properties": {
                 "workspace": {"type": "string", "description": "Workspace ID or name"},
                 "project": {"type": "string", "description": "Filter by project"},
-                "completed": {"type": "boolean", "description": "Include completed tasks"},
+                "completed": {
+                    "type": "boolean",
+                    "description": "Include completed tasks",
+                },
             },
             "required": [],
         },
@@ -2338,7 +3119,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "workspace": {"type": "string", "description": "Workspace ID"},
-                "archived": {"type": "boolean", "description": "Include archived projects"},
+                "archived": {
+                    "type": "boolean",
+                    "description": "Include archived projects",
+                },
             },
             "required": [],
         },
@@ -2365,7 +3149,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "task_id": {"type": "string", "description": "Task ID"},
-                "approve": {"type": "boolean", "description": "Must be true to complete"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to complete",
+                },
             },
             "required": ["task_id", "approve"],
         },
@@ -2465,7 +3252,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "workspace_id": {"type": "string", "description": "Filter by workspace"},
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Filter by workspace",
+                },
             },
             "required": [],
         },
@@ -2510,7 +3300,10 @@ NAVI_TOOLS = [
             "properties": {
                 "board_id": {"type": "string", "description": "Board ID"},
                 "name": {"type": "string", "description": "Item name"},
-                "column_values": {"type": "object", "description": "Column values to set"},
+                "column_values": {
+                    "type": "object",
+                    "description": "Column values to set",
+                },
                 "approve": {"type": "boolean", "description": "Must be true to create"},
             },
             "required": ["board_id", "name", "approve"],
@@ -2525,8 +3318,16 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "state": {"type": "string", "enum": ["OPEN", "MERGED", "DECLINED"], "description": "PR state"},
-                "role": {"type": "string", "enum": ["author", "reviewer"], "description": "Your role"},
+                "state": {
+                    "type": "string",
+                    "enum": ["OPEN", "MERGED", "DECLINED"],
+                    "description": "PR state",
+                },
+                "role": {
+                    "type": "string",
+                    "enum": ["author", "reviewer"],
+                    "description": "Your role",
+                },
             },
             "required": [],
         },
@@ -2550,7 +3351,10 @@ NAVI_TOOLS = [
             "properties": {
                 "workspace": {"type": "string", "description": "Workspace slug"},
                 "repo": {"type": "string", "description": "Repository slug"},
-                "pipeline_uuid": {"type": "string", "description": "Pipeline UUID (optional, latest if not specified)"},
+                "pipeline_uuid": {
+                    "type": "string",
+                    "description": "Pipeline UUID (optional, latest if not specified)",
+                },
             },
             "required": ["workspace", "repo"],
         },
@@ -2580,7 +3384,11 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "project": {"type": "string", "description": "Project slug"},
-                "status": {"type": "string", "enum": ["unresolved", "resolved", "ignored"], "description": "Issue status"},
+                "status": {
+                    "type": "string",
+                    "enum": ["unresolved", "resolved", "ignored"],
+                    "description": "Issue status",
+                },
                 "limit": {"type": "integer", "description": "Max issues (default: 25)"},
             },
             "required": ["project"],
@@ -2613,7 +3421,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "issue_id": {"type": "string", "description": "Issue ID"},
-                "approve": {"type": "boolean", "description": "Must be true to resolve"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to resolve",
+                },
             },
             "required": ["issue_id", "approve"],
         },
@@ -2627,7 +3438,11 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "Filter by tags"},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by tags",
+                },
             },
             "required": [],
         },
@@ -2647,7 +3462,11 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "status": {"type": "string", "enum": ["active", "stable", "resolved"], "description": "Filter by status"},
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "stable", "resolved"],
+                    "description": "Filter by status",
+                },
             },
             "required": [],
         },
@@ -2670,7 +3489,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "monitor_id": {"type": "string", "description": "Monitor ID"},
-                "end_time": {"type": "string", "description": "Mute end time (ISO format)"},
+                "end_time": {
+                    "type": "string",
+                    "description": "Mute end time (ISO format)",
+                },
                 "approve": {"type": "boolean", "description": "Must be true to mute"},
             },
             "required": ["monitor_id", "approve"],
@@ -2685,8 +3507,16 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "status": {"type": "string", "enum": ["triggered", "acknowledged", "resolved"], "description": "Filter by status"},
-                "urgency": {"type": "string", "enum": ["high", "low"], "description": "Filter by urgency"},
+                "status": {
+                    "type": "string",
+                    "enum": ["triggered", "acknowledged", "resolved"],
+                    "description": "Filter by status",
+                },
+                "urgency": {
+                    "type": "string",
+                    "enum": ["high", "low"],
+                    "description": "Filter by urgency",
+                },
             },
             "required": [],
         },
@@ -2697,7 +3527,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "schedule_id": {"type": "string", "description": "Schedule ID (optional)"},
+                "schedule_id": {
+                    "type": "string",
+                    "description": "Schedule ID (optional)",
+                },
             },
             "required": [],
         },
@@ -2718,7 +3551,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "incident_id": {"type": "string", "description": "Incident ID"},
-                "approve": {"type": "boolean", "description": "Must be true to acknowledge"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to acknowledge",
+                },
             },
             "required": ["incident_id", "approve"],
         },
@@ -2731,7 +3567,10 @@ NAVI_TOOLS = [
             "properties": {
                 "incident_id": {"type": "string", "description": "Incident ID"},
                 "resolution_note": {"type": "string", "description": "Resolution note"},
-                "approve": {"type": "boolean", "description": "Must be true to resolve"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to resolve",
+                },
             },
             "required": ["incident_id", "approve"],
         },
@@ -2745,7 +3584,11 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "severity": {"type": "string", "enum": ["critical", "high", "medium", "low"], "description": "Filter by severity"},
+                "severity": {
+                    "type": "string",
+                    "enum": ["critical", "high", "medium", "low"],
+                    "description": "Filter by severity",
+                },
                 "project": {"type": "string", "description": "Filter by project"},
             },
             "required": [],
@@ -2801,8 +3644,16 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "project": {"type": "string", "description": "Project key"},
-                "severity": {"type": "string", "enum": ["BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO"], "description": "Filter by severity"},
-                "type": {"type": "string", "enum": ["BUG", "VULNERABILITY", "CODE_SMELL"], "description": "Filter by type"},
+                "severity": {
+                    "type": "string",
+                    "enum": ["BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO"],
+                    "description": "Filter by severity",
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["BUG", "VULNERABILITY", "CODE_SMELL"],
+                    "description": "Filter by type",
+                },
             },
             "required": ["project"],
         },
@@ -2944,7 +3795,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "channel_id": {"type": "string", "description": "Channel ID"},
-                "limit": {"type": "integer", "description": "Max messages (default: 50)"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max messages (default: 50)",
+                },
             },
             "required": ["channel_id"],
         },
@@ -2971,7 +3825,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "from_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                "from_date": {
+                    "type": "string",
+                    "description": "Start date (YYYY-MM-DD)",
+                },
                 "to_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
             },
             "required": [],
@@ -3008,8 +3865,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "calendar_id": {"type": "string", "description": "Calendar ID (default: primary)"},
-                "max_results": {"type": "integer", "description": "Max events (default: 10)"},
+                "calendar_id": {
+                    "type": "string",
+                    "description": "Calendar ID (default: primary)",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Max events (default: 10)",
+                },
             },
             "required": [],
         },
@@ -3020,7 +3883,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "calendar_id": {"type": "string", "description": "Calendar ID (default: primary)"},
+                "calendar_id": {
+                    "type": "string",
+                    "description": "Calendar ID (default: primary)",
+                },
             },
             "required": [],
         },
@@ -3032,7 +3898,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "event_id": {"type": "string", "description": "Event ID"},
-                "calendar_id": {"type": "string", "description": "Calendar ID (default: primary)"},
+                "calendar_id": {
+                    "type": "string",
+                    "description": "Calendar ID (default: primary)",
+                },
             },
             "required": ["event_id"],
         },
@@ -3046,7 +3915,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "folder_id": {"type": "string", "description": "Folder ID (default: root)"},
+                "folder_id": {
+                    "type": "string",
+                    "description": "Folder ID (default: root)",
+                },
                 "limit": {"type": "integer", "description": "Max files (default: 20)"},
             },
             "required": [],
@@ -3094,7 +3966,10 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "project": {"type": "string", "description": "Project name or ID"},
-                "limit": {"type": "integer", "description": "Max deployments (default: 20)"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max deployments (default: 20)",
+                },
             },
             "required": ["project"],
         },
@@ -3105,7 +3980,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "deployment_id": {"type": "string", "description": "Deployment ID or URL"},
+                "deployment_id": {
+                    "type": "string",
+                    "description": "Deployment ID or URL",
+                },
             },
             "required": ["deployment_id"],
         },
@@ -3116,8 +3994,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "deployment_id": {"type": "string", "description": "Deployment ID to redeploy"},
-                "approve": {"type": "boolean", "description": "Must be true to redeploy"},
+                "deployment_id": {
+                    "type": "string",
+                    "description": "Deployment ID to redeploy",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to redeploy",
+                },
             },
             "required": ["deployment_id", "approve"],
         },
@@ -3131,7 +4015,10 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "project_slug": {"type": "string", "description": "Project slug (gh/owner/repo or bb/owner/repo)"},
+                "project_slug": {
+                    "type": "string",
+                    "description": "Project slug (gh/owner/repo or bb/owner/repo)",
+                },
             },
             "required": ["project_slug"],
         },
@@ -3154,8 +4041,14 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "project_slug": {"type": "string", "description": "Project slug"},
-                "branch": {"type": "string", "description": "Branch to build (default: main)"},
-                "approve": {"type": "boolean", "description": "Must be true to trigger"},
+                "branch": {
+                    "type": "string",
+                    "description": "Branch to build (default: main)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to trigger",
+                },
             },
             "required": ["project_slug", "approve"],
         },
@@ -3184,6 +4077,7 @@ NAVI_TOOLS = [
 def _sanitize_openai_function_name(name: str) -> str:
     """Convert tool name to OpenAI-compatible format (replace dots with underscores)."""
     return name.replace(".", "_")
+
 
 NAVI_FUNCTIONS_OPENAI = [
     {

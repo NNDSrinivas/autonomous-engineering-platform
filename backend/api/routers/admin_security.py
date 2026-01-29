@@ -71,9 +71,9 @@ def get_security_status(
         try:
             overdue_count = (
                 db.execute(
-                    select(func.count()).select_from(AuditLog).where(
-                        AuditLog.created_at < cutoff_dt
-                    )
+                    select(func.count())
+                    .select_from(AuditLog)
+                    .where(AuditLog.created_at < cutoff_dt)
                 )
                 .scalars()
                 .first()
@@ -92,9 +92,9 @@ def get_security_status(
     token_key_id = os.environ.get("TOKEN_ENCRYPTION_KEY_ID")
     encryption_status = EncryptionStatus(
         audit_encryption_enabled=bool(settings.AUDIT_ENCRYPTION_KEY),
-        audit_encryption_key_id=settings.AUDIT_ENCRYPTION_KEY_ID
-        if settings.AUDIT_ENCRYPTION_KEY
-        else None,
+        audit_encryption_key_id=(
+            settings.AUDIT_ENCRYPTION_KEY_ID if settings.AUDIT_ENCRYPTION_KEY else None
+        ),
         token_encryption_configured=bool(token_key_id),
         token_encryption_key_id=token_key_id if token_key_id else None,
     )

@@ -32,7 +32,9 @@ class CheckpointStep(BaseModel):
 
     id: str
     title: str
-    status: str = Field(default="pending", pattern="^(pending|completed|failed|skipped)$")
+    status: str = Field(
+        default="pending", pattern="^(pending|completed|failed|skipped)$"
+    )
     completedAt: Optional[str] = None
 
 

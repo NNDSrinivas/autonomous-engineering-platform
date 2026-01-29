@@ -14,6 +14,7 @@ from backend.services.connector_base import ToolResult
 # GitLab CI/CD Pipeline Generation
 # ============================================================================
 
+
 async def generate_gitlab_ci(context: Dict[str, Any]) -> ToolResult:
     """
     Generate a complete GitLab CI/CD pipeline configuration.
@@ -49,8 +50,8 @@ async def generate_gitlab_ci(context: Dict[str, Any]) -> ToolResult:
         "image": _get_default_image(project_type),
         "retry": {
             "max": 2,
-            "when": ["runner_system_failure", "stuck_or_timeout_failure"]
-        }
+            "when": ["runner_system_failure", "stuck_or_timeout_failure"],
+        },
     }
 
     # Add cache configuration
@@ -310,11 +311,14 @@ async def generate_gitlab_cd(context: Dict[str, Any]) -> ToolResult:
         auto_deploy: Enable auto-deployment for certain environments
     """
     workspace_path = context.get("workspace_path", ".")
-    environments = context.get("environments", [
-        {"name": "development", "auto_deploy": True},
-        {"name": "staging", "auto_deploy": True, "requires_approval": False},
-        {"name": "production", "auto_deploy": False, "requires_approval": True}
-    ])
+    environments = context.get(
+        "environments",
+        [
+            {"name": "development", "auto_deploy": True},
+            {"name": "staging", "auto_deploy": True, "requires_approval": False},
+            {"name": "production", "auto_deploy": False, "requires_approval": True},
+        ],
+    )
     deployment_strategy = context.get("deployment_strategy", "rolling")
 
     # Detect project type for deployment method
@@ -430,10 +434,9 @@ async def generate_gitlab_templates(context: Dict[str, Any]) -> ToolResult:
 
     output_path = os.path.join(workspace_path, output_dir)
 
-    templates_content = "\n\n---\n\n".join([
-        f"# {name}\n```yaml\n{content}\n```"
-        for name, content in templates.items()
-    ])
+    templates_content = "\n\n---\n\n".join(
+        [f"# {name}\n```yaml\n{content}\n```" for name, content in templates.items()]
+    )
 
     output = f"""# GitLab CI/CD Templates
 
@@ -491,6 +494,7 @@ my_job:
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
 
 async def _detect_project_type(workspace_path: str) -> Dict[str, Any]:
     """Detect project type from workspace files."""
@@ -563,13 +567,15 @@ def _generate_variables(project_type: str, docker_enabled: bool) -> Dict[str, st
     }
 
     if docker_enabled:
-        variables.update({
-            "DOCKER_DRIVER": "overlay2",
-            "DOCKER_TLS_CERTDIR": "/certs",
-            "DOCKER_HOST": "tcp://docker:2376",
-            "DOCKER_TLS_VERIFY": "1",
-            "DOCKER_CERT_PATH": "/certs/client",
-        })
+        variables.update(
+            {
+                "DOCKER_DRIVER": "overlay2",
+                "DOCKER_TLS_CERTDIR": "/certs",
+                "DOCKER_HOST": "tcp://docker:2376",
+                "DOCKER_TLS_VERIFY": "1",
+                "DOCKER_CERT_PATH": "/certs/client",
+            }
+        )
 
     if project_type in ["node", "nextjs", "react", "vue", "express", "nestjs"]:
         variables["NODE_ENV"] = "test"
@@ -699,7 +705,7 @@ def _generate_test_jobs(project_type: str, package_manager: str) -> Dict[str, An
                     "coverage_report": {
                         "coverage_format": "cobertura",
                         "path": "coverage/cobertura-coverage.xml",
-                    }
+                    },
                 },
                 "paths": ["coverage/"],
                 "expire_in": "1 week",
@@ -719,7 +725,7 @@ def _generate_test_jobs(project_type: str, package_manager: str) -> Dict[str, An
                     "coverage_report": {
                         "coverage_format": "cobertura",
                         "path": "coverage.xml",
-                    }
+                    },
                 },
                 "paths": ["htmlcov/"],
                 "expire_in": "1 week",
@@ -742,7 +748,9 @@ def _generate_test_jobs(project_type: str, package_manager: str) -> Dict[str, An
     return jobs
 
 
-def _generate_build_jobs(project_type: str, package_manager: str, docker_enabled: bool) -> Dict[str, Any]:
+def _generate_build_jobs(
+    project_type: str, package_manager: str, docker_enabled: bool
+) -> Dict[str, Any]:
     """Generate build stage jobs."""
     jobs = {}
 
@@ -763,15 +771,15 @@ def _generate_build_jobs(project_type: str, package_manager: str, docker_enabled
             "image": "docker:24.0.5",
             "services": ["docker:24.0.5-dind"],
             "script": [
-                'docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .',
-                'docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest',
+                "docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .",
+                "docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest",
                 'echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY',
-                'docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA',
-                'docker push $CI_REGISTRY_IMAGE:latest',
+                "docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA",
+                "docker push $CI_REGISTRY_IMAGE:latest",
             ],
             "rules": [
                 {"if": '$CI_COMMIT_BRANCH == "main"'},
-                {"if": '$CI_COMMIT_TAG'},
+                {"if": "$CI_COMMIT_TAG"},
             ],
         }
 
@@ -838,8 +846,8 @@ def _generate_deploy_jobs(project_type: str, environments: List[str]) -> Dict[st
             },
             "script": [
                 f'echo "Deploying to {env}..."',
-                'kubectl set image deployment/$APP_NAME $APP_NAME=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA',
-                'kubectl rollout status deployment/$APP_NAME',
+                "kubectl set image deployment/$APP_NAME $APP_NAME=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA",
+                "kubectl rollout status deployment/$APP_NAME",
             ],
         }
 
@@ -855,7 +863,7 @@ def _generate_deploy_jobs(project_type: str, environments: List[str]) -> Dict[st
             ]
         else:  # development
             jobs[job_name]["rules"] = [
-                {"if": '$CI_COMMIT_BRANCH'},
+                {"if": "$CI_COMMIT_BRANCH"},
             ]
 
     return jobs
@@ -903,7 +911,7 @@ def _generate_custom_job(job_name: str, stage_name: str, config: Dict[str, Any])
 
 def _generate_docker_runner_config(concurrent: int, tags: List[str], image: str) -> str:
     """Generate Docker runner config.toml."""
-    return f'''concurrent = {concurrent}
+    return f"""concurrent = {concurrent}
 check_interval = 0
 shutdown_timeout = 0
 
@@ -930,12 +938,12 @@ shutdown_timeout = 0
     disable_cache = false
     volumes = ["/cache", "/certs/client"]
     shm_size = 0
-'''
+"""
 
 
 def _generate_k8s_runner_config(concurrent: int, tags: List[str]) -> str:
     """Generate Kubernetes runner config.toml."""
-    return f'''concurrent = {concurrent}
+    return f"""concurrent = {concurrent}
 check_interval = 0
 
 [[runners]]
@@ -955,12 +963,12 @@ check_interval = 0
     [runners.kubernetes.affinity]
     [runners.kubernetes.pod_security_context]
     [runners.kubernetes.volumes]
-'''
+"""
 
 
 def _generate_shell_runner_config(concurrent: int, tags: List[str]) -> str:
     """Generate Shell runner config.toml."""
-    return f'''concurrent = {concurrent}
+    return f"""concurrent = {concurrent}
 check_interval = 0
 
 [[runners]]
@@ -972,10 +980,12 @@ check_interval = 0
   [runners.custom_build_dir]
   [runners.cache]
     MaxUploadedArchiveSize = 0
-'''
+"""
 
 
-def _generate_cd_config(environments: List[Dict], strategy: str, project_info: Dict) -> Dict:
+def _generate_cd_config(
+    environments: List[Dict], strategy: str, project_info: Dict
+) -> Dict:
     """Generate CD configuration."""
     config = {
         "stages": ["deploy"],
@@ -1013,30 +1023,30 @@ def _get_deploy_script(strategy: str, environment: str) -> List[str]:
     if strategy == "blue_green":
         return [
             f'echo "Blue-Green deployment to {environment}"',
-            'kubectl apply -f k8s/green/',
-            'kubectl wait --for=condition=ready pod -l version=green --timeout=300s',
+            "kubectl apply -f k8s/green/",
+            "kubectl wait --for=condition=ready pod -l version=green --timeout=300s",
             'kubectl patch service $SERVICE -p \'{"spec":{"selector":{"version":"green"}}}\'',
-            'kubectl delete -f k8s/blue/ || true',
+            "kubectl delete -f k8s/blue/ || true",
         ]
     elif strategy == "canary":
         return [
             f'echo "Canary deployment to {environment}"',
-            'kubectl apply -f k8s/canary/',
-            'sleep 300',
-            'kubectl scale deployment canary --replicas=0',
-            'kubectl apply -f k8s/production/',
+            "kubectl apply -f k8s/canary/",
+            "sleep 300",
+            "kubectl scale deployment canary --replicas=0",
+            "kubectl apply -f k8s/production/",
         ]
     else:  # rolling
         return [
             f'echo "Rolling deployment to {environment}"',
-            'kubectl set image deployment/$APP_NAME $APP_NAME=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA',
-            'kubectl rollout status deployment/$APP_NAME --timeout=300s',
+            "kubectl set image deployment/$APP_NAME $APP_NAME=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA",
+            "kubectl rollout status deployment/$APP_NAME --timeout=300s",
         ]
 
 
 def _generate_docker_template() -> str:
     """Generate Docker CI template."""
-    return '''.docker:build:
+    return """.docker:build:
   stage: build
   image: docker:24.0.5
   services:
@@ -1056,12 +1066,12 @@ def _generate_docker_template() -> str:
   script:
     - kubectl set image deployment/$APP_NAME $APP_NAME=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
     - kubectl rollout status deployment/$APP_NAME
-'''
+"""
 
 
 def _generate_node_template() -> str:
     """Generate Node.js CI template."""
-    return '''.node:install:
+    return """.node:install:
   image: node:20-alpine
   cache:
     key: ${CI_COMMIT_REF_SLUG}-node
@@ -1100,12 +1110,12 @@ def _generate_node_template() -> str:
       - dist/
       - .next/
     expire_in: 1 day
-'''
+"""
 
 
 def _generate_python_template() -> str:
     """Generate Python CI template."""
-    return '''.python:install:
+    return """.python:install:
   image: python:3.11-slim
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
@@ -1142,12 +1152,12 @@ def _generate_python_template() -> str:
       coverage_report:
         coverage_format: cobertura
         path: coverage.xml
-'''
+"""
 
 
 def _generate_terraform_template() -> str:
     """Generate Terraform CI template."""
-    return '''.terraform:base:
+    return """.terraform:base:
   image: hashicorp/terraform:1.6
   cache:
     key: ${CI_COMMIT_REF_SLUG}-terraform
@@ -1182,12 +1192,12 @@ def _generate_terraform_template() -> str:
   when: manual
   dependencies:
     - terraform:plan
-'''
+"""
 
 
 def _generate_security_template() -> str:
     """Generate Security scanning CI template."""
-    return '''.security:sast:
+    return """.security:sast:
   stage: security
   image: returntocorp/semgrep
   script:
@@ -1216,7 +1226,7 @@ def _generate_security_template() -> str:
     paths:
       - trivy.json
   allow_failure: true
-'''
+"""
 
 
 def _dict_to_gitlab_yaml(data: Dict[str, Any], indent: int = 0) -> str:
@@ -1262,7 +1272,30 @@ def _format_value(value: Any) -> str:
         return "true" if value else "false"
     elif isinstance(value, str):
         # Quote strings with special characters
-        if any(c in value for c in [':', '#', '{', '}', '[', ']', ',', '&', '*', '?', '|', '-', '<', '>', '=', '!', '%', '@', '`']):
+        if any(
+            c in value
+            for c in [
+                ":",
+                "#",
+                "{",
+                "}",
+                "[",
+                "]",
+                ",",
+                "&",
+                "*",
+                "?",
+                "|",
+                "-",
+                "<",
+                ">",
+                "=",
+                "!",
+                "%",
+                "@",
+                "`",
+            ]
+        ):
             return f'"{value}"'
         elif value == "":
             return '""'

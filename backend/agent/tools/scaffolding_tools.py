@@ -46,7 +46,7 @@ FEATURE_TEMPLATES = {
     "api-route": {
         "nextjs": {
             "path": "app/api/{name}/route.ts",
-            "content": '''import { NextRequest, NextResponse } from 'next/server';
+            "content": """import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -66,11 +66,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
-''',
+""",
         },
         "express": {
             "path": "src/routes/{name}.ts",
-            "content": '''import { Router, Request, Response } from 'express';
+            "content": """import { Router, Request, Response } from 'express';
 
 const router = Router();
 
@@ -100,7 +100,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 export default router;
-''',
+""",
         },
         "fastapi": {
             "path": "app/routes/{name}.py",
@@ -143,7 +143,7 @@ async def post_{name}(request: {Name}Request):
     "component": {
         "react": {
             "path": "src/components/{Name}/{Name}.tsx",
-            "content": '''import React from 'react';
+            "content": """import React from 'react';
 import styles from './{Name}.module.css';
 
 interface {Name}Props {
@@ -160,20 +160,20 @@ export const {Name}: React.FC<{Name}Props> = (props) => {
 };
 
 export default {Name};
-''',
+""",
             "additional_files": {
-                "src/components/{Name}/{Name}.module.css": '''.container {
+                "src/components/{Name}/{Name}.module.css": """.container {
   /* TODO: Add styles */
 }
-''',
-                "src/components/{Name}/index.ts": '''export { {Name} } from './{Name}';
+""",
+                "src/components/{Name}/index.ts": """export { {Name} } from './{Name}';
 export { default } from './{Name}';
-''',
+""",
             },
         },
         "nextjs": {
             "path": "components/{Name}/{Name}.tsx",
-            "content": ''''use client';
+            "content": """'use client';
 
 import React from 'react';
 import styles from './{Name}.module.css';
@@ -192,20 +192,20 @@ export const {Name}: React.FC<{Name}Props> = (props) => {
 };
 
 export default {Name};
-''',
+""",
             "additional_files": {
-                "components/{Name}/{Name}.module.css": '''.container {
+                "components/{Name}/{Name}.module.css": """.container {
   /* TODO: Add styles */
 }
-''',
-                "components/{Name}/index.ts": '''export { {Name} } from './{Name}';
+""",
+                "components/{Name}/index.ts": """export { {Name} } from './{Name}';
 export { default } from './{Name}';
-''',
+""",
             },
         },
         "vue": {
             "path": "src/components/{Name}.vue",
-            "content": '''<template>
+            "content": """<template>
   <div class="{name}-container">
     <h2>{Name} Component</h2>
     <!-- TODO: Implement component -->
@@ -225,13 +225,13 @@ const props = defineProps<Props>();
   /* TODO: Add styles */
 }
 </style>
-''',
+""",
         },
     },
     "page": {
         "nextjs": {
             "path": "app/{name}/page.tsx",
-            "content": '''import { Metadata } from 'next';
+            "content": """import { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: '{Name}',
@@ -246,11 +246,11 @@ export default function {Name}Page() {
     </main>
   );
 }
-''',
+""",
         },
         "react": {
             "path": "src/pages/{Name}Page.tsx",
-            "content": '''import React from 'react';
+            "content": """import React from 'react';
 
 export const {Name}Page: React.FC = () => {
   return (
@@ -262,7 +262,7 @@ export const {Name}Page: React.FC = () => {
 };
 
 export default {Name}Page;
-''',
+""",
         },
     },
     "model": {
@@ -340,7 +340,7 @@ class {Name}(models.Model):
         },
         "prisma": {
             "path": "prisma/models/{name}.prisma",
-            "content": '''// {Name} model
+            "content": """// {Name} model
 // Add this to your schema.prisma file
 
 model {Name} {{
@@ -349,13 +349,13 @@ model {Name} {{
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }}
-''',
+""",
         },
     },
     "service": {
         "express": {
             "path": "src/services/{name}Service.ts",
-            "content": '''/**
+            "content": """/**
  * {Name} Service
  * Business logic for {name} operations
  */
@@ -403,7 +403,7 @@ export class {Name}Service {
 }
 
 export const {name}Service = new {Name}Service();
-''',
+""",
         },
         "fastapi": {
             "path": "app/services/{name}_service.py",
@@ -467,7 +467,7 @@ class {Name}Service:
     "test-suite": {
         "jest": {
             "path": "tests/{name}.test.ts",
-            "content": '''import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+            "content": """import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 
 describe('{Name}', () => {
   beforeEach(() => {
@@ -497,7 +497,7 @@ describe('{Name}', () => {
     });
   });
 });
-''',
+""",
         },
         "pytest": {
             "path": "tests/test_{name}.py",
@@ -547,7 +547,7 @@ class Test{Name}Integration:
     "auth": {
         "nextjs": {
             "path": "lib/auth.ts",
-            "content": '''/**
+            "content": """/**
  * Authentication configuration
  * Using NextAuth.js for authentication
  */
@@ -617,16 +617,16 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
 };
-''',
+""",
             "additional_files": {
-                "app/api/auth/[...nextauth]/route.ts": '''import NextAuth from 'next-auth';
+                "app/api/auth/[...nextauth]/route.ts": """import NextAuth from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
 const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };
-''',
-                "middleware_ts": '''import { withAuth } from 'next-auth/middleware';
+""",
+                "middleware_ts": """import { withAuth } from 'next-auth/middleware';
 
 export default withAuth({
   pages: {
@@ -641,7 +641,7 @@ export const config = {
     // '/api/protected/:path*',
   ],
 };
-''',
+""",
             },
         },
         "fastapi": {
@@ -744,7 +744,7 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     "database": {
         "prisma": {
             "path": "prisma/schema.prisma",
-            "content": '''// Prisma Schema
+            "content": """// Prisma Schema
 // https://pris.ly/d/prisma-schema
 
 generator client {
@@ -770,9 +770,9 @@ model User {
 }
 
 // Add your models below
-''',
+""",
             "additional_files": {
-                "lib/prisma.ts": '''import { PrismaClient } from '@prisma/client';
+                "lib/prisma.ts": """import { PrismaClient } from '@prisma/client';
 
 declare global {
   var prisma: PrismaClient | undefined;
@@ -785,7 +785,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 export default prisma;
-''',
+""",
             },
         },
         "sqlalchemy": {
@@ -911,7 +911,9 @@ async def scaffold_project(
 
     # Map project type to scaffolder enum
     project_type_lower = project_type.lower().strip()
-    scaffolder_type = EXTENDED_PROJECT_TYPES.get(project_type_lower, ProjectType.UNKNOWN)
+    scaffolder_type = EXTENDED_PROJECT_TYPES.get(
+        project_type_lower, ProjectType.UNKNOWN
+    )
 
     # Create scaffolder instance
     scaffolder = ProjectScaffolder()
@@ -988,7 +990,9 @@ async def detect_requirements(
 
     # Build recommendation
     lines = ["## Tech Stack Recommendation\n"]
-    lines.append(f"**Based on**: \"{description[:200]}{'...' if len(description) > 200 else ''}\"\n")
+    lines.append(
+        f"**Based on**: \"{description[:200]}{'...' if len(description) > 200 else ''}\"\n"
+    )
 
     if not matches:
         # Generic web app recommendation
@@ -998,7 +1002,9 @@ async def detect_requirements(
         lines.append("- **Backend**: Next.js API Routes or FastAPI")
         lines.append("- **Database**: PostgreSQL with Prisma ORM")
         lines.append("- **Deployment**: Vercel or Railway")
-        lines.append("\n**Reasoning**: Modern, full-stack solution with excellent developer experience")
+        lines.append(
+            "\n**Reasoning**: Modern, full-stack solution with excellent developer experience"
+        )
     else:
         for category, config in matches:
             rec = config["recommendation"]
@@ -1065,8 +1071,8 @@ async def add_feature_scaffold(
     if not framework:
         return ToolResult(
             output=f"Could not detect project framework in: {workspace_path}\n\n"
-                   f"Please ensure you're in a valid project directory with package.json, "
-                   f"requirements.txt, or similar configuration files.",
+            f"Please ensure you're in a valid project directory with package.json, "
+            f"requirements.txt, or similar configuration files.",
             sources=[],
         )
 
@@ -1093,8 +1099,8 @@ async def add_feature_scaffold(
         available_features = list(FEATURE_TEMPLATES.keys())
         return ToolResult(
             output=f"No template available for '{feature_type}' in {framework} projects.\n\n"
-                   f"Available feature types: {', '.join(available_features)}\n"
-                   f"Try a different feature type or create the files manually.",
+            f"Available feature types: {', '.join(available_features)}\n"
+            f"Try a different feature type or create the files manually.",
             sources=[],
         )
 
@@ -1103,8 +1109,10 @@ async def add_feature_scaffold(
 
     # Generate name variants
     name_lower = feature_name.lower().replace(" ", "_").replace("-", "_")
-    name_kebab = feature_name.lower().replace(" ", "-").replace("_", "-")
-    name_pascal = "".join(word.capitalize() for word in re.split(r'[-_\s]', feature_name))
+    feature_name.lower().replace(" ", "-").replace("_", "-")
+    name_pascal = "".join(
+        word.capitalize() for word in re.split(r"[-_\s]", feature_name)
+    )
 
     # Main file
     main_path = template["path"].format(
@@ -1207,10 +1215,14 @@ async def list_scaffold_templates(
     lines.append('scaffold.project(name="my-app", type="nextjs", parent="/projects")')
     lines.append("")
     lines.append("# Add an API route to existing project")
-    lines.append('scaffold.add_feature(workspace="/path/to/project", type="api-route", name="users")')
+    lines.append(
+        'scaffold.add_feature(workspace="/path/to/project", type="api-route", name="users")'
+    )
     lines.append("")
     lines.append("# Detect optimal stack from description")
-    lines.append('scaffold.detect_requirements(description="SaaS app with user auth and payments")')
+    lines.append(
+        'scaffold.detect_requirements(description="SaaS app with user auth and payments")'
+    )
     lines.append("```")
 
     return ToolResult(output="\n".join(lines), sources=[])

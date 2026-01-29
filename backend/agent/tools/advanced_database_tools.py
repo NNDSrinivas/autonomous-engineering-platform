@@ -54,8 +54,12 @@ async def db_orchestrate_migration(
     Returns:
         Migration execution result
     """
-    logger.info("[TOOL:db_orchestrate_migration] Orchestrating migrations",
-                workspace=workspace_path, tool=migration_tool, env=target_env)
+    logger.info(
+        "[TOOL:db_orchestrate_migration] Orchestrating migrations",
+        workspace=workspace_path,
+        tool=migration_tool,
+        env=target_env,
+    )
 
     # Auto-detect migration tool
     detected_tool = None
@@ -98,7 +102,14 @@ async def db_orchestrate_migration(
         return {
             "success": False,
             "error": "Could not detect migration tool. Please specify one.",
-            "supported_tools": ["alembic", "prisma", "flyway", "knex", "typeorm", "django"],
+            "supported_tools": [
+                "alembic",
+                "prisma",
+                "flyway",
+                "knex",
+                "typeorm",
+                "django",
+            ],
         }
 
     # Build migration command
@@ -188,7 +199,9 @@ async def db_orchestrate_migration(
             "target_env": target_env,
             "status_output": status_result.stdout[-2000:],
             "migration_output": migrate_result.stdout[-2000:],
-            "migration_errors": migrate_result.stderr[-1000:] if migrate_result.stderr else None,
+            "migration_errors": (
+                migrate_result.stderr[-1000:] if migrate_result.stderr else None
+            ),
             "message": f"Migration {'completed' if migrate_result.returncode == 0 else 'failed'} using {detected_tool}",
         }
 
@@ -222,8 +235,11 @@ async def db_setup_replication(
     Returns:
         Replication configuration and setup steps
     """
-    logger.info("[TOOL:db_setup_replication] Setting up replication",
-                db_type=database_type, primary=primary_host)
+    logger.info(
+        "[TOOL:db_setup_replication] Setting up replication",
+        db_type=database_type,
+        primary=primary_host,
+    )
 
     configs = {
         "postgres": {
@@ -381,8 +397,11 @@ async def db_configure_sharding(
     Returns:
         Sharding configuration and setup steps
     """
-    logger.info("[TOOL:db_configure_sharding] Configuring sharding",
-                db_type=database_type, shard_key=shard_key)
+    logger.info(
+        "[TOOL:db_configure_sharding] Configuring sharding",
+        db_type=database_type,
+        shard_key=shard_key,
+    )
 
     configs = {
         "mongodb": {
@@ -535,7 +554,9 @@ async def db_backup_restore(
     Returns:
         Backup/restore commands and status
     """
-    logger.info(f"[TOOL:db_backup_restore] {operation} operation", db_type=database_type)
+    logger.info(
+        f"[TOOL:db_backup_restore] {operation} operation", db_type=database_type
+    )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = backup_path or f"backup_{database_type}_{timestamp}"
@@ -607,7 +628,10 @@ async def db_analyze_query_performance(
     Returns:
         Performance analysis and recommendations
     """
-    logger.info("[TOOL:db_analyze_query_performance] Analyzing performance", db_type=database_type)
+    logger.info(
+        "[TOOL:db_analyze_query_performance] Analyzing performance",
+        db_type=database_type,
+    )
 
     analysis_queries = {
         "postgres": {
@@ -646,7 +670,9 @@ FROM pg_stat_user_tables
 ORDER BY n_dead_tup DESC
 LIMIT 10;
 """,
-            "explain_query": f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {query}" if query else None,
+            "explain_query": (
+                f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {query}" if query else None
+            ),
         },
         "mysql": {
             "slow_queries": """
@@ -713,9 +739,15 @@ ADVANCED_DATABASE_TOOLS = {
             "type": "object",
             "properties": {
                 "workspace_path": {"type": "string", "description": "Path to project"},
-                "migration_tool": {"type": "string", "description": "Tool to use (auto, alembic, prisma, flyway)"},
+                "migration_tool": {
+                    "type": "string",
+                    "description": "Tool to use (auto, alembic, prisma, flyway)",
+                },
                 "target_env": {"type": "string", "description": "Target environment"},
-                "dry_run": {"type": "boolean", "description": "Show what would be done without executing"},
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Show what would be done without executing",
+                },
             },
             "required": ["workspace_path"],
         },
@@ -726,13 +758,30 @@ ADVANCED_DATABASE_TOOLS = {
         "parameters": {
             "type": "object",
             "properties": {
-                "database_type": {"type": "string", "enum": ["postgres", "mysql", "mongodb"]},
-                "primary_host": {"type": "string", "description": "Primary database host"},
-                "replica_host": {"type": "string", "description": "Replica database host"},
+                "database_type": {
+                    "type": "string",
+                    "enum": ["postgres", "mysql", "mongodb"],
+                },
+                "primary_host": {
+                    "type": "string",
+                    "description": "Primary database host",
+                },
+                "replica_host": {
+                    "type": "string",
+                    "description": "Replica database host",
+                },
                 "database_name": {"type": "string", "description": "Database name"},
-                "dry_run": {"type": "boolean", "description": "Generate config without executing"},
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Generate config without executing",
+                },
             },
-            "required": ["database_type", "primary_host", "replica_host", "database_name"],
+            "required": [
+                "database_type",
+                "primary_host",
+                "replica_host",
+                "database_name",
+            ],
         },
     },
     "db_configure_sharding": {
@@ -741,9 +790,15 @@ ADVANCED_DATABASE_TOOLS = {
         "parameters": {
             "type": "object",
             "properties": {
-                "database_type": {"type": "string", "enum": ["mongodb", "postgres_citus"]},
+                "database_type": {
+                    "type": "string",
+                    "enum": ["mongodb", "postgres_citus"],
+                },
                 "shard_key": {"type": "string", "description": "Field to shard on"},
-                "collection_name": {"type": "string", "description": "Collection/table to shard"},
+                "collection_name": {
+                    "type": "string",
+                    "description": "Collection/table to shard",
+                },
                 "num_shards": {"type": "integer", "description": "Number of shards"},
             },
             "required": ["database_type", "shard_key", "collection_name"],
@@ -756,9 +811,18 @@ ADVANCED_DATABASE_TOOLS = {
             "type": "object",
             "properties": {
                 "operation": {"type": "string", "enum": ["backup", "restore", "list"]},
-                "database_type": {"type": "string", "enum": ["postgres", "mysql", "mongodb"]},
-                "database_url": {"type": "string", "description": "Database connection URL"},
-                "backup_path": {"type": "string", "description": "Path for backup file"},
+                "database_type": {
+                    "type": "string",
+                    "enum": ["postgres", "mysql", "mongodb"],
+                },
+                "database_url": {
+                    "type": "string",
+                    "description": "Database connection URL",
+                },
+                "backup_path": {
+                    "type": "string",
+                    "description": "Path for backup file",
+                },
                 "compression": {"type": "boolean", "description": "Compress backup"},
             },
             "required": ["operation", "database_type", "database_url"],
@@ -771,7 +835,10 @@ ADVANCED_DATABASE_TOOLS = {
             "type": "object",
             "properties": {
                 "database_type": {"type": "string", "enum": ["postgres", "mysql"]},
-                "database_url": {"type": "string", "description": "Database connection URL"},
+                "database_url": {
+                    "type": "string",
+                    "description": "Database connection URL",
+                },
                 "query": {"type": "string", "description": "Specific query to analyze"},
             },
             "required": ["database_type", "database_url"],

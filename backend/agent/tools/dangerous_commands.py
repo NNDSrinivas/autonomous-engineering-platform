@@ -25,15 +25,17 @@ logger = logging.getLogger(__name__)
 
 class RiskLevel(Enum):
     """Risk levels for dangerous commands."""
-    LOW = "low"           # Recoverable, minimal impact
-    MEDIUM = "medium"     # May cause issues, but recoverable with effort
-    HIGH = "high"         # Significant risk, hard to recover
-    CRITICAL = "critical" # Potentially irreversible, system-wide impact
+
+    LOW = "low"  # Recoverable, minimal impact
+    MEDIUM = "medium"  # May cause issues, but recoverable with effort
+    HIGH = "high"  # Significant risk, hard to recover
+    CRITICAL = "critical"  # Potentially irreversible, system-wide impact
 
 
 @dataclass
 class DangerousCommand:
     """Definition of a dangerous command with risk info."""
+
     command: str
     risk_level: RiskLevel
     description: str
@@ -73,7 +75,6 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         rollback_possible=True,
         alternatives=["Use mkdir to recreate if needed"],
     ),
-
     # Process Control
     "kill": DangerousCommand(
         command="kill",
@@ -87,7 +88,10 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         ],
         backup_strategy="none",
         rollback_possible=False,
-        alternatives=["Try graceful shutdown first (kill without -9)", "Use the application's quit command"],
+        alternatives=[
+            "Try graceful shutdown first (kill without -9)",
+            "Use the application's quit command",
+        ],
     ),
     "killall": DangerousCommand(
         command="killall",
@@ -100,7 +104,10 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         ],
         backup_strategy="none",
         rollback_possible=False,
-        alternatives=["Use 'kill' with specific PID instead", "Use 'pkill -f' for more specific matching"],
+        alternatives=[
+            "Use 'kill' with specific PID instead",
+            "Use 'pkill -f' for more specific matching",
+        ],
     ),
     "pkill": DangerousCommand(
         command="pkill",
@@ -112,9 +119,11 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         ],
         backup_strategy="none",
         rollback_possible=False,
-        alternatives=["Use 'kill' with specific PID", "Use 'ps aux | grep' to verify targets first"],
+        alternatives=[
+            "Use 'kill' with specific PID",
+            "Use 'ps aux | grep' to verify targets first",
+        ],
     ),
-
     # Permission Changes
     "chmod": DangerousCommand(
         command="chmod",
@@ -144,7 +153,6 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         rollback_possible=True,
         alternatives=["Use chmod instead if just need access"],
     ),
-
     # System Commands (still blocked but with info)
     "sudo": DangerousCommand(
         command="sudo",
@@ -160,7 +168,6 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         rollback_possible=False,
         requires_confirmation=True,  # Extra confirmation needed
     ),
-
     # Git Dangerous Operations
     "git reset --hard": DangerousCommand(
         command="git reset --hard",
@@ -173,7 +180,10 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         ],
         backup_strategy="git_stash",
         rollback_possible=False,
-        alternatives=["git stash (saves changes)", "git checkout -- <file> (single file)"],
+        alternatives=[
+            "git stash (saves changes)",
+            "git checkout -- <file> (single file)",
+        ],
     ),
     "git clean -fd": DangerousCommand(
         command="git clean",
@@ -201,9 +211,11 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         ],
         backup_strategy="git_backup_branch",
         rollback_possible=True,
-        alternatives=["git push --force-with-lease (safer)", "Coordinate with team first"],
+        alternatives=[
+            "git push --force-with-lease (safer)",
+            "Coordinate with team first",
+        ],
     ),
-
     # Database Operations
     "DROP": DangerousCommand(
         command="DROP",
@@ -231,7 +243,6 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         rollback_possible=False,
         alternatives=["DELETE with WHERE clause", "Export data first"],
     ),
-
     # Docker Operations
     "docker system prune": DangerousCommand(
         command="docker system prune",
@@ -245,7 +256,10 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         ],
         backup_strategy="docker_list",
         rollback_possible=False,
-        alternatives=["docker container prune (containers only)", "docker image prune (images only)"],
+        alternatives=[
+            "docker container prune (containers only)",
+            "docker image prune (images only)",
+        ],
     ),
     "docker volume rm": DangerousCommand(
         command="docker volume rm",
@@ -260,11 +274,9 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         rollback_possible=False,
         alternatives=["Backup volume first: docker cp", "Export data from container"],
     ),
-
     # ============================================
     # SYSTEM-LEVEL COMMANDS (Require explicit user permission)
     # ============================================
-
     # Disk Operations - CRITICAL risk
     "format": DangerousCommand(
         command="format",
@@ -279,7 +291,10 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="none",
         rollback_possible=False,
         requires_confirmation=True,
-        alternatives=["Backup data first", "Double-check disk identifier with 'lsblk' or 'diskutil list'"],
+        alternatives=[
+            "Backup data first",
+            "Double-check disk identifier with 'lsblk' or 'diskutil list'",
+        ],
     ),
     "mkfs": DangerousCommand(
         command="mkfs",
@@ -294,7 +309,10 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="none",
         rollback_possible=False,
         requires_confirmation=True,
-        alternatives=["Backup partition first", "Verify partition with 'lsblk' before running"],
+        alternatives=[
+            "Backup partition first",
+            "Verify partition with 'lsblk' before running",
+        ],
     ),
     "dd": DangerousCommand(
         command="dd",
@@ -310,9 +328,12 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="none",
         rollback_possible=False,
         requires_confirmation=True,
-        alternatives=["Use 'cp' for regular file copies", "Use 'rsync' for backups", "Triple-check of= parameter"],
+        alternatives=[
+            "Use 'cp' for regular file copies",
+            "Use 'rsync' for backups",
+            "Triple-check of= parameter",
+        ],
     ),
-
     # System Control - CRITICAL risk
     "shutdown": DangerousCommand(
         command="shutdown",
@@ -328,7 +349,11 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="none",
         rollback_possible=False,
         requires_confirmation=True,
-        alternatives=["Save all work first", "Notify users before shutdown", "Use 'shutdown -c' to cancel scheduled shutdown"],
+        alternatives=[
+            "Save all work first",
+            "Notify users before shutdown",
+            "Use 'shutdown -c' to cancel scheduled shutdown",
+        ],
     ),
     "reboot": DangerousCommand(
         command="reboot",
@@ -344,7 +369,11 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="none",
         rollback_possible=False,
         requires_confirmation=True,
-        alternatives=["Save all work first", "Notify users before reboot", "Schedule reboot during maintenance window"],
+        alternatives=[
+            "Save all work first",
+            "Notify users before reboot",
+            "Schedule reboot during maintenance window",
+        ],
     ),
     "init": DangerousCommand(
         command="init",
@@ -360,9 +389,11 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="none",
         rollback_possible=False,
         requires_confirmation=True,
-        alternatives=["Use 'systemctl' for service management", "Use 'shutdown' or 'reboot' commands directly"],
+        alternatives=[
+            "Use 'systemctl' for service management",
+            "Use 'shutdown' or 'reboot' commands directly",
+        ],
     ),
-
     # Privilege Escalation - CRITICAL risk
     "su": DangerousCommand(
         command="su",
@@ -378,9 +409,11 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="none",
         rollback_possible=False,
         requires_confirmation=True,
-        alternatives=["Use 'sudo' for single commands instead", "Use 'sudo -u user' to run as specific user"],
+        alternatives=[
+            "Use 'sudo' for single commands instead",
+            "Use 'sudo -u user' to run as specific user",
+        ],
     ),
-
     # User Management - HIGH risk
     "passwd": DangerousCommand(
         command="passwd",
@@ -410,7 +443,10 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="none",
         rollback_possible=True,
         requires_confirmation=True,
-        alternatives=["Use 'adduser' for interactive creation", "Verify with 'id username' after creation"],
+        alternatives=[
+            "Use 'adduser' for interactive creation",
+            "Verify with 'id username' after creation",
+        ],
     ),
     "userdel": DangerousCommand(
         command="userdel",
@@ -425,7 +461,10 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="backup_directory",
         rollback_possible=False,
         requires_confirmation=True,
-        alternatives=["Backup user's home directory first", "Disable account instead: 'usermod -L username'"],
+        alternatives=[
+            "Backup user's home directory first",
+            "Disable account instead: 'usermod -L username'",
+        ],
     ),
     "groupadd": DangerousCommand(
         command="groupadd",
@@ -454,7 +493,10 @@ DANGEROUS_COMMANDS: Dict[str, DangerousCommand] = {
         backup_strategy="none",
         rollback_possible=True,
         requires_confirmation=True,
-        alternatives=["Use 'visudo -c' to check syntax first", "Edit files in /etc/sudoers.d/ instead"],
+        alternatives=[
+            "Use 'visudo -c' to check syntax first",
+            "Edit files in /etc/sudoers.d/ instead",
+        ],
     ),
 }
 
@@ -493,9 +535,17 @@ class BackupManager:
     def _backup_directory(self, target: str, timestamp: str) -> Dict[str, Any]:
         """Backup a file or directory."""
         try:
-            target_path = os.path.join(self.workspace_path, target) if not os.path.isabs(target) else target
+            target_path = (
+                os.path.join(self.workspace_path, target)
+                if not os.path.isabs(target)
+                else target
+            )
             if not os.path.exists(target_path):
-                return {"success": True, "message": "Target doesn't exist, no backup needed", "backup_path": None}
+                return {
+                    "success": True,
+                    "message": "Target doesn't exist, no backup needed",
+                    "backup_path": None,
+                }
 
             backup_name = f"{os.path.basename(target)}_{timestamp}"
             backup_path = os.path.join(self.backup_dir, backup_name)
@@ -517,7 +567,11 @@ class BackupManager:
     def _record_permissions(self, target: str, timestamp: str) -> Dict[str, Any]:
         """Record current permissions for restoration."""
         try:
-            target_path = os.path.join(self.workspace_path, target) if not os.path.isabs(target) else target
+            target_path = (
+                os.path.join(self.workspace_path, target)
+                if not os.path.isabs(target)
+                else target
+            )
             permissions = {}
 
             if os.path.isdir(target_path):
@@ -544,7 +598,11 @@ class BackupManager:
     def _record_ownership(self, target: str, timestamp: str) -> Dict[str, Any]:
         """Record current ownership for restoration."""
         try:
-            target_path = os.path.join(self.workspace_path, target) if not os.path.isabs(target) else target
+            target_path = (
+                os.path.join(self.workspace_path, target)
+                if not os.path.isabs(target)
+                else target
+            )
             ownership = {}
 
             if os.path.isdir(target_path):
@@ -552,10 +610,16 @@ class BackupManager:
                     for name in dirs + files:
                         path = os.path.join(root, name)
                         stat_info = os.stat(path)
-                        ownership[path] = {"uid": stat_info.st_uid, "gid": stat_info.st_gid}
+                        ownership[path] = {
+                            "uid": stat_info.st_uid,
+                            "gid": stat_info.st_gid,
+                        }
             else:
                 stat_info = os.stat(target_path)
-                ownership[target_path] = {"uid": stat_info.st_uid, "gid": stat_info.st_gid}
+                ownership[target_path] = {
+                    "uid": stat_info.st_uid,
+                    "gid": stat_info.st_gid,
+                }
 
             backup_file = os.path.join(self.backup_dir, f"ownership_{timestamp}.json")
             with open(backup_file, "w") as f:
@@ -586,7 +650,11 @@ class BackupManager:
                     "restore_command": "git stash pop",
                 }
             else:
-                return {"success": True, "message": "No changes to stash", "backup_path": None}
+                return {
+                    "success": True,
+                    "message": "No changes to stash",
+                    "backup_path": None,
+                }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -600,10 +668,16 @@ class BackupManager:
                 capture_output=True,
                 text=True,
             )
-            untracked = result.stdout.strip().split("\n") if result.stdout.strip() else []
+            untracked = (
+                result.stdout.strip().split("\n") if result.stdout.strip() else []
+            )
 
             if not untracked:
-                return {"success": True, "message": "No untracked files to backup", "backup_path": None}
+                return {
+                    "success": True,
+                    "message": "No untracked files to backup",
+                    "backup_path": None,
+                }
 
             backup_subdir = os.path.join(self.backup_dir, f"untracked_{timestamp}")
             os.makedirs(backup_subdir, exist_ok=True)
@@ -657,9 +731,13 @@ class BackupManager:
                 ("docker volume ls --format '{{.Name}}'", "volumes"),
             ]:
                 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-                resources[key] = result.stdout.strip().split("\n") if result.stdout.strip() else []
+                resources[key] = (
+                    result.stdout.strip().split("\n") if result.stdout.strip() else []
+                )
 
-            backup_file = os.path.join(self.backup_dir, f"docker_resources_{timestamp}.json")
+            backup_file = os.path.join(
+                self.backup_dir, f"docker_resources_{timestamp}.json"
+            )
             with open(backup_file, "w") as f:
                 json.dump(resources, f, indent=2)
 
@@ -697,7 +775,9 @@ def get_command_info(command: str) -> Optional[DangerousCommand]:
     return None
 
 
-def format_permission_request(command: str, cmd_info: DangerousCommand, target: Optional[str] = None) -> Dict[str, Any]:
+def format_permission_request(
+    command: str, cmd_info: DangerousCommand, target: Optional[str] = None
+) -> Dict[str, Any]:
     """Format a permission request for the UI."""
     risk_colors = {
         RiskLevel.LOW: "yellow",

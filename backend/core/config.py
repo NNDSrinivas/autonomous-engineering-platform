@@ -122,7 +122,9 @@ class Settings(BaseSettings):
     realtime_port: int = 8001
 
     log_level: str = "INFO"
-    cors_origins: str = ""  # comma-separated list of allowed origins; empty means strict deny
+    cors_origins: str = (
+        ""  # comma-separated list of allowed origins; empty means strict deny
+    )
     allow_dev_cors: bool = False  # Explicit dev override for localhost/vscode-webview
     allow_vscode_webview: bool = True  # Allow VS Code webview origins when enabled
 
@@ -143,11 +145,7 @@ class Settings(BaseSettings):
     # OAuth Device Code Configuration
     oauth_device_use_in_memory_store: bool = False
     oauth_device_code_ttl_seconds: int = 600
-<<<<<<< HEAD
-    oauth_device_token_ttl_seconds: int = 86400
-=======
     oauth_device_access_token_ttl_seconds: int = 86400
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
     redis_max_connections: int = (
         20  # Maximum connections in Redis pool (default 20 for high concurrency)
     )

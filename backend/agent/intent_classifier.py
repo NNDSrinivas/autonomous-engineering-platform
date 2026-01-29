@@ -717,7 +717,9 @@ class IntentClassifier:
                 "howdy",
                 "greetings",
             )
-            if any(re.search(rf"\b{re.escape(term)}\b", text) for term in greeting_terms):
+            if any(
+                re.search(rf"\b{re.escape(term)}\b", text) for term in greeting_terms
+            ):
                 # Only if it's a pure greeting with minimal other words
                 words = text.strip().split()
                 if len(words) <= 3 and not any(

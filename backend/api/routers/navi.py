@@ -288,9 +288,7 @@ class ApplyActionsRequest(BaseModel):
     workspace: str = Field(..., description="Workspace root path")
     file_edits: List[Dict[str, Any]] = Field(default_factory=list)
     commands_run: List[str] = Field(default_factory=list)
-    allow_commands: bool = Field(
-        default=False, description="Allow command execution"
-    )
+    allow_commands: bool = Field(default=False, description="Allow command execution")
 
 
 class ApplyActionsResponse(BaseModel):

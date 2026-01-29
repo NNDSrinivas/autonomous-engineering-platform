@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 class ExecutionMode(Enum):
     """Enterprise execution modes"""
+
     SEQUENTIAL = "sequential"  # Tasks run one at a time
     PARALLEL = "parallel"  # Independent tasks run in parallel
     HYBRID = "hybrid"  # Mix of parallel and sequential based on dependencies
@@ -51,6 +52,7 @@ class ExecutionMode(Enum):
 
 class AgentFailureStrategy(Enum):
     """Strategies for handling agent failures"""
+
     RETRY = "retry"  # Retry the same task
     REASSIGN = "reassign"  # Assign to different agent
     ESCALATE = "escalate"  # Escalate to human
@@ -60,6 +62,7 @@ class AgentFailureStrategy(Enum):
 @dataclass
 class ParallelExecutionResult:
     """Result of parallel task execution"""
+
     task_results: Dict[str, Dict[str, Any]]  # task_id -> result
     successful_tasks: List[str]
     failed_tasks: List[str]
@@ -71,6 +74,7 @@ class ParallelExecutionResult:
 @dataclass
 class TaskExecutionContext:
     """Context for task execution"""
+
     project_id: str
     task_id: str
     workspace_path: str
@@ -84,6 +88,7 @@ class TaskExecutionContext:
 @dataclass
 class CoordinatorState:
     """Current state of the coordinator"""
+
     project_id: str
     status: str  # idle, running, paused, completed, failed
     active_agents: Dict[str, str]  # agent_id -> task_id
@@ -275,9 +280,21 @@ class EnterpriseAgentCoordinator:
                         title=f"ADR: {adr.get('title', 'Architecture Decision')}",
                         description=adr.get("decision", ""),
                         options=[
-                            {"id": "approve", "label": "Approve", "trade_offs": "Proceed with decision"},
-                            {"id": "modify", "label": "Request Modification", "trade_offs": "May delay project"},
-                            {"id": "reject", "label": "Reject", "trade_offs": "Need alternative approach"},
+                            {
+                                "id": "approve",
+                                "label": "Approve",
+                                "trade_offs": "Proceed with decision",
+                            },
+                            {
+                                "id": "modify",
+                                "label": "Request Modification",
+                                "trade_offs": "May delay project",
+                            },
+                            {
+                                "id": "reject",
+                                "label": "Reject",
+                                "trade_offs": "Need alternative approach",
+                            },
                         ],
                     )
                     yield {
@@ -432,10 +449,14 @@ class EnterpriseAgentCoordinator:
 
             # Execute tasks based on mode
             if execution_mode == ExecutionMode.PARALLEL:
-                async for event in self._execute_parallel(project_id, state, ready_tasks):
+                async for event in self._execute_parallel(
+                    project_id, state, ready_tasks
+                ):
                     yield event
             elif execution_mode == ExecutionMode.SEQUENTIAL:
-                async for event in self._execute_sequential(project_id, state, ready_tasks):
+                async for event in self._execute_sequential(
+                    project_id, state, ready_tasks
+                ):
                     yield event
             else:  # HYBRID
                 async for event in self._execute_hybrid(project_id, state, ready_tasks):
@@ -499,15 +520,15 @@ class EnterpriseAgentCoordinator:
             context = TaskExecutionContext(
                 project_id=project_id,
                 task_id=task_id,
-                workspace_path=task.outputs.get("workspace_path", ".") if task.outputs else ".",
+                workspace_path=(
+                    task.outputs.get("workspace_path", ".") if task.outputs else "."
+                ),
                 dependencies_completed=task.dependencies or [],
                 parent_context={"project_id": project_id},
             )
 
             # Spawn agent
-            agent_future = asyncio.create_task(
-                self._spawn_task_agent(task, context)
-            )
+            agent_future = asyncio.create_task(self._spawn_task_agent(task, context))
             agent_futures.append((task_id, agent_future))
             state.active_agents[task_id] = f"agent_{task_id}"
 
@@ -528,9 +549,10 @@ class EnterpriseAgentCoordinator:
                 if result.get("success"):
                     state.completed_tasks.append(task_id)
                     await self.project_service.update_task_status(
-                        task_id, "completed",
+                        task_id,
+                        "completed",
                         completed_at=datetime.now(timezone.utc),
-                        outputs=result.get("outputs", {})
+                        outputs=result.get("outputs", {}),
                     )
                     yield {
                         "type": "task_completed",
@@ -614,9 +636,10 @@ class EnterpriseAgentCoordinator:
                 if result.get("success"):
                     state.completed_tasks.append(task_id)
                     await self.project_service.update_task_status(
-                        task_id, "completed",
+                        task_id,
+                        "completed",
                         completed_at=datetime.now(timezone.utc),
-                        outputs=result.get("outputs", {})
+                        outputs=result.get("outputs", {}),
                     )
                     yield {
                         "type": "task_completed",
@@ -654,7 +677,7 @@ class EnterpriseAgentCoordinator:
 
         for task in ready_tasks:
             has_active_dep = False
-            for dep_id in (task.dependencies or []):
+            for dep_id in task.dependencies or []:
                 if dep_id in state.active_agents:
                     has_active_dep = True
                     break
@@ -713,7 +736,9 @@ class EnterpriseAgentCoordinator:
                 "together": "TOGETHER_API_KEY",
                 "mistral": "MISTRAL_API_KEY",
             }
-            api_key = os.environ.get(env_vars.get(self.llm_provider, "OPENAI_API_KEY"), "")
+            api_key = os.environ.get(
+                env_vars.get(self.llm_provider, "OPENAI_API_KEY"), ""
+            )
 
         try:
             # Create the autonomous agent
@@ -814,7 +839,9 @@ class EnterpriseAgentCoordinator:
                     "verification_passed": False,
                 },
                 "metrics": {
-                    "duration_seconds": (datetime.now(timezone.utc) - start_time).total_seconds(),
+                    "duration_seconds": (
+                        datetime.now(timezone.utc) - start_time
+                    ).total_seconds(),
                     "iterations": 0,
                 },
             }
@@ -850,9 +877,13 @@ class EnterpriseAgentCoordinator:
         if task.outputs:
             prompt += "## Expected Outputs\n"
             if task.outputs.get("files_created"):
-                prompt += f"Files to create: {', '.join(task.outputs['files_created'])}\n"
+                prompt += (
+                    f"Files to create: {', '.join(task.outputs['files_created'])}\n"
+                )
             if task.outputs.get("files_modified"):
-                prompt += f"Files to modify: {', '.join(task.outputs['files_modified'])}\n"
+                prompt += (
+                    f"Files to modify: {', '.join(task.outputs['files_modified'])}\n"
+                )
             if task.outputs.get("commands_to_verify"):
                 prompt += f"Commands to verify: {', '.join(task.outputs['commands_to_verify'])}\n"
             prompt += "\n"
@@ -882,9 +913,11 @@ Begin executing the task now.
         logger.warning(f"Task {task_id} failed: {error_msg}")
 
         # Check retry policy
-        task = self.db.query(ProjectTaskQueue).filter(
-            ProjectTaskQueue.id == task_id
-        ).first()
+        task = (
+            self.db.query(ProjectTaskQueue)
+            .filter(ProjectTaskQueue.id == task_id)
+            .first()
+        )
 
         retry_count = (task.outputs or {}).get("retry_count", 0) if task else 0
         max_retries = 3
@@ -901,8 +934,9 @@ Begin executing the task now.
             }
 
             await self.project_service.update_task_status(
-                task_id, "pending",
-                outputs={"retry_count": retry_count + 1, "last_error": error_msg}
+                task_id,
+                "pending",
+                outputs={"retry_count": retry_count + 1, "last_error": error_msg},
             )
         else:
             # Max retries exceeded - escalate
@@ -917,9 +951,10 @@ Begin executing the task now.
             }
 
             await self.project_service.update_task_status(
-                task_id, "failed",
+                task_id,
+                "failed",
                 completed_at=datetime.now(timezone.utc),
-                outputs={"error": error_msg, "retry_count": retry_count}
+                outputs={"error": error_msg, "retry_count": retry_count},
             )
 
             # Create human gate for escalation
@@ -929,9 +964,21 @@ Begin executing the task now.
                 title=f"Task Failed: {task.title if task else task_id}",
                 description=f"Task failed after {max_retries} retries. Error: {error_msg}",
                 options=[
-                    {"id": "retry", "label": "Retry Task", "trade_offs": "May fail again"},
-                    {"id": "skip", "label": "Skip Task", "trade_offs": "May affect dependent tasks"},
-                    {"id": "abort", "label": "Abort Project", "trade_offs": "Stops all execution"},
+                    {
+                        "id": "retry",
+                        "label": "Retry Task",
+                        "trade_offs": "May fail again",
+                    },
+                    {
+                        "id": "skip",
+                        "label": "Skip Task",
+                        "trade_offs": "May affect dependent tasks",
+                    },
+                    {
+                        "id": "abort",
+                        "label": "Abort Project",
+                        "trade_offs": "Stops all execution",
+                    },
                 ],
             )
 
@@ -1001,11 +1048,13 @@ Begin executing the task now.
             files = result.get("outputs", {}).get("modified_files", [])
             for file_path in files:
                 if file_path in modified_files:
-                    conflicts.append({
-                        "type": "file_conflict",
-                        "file": file_path,
-                        "tasks": [modified_files[file_path], task_id],
-                    })
+                    conflicts.append(
+                        {
+                            "type": "file_conflict",
+                            "file": file_path,
+                            "tasks": [modified_files[file_path], task_id],
+                        }
+                    )
                 else:
                     modified_files[file_path] = task_id
 
@@ -1035,10 +1084,12 @@ Begin executing the task now.
                     strategy=ConflictResolutionStrategy.PERFORMANCE_BASED,
                 )
 
-                resolutions.append({
-                    "conflict": conflict,
-                    "resolution": resolution,
-                })
+                resolutions.append(
+                    {
+                        "conflict": conflict,
+                        "resolution": resolution,
+                    }
+                )
 
         return resolutions
 
@@ -1082,10 +1133,14 @@ Begin executing the task now.
     async def _get_remaining_tasks(self, project_id: str) -> List[str]:
         """Get IDs of tasks that are not yet completed."""
 
-        tasks = self.db.query(ProjectTaskQueue).filter(
-            ProjectTaskQueue.project_id == project_id,
-            ProjectTaskQueue.status.notin_(["completed", "skipped"])
-        ).all()
+        tasks = (
+            self.db.query(ProjectTaskQueue)
+            .filter(
+                ProjectTaskQueue.project_id == project_id,
+                ProjectTaskQueue.status.notin_(["completed", "skipped"]),
+            )
+            .all()
+        )
 
         return [str(t.id) for t in tasks]
 
@@ -1101,7 +1156,9 @@ Begin executing the task now.
 
             state.active_agents.clear()
 
-    async def pause_project(self, project_id: str, reason: str = "Manual pause") -> bool:
+    async def pause_project(
+        self, project_id: str, reason: str = "Manual pause"
+    ) -> bool:
         """Pause project execution."""
 
         state = self.project_states.get(project_id)
@@ -1110,15 +1167,16 @@ Begin executing the task now.
 
         state.status = "paused"
 
-        await self.project_service.update_project(
-            project_id, status="paused"
-        )
+        await self.project_service.update_project(project_id, status="paused")
 
-        await self._fire_event("project_paused", {
-            "project_id": project_id,
-            "reason": reason,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        await self._fire_event(
+            "project_paused",
+            {
+                "project_id": project_id,
+                "reason": reason,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
         logger.info(f"Project {project_id} paused: {reason}")
         return True
@@ -1132,14 +1190,15 @@ Begin executing the task now.
 
         state.status = "running"
 
-        await self.project_service.update_project(
-            project_id, status="active"
-        )
+        await self.project_service.update_project(project_id, status="active")
 
-        await self._fire_event("project_resumed", {
-            "project_id": project_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        await self._fire_event(
+            "project_resumed",
+            {
+                "project_id": project_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
         logger.info(f"Project {project_id} resumed")
         return True
@@ -1155,7 +1214,11 @@ Begin executing the task now.
         fleet_status = await self.fleet.get_fleet_status()
 
         # Calculate progress
-        total_tasks = len(state.completed_tasks) + len(state.failed_tasks) + len(state.pending_tasks)
+        total_tasks = (
+            len(state.completed_tasks)
+            + len(state.failed_tasks)
+            + len(state.pending_tasks)
+        )
         if total_tasks > 0:
             progress = len(state.completed_tasks) / total_tasks * 100
         else:
@@ -1163,7 +1226,9 @@ Begin executing the task now.
 
         runtime_seconds = 0
         if state.start_time:
-            runtime_seconds = (datetime.now(timezone.utc) - state.start_time).total_seconds()
+            runtime_seconds = (
+                datetime.now(timezone.utc) - state.start_time
+            ).total_seconds()
 
         return {
             "project_id": project_id,
@@ -1177,10 +1242,16 @@ Begin executing the task now.
             "iteration_count": state.iteration_count,
             "runtime_seconds": runtime_seconds,
             "runtime_hours": round(runtime_seconds / 3600, 2),
-            "last_checkpoint": state.last_checkpoint.isoformat() if state.last_checkpoint else None,
+            "last_checkpoint": (
+                state.last_checkpoint.isoformat() if state.last_checkpoint else None
+            ),
             "fleet_status": {
-                "total_agents": fleet_status.get("fleet_metrics", {}).get("total_agents", 0),
-                "active_agents": fleet_status.get("fleet_metrics", {}).get("active_agents", 0),
+                "total_agents": fleet_status.get("fleet_metrics", {}).get(
+                    "total_agents", 0
+                ),
+                "active_agents": fleet_status.get("fleet_metrics", {}).get(
+                    "active_agents", 0
+                ),
             },
         }
 
@@ -1201,7 +1272,10 @@ Begin executing the task now.
 
 # Convenience functions for API integration
 
-async def create_coordinator(db_session, max_agents: int = 5) -> EnterpriseAgentCoordinator:
+
+async def create_coordinator(
+    db_session, max_agents: int = 5
+) -> EnterpriseAgentCoordinator:
     """Factory function to create a coordinator instance."""
     return EnterpriseAgentCoordinator(db_session, max_parallel_agents=max_agents)
 
@@ -1238,7 +1312,11 @@ async def execute_enterprise_project(
         if progress_callback:
             progress_callback(event)
 
-        if event.get("type") in ["project_completed", "project_failed", "project_aborted"]:
+        if event.get("type") in [
+            "project_completed",
+            "project_failed",
+            "project_aborted",
+        ]:
             final_result = event
 
     return final_result

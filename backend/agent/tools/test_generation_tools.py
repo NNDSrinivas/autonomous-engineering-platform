@@ -22,6 +22,7 @@ logger = structlog.get_logger(__name__)
 
 class TestFramework(Enum):
     """Supported testing frameworks"""
+
     JEST = "jest"
     VITEST = "vitest"
     MOCHA = "mocha"
@@ -35,6 +36,7 @@ class TestFramework(Enum):
 
 class TestType(Enum):
     """Types of tests"""
+
     UNIT = "unit"
     INTEGRATION = "integration"
     E2E = "e2e"
@@ -79,7 +81,7 @@ FRAMEWORK_PATTERNS = {
 # Test templates by framework
 TEST_TEMPLATES = {
     "jest": {
-        "unit": '''import {{ describe, it, expect, beforeEach, afterEach, jest }} from '@jest/globals';
+        "unit": """import {{ describe, it, expect, beforeEach, afterEach, jest }} from '@jest/globals';
 {imports}
 
 describe('{test_name}', () => {{
@@ -94,18 +96,18 @@ describe('{test_name}', () => {{
 
 {test_cases}
 }});
-''',
-        "test_case": '''  it('{description}', {async_keyword}() => {{
+""",
+        "test_case": """  it('{description}', {async_keyword}() => {{
     {test_body}
   }});
-''',
-        "mock": '''  jest.mock('{module}', () => ({{
+""",
+        "mock": """  jest.mock('{module}', () => ({{
     {mock_implementation}
   }}));
-''',
+""",
     },
     "vitest": {
-        "unit": '''import {{ describe, it, expect, beforeEach, afterEach, vi }} from 'vitest';
+        "unit": """import {{ describe, it, expect, beforeEach, afterEach, vi }} from 'vitest';
 {imports}
 
 describe('{test_name}', () => {{
@@ -120,15 +122,15 @@ describe('{test_name}', () => {{
 
 {test_cases}
 }});
-''',
-        "test_case": '''  it('{description}', {async_keyword}() => {{
+""",
+        "test_case": """  it('{description}', {async_keyword}() => {{
     {test_body}
   }});
-''',
-        "mock": '''  vi.mock('{module}', () => ({{
+""",
+        "mock": """  vi.mock('{module}', () => ({{
     {mock_implementation}
   }}));
-''',
+""",
     },
     "pytest": {
         "unit": '''"""
@@ -166,7 +168,7 @@ class Test{test_class}:
 ''',
     },
     "playwright": {
-        "e2e": '''import {{ test, expect }} from '@playwright/test';
+        "e2e": """import {{ test, expect }} from '@playwright/test';
 
 test.describe('{test_name}', () => {{
   test.beforeEach(async ({{ page }}) => {{
@@ -176,14 +178,14 @@ test.describe('{test_name}', () => {{
 
 {test_cases}
 }});
-''',
-        "test_case": '''  test('{description}', async ({{ page }}) => {{
+""",
+        "test_case": """  test('{description}', async ({{ page }}) => {{
     {test_body}
   }});
-''',
+""",
     },
     "cypress": {
-        "e2e": '''describe('{test_name}', () => {{
+        "e2e": """describe('{test_name}', () => {{
   beforeEach(() => {{
     // Navigate to page
     cy.visit('/');
@@ -191,11 +193,11 @@ test.describe('{test_name}', () => {{
 
 {test_cases}
 }});
-''',
-        "test_case": '''  it('{description}', () => {{
+""",
+        "test_case": """  it('{description}', () => {{
     {test_body}
   }});
-''',
+""",
     },
 }
 
@@ -203,6 +205,7 @@ test.describe('{test_name}', () => {{
 @dataclass
 class CodeFunction:
     """Represents a function/method extracted from code"""
+
     name: str
     params: List[str]
     return_type: Optional[str]
@@ -216,6 +219,7 @@ class CodeFunction:
 @dataclass
 class CodeClass:
     """Represents a class extracted from code"""
+
     name: str
     methods: List[CodeFunction]
     docstring: Optional[str]
@@ -293,10 +297,10 @@ async def generate_tests_for_file(
     if not functions and not classes:
         return ToolResult(
             output=f"No testable units found in {file_path}\n\n"
-                   f"The file may be:\n"
-                   f"- A type definition file\n"
-                   f"- Configuration only\n"
-                   f"- Already test files",
+            f"The file may be:\n"
+            f"- A type definition file\n"
+            f"- Configuration only\n"
+            f"- Already test files",
             sources=[],
         )
 
@@ -407,7 +411,7 @@ async def generate_tests_for_function(
         available = [f.name for f in functions]
         return ToolResult(
             output=f"Function '{function_name}' not found in {file_path}\n\n"
-                   f"Available functions: {', '.join(available) if available else 'None'}",
+            f"Available functions: {', '.join(available) if available else 'None'}",
             sources=[],
         )
 
@@ -471,8 +475,8 @@ async def generate_test_suite(
     if not files:
         return ToolResult(
             output=f"No source files found to generate tests for.\n\n"
-                   f"Scope: {scope}\n"
-                   f"Language: {language}",
+            f"Scope: {scope}\n"
+            f"Language: {language}",
             sources=[],
         )
 
@@ -541,11 +545,13 @@ async def detect_test_framework(
     for framework, config in FRAMEWORK_PATTERNS.items():
         for config_file in config["config_files"]:
             if os.path.exists(os.path.join(workspace_path, config_file)):
-                detected.append({
-                    "framework": framework,
-                    "config_file": config_file,
-                    "confidence": "high",
-                })
+                detected.append(
+                    {
+                        "framework": framework,
+                        "config_file": config_file,
+                        "confidence": "high",
+                    }
+                )
 
     # Check package.json
     package_json_path = os.path.join(workspace_path, "package.json")
@@ -559,11 +565,13 @@ async def detect_test_framework(
                     for dep in config["package_deps"]:
                         if dep in deps:
                             if not any(d["framework"] == framework for d in detected):
-                                detected.append({
-                                    "framework": framework,
-                                    "config_file": f"package.json (dep: {dep})",
-                                    "confidence": "medium",
-                                })
+                                detected.append(
+                                    {
+                                        "framework": framework,
+                                        "config_file": f"package.json (dep: {dep})",
+                                        "confidence": "medium",
+                                    }
+                                )
         except (json.JSONDecodeError, IOError):
             pass
 
@@ -574,11 +582,13 @@ async def detect_test_framework(
             with open(requirements_path, "r") as f:
                 content = f.read().lower()
                 if "pytest" in content:
-                    detected.append({
-                        "framework": "pytest",
-                        "config_file": "requirements.txt",
-                        "confidence": "high",
-                    })
+                    detected.append(
+                        {
+                            "framework": "pytest",
+                            "config_file": "requirements.txt",
+                            "confidence": "high",
+                        }
+                    )
         except IOError:
             pass
 
@@ -651,62 +661,78 @@ async def suggest_test_improvements(
     if language == "python":
         # Check for assert statements
         if "assert " not in test_code and "self.assert" not in test_code:
-            suggestions.append({
-                "type": "missing",
-                "message": "No assertions found - tests should verify behavior",
-                "severity": "high",
-            })
+            suggestions.append(
+                {
+                    "type": "missing",
+                    "message": "No assertions found - tests should verify behavior",
+                    "severity": "high",
+                }
+            )
 
         # Check for docstrings
         if '"""' not in test_code and "'''" not in test_code:
-            suggestions.append({
-                "type": "documentation",
-                "message": "Consider adding docstrings to describe test purpose",
-                "severity": "low",
-            })
+            suggestions.append(
+                {
+                    "type": "documentation",
+                    "message": "Consider adding docstrings to describe test purpose",
+                    "severity": "low",
+                }
+            )
 
         # Check for fixtures
         if "@pytest.fixture" not in test_code:
-            suggestions.append({
-                "type": "improvement",
-                "message": "Consider using pytest fixtures for test setup",
-                "severity": "medium",
-            })
+            suggestions.append(
+                {
+                    "type": "improvement",
+                    "message": "Consider using pytest fixtures for test setup",
+                    "severity": "medium",
+                }
+            )
 
     else:  # JavaScript/TypeScript
         # Check for expect statements
         if "expect(" not in test_code:
-            suggestions.append({
-                "type": "missing",
-                "message": "No expect() assertions found",
-                "severity": "high",
-            })
+            suggestions.append(
+                {
+                    "type": "missing",
+                    "message": "No expect() assertions found",
+                    "severity": "high",
+                }
+            )
 
         # Check for async handling
         if "async" in test_code and "await" not in test_code:
-            suggestions.append({
-                "type": "bug",
-                "message": "Async function without await - tests may not wait for completion",
-                "severity": "high",
-            })
+            suggestions.append(
+                {
+                    "type": "bug",
+                    "message": "Async function without await - tests may not wait for completion",
+                    "severity": "high",
+                }
+            )
 
         # Check for error handling tests
         if "throw" not in test_code and "reject" not in test_code:
-            suggestions.append({
-                "type": "coverage",
-                "message": "Consider adding tests for error cases",
-                "severity": "medium",
-            })
+            suggestions.append(
+                {
+                    "type": "coverage",
+                    "message": "Consider adding tests for error cases",
+                    "severity": "medium",
+                }
+            )
 
     # Check for edge case patterns
     edge_case_patterns = ["null", "undefined", "empty", "zero", "negative", "boundary"]
-    found_edge_cases = sum(1 for p in edge_case_patterns if p.lower() in test_code.lower())
+    found_edge_cases = sum(
+        1 for p in edge_case_patterns if p.lower() in test_code.lower()
+    )
     if found_edge_cases < 2:
-        suggestions.append({
-            "type": "coverage",
-            "message": "Consider testing edge cases (null, empty, boundary values)",
-            "severity": "medium",
-        })
+        suggestions.append(
+            {
+                "type": "coverage",
+                "message": "Consider testing edge cases (null, empty, boundary values)",
+                "severity": "medium",
+            }
+        )
 
     # Build output
     lines = ["## Test Improvement Suggestions\n"]
@@ -714,7 +740,9 @@ async def suggest_test_improvements(
 
     if suggestions:
         lines.append(f"\n**Issues Found**: {len(suggestions)}")
-        for s in sorted(suggestions, key=lambda x: {"high": 0, "medium": 1, "low": 2}[x["severity"]]):
+        for s in sorted(
+            suggestions, key=lambda x: {"high": 0, "medium": 1, "low": 2}[x["severity"]]
+        ):
             icon = {"high": "", "medium": "", "low": ""}[s["severity"]]
             lines.append(f"\n{icon} **{s['type'].title()}** ({s['severity']})")
             lines.append(f"   {s['message']}")
@@ -732,6 +760,7 @@ async def suggest_test_improvements(
 
 
 # Helper functions
+
 
 def _detect_language(ext: str) -> Optional[str]:
     """Detect programming language from file extension."""
@@ -763,7 +792,10 @@ def _detect_test_framework(workspace_path: str, language: str) -> str:
             try:
                 with open(package_json_path, "r") as f:
                     pkg = json.load(f)
-                    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+                    deps = {
+                        **pkg.get("dependencies", {}),
+                        **pkg.get("devDependencies", {}),
+                    }
 
                     if "vitest" in deps:
                         return "vitest"
@@ -797,8 +829,9 @@ def _detect_primary_language(workspace_path: str) -> str:
         if os.path.exists(os.path.join(workspace_path, "tsconfig.json")):
             return "typescript"
         return "javascript"
-    elif os.path.exists(os.path.join(workspace_path, "requirements.txt")) or \
-         os.path.exists(os.path.join(workspace_path, "pyproject.toml")):
+    elif os.path.exists(
+        os.path.join(workspace_path, "requirements.txt")
+    ) or os.path.exists(os.path.join(workspace_path, "pyproject.toml")):
         return "python"
     elif os.path.exists(os.path.join(workspace_path, "go.mod")):
         return "go"
@@ -807,7 +840,9 @@ def _detect_primary_language(workspace_path: str) -> str:
     return "javascript"  # Default
 
 
-def _extract_python_units(source_code: str) -> Tuple[List[CodeFunction], List[CodeClass]]:
+def _extract_python_units(
+    source_code: str,
+) -> Tuple[List[CodeFunction], List[CodeClass]]:
     """Extract functions and classes from Python source code."""
     functions = []
     classes = []
@@ -816,7 +851,9 @@ def _extract_python_units(source_code: str) -> Tuple[List[CodeFunction], List[Co
         tree = ast.parse(source_code)
 
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) or isinstance(node, ast.AsyncFunctionDef):
+            if isinstance(node, ast.FunctionDef) or isinstance(
+                node, ast.AsyncFunctionDef
+            ):
                 # Skip private functions
                 if node.name.startswith("_") and not node.name.startswith("__"):
                     continue
@@ -840,8 +877,14 @@ def _extract_python_units(source_code: str) -> Tuple[List[CodeFunction], List[Co
                         if not item.name.startswith("_") or item.name.startswith("__"):
                             method = CodeFunction(
                                 name=item.name,
-                                params=[arg.arg for arg in item.args.args if arg.arg != "self"],
-                                return_type=ast.unparse(item.returns) if item.returns else None,
+                                params=[
+                                    arg.arg
+                                    for arg in item.args.args
+                                    if arg.arg != "self"
+                                ],
+                                return_type=(
+                                    ast.unparse(item.returns) if item.returns else None
+                                ),
                                 is_async=isinstance(item, ast.AsyncFunctionDef),
                                 docstring=ast.get_docstring(item),
                                 start_line=item.lineno,
@@ -889,7 +932,11 @@ def _extract_js_units(source_code: str) -> Tuple[List[CodeFunction], List[CodeCl
             if name.startswith("_") or name.startswith("test"):
                 continue
 
-            params = [p.strip().split(":")[0].strip() for p in params_str.split(",") if p.strip()]
+            params = [
+                p.strip().split(":")[0].strip()
+                for p in params_str.split(",")
+                if p.strip()
+            ]
             is_async = "async" in match.group(0)
 
             func = CodeFunction(
@@ -898,7 +945,7 @@ def _extract_js_units(source_code: str) -> Tuple[List[CodeFunction], List[CodeCl
                 return_type=return_type,
                 is_async=is_async,
                 docstring=None,
-                start_line=source_code[:match.start()].count("\n") + 1,
+                start_line=source_code[: match.start()].count("\n") + 1,
                 end_line=0,
                 body_preview="",
             )
@@ -912,7 +959,7 @@ def _extract_js_units(source_code: str) -> Tuple[List[CodeFunction], List[CodeCl
             name=name,
             methods=[],  # Would need more complex parsing
             docstring=None,
-            start_line=source_code[:match.start()].count("\n") + 1,
+            start_line=source_code[: match.start()].count("\n") + 1,
         )
         classes.append(cls)
 
@@ -942,7 +989,9 @@ def _generate_test_code(
     # Generate test cases for class methods
     for cls in classes:
         for method in cls.methods:
-            test_case = _generate_function_test_case(method, framework, language, cls.name)
+            test_case = _generate_function_test_case(
+                method, framework, language, cls.name
+            )
             test_cases.append(test_case)
 
     # Build imports
@@ -972,7 +1021,9 @@ def _generate_function_test_case(
 ) -> str:
     """Generate a test case for a single function."""
     template = TEST_TEMPLATES.get(framework, TEST_TEMPLATES["jest"])
-    test_case_template = template.get("async_test_case" if func.is_async and framework == "pytest" else "test_case")
+    test_case_template = template.get(
+        "async_test_case" if func.is_async and framework == "pytest" else "test_case"
+    )
 
     # Generate description
     if class_name:
@@ -984,7 +1035,9 @@ def _generate_function_test_case(
     if language == "python":
         if func.params:
             params_str = ", ".join(["test_value"] * len(func.params))
-            test_body = f"result = {func.name}({params_str})\n        assert result is not None"
+            test_body = (
+                f"result = {func.name}({params_str})\n        assert result is not None"
+            )
         else:
             test_body = f"result = {func.name}()\n        assert result is not None"
     else:
@@ -1038,7 +1091,7 @@ class Test{func.name.title().replace("_", "")}:
         pass
 '''
     else:
-        return f'''import {{ describe, it, expect }} from '{framework}';
+        return f"""import {{ describe, it, expect }} from '{framework}';
 import {{ {func.name} }} from './{module_name}';
 
 describe('{func.name}', () => {{
@@ -1052,7 +1105,7 @@ describe('{func.name}', () => {{
     // TODO: Add error handling tests
   }});
 }});
-'''
+"""
 
 
 def _get_test_file_path(source_path: str, framework: str, language: str) -> str:
@@ -1117,16 +1170,31 @@ def _get_all_source_files(workspace_path: str, language: str) -> List[str]:
 
     for root, dirs, filenames in os.walk(workspace_path):
         # Skip common non-source directories
-        dirs[:] = [d for d in dirs if d not in (
-            "node_modules", ".git", "dist", "build", "__pycache__",
-            ".pytest_cache", "venv", ".venv", "coverage", ".next"
-        )]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d
+            not in (
+                "node_modules",
+                ".git",
+                "dist",
+                "build",
+                "__pycache__",
+                ".pytest_cache",
+                "venv",
+                ".venv",
+                "coverage",
+                ".next",
+            )
+        ]
 
         for filename in filenames:
             if any(filename.endswith(ext) for ext in exts):
                 # Skip test files
                 if "test" not in filename.lower() and "spec" not in filename.lower():
-                    rel_path = os.path.relpath(os.path.join(root, filename), workspace_path)
+                    rel_path = os.path.relpath(
+                        os.path.join(root, filename), workspace_path
+                    )
                     files.append(rel_path)
 
     return files

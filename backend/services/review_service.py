@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 class ReviewService:
     """Legacy wrapper for review endpoints (compatibility layer)."""
 
-    def __init__(self, repo_path: Optional[str] = None, analysis_depth: str = "standard"):
+    def __init__(
+        self, repo_path: Optional[str] = None, analysis_depth: str = "standard"
+    ):
         self._real: Optional[RealReviewService] = None
         self.repo_path = repo_path
         self.analysis_depth = analysis_depth

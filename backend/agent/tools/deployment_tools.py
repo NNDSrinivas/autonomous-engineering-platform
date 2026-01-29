@@ -30,6 +30,7 @@ def _get_command_env() -> dict:
     env["SHELL"] = env.get("SHELL", "/bin/bash")
     return env
 
+
 # Import execution services
 try:
     from backend.services.execution_confirmation_service import (
@@ -42,6 +43,7 @@ try:
         DeploymentConfig,
         DeploymentPlatform,
     )
+
     EXECUTION_SERVICES_AVAILABLE = True
 except ImportError:
     EXECUTION_SERVICES_AVAILABLE = False
@@ -118,7 +120,6 @@ PLATFORM_CLIS = {
         "status": "deployctl whoami",
         "description": "Deno-native edge runtime deployment",
     },
-
     # ============================================================================
     # CLOUDFLARE
     # ============================================================================
@@ -139,7 +140,6 @@ PLATFORM_CLIS = {
         "status": "wrangler whoami",
         "description": "Cloudflare Pages static site hosting",
     },
-
     # ============================================================================
     # AWS - AMAZON WEB SERVICES
     # ============================================================================
@@ -192,7 +192,6 @@ PLATFORM_CLIS = {
         "status": "aws lightsail get-container-services",
         "description": "AWS Lightsail simple container deployment",
     },
-
     # ============================================================================
     # GOOGLE CLOUD PLATFORM
     # ============================================================================
@@ -239,7 +238,6 @@ PLATFORM_CLIS = {
         "status": "firebase projects:list",
         "description": "Firebase Cloud Functions",
     },
-
     # ============================================================================
     # MICROSOFT AZURE
     # ============================================================================
@@ -276,7 +274,6 @@ PLATFORM_CLIS = {
         "status": "az account show",
         "description": "Azure Static Web Apps",
     },
-
     # ============================================================================
     # ORACLE CLOUD INFRASTRUCTURE
     # ============================================================================
@@ -304,7 +301,6 @@ PLATFORM_CLIS = {
         "status": "fn list apps",
         "description": "Oracle Functions (Fn Project)",
     },
-
     # ============================================================================
     # IBM CLOUD
     # ============================================================================
@@ -324,7 +320,6 @@ PLATFORM_CLIS = {
         "status": "ibmcloud fn namespace list",
         "description": "IBM Cloud Functions (OpenWhisk)",
     },
-
     # ============================================================================
     # ALIBABA CLOUD
     # ============================================================================
@@ -344,7 +339,6 @@ PLATFORM_CLIS = {
         "status": "aliyun cs DescribeClusters",
         "description": "Alibaba Container Service for Kubernetes (ACK)",
     },
-
     # ============================================================================
     # DIGITALOCEAN
     # ============================================================================
@@ -373,7 +367,6 @@ PLATFORM_CLIS = {
         "status": "doctl serverless status",
         "description": "DigitalOcean Functions serverless",
     },
-
     # ============================================================================
     # EDGE/CDN PLATFORMS
     # ============================================================================
@@ -393,7 +386,6 @@ PLATFORM_CLIS = {
         "status": "akamai edgeworkers list",
         "description": "Akamai EdgeWorkers",
     },
-
     # ============================================================================
     # VPS PROVIDERS
     # ============================================================================
@@ -421,7 +413,6 @@ PLATFORM_CLIS = {
         "status": "hcloud server list",
         "description": "Hetzner Cloud servers",
     },
-
     # ============================================================================
     # STATIC HOSTING
     # ============================================================================
@@ -449,7 +440,6 @@ PLATFORM_CLIS = {
         "status": "surge whoami",
         "description": "Surge.sh simple static hosting",
     },
-
     # ============================================================================
     # CONTAINER ORCHESTRATION
     # ============================================================================
@@ -486,7 +476,6 @@ PLATFORM_CLIS = {
         "status": "nomad status",
         "description": "HashiCorp Nomad orchestration",
     },
-
     # ============================================================================
     # SELF-HOSTED PAAS
     # ============================================================================
@@ -611,9 +600,7 @@ async def detect_project_type(
                             detected["framework"] = (
                                 "Express"
                                 if "express" in deps
-                                else "Fastify"
-                                if "fastify" in deps
-                                else "Koa"
+                                else "Fastify" if "fastify" in deps else "Koa"
                             )
                             detected["type"] = "backend"
                             detected["recommended_platforms"] = [
@@ -973,7 +960,7 @@ async def execute_deployment(
     if not EXECUTION_SERVICES_AVAILABLE:
         return ToolResult(
             output="⚠️ Execution services not available. Running in information-only mode.\n\n"
-                   f"To deploy to {platform}, run:\n```bash\n{PLATFORM_CLIS.get(platform, {}).get('deploy', 'Unknown platform')}\n```",
+            f"To deploy to {platform}, run:\n```bash\n{PLATFORM_CLIS.get(platform, {}).get('deploy', 'Unknown platform')}\n```",
             sources=[],
         )
 
@@ -1004,14 +991,16 @@ async def execute_deployment(
         )
 
     # Check prerequisites
-    prereq_ok, prereq_msg = await deployment_executor_service.check_prerequisites(deployment_platform)
+    prereq_ok, prereq_msg = await deployment_executor_service.check_prerequisites(
+        deployment_platform
+    )
     if not prereq_ok:
         config = PLATFORM_CLIS.get(platform, {})
         return ToolResult(
             output=f"## ❌ Prerequisites Not Met\n\n{prereq_msg}\n\n"
-                   f"**To fix:**\n"
-                   f"1. Install CLI: `{config.get('install', 'See platform docs')}`\n"
-                   f"2. Login: `{config.get('login', 'See platform docs')}`",
+            f"**To fix:**\n"
+            f"1. Install CLI: `{config.get('install', 'See platform docs')}`\n"
+            f"2. Login: `{config.get('login', 'See platform docs')}`",
             sources=[],
         )
 
@@ -1036,14 +1025,14 @@ async def execute_deployment(
 
         return ToolResult(
             output=f"## ⚠️ Deployment Confirmation Required\n\n"
-                   f"**Operation**: Deploy to {platform.title()}\n"
-                   f"**Environment**: {environment}\n"
-                   f"**Risk Level**: {request.risk_level.value.upper()}\n\n"
-                   f"### Warnings\n"
-                   + "\n".join([f"- {w.message}" for w in request.warnings]) +
-                   f"\n\n**Request ID**: `{request.id}`\n\n"
-                   f"To approve, call `deploy.confirm` with this request ID."
-                   f"\n\n```json\n{json.dumps(ui_data, indent=2)}\n```",
+            f"**Operation**: Deploy to {platform.title()}\n"
+            f"**Environment**: {environment}\n"
+            f"**Risk Level**: {request.risk_level.value.upper()}\n\n"
+            f"### Warnings\n"
+            + "\n".join([f"- {w.message}" for w in request.warnings])
+            + f"\n\n**Request ID**: `{request.id}`\n\n"
+            f"To approve, call `deploy.confirm` with this request ID."
+            f"\n\n```json\n{json.dumps(ui_data, indent=2)}\n```",
             sources=[{"type": "execution_request", "data": ui_data}],
         )
 
@@ -1059,13 +1048,13 @@ async def execute_deployment(
     if dry_run:
         return ToolResult(
             output=f"## 🔍 Dry Run - Deployment Preview\n\n"
-                   f"**Platform**: {platform.title()}\n"
-                   f"**Environment**: {environment}\n"
-                   f"**Workspace**: {workspace_path}\n"
-                   f"**Environment Variables**: {len(env_vars)} configured\n\n"
-                   f"✅ Prerequisites checked and passed\n"
-                   f"✅ Would execute: `{PLATFORM_CLIS.get(platform, {}).get('deploy', 'platform deploy')}`\n\n"
-                   f"To actually deploy, set `dry_run=False`",
+            f"**Platform**: {platform.title()}\n"
+            f"**Environment**: {environment}\n"
+            f"**Workspace**: {workspace_path}\n"
+            f"**Environment Variables**: {len(env_vars)} configured\n\n"
+            f"✅ Prerequisites checked and passed\n"
+            f"✅ Would execute: `{PLATFORM_CLIS.get(platform, {}).get('deploy', 'platform deploy')}`\n\n"
+            f"To actually deploy, set `dry_run=False`",
             sources=[],
         )
 
@@ -1087,7 +1076,10 @@ async def execute_deployment(
         if result.rollback_id:
             output += f"\n### 🔄 Rollback\nTo rollback, use deployment ID: `{result.rollback_id}`\n"
 
-        return ToolResult(output=output, sources=[{"type": "deployment", "url": result.deployment_url}])
+        return ToolResult(
+            output=output,
+            sources=[{"type": "deployment", "url": result.deployment_url}],
+        )
     else:
         output = "## ❌ Deployment Failed\n\n"
         output += f"**Platform**: {platform.title()}\n"
@@ -1155,7 +1147,9 @@ async def confirm_deployment(
     }
 
     config = DeploymentConfig(
-        platform=platform_map.get(params.get("platform", ""), DeploymentPlatform.VERCEL),
+        platform=platform_map.get(
+            params.get("platform", ""), DeploymentPlatform.VERCEL
+        ),
         workspace_path=params.get("workspace_path", "."),
         environment=params.get("environment", "production"),
         dry_run=False,
@@ -1172,8 +1166,8 @@ async def confirm_deployment(
     if result.success:
         return ToolResult(
             output=f"## ✅ Deployment Executed Successfully!\n\n"
-                   f"**Duration**: {result.duration_seconds:.1f}s\n"
-                   f"**Output**:\n{result.output}",
+            f"**Duration**: {result.duration_seconds:.1f}s\n"
+            f"**Output**:\n{result.output}",
             sources=[],
         )
     else:
@@ -1229,9 +1223,9 @@ async def rollback_deployment(
     if result.success:
         return ToolResult(
             output=f"## ✅ Rollback Successful\n\n"
-                   f"**Platform**: {platform.title()}\n"
-                   f"**Rolled back to**: {deployment_id}\n"
-                   f"**Duration**: {result.duration_seconds:.1f}s",
+            f"**Platform**: {platform.title()}\n"
+            f"**Rolled back to**: {deployment_id}\n"
+            f"**Duration**: {result.duration_seconds:.1f}s",
             sources=[],
         )
     else:

@@ -111,9 +111,9 @@ class RunState(BaseModel):
     context: ContextPack
     plan: Optional[Plan] = None
     current_step: int = 0
-    status: Literal[
-        "idle", "planning", "executing", "verifying", "done", "failed"
-    ] = "idle"
+    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = (
+        "idle"
+    )
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: float = Field(default_factory=time.time)
 
@@ -1181,9 +1181,7 @@ async def analyze_working_changes(
                             "severity": (
                                 "high"
                                 if any(i["severity"] == "high" for i in issues)
-                                else "medium"
-                                if issues
-                                else "low"
+                                else "medium" if issues else "low"
                             ),
                             "issues": issues,
                             "diff": change.get("diff", "")[:1000],
@@ -5604,7 +5602,9 @@ To get started, I need to analyze your codebase and create a detailed implementa
         # =================================================================
         image_context = ""
         if request.attachments:
-            logger.info(f"[NAVI-CHAT] Processing {len(request.attachments)} attachments")
+            logger.info(
+                f"[NAVI-CHAT] Processing {len(request.attachments)} attachments"
+            )
             for att in request.attachments:
                 att_kind = getattr(att, "kind", None) or (
                     att.get("kind") if isinstance(att, dict) else None
@@ -5618,7 +5618,6 @@ To get started, I need to analyze your codebase and create a detailed implementa
                         try:
                             from backend.services.vision_service import (
                                 VisionClient,
-                                VisionProvider,
                             )
 
                             # Extract base64 data from data URL
@@ -5634,10 +5633,14 @@ To get started, I need to analyze your codebase and create a detailed implementa
 
                             # Use vision AI to analyze the image
                             # Use the same provider as the user's selected model
-                            vision_provider = _get_vision_provider_for_model(request.model)
+                            vision_provider = _get_vision_provider_for_model(
+                                request.model
+                            )
                             analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
-                            logger.info(f"[NAVI-CHAT] Analyzing image with vision provider: {vision_provider}")
+                            logger.info(
+                                f"[NAVI-CHAT] Analyzing image with vision provider: {vision_provider}"
+                            )
                             vision_response = await VisionClient.analyze_image(
                                 image_data=base64_data,
                                 prompt=analysis_prompt,
@@ -5655,7 +5658,9 @@ To get started, I need to analyze your codebase and create a detailed implementa
         # Augment the message with image context if present
         augmented_message = request.message
         if image_context:
-            augmented_message = f"{request.message}\n\n[CONTEXT FROM ATTACHED IMAGE(S)]{image_context}"
+            augmented_message = (
+                f"{request.message}\n\n[CONTEXT FROM ATTACHED IMAGE(S)]{image_context}"
+            )
             logger.info("[NAVI-CHAT] Message augmented with image analysis")
 
         agent_result = await run_agent_loop(
@@ -5974,7 +5979,6 @@ async def navi_chat_stream(
                             try:
                                 from backend.services.vision_service import (
                                     VisionClient,
-                                    VisionProvider,
                                 )
 
                                 # Extract base64 data from data URL
@@ -5990,7 +5994,9 @@ async def navi_chat_stream(
 
                                 # Use vision AI to analyze the image
                                 # Use the same provider as the user's selected model
-                                vision_provider = _get_vision_provider_for_model(request.model)
+                                vision_provider = _get_vision_provider_for_model(
+                                    request.model
+                                )
                                 analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
                                 vision_response = await VisionClient.analyze_image(
@@ -6142,27 +6148,55 @@ async def navi_chat_stream(
                                 detail = cmd
                                 # Generate purpose based on command pattern (Bug 5 fix)
                                 cmd_lower = cmd.lower()
-                                if "npm install" in cmd_lower or "pip install" in cmd_lower or "yarn add" in cmd_lower:
+                                if (
+                                    "npm install" in cmd_lower
+                                    or "pip install" in cmd_lower
+                                    or "yarn add" in cmd_lower
+                                ):
                                     purpose = "Installing dependencies to ensure all required packages are available"
-                                elif "npm run dev" in cmd_lower or "npm start" in cmd_lower:
+                                elif (
+                                    "npm run dev" in cmd_lower
+                                    or "npm start" in cmd_lower
+                                ):
                                     purpose = "Starting the development server to run the application"
-                                elif "npm run build" in cmd_lower or "npm run compile" in cmd_lower:
+                                elif (
+                                    "npm run build" in cmd_lower
+                                    or "npm run compile" in cmd_lower
+                                ):
                                     purpose = "Building the project to compile and bundle the code"
-                                elif "npm test" in cmd_lower or "pytest" in cmd_lower or "jest" in cmd_lower:
+                                elif (
+                                    "npm test" in cmd_lower
+                                    or "pytest" in cmd_lower
+                                    or "jest" in cmd_lower
+                                ):
                                     purpose = "Running tests to verify the code is working correctly"
                                 elif "git " in cmd_lower:
-                                    purpose = "Running git command to manage version control"
-                                elif "lsof" in cmd_lower or "netstat" in cmd_lower or "ps " in cmd_lower:
+                                    purpose = (
+                                        "Running git command to manage version control"
+                                    )
+                                elif (
+                                    "lsof" in cmd_lower
+                                    or "netstat" in cmd_lower
+                                    or "ps " in cmd_lower
+                                ):
                                     purpose = "Checking system processes and port usage"
                                 elif "kill" in cmd_lower or "pkill" in cmd_lower:
                                     purpose = "Stopping a running process"
                                 elif "curl" in cmd_lower or "wget" in cmd_lower:
                                     purpose = "Making an HTTP request to check connectivity or fetch data"
                                 elif "mkdir" in cmd_lower:
-                                    purpose = "Creating a directory for the project structure"
+                                    purpose = (
+                                        "Creating a directory for the project structure"
+                                    )
                                 elif "rm " in cmd_lower or "rm -" in cmd_lower:
-                                    purpose = "Removing files or directories to clean up"
-                                elif "cat " in cmd_lower or "head " in cmd_lower or "tail " in cmd_lower:
+                                    purpose = (
+                                        "Removing files or directories to clean up"
+                                    )
+                                elif (
+                                    "cat " in cmd_lower
+                                    or "head " in cmd_lower
+                                    or "tail " in cmd_lower
+                                ):
                                     purpose = "Reading file contents for inspection"
                                 elif "grep" in cmd_lower:
                                     purpose = "Searching for patterns in files"
@@ -6175,9 +6209,14 @@ async def navi_chat_stream(
                                 label = "Listing"
                                 detail = tool_args.get("path", "")
 
-                            activity_data = {'kind': kind, 'label': label, 'detail': detail, 'status': 'running'}
+                            activity_data = {
+                                "kind": kind,
+                                "label": label,
+                                "detail": detail,
+                                "status": "running",
+                            }
                             if purpose:
-                                activity_data['purpose'] = purpose
+                                activity_data["purpose"] = purpose
                             yield f"data: {json.dumps({'activity': activity_data})}\n\n"
 
                         elif event.type == AgentEventType.TOOL_RESULT:
@@ -7004,10 +7043,12 @@ async def navi_autonomous_task(
     http_request: Request,
 ):
     # DEBUG: Print to stdout to ensure this endpoint is being called
-    print(f"[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
-    print(f"[NAVI Autonomous DEBUG] Message: {request.message[:100] if request.message else 'None'}...")
+    print("[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
+    print(
+        f"[NAVI Autonomous DEBUG] Message: {request.message[:100] if request.message else 'None'}..."
+    )
     print(f"[NAVI Autonomous DEBUG] Attachments: {request.attachments}")
-    print(f"[NAVI Autonomous DEBUG] =====================================")
+    print("[NAVI Autonomous DEBUG] =====================================")
     """
     NAVI Autonomous Task Execution
 
@@ -7063,23 +7104,41 @@ async def navi_autonomous_task(
 
     # Process image attachments if present
     augmented_message = request.message
-    logger.info(f"[NAVI Autonomous] Checking attachments: {request.attachments is not None}, count: {len(request.attachments) if request.attachments else 0}")
+    logger.info(
+        f"[NAVI Autonomous] Checking attachments: {request.attachments is not None}, count: {len(request.attachments) if request.attachments else 0}"
+    )
     if request.attachments:
-        logger.info(f"[NAVI Autonomous] Processing {len(request.attachments)} attachments")
+        logger.info(
+            f"[NAVI Autonomous] Processing {len(request.attachments)} attachments"
+        )
         image_context = ""
         for att in request.attachments:
-            logger.info(f"[NAVI Autonomous] Attachment: {type(att)}, keys: {att.keys() if isinstance(att, dict) else 'N/A'}")
-            att_kind = att.get("kind") if isinstance(att, dict) else getattr(att, "kind", None)
+            logger.info(
+                f"[NAVI Autonomous] Attachment: {type(att)}, keys: {att.keys() if isinstance(att, dict) else 'N/A'}"
+            )
+            att_kind = (
+                att.get("kind") if isinstance(att, dict) else getattr(att, "kind", None)
+            )
             logger.info(f"[NAVI Autonomous] Attachment kind: {att_kind}")
             if att_kind == "image":
-                att_content = att.get("content") if isinstance(att, dict) else getattr(att, "content", None)
+                att_content = (
+                    att.get("content")
+                    if isinstance(att, dict)
+                    else getattr(att, "content", None)
+                )
                 if att_content:
                     try:
-                        from backend.services.vision_service import VisionClient, VisionProvider
+                        from backend.services.vision_service import (
+                            VisionClient,
+                        )
 
                         # Extract base64 data from data URL
                         if att_content.startswith("data:"):
-                            base64_data = att_content.split(",", 1)[1] if "," in att_content else att_content
+                            base64_data = (
+                                att_content.split(",", 1)[1]
+                                if "," in att_content
+                                else att_content
+                            )
                         else:
                             base64_data = att_content
 
@@ -7093,13 +7152,19 @@ async def navi_autonomous_task(
                             prompt=analysis_prompt,
                             provider=vision_provider,
                         )
-                        image_context += f"\n\n=== IMAGE ANALYSIS ===\n{vision_response}\n"
+                        image_context += (
+                            f"\n\n=== IMAGE ANALYSIS ===\n{vision_response}\n"
+                        )
                         logger.info("[NAVI Autonomous] Image analyzed successfully")
                     except Exception as img_err:
-                        logger.warning(f"[NAVI Autonomous] Image analysis failed: {img_err}")
+                        logger.warning(
+                            f"[NAVI Autonomous] Image analysis failed: {img_err}"
+                        )
 
         if image_context:
-            augmented_message = f"{request.message}\n\n[CONTEXT FROM ATTACHED IMAGE(S)]{image_context}"
+            augmented_message = (
+                f"{request.message}\n\n[CONTEXT FROM ATTACHED IMAGE(S)]{image_context}"
+            )
             logger.info("[NAVI Autonomous] Message augmented with image analysis")
 
     async def stream_generator():

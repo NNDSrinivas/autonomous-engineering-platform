@@ -65,7 +65,9 @@ class VscodeAuthMiddleware(BaseHTTPMiddleware):
         try:
             token_info = await validate_access_token(token)
         except HTTPException as exc:
-            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            return JSONResponse(
+                status_code=exc.status_code, content={"detail": exc.detail}
+            )
 
         # Make token info available downstream
         request.state.user = token_info

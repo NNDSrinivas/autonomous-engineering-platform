@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 class InfrastructureProvider(Enum):
     """Supported infrastructure providers - 100+ tools."""
+
     # =========================================================================
     # INFRASTRUCTURE AS CODE - DECLARATIVE
     # =========================================================================
@@ -345,6 +346,7 @@ class InfrastructureProvider(Enum):
 
 class InfrastructureAction(Enum):
     """Infrastructure actions."""
+
     PLAN = "plan"
     APPLY = "apply"
     DESTROY = "destroy"
@@ -356,6 +358,7 @@ class InfrastructureAction(Enum):
 @dataclass
 class InfrastructureChange:
     """Represents a single infrastructure change."""
+
     action: str  # create, update, delete, no-op
     resource_type: str
     resource_name: str
@@ -366,6 +369,7 @@ class InfrastructureChange:
 @dataclass
 class InfrastructurePlan:
     """Result of infrastructure planning."""
+
     provider: InfrastructureProvider
     changes: List[InfrastructureChange]
     summary: Dict[str, int]  # {add: 3, change: 2, destroy: 1}
@@ -377,6 +381,7 @@ class InfrastructurePlan:
 @dataclass
 class InfrastructureResult:
     """Result of infrastructure operation."""
+
     success: bool
     provider: InfrastructureProvider
     action: InfrastructureAction
@@ -414,7 +419,9 @@ class InfrastructureExecutorService:
         env["SHELL"] = env.get("SHELL", "/bin/bash")
         return env
 
-    async def check_prerequisites(self, provider: InfrastructureProvider) -> Tuple[bool, str]:
+    async def check_prerequisites(
+        self, provider: InfrastructureProvider
+    ) -> Tuple[bool, str]:
         """Check if prerequisites are met for the provider."""
         checks = {
             InfrastructureProvider.TERRAFORM: self._check_terraform,
@@ -512,7 +519,9 @@ class InfrastructureExecutorService:
             for t in target:
                 cmd.append(f"-target={t}")
 
-        output = await self._run_command_streaming(cmd, cwd=workspace_path, progress_callback=progress_callback)
+        output = await self._run_command_streaming(
+            cmd, cwd=workspace_path, progress_callback=progress_callback
+        )
         plan.raw_output = output["stdout"]
         plan.plan_file = plan_file
 
@@ -532,7 +541,7 @@ class InfrastructureExecutorService:
         if progress_callback:
             progress_callback(
                 f"Plan complete: +{plan.summary['add']} ~{plan.summary['change']} -{plan.summary['destroy']}",
-                100
+                100,
             )
 
         return plan
@@ -563,10 +572,14 @@ class InfrastructureExecutorService:
         # Backup state file before apply
         state_file = Path(workspace_path) / "terraform.tfstate"
         if state_file.exists():
-            backup_path = f"{state_file}.backup.{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+            backup_path = (
+                f"{state_file}.backup.{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+            )
             shutil.copy(state_file, backup_path)
             self._state_backups[workspace_path] = backup_path
-            result.rollback_command = f"cp {backup_path} {state_file} && terraform apply -refresh-only"
+            result.rollback_command = (
+                f"cp {backup_path} {state_file} && terraform apply -refresh-only"
+            )
 
         if progress_callback:
             progress_callback("Applying Terraform changes...", 20)
@@ -592,7 +605,9 @@ class InfrastructureExecutorService:
                 for t in target:
                     cmd.append(f"-target={t}")
 
-        output = await self._run_command_streaming(cmd, cwd=workspace_path, progress_callback=progress_callback)
+        output = await self._run_command_streaming(
+            cmd, cwd=workspace_path, progress_callback=progress_callback
+        )
         result.logs = output.get("logs", [])
 
         if output["returncode"] == 0:
@@ -600,8 +615,7 @@ class InfrastructureExecutorService:
 
             # Parse outputs
             outputs_result = await self._run_command(
-                ["terraform", "output", "-json"],
-                cwd=workspace_path
+                ["terraform", "output", "-json"], cwd=workspace_path
             )
             if outputs_result["returncode"] == 0:
                 try:
@@ -662,7 +676,9 @@ class InfrastructureExecutorService:
             for t in target:
                 cmd.append(f"-target={t}")
 
-        output = await self._run_command_streaming(cmd, cwd=workspace_path, progress_callback=progress_callback)
+        output = await self._run_command_streaming(
+            cmd, cwd=workspace_path, progress_callback=progress_callback
+        )
         result.logs = output.get("logs", [])
 
         if output["returncode"] == 0:
@@ -713,7 +729,9 @@ class InfrastructureExecutorService:
 
         cmd.append("-o=json")
 
-        output = await self._run_command_streaming(cmd, progress_callback=progress_callback)
+        output = await self._run_command_streaming(
+            cmd, progress_callback=progress_callback
+        )
         result.logs = output.get("logs", [])
 
         if output["returncode"] == 0:
@@ -724,12 +742,16 @@ class InfrastructureExecutorService:
                 applied = json.loads(output["stdout"])
                 if applied.get("kind") == "List":
                     for item in applied.get("items", []):
-                        result.changes_applied.append(InfrastructureChange(
-                            action="apply",
-                            resource_type=item.get("kind", "Unknown"),
-                            resource_name=item.get("metadata", {}).get("name", "Unknown"),
-                            resource_address=f"{item.get('kind')}/{item.get('metadata', {}).get('name')}",
-                        ))
+                        result.changes_applied.append(
+                            InfrastructureChange(
+                                action="apply",
+                                resource_type=item.get("kind", "Unknown"),
+                                resource_name=item.get("metadata", {}).get(
+                                    "name", "Unknown"
+                                ),
+                                resource_address=f"{item.get('kind')}/{item.get('metadata', {}).get('name')}",
+                            )
+                        )
             except json.JSONDecodeError:
                 pass
 
@@ -772,7 +794,9 @@ class InfrastructureExecutorService:
         if force:
             cmd.append("--force")
 
-        output = await self._run_command_streaming(cmd, progress_callback=progress_callback)
+        output = await self._run_command_streaming(
+            cmd, progress_callback=progress_callback
+        )
         result.logs = output.get("logs", [])
 
         if output["returncode"] == 0:
@@ -825,7 +849,12 @@ class InfrastructureExecutorService:
             if progress_callback:
                 progress_callback("Waiting for rollout to complete...", 60)
 
-            wait_cmd = ["kubectl", "rollout", "status", f"{resource_type}/{resource_name}"]
+            wait_cmd = [
+                "kubectl",
+                "rollout",
+                "status",
+                f"{resource_type}/{resource_name}",
+            ]
             if namespace:
                 wait_cmd.extend(["-n", namespace])
 
@@ -888,12 +917,16 @@ class InfrastructureExecutorService:
 
         cmd.append("--output=json")
 
-        output = await self._run_command_streaming(cmd, progress_callback=progress_callback)
+        output = await self._run_command_streaming(
+            cmd, progress_callback=progress_callback
+        )
         result.logs = output.get("logs", [])
 
         if output["returncode"] == 0:
             result.success = True
-            result.rollback_command = f"helm uninstall {release_name}" + (f" -n {namespace}" if namespace else "")
+            result.rollback_command = f"helm uninstall {release_name}" + (
+                f" -n {namespace}" if namespace else ""
+            )
 
             if progress_callback:
                 progress_callback(f"Helm chart {release_name} installed", 100)
@@ -950,12 +983,16 @@ class InfrastructureExecutorService:
         if dry_run:
             cmd.append("--dry-run")
 
-        output = await self._run_command_streaming(cmd, progress_callback=progress_callback)
+        output = await self._run_command_streaming(
+            cmd, progress_callback=progress_callback
+        )
         result.logs = output.get("logs", [])
 
         if output["returncode"] == 0:
             result.success = True
-            result.rollback_command = f"helm rollback {release_name}" + (f" -n {namespace}" if namespace else "")
+            result.rollback_command = f"helm rollback {release_name}" + (
+                f" -n {namespace}" if namespace else ""
+            )
 
             if progress_callback:
                 progress_callback(f"Helm release {release_name} upgraded", 100)
@@ -1076,9 +1113,13 @@ class InfrastructureExecutorService:
             progress_callback(f"Deploying CloudFormation stack: {stack_name}...", 20)
 
         cmd = [
-            "aws", "cloudformation", "deploy",
-            "--stack-name", stack_name,
-            "--template-file", template_file,
+            "aws",
+            "cloudformation",
+            "deploy",
+            "--stack-name",
+            stack_name,
+            "--template-file",
+            template_file,
         ]
 
         if parameters:
@@ -1093,19 +1134,28 @@ class InfrastructureExecutorService:
         if region:
             cmd.extend(["--region", region])
 
-        output = await self._run_command_streaming(cmd, progress_callback=progress_callback)
+        output = await self._run_command_streaming(
+            cmd, progress_callback=progress_callback
+        )
         result.logs = output.get("logs", [])
 
         if output["returncode"] == 0:
             result.success = True
-            result.rollback_command = f"aws cloudformation delete-stack --stack-name {stack_name}"
+            result.rollback_command = (
+                f"aws cloudformation delete-stack --stack-name {stack_name}"
+            )
 
             # Get stack outputs
             outputs_cmd = [
-                "aws", "cloudformation", "describe-stacks",
-                "--stack-name", stack_name,
-                "--query", "Stacks[0].Outputs",
-                "--output", "json"
+                "aws",
+                "cloudformation",
+                "describe-stacks",
+                "--stack-name",
+                stack_name,
+                "--query",
+                "Stacks[0].Outputs",
+                "--output",
+                "json",
             ]
             if region:
                 outputs_cmd.extend(["--region", region])
@@ -1114,7 +1164,9 @@ class InfrastructureExecutorService:
             if outputs_result["returncode"] == 0:
                 try:
                     outputs = json.loads(outputs_result["stdout"])
-                    result.outputs = {o["OutputKey"]: o["OutputValue"] for o in (outputs or [])}
+                    result.outputs = {
+                        o["OutputKey"]: o["OutputValue"] for o in (outputs or [])
+                    }
                 except (json.JSONDecodeError, KeyError):
                     pass
 
@@ -1159,8 +1211,12 @@ class InfrastructureExecutorService:
                 progress_callback("Waiting for stack deletion...", 50)
 
             wait_cmd = [
-                "aws", "cloudformation", "wait", "stack-delete-complete",
-                "--stack-name", stack_name
+                "aws",
+                "cloudformation",
+                "wait",
+                "stack-delete-complete",
+                "--stack-name",
+                stack_name,
             ]
             if region:
                 wait_cmd.extend(["--region", region])
@@ -1188,7 +1244,10 @@ class InfrastructureExecutorService:
     async def _check_terraform(self) -> Tuple[bool, str]:
         """Check Terraform installation."""
         if not shutil.which("terraform"):
-            return False, "Terraform not installed. See: https://www.terraform.io/downloads"
+            return (
+                False,
+                "Terraform not installed. See: https://www.terraform.io/downloads",
+            )
 
         result = await self._run_command(["terraform", "version", "-json"])
         if result["returncode"] == 0:
@@ -1233,7 +1292,10 @@ class InfrastructureExecutorService:
     async def _check_pulumi(self) -> Tuple[bool, str]:
         """Check Pulumi installation."""
         if not shutil.which("pulumi"):
-            return False, "Pulumi not installed. See: https://www.pulumi.com/docs/get-started/install/"
+            return (
+                False,
+                "Pulumi not installed. See: https://www.pulumi.com/docs/get-started/install/",
+            )
 
         result = await self._run_command(["pulumi", "version"])
         if result["returncode"] == 0:
@@ -1253,7 +1315,10 @@ class InfrastructureExecutorService:
                 continue
             try:
                 data = json.loads(line)
-                if data.get("type") == "resource_drift" or data.get("type") == "planned_change":
+                if (
+                    data.get("type") == "resource_drift"
+                    or data.get("type") == "planned_change"
+                ):
                     change = data.get("change", {})
                     resource = change.get("resource", {})
 
@@ -1271,13 +1336,15 @@ class InfrastructureExecutorService:
                     else:
                         action = actions
 
-                    changes.append(InfrastructureChange(
-                        action=action_map.get(action, action),
-                        resource_type=resource.get("resource_type", "unknown"),
-                        resource_name=resource.get("resource_name", "unknown"),
-                        resource_address=resource.get("addr", "unknown"),
-                        details=change,
-                    ))
+                    changes.append(
+                        InfrastructureChange(
+                            action=action_map.get(action, action),
+                            resource_type=resource.get("resource_type", "unknown"),
+                            resource_name=resource.get("resource_name", "unknown"),
+                            resource_address=resource.get("addr", "unknown"),
+                            details=change,
+                        )
+                    )
             except json.JSONDecodeError:
                 continue
 
@@ -1369,7 +1436,6 @@ class InfrastructureExecutorService:
                 "logs": logs,
             }
 
-
     # -------------------------------------------------------------------------
     # REAL Kubernetes Cluster Provisioning
     # -------------------------------------------------------------------------
@@ -1411,7 +1477,9 @@ class InfrastructureExecutorService:
 
         # Check eksctl is installed
         if not shutil.which("eksctl"):
-            result.error = "eksctl not installed. Install: https://eksctl.io/installation/"
+            result.error = (
+                "eksctl not installed. Install: https://eksctl.io/installation/"
+            )
             return result
 
         if progress_callback:
@@ -1433,6 +1501,7 @@ class InfrastructureExecutorService:
 
             # Stream output while waiting
             logs = []
+
             async def stream_output():
                 while True:
                     if process.stdout:
@@ -1458,11 +1527,13 @@ class InfrastructureExecutorService:
             try:
                 await asyncio.wait_for(
                     asyncio.gather(stream_output(), process.wait()),
-                    timeout=timeout_seconds
+                    timeout=timeout_seconds,
                 )
             except asyncio.TimeoutError:
                 process.terminate()
-                result.error = f"Cluster creation timed out after {timeout_seconds} seconds"
+                result.error = (
+                    f"Cluster creation timed out after {timeout_seconds} seconds"
+                )
                 result.logs = logs
                 return result
 
@@ -1474,14 +1545,20 @@ class InfrastructureExecutorService:
 
                 # Update kubeconfig
                 kubeconfig_cmd = [
-                    "aws", "eks", "update-kubeconfig",
-                    "--name", cluster_name,
-                    "--region", region
+                    "aws",
+                    "eks",
+                    "update-kubeconfig",
+                    "--name",
+                    cluster_name,
+                    "--region",
+                    region,
                 ]
                 kubeconfig_result = await self._run_command(kubeconfig_cmd)
 
                 if kubeconfig_result["returncode"] != 0:
-                    result.error = f"Failed to update kubeconfig: {kubeconfig_result['stderr']}"
+                    result.error = (
+                        f"Failed to update kubeconfig: {kubeconfig_result['stderr']}"
+                    )
                     return result
 
                 if progress_callback:
@@ -1499,7 +1576,9 @@ class InfrastructureExecutorService:
                         "endpoint": await self._get_eks_endpoint(cluster_name, region),
                         "status": "ACTIVE",
                     }
-                    result.rollback_command = f"eksctl delete cluster --name {cluster_name} --region {region}"
+                    result.rollback_command = (
+                        f"eksctl delete cluster --name {cluster_name} --region {region}"
+                    )
 
                     if progress_callback:
                         progress_callback("EKS cluster created successfully!", 100)
@@ -1566,13 +1645,21 @@ class InfrastructureExecutorService:
         # Build command
         if enable_autopilot:
             cmd = [
-                "gcloud", "container", "clusters", "create-auto", cluster_name,
+                "gcloud",
+                "container",
+                "clusters",
+                "create-auto",
+                cluster_name,
                 f"--region={region}",
                 f"--project={project_id}",
             ]
         else:
             cmd = [
-                "gcloud", "container", "clusters", "create", cluster_name,
+                "gcloud",
+                "container",
+                "clusters",
+                "create",
+                cluster_name,
                 f"--region={region}",
                 f"--project={project_id}",
                 f"--machine-type={machine_type}",
@@ -1586,7 +1673,9 @@ class InfrastructureExecutorService:
 
         output = await self._run_command_streaming(
             cmd,
-            progress_callback=lambda msg, pct: progress_callback(msg, 10 + pct * 0.7) if progress_callback else None
+            progress_callback=lambda msg, pct: (
+                progress_callback(msg, 10 + pct * 0.7) if progress_callback else None
+            ),
         )
 
         result.logs = output.get("logs", [])
@@ -1597,7 +1686,11 @@ class InfrastructureExecutorService:
 
             # Get credentials
             cred_cmd = [
-                "gcloud", "container", "clusters", "get-credentials", cluster_name,
+                "gcloud",
+                "container",
+                "clusters",
+                "get-credentials",
+                cluster_name,
                 f"--region={region}",
                 f"--project={project_id}",
             ]
@@ -1678,13 +1771,20 @@ class InfrastructureExecutorService:
 
         # Create resource group
         rg_cmd = [
-            "az", "group", "create",
-            "--name", resource_group,
-            "--location", location,
+            "az",
+            "group",
+            "create",
+            "--name",
+            resource_group,
+            "--location",
+            location,
         ]
         rg_result = await self._run_command(rg_cmd)
 
-        if rg_result["returncode"] != 0 and "already exists" not in rg_result["stderr"].lower():
+        if (
+            rg_result["returncode"] != 0
+            and "already exists" not in rg_result["stderr"].lower()
+        ):
             result.error = f"Failed to create resource group: {rg_result['stderr']}"
             return result
 
@@ -1693,14 +1793,22 @@ class InfrastructureExecutorService:
 
         # Create cluster
         cmd = [
-            "az", "aks", "create",
-            "--name", cluster_name,
-            "--resource-group", resource_group,
-            "--node-count", str(node_count),
-            "--node-vm-size", vm_size,
+            "az",
+            "aks",
+            "create",
+            "--name",
+            cluster_name,
+            "--resource-group",
+            resource_group,
+            "--node-count",
+            str(node_count),
+            "--node-vm-size",
+            vm_size,
             "--enable-cluster-autoscaler",
-            "--min-count", "1",
-            "--max-count", str(node_count * 2),
+            "--min-count",
+            "1",
+            "--max-count",
+            str(node_count * 2),
             "--generate-ssh-keys",
         ]
 
@@ -1708,7 +1816,9 @@ class InfrastructureExecutorService:
 
         output = await self._run_command_streaming(
             cmd,
-            progress_callback=lambda msg, pct: progress_callback(msg, 10 + pct * 0.7) if progress_callback else None
+            progress_callback=lambda msg, pct: (
+                progress_callback(msg, 10 + pct * 0.7) if progress_callback else None
+            ),
         )
 
         result.logs = output.get("logs", [])
@@ -1719,9 +1829,13 @@ class InfrastructureExecutorService:
 
             # Get credentials
             cred_cmd = [
-                "az", "aks", "get-credentials",
-                "--name", cluster_name,
-                "--resource-group", resource_group,
+                "az",
+                "aks",
+                "get-credentials",
+                "--name",
+                cluster_name,
+                "--resource-group",
+                resource_group,
                 "--overwrite-existing",
             ]
             cred_result = await self._run_command(cred_cmd)
@@ -1796,7 +1910,15 @@ class InfrastructureExecutorService:
                 progress_callback("Creating kind cluster...", 20)
 
             if config_path:
-                cmd = ["kind", "create", "cluster", "--name", cluster_name, "--config", config_path]
+                cmd = [
+                    "kind",
+                    "create",
+                    "cluster",
+                    "--name",
+                    cluster_name,
+                    "--config",
+                    config_path,
+                ]
             else:
                 cmd = ["kind", "create", "cluster", "--name", cluster_name]
 
@@ -1809,9 +1931,12 @@ class InfrastructureExecutorService:
                 progress_callback("Creating minikube cluster...", 20)
 
             cmd = [
-                "minikube", "start",
-                "--profile", cluster_name,
-                "--nodes", str(node_count + 1),
+                "minikube",
+                "start",
+                "--profile",
+                cluster_name,
+                "--nodes",
+                str(node_count + 1),
                 "--driver=docker",
             ]
         else:
@@ -1820,7 +1945,9 @@ class InfrastructureExecutorService:
 
         logger.info(f"Running: {' '.join(cmd)}")
 
-        output = await self._run_command_streaming(cmd, progress_callback=progress_callback)
+        output = await self._run_command_streaming(
+            cmd, progress_callback=progress_callback
+        )
         result.logs = output.get("logs", [])
 
         if output["returncode"] == 0:
@@ -1840,9 +1967,13 @@ class InfrastructureExecutorService:
                 }
 
                 if provider == "kind":
-                    result.rollback_command = f"kind delete cluster --name {cluster_name}"
+                    result.rollback_command = (
+                        f"kind delete cluster --name {cluster_name}"
+                    )
                 else:
-                    result.rollback_command = f"minikube delete --profile {cluster_name}"
+                    result.rollback_command = (
+                        f"minikube delete --profile {cluster_name}"
+                    )
 
                 if progress_callback:
                     progress_callback("Local cluster created!", 100)
@@ -1859,11 +1990,17 @@ class InfrastructureExecutorService:
     async def _get_eks_endpoint(self, cluster_name: str, region: str) -> str:
         """Get the EKS cluster endpoint."""
         cmd = [
-            "aws", "eks", "describe-cluster",
-            "--name", cluster_name,
-            "--region", region,
-            "--query", "cluster.endpoint",
-            "--output", "text"
+            "aws",
+            "eks",
+            "describe-cluster",
+            "--name",
+            cluster_name,
+            "--region",
+            region,
+            "--query",
+            "cluster.endpoint",
+            "--output",
+            "text",
         ]
         result = await self._run_command(cmd)
         if result["returncode"] == 0:
@@ -1905,10 +2042,15 @@ class InfrastructureExecutorService:
             progress_callback("Checking node status...", 40)
 
         # Check nodes
-        nodes_result = await self._run_command([
-            "kubectl", "get", "nodes",
-            "-o", "jsonpath={range .items[*]}{.status.conditions[?(@.type==\"Ready\")].status} {end}"
-        ])
+        nodes_result = await self._run_command(
+            [
+                "kubectl",
+                "get",
+                "nodes",
+                "-o",
+                'jsonpath={range .items[*]}{.status.conditions[?(@.type=="Ready")].status} {end}',
+            ]
+        )
 
         if nodes_result["returncode"] == 0:
             statuses = nodes_result["stdout"].strip().split()
@@ -1919,10 +2061,17 @@ class InfrastructureExecutorService:
             progress_callback("Checking system pods...", 60)
 
         # Check system pods
-        pods_result = await self._run_command([
-            "kubectl", "get", "pods", "-n", "kube-system",
-            "-o", "jsonpath={range .items[*]}{.status.phase} {end}"
-        ])
+        pods_result = await self._run_command(
+            [
+                "kubectl",
+                "get",
+                "pods",
+                "-n",
+                "kube-system",
+                "-o",
+                "jsonpath={range .items[*]}{.status.phase} {end}",
+            ]
+        )
 
         if pods_result["returncode"] == 0:
             phases = pods_result["stdout"].strip().split()

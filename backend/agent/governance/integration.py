@@ -202,9 +202,10 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
             approval_id = action_id
             resolved_action_id = self.pending_approvals.get(approval_id)
             if not resolved_action_id:
-                for pending_approval_id, pending_action_id in (
-                    self.pending_approvals.items()
-                ):
+                for (
+                    pending_approval_id,
+                    pending_action_id,
+                ) in self.pending_approvals.items():
                     if pending_action_id == action_id:
                         approval_id = pending_approval_id
                         resolved_action_id = pending_action_id

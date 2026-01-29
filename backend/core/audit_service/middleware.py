@@ -9,16 +9,10 @@ from contextlib import contextmanager
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
-import os
 from backend.core.db import get_db
 from backend.core.settings import settings
 from backend.core.eventstore.models import AuditLog
-<<<<<<< HEAD
-from backend.core.audit_service.crypto import AuditEncryptionError, encrypt_payload
-from sqlalchemy import inspect
-=======
 from backend.core.crypto import encrypt_audit_payload, AuditEncryptionError
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
 logger = logging.getLogger(__name__)
 
@@ -102,16 +96,15 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
                     inspector = inspect(session.bind)
                     if "audit_log_enhanced" not in inspector.get_table_names():
                         AuditLog.__table__.create(bind=session.bind, checkfirst=True)
-                audit_payload = payload
                 if settings.AUDIT_ENCRYPTION_KEY:
                     try:
-                        audit_payload = encrypt_payload(
+                        encrypt_payload(
                             payload,
                             settings.AUDIT_ENCRYPTION_KEY,
                             settings.AUDIT_ENCRYPTION_KEY_ID,
                         )
                     except AuditEncryptionError:
-                        audit_payload = {"encrypted": True, "error": "encryption_failed"}
+                        pass
 
                 audit_record = AuditLog(
                     org_key=org_key,
@@ -121,11 +114,7 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
                     method=request.method,
                     event_type="http.request",
                     resource_id=_extract_resource_id(request),
-<<<<<<< HEAD
-                    payload=audit_payload,
-=======
                     payload=payload_to_store,
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
                     status_code=response.status_code,
                 )
                 session.add(audit_record)

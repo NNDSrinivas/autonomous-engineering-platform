@@ -31,6 +31,7 @@ try:
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 class CredentialProvider(Enum):
     """Supported credential providers"""
+
     # LLM Providers
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
@@ -98,6 +100,7 @@ class CredentialProvider(Enum):
 @dataclass
 class CredentialSpec:
     """Specification for a credential"""
+
     provider: CredentialProvider
     required_fields: List[str]
     optional_fields: List[str] = field(default_factory=list)
@@ -144,7 +147,6 @@ CREDENTIAL_SPECS: Dict[CredentialProvider, CredentialSpec] = {
         required_fields=["api_key"],
         env_mapping={"api_key": "MISTRAL_API_KEY"},
     ),
-
     # Cloud Providers
     CredentialProvider.AWS: CredentialSpec(
         provider=CredentialProvider.AWS,
@@ -182,7 +184,6 @@ CREDENTIAL_SPECS: Dict[CredentialProvider, CredentialSpec] = {
         optional_fields=["team_id"],
         env_mapping={"token": "VERCEL_TOKEN", "team_id": "VERCEL_TEAM_ID"},
     ),
-
     # CI/CD
     CredentialProvider.GITHUB: CredentialSpec(
         provider=CredentialProvider.GITHUB,
@@ -201,7 +202,6 @@ CREDENTIAL_SPECS: Dict[CredentialProvider, CredentialSpec] = {
         required_fields=["token"],
         env_mapping={"token": "CIRCLECI_TOKEN"},
     ),
-
     # Databases
     CredentialProvider.POSTGRESQL: CredentialSpec(
         provider=CredentialProvider.POSTGRESQL,
@@ -219,7 +219,6 @@ CREDENTIAL_SPECS: Dict[CredentialProvider, CredentialSpec] = {
             "service_role_key": "SUPABASE_SERVICE_ROLE_KEY",
         },
     ),
-
     # Payments
     CredentialProvider.STRIPE: CredentialSpec(
         provider=CredentialProvider.STRIPE,
@@ -231,20 +230,21 @@ CREDENTIAL_SPECS: Dict[CredentialProvider, CredentialSpec] = {
             "webhook_secret": "STRIPE_WEBHOOK_SECRET",
         },
     ),
-
     # Communication
     CredentialProvider.SLACK: CredentialSpec(
         provider=CredentialProvider.SLACK,
         required_fields=["bot_token"],
         optional_fields=["signing_secret"],
-        env_mapping={"bot_token": "SLACK_BOT_TOKEN", "signing_secret": "SLACK_SIGNING_SECRET"},
+        env_mapping={
+            "bot_token": "SLACK_BOT_TOKEN",
+            "signing_secret": "SLACK_SIGNING_SECRET",
+        },
     ),
     CredentialProvider.SENDGRID: CredentialSpec(
         provider=CredentialProvider.SENDGRID,
         required_fields=["api_key"],
         env_mapping={"api_key": "SENDGRID_API_KEY"},
     ),
-
     # Monitoring
     CredentialProvider.SENTRY: CredentialSpec(
         provider=CredentialProvider.SENTRY,
@@ -336,7 +336,9 @@ class CredentialsService:
         provider_key = provider.value
         self._byok_credentials[provider_key] = credentials
 
-        logger.info(f"BYOK credentials set for {provider_key} (fields: {list(credentials.keys())})")
+        logger.info(
+            f"BYOK credentials set for {provider_key} (fields: {list(credentials.keys())})"
+        )
 
     def clear_byok_credential(self, provider: Union[str, CredentialProvider]) -> None:
         """Clear BYOK credentials for a provider"""
@@ -569,6 +571,7 @@ class CredentialsService:
             elif provider == CredentialProvider.AWS:
                 # AWS validation requires boto3
                 import boto3
+
                 creds = self.get_provider_credentials(provider)
                 sts = boto3.client(
                     "sts",

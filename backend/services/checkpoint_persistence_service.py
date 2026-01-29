@@ -143,26 +143,34 @@ class CheckpointPersistenceService:
             task_id=current_task_id,
             checkpoint_type=checkpoint_type,
             iteration_number=task_context.iteration,
-            checkpoint_reason=reason or f"Checkpoint at iteration {task_context.iteration}",
+            checkpoint_reason=reason
+            or f"Checkpoint at iteration {task_context.iteration}",
             agent_state=agent_state,
             conversation_history=conversation_history,
             tool_call_history=self._extract_tool_calls(task_context),
             files_modified=task_context.files_modified,
             files_created=task_context.files_created,
             file_snapshots=file_snapshots,
-            error_history=[asdict(e) if hasattr(e, '__dict__') else e
-                          for e in task_context.error_history],
-            failed_approaches=[asdict(f) if hasattr(f, '__dict__') else f
-                              for f in task_context.failed_approaches],
+            error_history=[
+                asdict(e) if hasattr(e, "__dict__") else e
+                for e in task_context.error_history
+            ],
+            failed_approaches=[
+                asdict(f) if hasattr(f, "__dict__") else f
+                for f in task_context.failed_approaches
+            ],
             completed_tasks=completed_tasks,
             pending_tasks=pending_tasks,
             current_task_progress=self._get_current_task_progress(current_task_id),
             context_summary=context_summary,
             is_context_summarized=is_summarized,
-            verification_results=[asdict(v) if hasattr(v, '__dict__') else v
-                                 for v in task_context.verification_results],
+            verification_results=[
+                asdict(v) if hasattr(v, "__dict__") else v
+                for v in task_context.verification_results
+            ],
             is_valid=True,
-            expires_at=datetime.now(timezone.utc) + timedelta(days=DEFAULT_CHECKPOINT_EXPIRY_DAYS),
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(days=DEFAULT_CHECKPOINT_EXPIRY_DAYS),
         )
 
         self.db.add(checkpoint)
@@ -170,9 +178,11 @@ class CheckpointPersistenceService:
         self.db.refresh(checkpoint)
 
         # Update project's last checkpoint iteration
-        project = self.db.query(EnterpriseProject).filter(
-            EnterpriseProject.id == self.project_id
-        ).first()
+        project = (
+            self.db.query(EnterpriseProject)
+            .filter(EnterpriseProject.id == self.project_id)
+            .first()
+        )
         if project:
             project.last_checkpoint_iteration = task_context.iteration
             self.db.commit()
@@ -194,10 +204,14 @@ class CheckpointPersistenceService:
             Restored state dict that can be used to recreate TaskContext
         """
         if checkpoint_id:
-            checkpoint = self.db.query(EnterpriseCheckpoint).filter(
-                EnterpriseCheckpoint.id == checkpoint_id,
-                EnterpriseCheckpoint.is_valid == True,
-            ).first()
+            checkpoint = (
+                self.db.query(EnterpriseCheckpoint)
+                .filter(
+                    EnterpriseCheckpoint.id == checkpoint_id,
+                    EnterpriseCheckpoint.is_valid,
+                )
+                .first()
+            )
         else:
             checkpoint = self.get_latest_checkpoint()
 
@@ -239,25 +253,31 @@ class CheckpointPersistenceService:
 
     def get_latest_checkpoint(self) -> Optional[EnterpriseCheckpoint]:
         """Get the most recent valid checkpoint for this project."""
-        return self.db.query(EnterpriseCheckpoint).filter(
-            EnterpriseCheckpoint.project_id == self.project_id,
-            EnterpriseCheckpoint.is_valid == True,
-        ).order_by(
-            desc(EnterpriseCheckpoint.iteration_number)
-        ).first()
+        return (
+            self.db.query(EnterpriseCheckpoint)
+            .filter(
+                EnterpriseCheckpoint.project_id == self.project_id,
+                EnterpriseCheckpoint.is_valid,
+            )
+            .order_by(desc(EnterpriseCheckpoint.iteration_number))
+            .first()
+        )
 
     def get_checkpoint_by_iteration(
         self,
         iteration: int,
     ) -> Optional[EnterpriseCheckpoint]:
         """Get checkpoint closest to a specific iteration."""
-        return self.db.query(EnterpriseCheckpoint).filter(
-            EnterpriseCheckpoint.project_id == self.project_id,
-            EnterpriseCheckpoint.iteration_number <= iteration,
-            EnterpriseCheckpoint.is_valid == True,
-        ).order_by(
-            desc(EnterpriseCheckpoint.iteration_number)
-        ).first()
+        return (
+            self.db.query(EnterpriseCheckpoint)
+            .filter(
+                EnterpriseCheckpoint.project_id == self.project_id,
+                EnterpriseCheckpoint.iteration_number <= iteration,
+                EnterpriseCheckpoint.is_valid,
+            )
+            .order_by(desc(EnterpriseCheckpoint.iteration_number))
+            .first()
+        )
 
     def list_checkpoints(
         self,
@@ -270,11 +290,9 @@ class CheckpointPersistenceService:
         )
 
         if not include_invalid:
-            query = query.filter(EnterpriseCheckpoint.is_valid == True)
+            query = query.filter(EnterpriseCheckpoint.is_valid)
 
-        return query.order_by(
-            desc(EnterpriseCheckpoint.created_at)
-        ).limit(limit).all()
+        return query.order_by(desc(EnterpriseCheckpoint.created_at)).limit(limit).all()
 
     def invalidate_checkpoint(
         self,
@@ -282,9 +300,13 @@ class CheckpointPersistenceService:
         reason: str,
     ) -> bool:
         """Mark a checkpoint as invalid."""
-        checkpoint = self.db.query(EnterpriseCheckpoint).filter(
-            EnterpriseCheckpoint.id == checkpoint_id,
-        ).first()
+        checkpoint = (
+            self.db.query(EnterpriseCheckpoint)
+            .filter(
+                EnterpriseCheckpoint.id == checkpoint_id,
+            )
+            .first()
+        )
 
         if checkpoint:
             checkpoint.is_valid = False
@@ -297,10 +319,14 @@ class CheckpointPersistenceService:
     def cleanup_expired_checkpoints(self) -> int:
         """Delete expired checkpoints. Returns count of deleted checkpoints."""
         now = datetime.now(timezone.utc)
-        expired = self.db.query(EnterpriseCheckpoint).filter(
-            EnterpriseCheckpoint.project_id == self.project_id,
-            EnterpriseCheckpoint.expires_at < now,
-        ).all()
+        expired = (
+            self.db.query(EnterpriseCheckpoint)
+            .filter(
+                EnterpriseCheckpoint.project_id == self.project_id,
+                EnterpriseCheckpoint.expires_at < now,
+            )
+            .all()
+        )
 
         count = len(expired)
         for checkpoint in expired:
@@ -316,8 +342,16 @@ class CheckpointPersistenceService:
             "task_id": task_context.task_id,
             "original_request": task_context.original_request,
             "workspace_path": task_context.workspace_path,
-            "status": task_context.status.value if hasattr(task_context.status, 'value') else str(task_context.status),
-            "complexity": task_context.complexity.value if hasattr(task_context.complexity, 'value') else str(task_context.complexity),
+            "status": (
+                task_context.status.value
+                if hasattr(task_context.status, "value")
+                else str(task_context.status)
+            ),
+            "complexity": (
+                task_context.complexity.value
+                if hasattr(task_context.complexity, "value")
+                else str(task_context.complexity)
+            ),
             "project_type": task_context.project_type,
             "framework": task_context.framework,
             "plan_id": task_context.plan_id,
@@ -333,10 +367,12 @@ class CheckpointPersistenceService:
         tool_calls = []
         for iteration, calls in task_context.tool_calls_per_iteration.items():
             for call in calls:
-                tool_calls.append({
-                    "iteration": iteration,
-                    "tool": call,
-                })
+                tool_calls.append(
+                    {
+                        "iteration": iteration,
+                        "tool": call,
+                    }
+                )
         return tool_calls[-100:]  # Keep last 100 tool calls
 
     def _should_summarize(self, conversation_history: List[Dict]) -> bool:
@@ -346,8 +382,7 @@ class CheckpointPersistenceService:
 
         # Rough token estimate
         total_chars = sum(
-            len(str(entry.get("content", "")))
-            for entry in conversation_history
+            len(str(entry.get("content", ""))) for entry in conversation_history
         )
         estimated_tokens = total_chars / 4  # Rough estimate
 
@@ -370,10 +405,12 @@ class CheckpointPersistenceService:
         )
 
         # Build summary prompt
-        history_text = "\n".join([
-            f"{entry.get('role', 'unknown')}: {entry.get('content', '')[:500]}"
-            for entry in conversation_history[-50:]  # Last 50 entries
-        ])
+        history_text = "\n".join(
+            [
+                f"{entry.get('role', 'unknown')}: {entry.get('content', '')[:500]}"
+                for entry in conversation_history[-50:]  # Last 50 entries
+            ]
+        )
 
         prompt = f"""Summarize this conversation history for a software development task.
 Focus on:
@@ -409,20 +446,35 @@ Provide a concise summary (500-1000 words) that captures all essential context n
         # Extract key actions
         for entry in conversation_history[-20:]:
             content = str(entry.get("content", ""))
-            if any(keyword in content.lower() for keyword in
-                   ["created", "modified", "error", "success", "completed", "fixed"]):
+            if any(
+                keyword in content.lower()
+                for keyword in [
+                    "created",
+                    "modified",
+                    "error",
+                    "success",
+                    "completed",
+                    "fixed",
+                ]
+            ):
                 summary_parts.append(content[:200])
 
         return "\n\n".join(summary_parts[:10])
 
     def _get_task_queue_state(self) -> Tuple[List[str], List[str]]:
         """Get current state of task queue."""
-        tasks = self.db.query(ProjectTaskQueue).filter(
-            ProjectTaskQueue.project_id == self.project_id,
-        ).all()
+        tasks = (
+            self.db.query(ProjectTaskQueue)
+            .filter(
+                ProjectTaskQueue.project_id == self.project_id,
+            )
+            .all()
+        )
 
         completed = [str(t.id) for t in tasks if t.status == "completed"]
-        pending = [str(t.id) for t in tasks if t.status in ["pending", "ready", "in_progress"]]
+        pending = [
+            str(t.id) for t in tasks if t.status in ["pending", "ready", "in_progress"]
+        ]
 
         return completed, pending
 
@@ -434,9 +486,13 @@ Provide a concise summary (500-1000 words) that captures all essential context n
         if not task_id:
             return None
 
-        task = self.db.query(ProjectTaskQueue).filter(
-            ProjectTaskQueue.id == task_id,
-        ).first()
+        task = (
+            self.db.query(ProjectTaskQueue)
+            .filter(
+                ProjectTaskQueue.id == task_id,
+            )
+            .first()
+        )
 
         if task:
             return {
@@ -458,10 +514,14 @@ Provide a concise summary (500-1000 words) that captures all essential context n
 
         snapshots = {}
         for file_path in files[:10]:  # Limit to 10 files
-            full_path = os.path.join(workspace_path, file_path) if not os.path.isabs(file_path) else file_path
+            full_path = (
+                os.path.join(workspace_path, file_path)
+                if not os.path.isabs(file_path)
+                else file_path
+            )
             try:
                 if os.path.exists(full_path) and os.path.isfile(full_path):
-                    with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
                         content = f.read()
                         if len(content) < 50000:  # Only snapshot files under 50KB
                             snapshots[file_path] = content

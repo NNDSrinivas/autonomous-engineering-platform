@@ -193,21 +193,38 @@ async def compliance_check_pci_dss(
     Returns:
         Compliance report with violations and recommendations
     """
-    logger.info("[TOOL:compliance_check_pci_dss] Starting PCI-DSS scan", workspace=workspace_path)
+    logger.info(
+        "[TOOL:compliance_check_pci_dss] Starting PCI-DSS scan",
+        workspace=workspace_path,
+    )
 
     violations = []
     scanned_files = 0
 
-    include_patterns = include_patterns or ["*.py", "*.js", "*.ts", "*.jsx", "*.tsx", "*.java", "*.go"]
-    exclude_patterns = exclude_patterns or ["*node_modules*", "*venv*", "*test*", "*.min.js"]
+    include_patterns = include_patterns or [
+        "*.py",
+        "*.js",
+        "*.ts",
+        "*.jsx",
+        "*.tsx",
+        "*.java",
+        "*.go",
+    ]
+    exclude_patterns = exclude_patterns or [
+        "*node_modules*",
+        "*venv*",
+        "*test*",
+        "*.min.js",
+    ]
 
     # Walk through files
     for root, dirs, files in os.walk(workspace_path):
         # Skip excluded directories
-        dirs[:] = [d for d in dirs if not any(
-            d in ex or ex.replace("*", "") in d
-            for ex in exclude_patterns
-        )]
+        dirs[:] = [
+            d
+            for d in dirs
+            if not any(d in ex or ex.replace("*", "") in d for ex in exclude_patterns)
+        ]
 
         for file in files:
             # Check if file matches include pattern
@@ -225,17 +242,19 @@ async def compliance_check_pci_dss(
                     for rule_id, rule in PCI_DSS_PATTERNS.items():
                         matches = list(re.finditer(rule["pattern"], content))
                         for match in matches:
-                            line_num = content[:match.start()].count("\n") + 1
-                            violations.append(ComplianceViolation(
-                                rule_id=rule_id,
-                                severity=rule["severity"],
-                                category="PCI-DSS",
-                                description=rule["description"],
-                                file_path=rel_path,
-                                line_number=line_num,
-                                recommendation=rule["recommendation"],
-                                standard="PCI-DSS",
-                            ))
+                            line_num = content[: match.start()].count("\n") + 1
+                            violations.append(
+                                ComplianceViolation(
+                                    rule_id=rule_id,
+                                    severity=rule["severity"],
+                                    category="PCI-DSS",
+                                    description=rule["description"],
+                                    file_path=rel_path,
+                                    line_number=line_num,
+                                    recommendation=rule["recommendation"],
+                                    standard="PCI-DSS",
+                                )
+                            )
             except Exception as e:
                 logger.warning(f"Error scanning file {file_path}: {e}")
 
@@ -248,13 +267,17 @@ async def compliance_check_pci_dss(
         passed=passed,
         violations=violations,
         scanned_files=scanned_files,
-        recommendations=[
-            "Use a PCI-compliant payment processor (Stripe, Braintree, Square)",
-            "Never store full card numbers - use tokenization",
-            "Encrypt all data at rest and in transit",
-            "Implement strong access controls",
-            "Maintain audit logs for all payment operations",
-        ] if violations else [],
+        recommendations=(
+            [
+                "Use a PCI-compliant payment processor (Stripe, Braintree, Square)",
+                "Never store full card numbers - use tokenization",
+                "Encrypt all data at rest and in transit",
+                "Implement strong access controls",
+                "Maintain audit logs for all payment operations",
+            ]
+            if violations
+            else []
+        ),
     )
 
     return {
@@ -300,19 +323,29 @@ async def compliance_check_hipaa(
     Returns:
         Compliance report with violations and recommendations
     """
-    logger.info("[TOOL:compliance_check_hipaa] Starting HIPAA scan", workspace=workspace_path)
+    logger.info(
+        "[TOOL:compliance_check_hipaa] Starting HIPAA scan", workspace=workspace_path
+    )
 
     violations = []
     scanned_files = 0
 
-    include_patterns = include_patterns or ["*.py", "*.js", "*.ts", "*.jsx", "*.tsx", "*.java"]
+    include_patterns = include_patterns or [
+        "*.py",
+        "*.js",
+        "*.ts",
+        "*.jsx",
+        "*.tsx",
+        "*.java",
+    ]
     exclude_patterns = exclude_patterns or ["*node_modules*", "*venv*", "*test*"]
 
     for root, dirs, files in os.walk(workspace_path):
-        dirs[:] = [d for d in dirs if not any(
-            d in ex or ex.replace("*", "") in d
-            for ex in exclude_patterns
-        )]
+        dirs[:] = [
+            d
+            for d in dirs
+            if not any(d in ex or ex.replace("*", "") in d for ex in exclude_patterns)
+        ]
 
         for file in files:
             if not any(file.endswith(p.replace("*", "")) for p in include_patterns):
@@ -329,17 +362,19 @@ async def compliance_check_hipaa(
                     for rule_id, rule in HIPAA_PATTERNS.items():
                         matches = list(re.finditer(rule["pattern"], content))
                         for match in matches:
-                            line_num = content[:match.start()].count("\n") + 1
-                            violations.append(ComplianceViolation(
-                                rule_id=rule_id,
-                                severity=rule["severity"],
-                                category="HIPAA",
-                                description=rule["description"],
-                                file_path=rel_path,
-                                line_number=line_num,
-                                recommendation=rule["recommendation"],
-                                standard="HIPAA",
-                            ))
+                            line_num = content[: match.start()].count("\n") + 1
+                            violations.append(
+                                ComplianceViolation(
+                                    rule_id=rule_id,
+                                    severity=rule["severity"],
+                                    category="HIPAA",
+                                    description=rule["description"],
+                                    file_path=rel_path,
+                                    line_number=line_num,
+                                    recommendation=rule["recommendation"],
+                                    standard="HIPAA",
+                                )
+                            )
             except Exception as e:
                 logger.warning(f"Error scanning file {file_path}: {e}")
 
@@ -364,14 +399,18 @@ async def compliance_check_hipaa(
             }
             for v in violations[:20]
         ],
-        "recommendations": [
-            "Encrypt all PHI at rest using AES-256",
-            "Use TLS 1.2+ for all PHI transmission",
-            "Implement role-based access control (RBAC)",
-            "Maintain comprehensive audit logs",
-            "Implement automatic session timeouts",
-            "Use BAA (Business Associate Agreement) with all vendors",
-        ] if violations else [],
+        "recommendations": (
+            [
+                "Encrypt all PHI at rest using AES-256",
+                "Use TLS 1.2+ for all PHI transmission",
+                "Implement role-based access control (RBAC)",
+                "Maintain comprehensive audit logs",
+                "Implement automatic session timeouts",
+                "Use BAA (Business Associate Agreement) with all vendors",
+            ]
+            if violations
+            else []
+        ),
         "message": f"HIPAA scan {'PASSED' if passed else 'FAILED'}: {len(violations)} violations found",
     }
 
@@ -396,19 +435,30 @@ async def compliance_check_soc2(
     Returns:
         Compliance report with violations and recommendations
     """
-    logger.info("[TOOL:compliance_check_soc2] Starting SOC2 scan", workspace=workspace_path)
+    logger.info(
+        "[TOOL:compliance_check_soc2] Starting SOC2 scan", workspace=workspace_path
+    )
 
     violations = []
     scanned_files = 0
 
-    include_patterns = include_patterns or ["*.py", "*.js", "*.ts", "*.jsx", "*.tsx", "*.java", "*.go"]
+    include_patterns = include_patterns or [
+        "*.py",
+        "*.js",
+        "*.ts",
+        "*.jsx",
+        "*.tsx",
+        "*.java",
+        "*.go",
+    ]
     exclude_patterns = exclude_patterns or ["*node_modules*", "*venv*", "*test*"]
 
     for root, dirs, files in os.walk(workspace_path):
-        dirs[:] = [d for d in dirs if not any(
-            d in ex or ex.replace("*", "") in d
-            for ex in exclude_patterns
-        )]
+        dirs[:] = [
+            d
+            for d in dirs
+            if not any(d in ex or ex.replace("*", "") in d for ex in exclude_patterns)
+        ]
 
         for file in files:
             if not any(file.endswith(p.replace("*", "")) for p in include_patterns):
@@ -425,17 +475,19 @@ async def compliance_check_soc2(
                     for rule_id, rule in SOC2_PATTERNS.items():
                         matches = list(re.finditer(rule["pattern"], content))
                         for match in matches:
-                            line_num = content[:match.start()].count("\n") + 1
-                            violations.append(ComplianceViolation(
-                                rule_id=rule_id,
-                                severity=rule["severity"],
-                                category="SOC2",
-                                description=rule["description"],
-                                file_path=rel_path,
-                                line_number=line_num,
-                                recommendation=rule["recommendation"],
-                                standard="SOC2",
-                            ))
+                            line_num = content[: match.start()].count("\n") + 1
+                            violations.append(
+                                ComplianceViolation(
+                                    rule_id=rule_id,
+                                    severity=rule["severity"],
+                                    category="SOC2",
+                                    description=rule["description"],
+                                    file_path=rel_path,
+                                    line_number=line_num,
+                                    recommendation=rule["recommendation"],
+                                    standard="SOC2",
+                                )
+                            )
             except Exception as e:
                 logger.warning(f"Error scanning file {file_path}: {e}")
 
@@ -460,14 +512,18 @@ async def compliance_check_soc2(
             }
             for v in violations[:20]
         ],
-        "recommendations": [
-            "Implement comprehensive logging and monitoring",
-            "Use secrets management (AWS Secrets Manager, HashiCorp Vault)",
-            "Implement rate limiting on all APIs",
-            "Use parameterized queries to prevent SQL injection",
-            "Configure strict CORS policies",
-            "Implement MFA for all user authentication",
-        ] if violations else [],
+        "recommendations": (
+            [
+                "Implement comprehensive logging and monitoring",
+                "Use secrets management (AWS Secrets Manager, HashiCorp Vault)",
+                "Implement rate limiting on all APIs",
+                "Use parameterized queries to prevent SQL injection",
+                "Configure strict CORS policies",
+                "Implement MFA for all user authentication",
+            ]
+            if violations
+            else []
+        ),
         "message": f"SOC2 scan {'PASSED' if passed else 'FAILED'}: {len(violations)} violations found",
     }
 
@@ -486,7 +542,10 @@ async def compliance_audit_dependencies(
     Returns:
         Vulnerability report with affected packages and recommendations
     """
-    logger.info("[TOOL:compliance_audit_dependencies] Starting dependency audit", workspace=workspace_path)
+    logger.info(
+        "[TOOL:compliance_audit_dependencies] Starting dependency audit",
+        workspace=workspace_path,
+    )
 
     vulnerabilities = []
     tools_run = []
@@ -508,13 +567,15 @@ async def compliance_audit_dependencies(
                 audit_data = json.loads(result.stdout)
                 vulns = audit_data.get("vulnerabilities", {})
                 for pkg_name, vuln_info in vulns.items():
-                    vulnerabilities.append({
-                        "package": pkg_name,
-                        "severity": vuln_info.get("severity", "unknown"),
-                        "via": vuln_info.get("via", []),
-                        "ecosystem": "npm",
-                        "fix_available": vuln_info.get("fixAvailable", False),
-                    })
+                    vulnerabilities.append(
+                        {
+                            "package": pkg_name,
+                            "severity": vuln_info.get("severity", "unknown"),
+                            "via": vuln_info.get("via", []),
+                            "ecosystem": "npm",
+                            "fix_available": vuln_info.get("fixAvailable", False),
+                        }
+                    )
         except Exception as e:
             logger.warning(f"npm audit failed: {e}")
 
@@ -535,12 +596,18 @@ async def compliance_audit_dependencies(
             if result.returncode == 0 and result.stdout:
                 audit_data = json.loads(result.stdout)
                 for vuln in audit_data:
-                    vulnerabilities.append({
-                        "package": vuln.get("name", "unknown"),
-                        "severity": vuln.get("vulns", [{}])[0].get("severity", "unknown") if vuln.get("vulns") else "unknown",
-                        "ecosystem": "pip",
-                        "fix_available": vuln.get("fix_versions", []) != [],
-                    })
+                    vulnerabilities.append(
+                        {
+                            "package": vuln.get("name", "unknown"),
+                            "severity": (
+                                vuln.get("vulns", [{}])[0].get("severity", "unknown")
+                                if vuln.get("vulns")
+                                else "unknown"
+                            ),
+                            "ecosystem": "pip",
+                            "fix_available": vuln.get("fix_versions", []) != [],
+                        }
+                    )
         except FileNotFoundError:
             logger.info("pip-audit not available, skipping Python audit")
         except Exception as e:
@@ -549,7 +616,11 @@ async def compliance_audit_dependencies(
     # Categorize by severity
     critical = [v for v in vulnerabilities if v.get("severity") == "critical"]
     high = [v for v in vulnerabilities if v.get("severity") == "high"]
-    medium = [v for v in vulnerabilities if v.get("severity") == "medium" or v.get("severity") == "moderate"]
+    medium = [
+        v
+        for v in vulnerabilities
+        if v.get("severity") == "medium" or v.get("severity") == "moderate"
+    ]
 
     return {
         "success": True,
@@ -559,12 +630,16 @@ async def compliance_audit_dependencies(
         "high": len(high),
         "medium": len(medium),
         "vulnerabilities": vulnerabilities[:30],  # Limit for readability
-        "recommendations": [
-            "Run `npm audit fix` to automatically fix npm vulnerabilities",
-            "Update packages to latest secure versions",
-            "Review and replace deprecated packages",
-            "Enable Dependabot or Snyk for continuous monitoring",
-        ] if vulnerabilities else ["No vulnerabilities detected - dependencies are secure"],
+        "recommendations": (
+            [
+                "Run `npm audit fix` to automatically fix npm vulnerabilities",
+                "Update packages to latest secure versions",
+                "Review and replace deprecated packages",
+                "Enable Dependabot or Snyk for continuous monitoring",
+            ]
+            if vulnerabilities
+            else ["No vulnerabilities detected - dependencies are secure"]
+        ),
         "message": f"Dependency audit complete: {len(vulnerabilities)} vulnerabilities ({len(critical)} critical, {len(high)} high)",
     }
 
@@ -587,7 +662,10 @@ async def compliance_generate_report(
     Returns:
         Comprehensive compliance report
     """
-    logger.info("[TOOL:compliance_generate_report] Generating compliance report", workspace=workspace_path)
+    logger.info(
+        "[TOOL:compliance_generate_report] Generating compliance report",
+        workspace=workspace_path,
+    )
 
     standards = standards or ["PCI-DSS", "HIPAA", "SOC2"]
     reports = {}
@@ -620,43 +698,56 @@ async def compliance_generate_report(
 
         for std, report in reports.items():
             status = "✅ PASSED" if report["passed"] else "❌ FAILED"
-            md_lines.append(f"| {std} | {status} | {report['violation_count']} | {report['critical_count']} |")
+            md_lines.append(
+                f"| {std} | {status} | {report['violation_count']} | {report['critical_count']} |"
+            )
 
-        md_lines.extend([
-            "",
-            "## Dependency Vulnerabilities",
-            "",
-            f"- **Total:** {dep_report['total_vulnerabilities']}",
-            f"- **Critical:** {dep_report['critical']}",
-            f"- **High:** {dep_report['high']}",
-            "",
-        ])
+        md_lines.extend(
+            [
+                "",
+                "## Dependency Vulnerabilities",
+                "",
+                f"- **Total:** {dep_report['total_vulnerabilities']}",
+                f"- **Critical:** {dep_report['critical']}",
+                f"- **High:** {dep_report['high']}",
+                "",
+            ]
+        )
 
         # Add violations details
         for std, report in reports.items():
             if report["violations"]:
-                md_lines.extend([
-                    f"## {std} Violations",
-                    "",
-                ])
-                for v in report["violations"][:10]:
-                    md_lines.extend([
-                        f"### {v['rule_id']} ({v['severity'].upper()})",
-                        f"- **File:** `{v['file']}:{v['line']}`",
-                        f"- **Issue:** {v['description']}",
-                        f"- **Fix:** {v['recommendation']}",
+                md_lines.extend(
+                    [
+                        f"## {std} Violations",
                         "",
-                    ])
+                    ]
+                )
+                for v in report["violations"][:10]:
+                    md_lines.extend(
+                        [
+                            f"### {v['rule_id']} ({v['severity'].upper()})",
+                            f"- **File:** `{v['file']}:{v['line']}`",
+                            f"- **Issue:** {v['description']}",
+                            f"- **Fix:** {v['recommendation']}",
+                            "",
+                        ]
+                    )
 
         report_content = "\n".join(md_lines)
     else:
-        report_content = json.dumps({
-            "standards": reports,
-            "dependencies": dep_report,
-        }, indent=2)
+        report_content = json.dumps(
+            {
+                "standards": reports,
+                "dependencies": dep_report,
+            },
+            indent=2,
+        )
 
     # Overall pass/fail
-    all_passed = all(r["passed"] for r in reports.values()) and dep_report["critical"] == 0
+    all_passed = (
+        all(r["passed"] for r in reports.values()) and dep_report["critical"] == 0
+    )
 
     return {
         "success": True,
@@ -678,9 +769,20 @@ COMPLIANCE_TOOLS = {
         "parameters": {
             "type": "object",
             "properties": {
-                "workspace_path": {"type": "string", "description": "Path to workspace to scan"},
-                "include_patterns": {"type": "array", "items": {"type": "string"}, "description": "File patterns to include"},
-                "exclude_patterns": {"type": "array", "items": {"type": "string"}, "description": "File patterns to exclude"},
+                "workspace_path": {
+                    "type": "string",
+                    "description": "Path to workspace to scan",
+                },
+                "include_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "File patterns to include",
+                },
+                "exclude_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "File patterns to exclude",
+                },
             },
             "required": ["workspace_path"],
         },
@@ -691,9 +793,20 @@ COMPLIANCE_TOOLS = {
         "parameters": {
             "type": "object",
             "properties": {
-                "workspace_path": {"type": "string", "description": "Path to workspace to scan"},
-                "include_patterns": {"type": "array", "items": {"type": "string"}, "description": "File patterns to include"},
-                "exclude_patterns": {"type": "array", "items": {"type": "string"}, "description": "File patterns to exclude"},
+                "workspace_path": {
+                    "type": "string",
+                    "description": "Path to workspace to scan",
+                },
+                "include_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "File patterns to include",
+                },
+                "exclude_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "File patterns to exclude",
+                },
             },
             "required": ["workspace_path"],
         },
@@ -704,9 +817,20 @@ COMPLIANCE_TOOLS = {
         "parameters": {
             "type": "object",
             "properties": {
-                "workspace_path": {"type": "string", "description": "Path to workspace to scan"},
-                "include_patterns": {"type": "array", "items": {"type": "string"}, "description": "File patterns to include"},
-                "exclude_patterns": {"type": "array", "items": {"type": "string"}, "description": "File patterns to exclude"},
+                "workspace_path": {
+                    "type": "string",
+                    "description": "Path to workspace to scan",
+                },
+                "include_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "File patterns to include",
+                },
+                "exclude_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "File patterns to exclude",
+                },
             },
             "required": ["workspace_path"],
         },
@@ -717,7 +841,10 @@ COMPLIANCE_TOOLS = {
         "parameters": {
             "type": "object",
             "properties": {
-                "workspace_path": {"type": "string", "description": "Path to workspace to scan"},
+                "workspace_path": {
+                    "type": "string",
+                    "description": "Path to workspace to scan",
+                },
             },
             "required": ["workspace_path"],
         },
@@ -728,9 +855,20 @@ COMPLIANCE_TOOLS = {
         "parameters": {
             "type": "object",
             "properties": {
-                "workspace_path": {"type": "string", "description": "Path to workspace to scan"},
-                "standards": {"type": "array", "items": {"type": "string"}, "description": "Standards to check: PCI-DSS, HIPAA, SOC2"},
-                "output_format": {"type": "string", "enum": ["markdown", "json"], "description": "Output format"},
+                "workspace_path": {
+                    "type": "string",
+                    "description": "Path to workspace to scan",
+                },
+                "standards": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Standards to check: PCI-DSS, HIPAA, SOC2",
+                },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["markdown", "json"],
+                    "description": "Output format",
+                },
             },
             "required": ["workspace_path"],
         },

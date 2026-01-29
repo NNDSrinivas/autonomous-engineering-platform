@@ -26,7 +26,7 @@ ERROR_TRACKING_PROVIDERS = {
     "sentry": {
         "js_package": "@sentry/nextjs",
         "py_package": "sentry-sdk",
-        "js_init": '''import * as Sentry from "@sentry/nextjs";
+        "js_init": """import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
@@ -35,8 +35,8 @@ Sentry.init({
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
 });
-''',
-        "py_init": '''import sentry_sdk
+""",
+        "py_init": """import sentry_sdk
 from sentry_sdk.integrations.{framework} import {Framework}Integration
 
 sentry_sdk.init(
@@ -48,9 +48,9 @@ sentry_sdk.init(
         {Framework}Integration(),
     ],
 )
-''',
+""",
         "config_files": {
-            "sentry.client.config.ts": '''import * as Sentry from "@sentry/nextjs";
+            "sentry.client.config.ts": """import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -65,21 +65,21 @@ Sentry.init({
     }),
   ],
 });
-''',
-            "sentry.server.config.ts": '''import * as Sentry from "@sentry/nextjs";
+""",
+            "sentry.server.config.ts": """import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   tracesSampleRate: 1.0,
   debug: false,
 });
-''',
+""",
         },
     },
     "rollbar": {
         "js_package": "rollbar",
         "py_package": "rollbar",
-        "js_init": '''import Rollbar from "rollbar";
+        "js_init": """import Rollbar from "rollbar";
 
 const rollbar = new Rollbar({
   accessToken: process.env.ROLLBAR_ACCESS_TOKEN,
@@ -89,15 +89,15 @@ const rollbar = new Rollbar({
 });
 
 export default rollbar;
-''',
-        "py_init": '''import rollbar
+""",
+        "py_init": """import rollbar
 
 rollbar.init(
     access_token=os.environ.get("ROLLBAR_ACCESS_TOKEN"),
     environment=os.environ.get("ENVIRONMENT", "production"),
     code_version="1.0.0",
 )
-''',
+""",
     },
 }
 
@@ -105,7 +105,7 @@ APM_PROVIDERS = {
     "datadog": {
         "js_package": "dd-trace",
         "py_package": "ddtrace",
-        "js_init": '''// Must be imported first
+        "js_init": """// Must be imported first
 import tracer from "dd-trace";
 
 tracer.init({
@@ -118,8 +118,8 @@ tracer.init({
 });
 
 export default tracer;
-''',
-        "py_init": '''from ddtrace import tracer, patch_all
+""",
+        "py_init": """from ddtrace import tracer, patch_all
 
 # Patch all supported libraries
 patch_all()
@@ -128,7 +128,7 @@ tracer.configure(
     hostname=os.environ.get("DD_AGENT_HOST", "localhost"),
     port=int(os.environ.get("DD_TRACE_AGENT_PORT", 8126)),
 )
-''',
+""",
         "env_vars": [
             "DD_AGENT_HOST",
             "DD_SERVICE",
@@ -141,7 +141,7 @@ tracer.configure(
     "newrelic": {
         "js_package": "newrelic",
         "py_package": "newrelic",
-        "js_init": '''// newrelic.js - place in project root
+        "js_init": """// newrelic.js - place in project root
 "use strict";
 
 exports.config = {
@@ -161,11 +161,11 @@ exports.config = {
     enabled: true,
   },
 };
-''',
-        "py_init": '''import newrelic.agent
+""",
+        "py_init": """import newrelic.agent
 
 newrelic.agent.initialize("newrelic.ini")
-''',
+""",
         "env_vars": [
             "NEW_RELIC_LICENSE_KEY",
             "NEW_RELIC_APP_NAME",
@@ -175,7 +175,7 @@ newrelic.agent.initialize("newrelic.ini")
 }
 
 LOGGING_TEMPLATES = {
-    "pino": '''import pino from "pino";
+    "pino": """import pino from "pino";
 
 const logger = pino({
   level: process.env.LOG_LEVEL || "info",
@@ -192,8 +192,8 @@ const logger = pino({
 });
 
 export default logger;
-''',
-    "winston": '''import winston from "winston";
+""",
+    "winston": """import winston from "winston";
 
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || "info",
@@ -216,8 +216,8 @@ const logger = winston.createLogger({
 });
 
 export default logger;
-''',
-    "structlog": '''import structlog
+""",
+    "structlog": """import structlog
 import logging
 
 structlog.configure(
@@ -239,11 +239,11 @@ structlog.configure(
 )
 
 logger = structlog.get_logger(__name__)
-''',
+""",
 }
 
 HEALTH_CHECK_TEMPLATES = {
-    "nextjs": '''// app/api/health/route.ts
+    "nextjs": """// app/api/health/route.ts
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -285,8 +285,8 @@ async function checkCache() {
     return { status: "unhealthy", error: error.message };
   }
 }
-''',
-    "express": '''// routes/health.ts
+""",
+    "express": """// routes/health.ts
 import { Router, Request, Response } from "express";
 
 const router = Router();
@@ -338,7 +338,7 @@ async function checkCache() {
 }
 
 export default router;
-''',
+""",
     "fastapi": '''"""
 Health check endpoints
 """
@@ -485,7 +485,9 @@ async def setup_error_tracking(
             lines.append("```")
     else:
         framework = {"fastapi": "fastapi", "flask": "flask"}.get(project_type, "django")
-        init_code = config["py_init"].format(framework=framework, Framework=framework.title())
+        init_code = config["py_init"].format(
+            framework=framework, Framework=framework.title()
+        )
         lines.append("**Initialize in your main app:**")
         lines.append("```python")
         lines.append(init_code)
@@ -678,7 +680,7 @@ async def setup_logging(
         lines.append("```python")
         lines.append("import structlog")
         lines.append("")
-        lines.append('logger = structlog.get_logger(__name__)')
+        lines.append("logger = structlog.get_logger(__name__)")
         lines.append('logger.info("user_logged_in", user_id=123)')
         lines.append('logger.error("payment_failed", order_id=456, error=str(e))')
         lines.append("```")
@@ -716,7 +718,9 @@ async def generate_health_checks(
     if project_type not in HEALTH_CHECK_TEMPLATES:
         project_type = "express"  # Default to Express
 
-    template = HEALTH_CHECK_TEMPLATES.get(project_type, HEALTH_CHECK_TEMPLATES["express"])
+    template = HEALTH_CHECK_TEMPLATES.get(
+        project_type, HEALTH_CHECK_TEMPLATES["express"]
+    )
 
     lines = ["## Health Check Endpoints\n"]
     lines.append(f"**Framework**: {project_type}")
@@ -726,7 +730,9 @@ async def generate_health_checks(
     lines.append("- `GET /live` - Liveness probe")
 
     lines.append("\n### Implementation")
-    lines.append("```" + ("typescript" if project_type in ("nextjs", "express") else "python"))
+    lines.append(
+        "```" + ("typescript" if project_type in ("nextjs", "express") else "python")
+    )
     lines.append(template)
     lines.append("```")
 
@@ -790,7 +796,7 @@ async def setup_alerting(
         lines.append('import { trigger } from "@pagerduty/pdjs";')
         lines.append("")
         lines.append("await trigger({")
-        lines.append('  routing_key: process.env.PAGERDUTY_ROUTING_KEY,')
+        lines.append("  routing_key: process.env.PAGERDUTY_ROUTING_KEY,")
         lines.append("  event_action: 'trigger',")
         lines.append("  payload: {")
         lines.append('    summary: "High error rate detected",')
@@ -813,12 +819,12 @@ async def setup_alerting(
         lines.append("  await fetch(process.env.SLACK_WEBHOOK_URL, {")
         lines.append('    method: "POST",')
         lines.append("    body: JSON.stringify({")
-        lines.append('      text: `[${level.toUpperCase()}] ${message}`,')
+        lines.append("      text: `[${level.toUpperCase()}] ${message}`,")
         lines.append("      attachments: [{")
         lines.append('        color: level === "error" ? "danger" : "warning",')
         lines.append("        fields: [{")
         lines.append('          title: "Service",')
-        lines.append('          value: process.env.SERVICE_NAME,')
+        lines.append("          value: process.env.SERVICE_NAME,")
         lines.append("        }],")
         lines.append("      }],")
         lines.append("    }),")

@@ -63,10 +63,13 @@ def set_byok_credentials(provider: str, credentials: Dict[str, str]) -> None:
     service.set_byok_credential(provider, credentials)
 
 
-def get_credential(provider: str, field: str, default: Optional[str] = None) -> Optional[str]:
+def get_credential(
+    provider: str, field: str, default: Optional[str] = None
+) -> Optional[str]:
     """Get a credential from the credentials service."""
     service = get_credentials_service()
     return service.get_credential(provider, field, default)
+
 
 # Tools that mutate state or filesystem. Used by guardrails and UI.
 WRITE_OPERATION_TOOLS = {
@@ -592,13 +595,25 @@ async def execute_tool(
         return await _tool_code_apply_diff(user_id, args)
     if tool_name == "code_run_command":
         return await _tool_code_run_command(user_id, args)
-    if tool_name == "code_run_dangerous_command" or tool_name == "run_dangerous_command":
+    if (
+        tool_name == "code_run_dangerous_command"
+        or tool_name == "run_dangerous_command"
+    ):
         return await _tool_code_run_dangerous_command(user_id, args)
-    if tool_name == "code_run_interactive_command" or tool_name == "run_interactive_command":
+    if (
+        tool_name == "code_run_interactive_command"
+        or tool_name == "run_interactive_command"
+    ):
         return await _tool_code_run_interactive_command(user_id, args)
-    if tool_name == "code_run_parallel_commands" or tool_name == "run_parallel_commands":
+    if (
+        tool_name == "code_run_parallel_commands"
+        or tool_name == "run_parallel_commands"
+    ):
         return await _tool_code_run_parallel_commands(user_id, args)
-    if tool_name == "code_run_command_with_retry" or tool_name == "run_command_with_retry":
+    if (
+        tool_name == "code_run_command_with_retry"
+        or tool_name == "run_command_with_retry"
+    ):
         return await _tool_code_run_command_with_retry(user_id, args)
     if tool_name == "list_backups":
         return await _tool_list_backups(user_id, args)
@@ -1637,7 +1652,9 @@ async def _tool_code_run_command(user_id: str, args: Dict[str, Any]) -> Dict[str
     }
 
 
-async def _tool_code_run_dangerous_command(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+async def _tool_code_run_dangerous_command(
+    user_id: str, args: Dict[str, Any]
+) -> Dict[str, Any]:
     """Execute dangerous command after approval."""
     command = args.get("command")
     approved = args.get("approved", False)
@@ -1674,7 +1691,9 @@ async def _tool_code_run_dangerous_command(user_id: str, args: Dict[str, Any]) -
     }
 
 
-async def _tool_code_run_interactive_command(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+async def _tool_code_run_interactive_command(
+    user_id: str, args: Dict[str, Any]
+) -> Dict[str, Any]:
     """Execute command with interactive prompt handling."""
     command = args.get("command")
     auto_yes = args.get("auto_yes", True)
@@ -1708,7 +1727,9 @@ async def _tool_code_run_interactive_command(user_id: str, args: Dict[str, Any])
     }
 
 
-async def _tool_code_run_parallel_commands(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+async def _tool_code_run_parallel_commands(
+    user_id: str, args: Dict[str, Any]
+) -> Dict[str, Any]:
     """Execute multiple commands in parallel."""
     commands = args.get("commands", [])
     max_workers = args.get("max_workers", 4)
@@ -1742,7 +1763,9 @@ async def _tool_code_run_parallel_commands(user_id: str, args: Dict[str, Any]) -
     }
 
 
-async def _tool_code_run_command_with_retry(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+async def _tool_code_run_command_with_retry(
+    user_id: str, args: Dict[str, Any]
+) -> Dict[str, Any]:
     """Execute command with automatic retry on failure."""
     command = args.get("command")
     max_retries = args.get("max_retries", 3)
@@ -2886,7 +2909,10 @@ async def _dispatch_test_generation_tool(
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Test generation tool error: %s - %s", tool_name, exc)
-        return {"tool": tool_name, "text": f"Error executing test generation tool: {exc}"}
+        return {
+            "tool": tool_name,
+            "text": f"Error executing test generation tool: {exc}",
+        }
 
 
 async def _dispatch_documentation_tool(
@@ -3091,7 +3117,10 @@ async def _dispatch_infrastructure_tool(
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Infrastructure tool error: %s - %s", tool_name, exc)
-        return {"tool": tool_name, "text": f"Error executing infrastructure tool: {exc}"}
+        return {
+            "tool": tool_name,
+            "text": f"Error executing infrastructure tool: {exc}",
+        }
 
 
 async def _dispatch_database_tool(
@@ -3290,6 +3319,7 @@ async def _dispatch_advanced_database_tool(
         # Format result for display
         if isinstance(result, dict):
             import json
+
             text = json.dumps(result, indent=2, default=str)
         else:
             text = str(result)
@@ -3297,7 +3327,10 @@ async def _dispatch_advanced_database_tool(
         return {"tool": tool_name, "text": text}
     except Exception as exc:
         logger.error("Advanced database tool error: %s - %s", tool_name, exc)
-        return {"tool": tool_name, "text": f"Error executing advanced database tool: {exc}"}
+        return {
+            "tool": tool_name,
+            "text": f"Error executing advanced database tool: {exc}",
+        }
 
 
 async def _dispatch_monitoring_tool(
@@ -3549,7 +3582,11 @@ async def _dispatch_web_tool(
             message = result.get("message", "")
             return {
                 "tool": tool_name,
-                "text": f"{message}\n\n**Title:** {title}\n\n{content}" if title else f"{message}\n\n{content}",
+                "text": (
+                    f"{message}\n\n**Title:** {title}\n\n{content}"
+                    if title
+                    else f"{message}\n\n{content}"
+                ),
                 "url": result.get("url"),
                 "content_type": result.get("content_type"),
             }
@@ -3674,6 +3711,7 @@ async def _dispatch_compliance_tool(
         # Format result for display
         if isinstance(result, dict):
             import json
+
             text = json.dumps(result, indent=2, default=str)
         else:
             text = str(result)
@@ -3759,6 +3797,7 @@ async def _dispatch_loadtest_tool(
         # Format result for display
         if isinstance(result, dict):
             import json
+
             text = json.dumps(result, indent=2, default=str)
         else:
             text = str(result)
@@ -3784,7 +3823,7 @@ async def _dispatch_k8s_lifecycle_tool(
     # Set cloud credentials as environment variables for CLI tools
     aws_creds = cred_service.get_provider_credentials("aws")
     gcp_creds = cred_service.get_provider_credentials("gcp")
-    azure_creds = cred_service.get_provider_credentials("azure")
+    cred_service.get_provider_credentials("azure")
 
     # Export credentials to environment for eksctl/gcloud/az CLI
     if aws_creds.get("access_key_id"):
@@ -3797,7 +3836,8 @@ async def _dispatch_k8s_lifecycle_tool(
     if gcp_creds.get("service_account_key"):
         # Write service account key to temp file for gcloud
         import tempfile
-        key_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+
+        key_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         key_file.write(gcp_creds["service_account_key"])
         key_file.close()
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = key_file.name
@@ -3883,6 +3923,7 @@ async def _dispatch_k8s_lifecycle_tool(
         # Format result for display
         if isinstance(result, dict):
             import json
+
             text = json.dumps(result, indent=2, default=str)
         else:
             text = str(result)

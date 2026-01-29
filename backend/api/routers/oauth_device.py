@@ -18,39 +18,19 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from sqlalchemy import inspect
 
 from backend.core.config import settings
 from backend.core.db import get_db
-from backend.core.eventstore.models import AuditLog
 
 try:
-<<<<<<< HEAD
-    from redis import asyncio as aioredis
-
-    HAS_REDIS = True
-except ImportError:
-    aioredis = None
-=======
     from redis import asyncio as aioredis  # type: ignore
 
     HAS_REDIS = True
 except ImportError:
     aioredis = None  # type: ignore
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
     HAS_REDIS = False
 
 logger = logging.getLogger(__name__)
-<<<<<<< HEAD
-if settings.oauth_device_use_in_memory_store:
-    logger.warning(
-        "🚨 SECURITY WARNING: OAuth device code flow is running in "
-        "DEVELOPMENT MODE with in-memory storage. This is NOT suitable for "
-        "production! The OAUTH_DEVICE_USE_IN_MEMORY_STORE flag is enabled. "
-        "Replace with Redis or persistent database before production deployment."
-    )
-=======
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
 router = APIRouter(prefix="/oauth", tags=["OAuth Device Code"])
 
@@ -60,164 +40,13 @@ if settings.oauth_device_use_in_memory_store:
         "Set REDIS_URL and disable OAUTH_DEVICE_USE_IN_MEMORY_STORE for production."
     )
 
-DEVICE_CODE_TTL_SEC = int(
-    getattr(settings, "oauth_device_code_ttl_seconds", 600)
-)
+DEVICE_CODE_TTL_SEC = int(getattr(settings, "oauth_device_code_ttl_seconds", 600))
 ACCESS_TOKEN_TTL_SEC = int(
     getattr(settings, "oauth_device_access_token_ttl_seconds", 86400)
 )
 
 _device_codes: Dict[str, Dict[str, Any]] = {}
 _access_tokens: Dict[str, Dict[str, Any]] = {}
-<<<<<<< HEAD
-_redis_client = None
-
-DEVICE_CODE_PREFIX = "oauth_device:device:"
-USER_CODE_PREFIX = "oauth_device:user:"
-TOKEN_PREFIX = "oauth_device:token:"
-
-
-def _audit_event(
-    db: Session | None,
-    *,
-    event_type: str,
-    payload: dict,
-    status_code: int,
-    actor_sub: str | None = None,
-    org_key: str | None = None,
-    route: str = "/oauth/device",
-    method: str = "POST",
-) -> None:
-    if db is None:
-        return
-    try:
-        if os.getenv("PYTEST_CURRENT_TEST"):
-            inspector = inspect(db.bind)
-            if "audit_log_enhanced" not in inspector.get_table_names():
-                AuditLog.__table__.create(bind=db.bind, checkfirst=True)
-        audit_record = AuditLog(
-            org_key=org_key,
-            actor_sub=actor_sub,
-            actor_email=None,
-            route=route,
-            method=method,
-            event_type=event_type,
-            resource_id=payload.get("device_code") or payload.get("token"),
-            payload=payload,
-            status_code=status_code,
-        )
-        db.add(audit_record)
-        db.commit()
-    except Exception as exc:
-        logger.warning("oauth_device.audit_failed: %s", exc)
-
-
-async def _get_redis():
-    if settings.oauth_device_use_in_memory_store:
-        if settings.app_env in ["prod", "production"]:
-            raise HTTPException(
-                status_code=500,
-                detail="In-memory OAuth device storage is not allowed in production.",
-            )
-        return None
-    if not HAS_REDIS or not settings.redis_url:
-        raise HTTPException(
-            status_code=500,
-            detail="OAuth device storage requires Redis in production mode.",
-        )
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = aioredis.Redis.from_url(
-            settings.redis_url,
-            decode_responses=True,
-            retry_on_timeout=True,
-            socket_keepalive=True,
-            socket_keepalive_options={},
-        )
-        await _redis_client.ping()
-    return _redis_client
-
-
-def _ttl_seconds(expires_at: datetime) -> int:
-    ttl = int((expires_at - datetime.now(timezone.utc)).total_seconds())
-    return max(ttl, 1)
-
-
-def _parse_datetime(value: Any) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    return datetime.fromisoformat(value)
-
-
-async def _load_device_info(device_code: str) -> Optional[Dict[str, Any]]:
-    if settings.oauth_device_use_in_memory_store:
-        return _device_codes.get(device_code)
-    redis = await _get_redis()
-    raw = await redis.get(f"{DEVICE_CODE_PREFIX}{device_code}")
-    if not raw:
-        return None
-    return json.loads(raw)
-
-
-async def _save_device_info(device_code: str, info: Dict[str, Any]) -> None:
-    if settings.oauth_device_use_in_memory_store:
-        _device_codes[device_code] = info
-        return
-    redis = await _get_redis()
-    expires_at = datetime.fromisoformat(info["expires_at"])
-    ttl = _ttl_seconds(expires_at)
-    payload = json.dumps(info)
-    await redis.set(f"{DEVICE_CODE_PREFIX}{device_code}", payload, ex=ttl)
-    await redis.set(f"{USER_CODE_PREFIX}{info['user_code']}", device_code, ex=ttl)
-
-
-async def _delete_device_info(device_code: str, user_code: Optional[str]) -> None:
-    if settings.oauth_device_use_in_memory_store:
-        _device_codes.pop(device_code, None)
-        return
-    redis = await _get_redis()
-    await redis.delete(f"{DEVICE_CODE_PREFIX}{device_code}")
-    if user_code:
-        await redis.delete(f"{USER_CODE_PREFIX}{user_code}")
-
-
-async def _find_device_code_by_user_code(user_code: str) -> Optional[str]:
-    if settings.oauth_device_use_in_memory_store:
-        for dc, info in _device_codes.items():
-            if info["user_code"] == user_code:
-                return dc
-        return None
-    redis = await _get_redis()
-    return await redis.get(f"{USER_CODE_PREFIX}{user_code}")
-
-
-async def _save_access_token(token: str, info: Dict[str, Any]) -> None:
-    if settings.oauth_device_use_in_memory_store:
-        _access_tokens[token] = info
-        return
-    redis = await _get_redis()
-    expires_at = datetime.fromisoformat(info["expires_at"])
-    ttl = _ttl_seconds(expires_at)
-    await redis.set(f"{TOKEN_PREFIX}{token}", json.dumps(info), ex=ttl)
-
-
-async def _load_access_token(token: str) -> Optional[Dict[str, Any]]:
-    if settings.oauth_device_use_in_memory_store:
-        return _access_tokens.get(token)
-    redis = await _get_redis()
-    raw = await redis.get(f"{TOKEN_PREFIX}{token}")
-    if not raw:
-        return None
-    return json.loads(raw)
-
-
-async def _delete_access_token(token: str) -> None:
-    if settings.oauth_device_use_in_memory_store:
-        _access_tokens.pop(token, None)
-        return
-    redis = await _get_redis()
-    await redis.delete(f"{TOKEN_PREFIX}{token}")
-=======
 _redis = None
 _redis_init_attempted = False
 
@@ -361,7 +190,6 @@ async def _delete_access_token(token: str) -> None:
     redis = await _get_redis()
     if redis:
         await redis.delete(_access_token_key(token))
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
 
 class DeviceCodeStartRequest(BaseModel):
@@ -477,35 +305,18 @@ async def start_device_code_flow(
         user_code = _generate_user_code()
 
         # Store device code with metadata
-<<<<<<< HEAD
-        # 10 minute expiry
-        ttl_seconds = getattr(settings, "oauth_device_code_ttl_seconds", 600)
-        expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
-        device_info = {
-            "user_code": user_code,
-            "client_id": request.client_id,
-            "scope": request.scope,
-            "expires_at": expires_at.isoformat(),
-            "status": "pending",  # pending, authorized, denied
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await _save_device_info(device_code, device_info)
-=======
-        expires_at = datetime.now(timezone.utc) + timedelta(
-            seconds=DEVICE_CODE_TTL_SEC
-        )
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=DEVICE_CODE_TTL_SEC)
         await _store_device_code(
             device_code,
             {
-            "user_code": user_code,
-            "client_id": request.client_id,
-            "scope": request.scope,
-            "expires_at": int(expires_at.timestamp()),
-            "status": "pending",  # pending, authorized, denied
-            "created_at": _utc_ts(),
+                "user_code": user_code,
+                "client_id": request.client_id,
+                "scope": request.scope,
+                "expires_at": int(expires_at.timestamp()),
+                "status": "pending",  # pending, authorized, denied
+                "created_at": _utc_ts(),
             },
         )
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
         # Base verification URI (for development, use localhost)
         base_uri = (
@@ -526,11 +337,7 @@ async def start_device_code_flow(
             user_code=user_code,
             verification_uri=verification_uri,
             verification_uri_complete=verification_uri_complete,
-<<<<<<< HEAD
-            expires_in=ttl_seconds,
-=======
             expires_in=DEVICE_CODE_TTL_SEC,
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
             interval=5,  # Poll every 5 seconds
         )
 
@@ -556,20 +363,8 @@ async def poll_device_code(
     """
     try:
         device_code = request.device_code
-<<<<<<< HEAD
-
-        device_info = await _load_device_info(device_code)
-        if device_info is None:
-            _audit_event(
-                db,
-                event_type="oauth.device.poll.invalid",
-                payload={"device_code": device_code},
-                status_code=400,
-            )
-=======
         device_info = await _get_device_info(device_code)
         if not device_info:
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
             raise HTTPException(
                 status_code=400,
                 detail="invalid_request",
@@ -577,21 +372,9 @@ async def poll_device_code(
             )
 
         # Check if expired
-<<<<<<< HEAD
-        expires_at = _parse_datetime(device_info["expires_at"])
-        if datetime.now(timezone.utc) > expires_at:
-            await _delete_device_info(device_code, device_info.get("user_code"))
-            _audit_event(
-                db,
-                event_type="oauth.device.poll.expired",
-                payload={"device_code": device_code},
-                status_code=400,
-            )
-=======
         expires_at = device_info.get("expires_at")
         if expires_at and _utc_ts() > int(expires_at):
             await _delete_device_code(device_code)
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
             raise HTTPException(
                 status_code=400,
                 detail="expired_token",
@@ -603,13 +386,8 @@ async def poll_device_code(
             # For development/testing: Auto-approve after initial delay to simulate user approval
             # In production, this should be replaced with proper web-based user approval
             current_time = datetime.now(timezone.utc)
-<<<<<<< HEAD
-            created_at = _parse_datetime(device_info["created_at"])
-            time_since_creation = (current_time - created_at).total_seconds()
-=======
             created_at = device_info.get("created_at", _utc_ts())
             time_since_creation = current_time.timestamp() - int(created_at)
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
             # Auto-approve after 30 seconds ONLY if development flags are set
             auto_approve = (
@@ -630,15 +408,9 @@ async def poll_device_code(
                     int(time_since_creation),
                 )
                 device_info["status"] = "authorized"
-<<<<<<< HEAD
-                device_info["authorized_at"] = current_time.isoformat()
-                device_info["user_id"] = "dev-user"  # In production, use actual user ID
-                await _save_device_info(device_code, device_info)
-=======
                 device_info["authorized_at"] = int(current_time.timestamp())
                 device_info["user_id"] = "dev-user"  # In production, use actual user ID
                 await _set_device_info(device_code, device_info)
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
             else:
                 _audit_event(
                     db,
@@ -653,17 +425,7 @@ async def poll_device_code(
                 )
 
         elif device_info["status"] == "denied":
-<<<<<<< HEAD
-            await _delete_device_info(device_code, device_info.get("user_code"))
-            _audit_event(
-                db,
-                event_type="oauth.device.poll.denied",
-                payload={"device_code": device_code},
-                status_code=400,
-            )
-=======
             await _delete_device_code(device_code)
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
             raise HTTPException(
                 status_code=400,
                 detail="access_denied",
@@ -678,25 +440,8 @@ async def poll_device_code(
                 await _delete_access_token(previous_token)
 
             access_token = secrets.token_urlsafe(32)
-            token_ttl = getattr(settings, "oauth_device_token_ttl_seconds", 86400)
+            getattr(settings, "oauth_device_token_ttl_seconds", 86400)
             token_expires_at = datetime.now(timezone.utc) + timedelta(
-<<<<<<< HEAD
-                seconds=token_ttl
-            )
-
-            # Store access token
-            token_info = {
-                "client_id": device_info["client_id"],
-                "scope": device_info["scope"],
-                "expires_at": token_expires_at.isoformat(),
-                "user_id": device_info.get("user_id") or "demo-user",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-            await _save_access_token(access_token, token_info)
-
-            # Clean up device code
-            await _delete_device_info(device_code, device_info.get("user_code"))
-=======
                 seconds=ACCESS_TOKEN_TTL_SEC
             )
 
@@ -704,17 +449,16 @@ async def poll_device_code(
             await _store_access_token(
                 access_token,
                 {
-                "client_id": device_info["client_id"],
-                "scope": device_info["scope"],
-                "expires_at": int(token_expires_at.timestamp()),
-                "user_id": device_info.get("user_id") or "demo-user",
-                "created_at": _utc_ts(),
+                    "client_id": device_info["client_id"],
+                    "scope": device_info["scope"],
+                    "expires_at": int(token_expires_at.timestamp()),
+                    "user_id": device_info.get("user_id") or "demo-user",
+                    "created_at": _utc_ts(),
                 },
             )
 
             # Clean up device code
             await _delete_device_code(device_code)
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
             _audit_event(
                 db,
@@ -726,11 +470,7 @@ async def poll_device_code(
             return DeviceCodeTokenResponse(
                 access_token=access_token,
                 token_type="Bearer",
-<<<<<<< HEAD
-                expires_in=token_ttl,
-=======
                 expires_in=ACCESS_TOKEN_TTL_SEC,
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
                 scope=device_info["scope"],
             )
 
@@ -781,12 +521,7 @@ async def authorize_device_code(
     through a web interface or API call.
     """
     try:
-<<<<<<< HEAD
-        # Find device code by user code
-        device_code = await _find_device_code_by_user_code(request.user_code)
-=======
         device_code = await _get_device_code_by_user_code(request.user_code)
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
         if not device_code:
             _audit_event(
@@ -797,28 +532,6 @@ async def authorize_device_code(
             )
             raise HTTPException(status_code=404, detail="Invalid user code")
 
-<<<<<<< HEAD
-        device_info = await _load_device_info(device_code)
-        if device_info is None:
-            _audit_event(
-                db,
-                event_type="oauth.device.authorize.not_found",
-                payload={"device_code": device_code},
-                status_code=404,
-            )
-            raise HTTPException(status_code=404, detail="Invalid user code")
-
-        # Check if already expired
-        expires_at = _parse_datetime(device_info["expires_at"])
-        if datetime.now(timezone.utc) > expires_at:
-            await _delete_device_info(device_code, device_info.get("user_code"))
-            _audit_event(
-                db,
-                event_type="oauth.device.authorize.expired",
-                payload={"device_code": device_code},
-                status_code=400,
-            )
-=======
         device_info = await _get_device_info(device_code)
         if not device_info:
             raise HTTPException(status_code=404, detail="Invalid user code")
@@ -827,21 +540,12 @@ async def authorize_device_code(
         expires_at = device_info.get("expires_at")
         if expires_at and _utc_ts() > int(expires_at):
             await _delete_device_code(device_code)
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
             raise HTTPException(status_code=400, detail="Device code has expired")
 
         # Update authorization status
         if request.action.lower() == "approve":
             device_info["status"] = "authorized"
-<<<<<<< HEAD
-            device_info["authorized_at"] = datetime.now(timezone.utc).isoformat()
-            if request.user_id:
-                device_info["user_id"] = request.user_id
-            if request.org_id:
-                device_info["org_id"] = request.org_id
-=======
             device_info["authorized_at"] = _utc_ts()
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
             message = f"Device with user code {request.user_code} has been authorized"
             _audit_event(
                 db,
@@ -853,11 +557,7 @@ async def authorize_device_code(
             )
         elif request.action.lower() == "deny":
             device_info["status"] = "denied"
-<<<<<<< HEAD
-            device_info["denied_at"] = datetime.now(timezone.utc).isoformat()
-=======
             device_info["denied_at"] = _utc_ts()
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
             message = f"Device with user code {request.user_code} has been denied"
             _audit_event(
                 db,
@@ -872,11 +572,7 @@ async def authorize_device_code(
                 status_code=400, detail="Invalid action. Must be 'approve' or 'deny'"
             )
 
-<<<<<<< HEAD
-        await _save_device_info(device_code, device_info)
-=======
         await _set_device_info(device_code, device_info)
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
         return DeviceAuthorizationResponse(message=message, user_code=request.user_code)
 
@@ -904,21 +600,12 @@ def _generate_user_code() -> str:
 
 async def validate_access_token(token: str) -> Dict[str, Any]:
     """Validate access token and return user info."""
-<<<<<<< HEAD
-    token_info = await _load_access_token(token)
-    if token_info is None:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-
-    expires_at = _parse_datetime(token_info["expires_at"])
-    if datetime.now(timezone.utc) > expires_at:
-=======
     token_info = await _get_access_token_info(token)
     if not token_info:
         raise HTTPException(status_code=401, detail="Invalid access token")
 
     expires_at = token_info.get("expires_at")
     if expires_at and _utc_ts() > int(expires_at):
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
         await _delete_access_token(token)
         raise HTTPException(status_code=401, detail="Token expired")
 

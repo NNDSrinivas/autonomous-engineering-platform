@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     APP_NAME: str = "Autonomous Engineering Platform"  # Human-readable application name
-    APP_SLUG: str = "autonomous-engineering-platform"  # Machine-friendly identifier (e.g., for URLs, config)
+    APP_SLUG: str = (
+        "autonomous-engineering-platform"  # Machine-friendly identifier (e.g., for URLs, config)
+    )
 
     # Redis configuration
     REDIS_URL: str | None = None
@@ -51,7 +53,9 @@ class Settings(BaseSettings):
     RATE_LIMITING_ESTIMATED_ACTIVE_USERS: int = 5
 
     # CORS configuration
-    CORS_ORIGINS: str = ""  # Comma-separated list of allowed origins; empty means strict deny
+    CORS_ORIGINS: str = (
+        ""  # Comma-separated list of allowed origins; empty means strict deny
+    )
     ALLOW_DEV_CORS: bool = False  # Explicit dev override for localhost/vscode-webview
     ALLOW_VSCODE_WEBVIEW: bool = True  # Allow VS Code webview origins when enabled
 

@@ -185,6 +185,8 @@ PREMIUM_RATE_LIMITS = RateLimitQuota(
     org_multiplier=25.0,  # Premium orgs get higher multipliers
     global_requests_per_second=5000,
 )
+
+
 # Environment overrides for tests/dev
 def _env_int(name: str, default: int) -> int:
     raw = os.getenv(name)

@@ -1,7 +1,7 @@
 # backend/api/diff.py
 from typing import Any, Dict
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
 from backend.services.diff_service import DiffService
 from backend.services.explanation_service import ExplanationService

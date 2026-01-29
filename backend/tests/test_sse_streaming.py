@@ -76,7 +76,9 @@ class TestSSEStreaming:
                 events = []
                 for line in response.iter_lines():
                     if line:
-                        decoded_line = line.decode() if isinstance(line, bytes) else line
+                        decoded_line = (
+                            line.decode() if isinstance(line, bytes) else line
+                        )
                         events.append(decoded_line)
 
                         # Stop after getting mode selection event
@@ -236,7 +238,9 @@ class TestSSEStreaming:
                     events = []
                     for line in response.iter_lines():
                         if line:
-                            events.append(line.decode() if isinstance(line, bytes) else line)
+                            events.append(
+                                line.decode() if isinstance(line, bytes) else line
+                            )
                         if len(events) >= 5:  # Collect a few events
                             break
                     results.append({"success": True, "events": len(events)})

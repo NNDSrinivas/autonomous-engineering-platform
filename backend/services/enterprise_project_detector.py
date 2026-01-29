@@ -23,15 +23,19 @@ logger = logging.getLogger(__name__)
 
 class ProjectScale(Enum):
     """Scale of the project based on request analysis."""
+
     SIMPLE = "simple"  # Single file fixes, small changes (standard agent)
     MEDIUM = "medium"  # Multi-file changes, moderate features (standard agent)
-    COMPLEX = "complex"  # Large features, refactoring (standard agent with more iterations)
+    COMPLEX = (
+        "complex"  # Large features, refactoring (standard agent with more iterations)
+    )
     ENTERPRISE = "enterprise"  # Full application development (enterprise coordinator)
 
 
 @dataclass
 class EnterpriseProjectSpec:
     """Specification for an enterprise project detected from user request."""
+
     name: str
     description: str
     project_type: str  # e-commerce, microservices, api, web-app, mobile-backend
@@ -47,31 +51,36 @@ class EnterpriseProjectSpec:
 # Patterns that indicate enterprise-level project requests
 ENTERPRISE_PATTERNS = [
     # Full application keywords
-    (r"(?:build|create|develop|implement)\s+(?:a\s+)?(?:full|complete|entire|end.?to.?end|e2e)", 0.7),
-    (r"(?:build|create)\s+(?:an?\s+)?(?:e-?commerce|ecommerce|shop|marketplace|store)", 0.9),
+    (
+        r"(?:build|create|develop|implement)\s+(?:a\s+)?(?:full|complete|entire|end.?to.?end|e2e)",
+        0.7,
+    ),
+    (
+        r"(?:build|create)\s+(?:an?\s+)?(?:e-?commerce|ecommerce|shop|marketplace|store)",
+        0.9,
+    ),
     (r"(?:build|create)\s+(?:an?\s+)?(?:saas|platform|application|app|system)", 0.6),
     (r"(?:build|create)\s+(?:microservices?|distributed\s+system)", 0.9),
-
     # Scale indicators
     (r"(?:million|10m|100k|\d+k)\s+(?:users?|requests?|transactions?)", 0.8),
     (r"(?:scale|scaling|scalable)\s+(?:to|for)?\s*(?:\d+|millions?)", 0.7),
     (r"production.?ready|enterprise.?grade|production\s+deployment", 0.7),
-
     # Comprehensive features
     (r"with\s+(?:authentication|auth|login|signup|user\s+management)", 0.4),
     (r"with\s+(?:database|db|data\s+persistence|storage)", 0.3),
     (r"with\s+(?:deployment|deploy|ci/?cd|pipeline)", 0.4),
     (r"with\s+(?:testing|tests?|test\s+coverage)", 0.3),
     (r"with\s+(?:monitoring|logging|observability|metrics)", 0.4),
-
     # Architecture keywords
     (r"api\s+(?:gateway|layer|service)", 0.5),
     (r"(?:payment|checkout|billing)\s+(?:system|integration|flow)", 0.6),
     (r"(?:admin|dashboard|management)\s+(?:panel|interface|portal)", 0.5),
-
     # Explicit project scope
     (r"multi-?(?:service|module|component|tier)", 0.6),
-    (r"(?:frontend|backend|api|database|infra)\s+(?:and|,)\s+(?:frontend|backend|api|database|infra)", 0.7),
+    (
+        r"(?:frontend|backend|api|database|infra)\s+(?:and|,)\s+(?:frontend|backend|api|database|infra)",
+        0.7,
+    ),
 ]
 
 # Project type detection patterns
@@ -128,7 +137,9 @@ def _calculate_enterprise_score(message: str) -> Tuple[float, List[str]]:
 
     # Normalize score to 0-1 range
     max_possible_score = sum(w for _, w in ENTERPRISE_PATTERNS)
-    normalized_score = min(1.0, total_score / (max_possible_score * 0.3))  # 30% threshold
+    normalized_score = min(
+        1.0, total_score / (max_possible_score * 0.3)
+    )  # 30% threshold
 
     return normalized_score, indicators
 
@@ -188,37 +199,99 @@ def _extract_goals(message: str, project_type: str) -> List[Dict[str, str]]:
 
     # Core goals based on project type
     if project_type == "e-commerce":
-        goals.append({"id": "core", "description": "Build core e-commerce platform with product catalog and shopping cart"})
+        goals.append(
+            {
+                "id": "core",
+                "description": "Build core e-commerce platform with product catalog and shopping cart",
+            }
+        )
         if re.search(r"payment|checkout", message_lower):
-            goals.append({"id": "payment", "description": "Implement payment processing and checkout flow"})
+            goals.append(
+                {
+                    "id": "payment",
+                    "description": "Implement payment processing and checkout flow",
+                }
+            )
         if re.search(r"order|fulfillment", message_lower):
-            goals.append({"id": "orders", "description": "Build order management and fulfillment system"})
+            goals.append(
+                {
+                    "id": "orders",
+                    "description": "Build order management and fulfillment system",
+                }
+            )
         if re.search(r"admin|seller", message_lower):
-            goals.append({"id": "admin", "description": "Create admin/seller dashboard for product and order management"})
+            goals.append(
+                {
+                    "id": "admin",
+                    "description": "Create admin/seller dashboard for product and order management",
+                }
+            )
 
     elif project_type == "microservices":
-        goals.append({"id": "arch", "description": "Design and implement microservices architecture"})
-        goals.append({"id": "infra", "description": "Set up service discovery, API gateway, and infrastructure"})
-        goals.append({"id": "services", "description": "Implement core domain services"})
+        goals.append(
+            {
+                "id": "arch",
+                "description": "Design and implement microservices architecture",
+            }
+        )
+        goals.append(
+            {
+                "id": "infra",
+                "description": "Set up service discovery, API gateway, and infrastructure",
+            }
+        )
+        goals.append(
+            {"id": "services", "description": "Implement core domain services"}
+        )
 
     else:
-        goals.append({"id": "core", "description": f"Build core {project_type} functionality"})
+        goals.append(
+            {"id": "core", "description": f"Build core {project_type} functionality"}
+        )
 
     # Common goals
     if re.search(r"auth|login|user", message_lower):
-        goals.append({"id": "auth", "description": "Implement user authentication and authorization"})
+        goals.append(
+            {
+                "id": "auth",
+                "description": "Implement user authentication and authorization",
+            }
+        )
     if re.search(r"database|db", message_lower):
-        goals.append({"id": "db", "description": "Design and implement database schema and data layer"})
+        goals.append(
+            {
+                "id": "db",
+                "description": "Design and implement database schema and data layer",
+            }
+        )
     if re.search(r"api|endpoint", message_lower):
         goals.append({"id": "api", "description": "Build RESTful API endpoints"})
     if re.search(r"frontend|ui|interface", message_lower):
-        goals.append({"id": "frontend", "description": "Create responsive frontend user interface"})
+        goals.append(
+            {
+                "id": "frontend",
+                "description": "Create responsive frontend user interface",
+            }
+        )
     if re.search(r"deploy|production", message_lower):
-        goals.append({"id": "deploy", "description": "Set up CI/CD and production deployment"})
+        goals.append(
+            {"id": "deploy", "description": "Set up CI/CD and production deployment"}
+        )
     if re.search(r"test", message_lower):
-        goals.append({"id": "testing", "description": "Implement comprehensive test coverage"})
+        goals.append(
+            {"id": "testing", "description": "Implement comprehensive test coverage"}
+        )
 
-    return goals if goals else [{"id": "core", "description": f"Build the requested {project_type} application"}]
+    return (
+        goals
+        if goals
+        else [
+            {
+                "id": "core",
+                "description": f"Build the requested {project_type} application",
+            }
+        ]
+    )
 
 
 def detect_enterprise_project(
@@ -267,8 +340,13 @@ def detect_enterprise_project(
     goals = _extract_goals(message, project_type)
 
     # Build project name from message (first 50 chars cleaned up)
-    name_match = re.search(r"(?:build|create|develop)\s+(.{10,50}?)(?:\s+with|\s+that|\s+using|$)", message.lower())
-    project_name = name_match.group(1).strip().title() if name_match else "Enterprise Project"
+    name_match = re.search(
+        r"(?:build|create|develop)\s+(.{10,50}?)(?:\s+with|\s+that|\s+using|$)",
+        message.lower(),
+    )
+    project_name = (
+        name_match.group(1).strip().title() if name_match else "Enterprise Project"
+    )
 
     # Feature detection
     message_lower = message.lower()
@@ -279,15 +357,25 @@ def detect_enterprise_project(
         project_type=project_type,
         estimated_tasks=estimated_tasks,
         goals=goals,
-        requires_database=bool(re.search(r"database|db|storage|persist", message_lower)),
-        requires_deployment=bool(re.search(r"deploy|production|ci/?cd|hosting", message_lower)),
-        requires_auth=bool(re.search(r"auth|login|user|account|permission", message_lower)),
+        requires_database=bool(
+            re.search(r"database|db|storage|persist", message_lower)
+        ),
+        requires_deployment=bool(
+            re.search(r"deploy|production|ci/?cd|hosting", message_lower)
+        ),
+        requires_auth=bool(
+            re.search(r"auth|login|user|account|permission", message_lower)
+        ),
         scale_indicators=indicators,
         confidence=score,
     )
 
-    logger.info(f"[EnterpriseDetector] Detected enterprise project: {spec.name} ({spec.project_type})")
-    logger.info(f"[EnterpriseDetector] Estimated tasks: {spec.estimated_tasks}, Goals: {len(spec.goals)}")
+    logger.info(
+        f"[EnterpriseDetector] Detected enterprise project: {spec.name} ({spec.project_type})"
+    )
+    logger.info(
+        f"[EnterpriseDetector] Estimated tasks: {spec.estimated_tasks}, Goals: {len(spec.goals)}"
+    )
 
     return True, spec, scale
 

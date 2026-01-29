@@ -38,42 +38,6 @@ def decode_jwt(token: str) -> dict:
     if not settings.JWT_ENABLED:
         raise JWTVerificationError("JWT authentication is not enabled")
 
-<<<<<<< HEAD
-    secrets = _get_jwt_secrets()
-    if not secrets:
-        raise JWTVerificationError(
-            "JWT_SECRET (or JWT_SECRET_PREVIOUS) is required when JWT_ENABLED=true"
-        )
-
-    try:
-        for secret in secrets:
-            try:
-                # Decode and verify token (includes expiration check)
-                payload = jwt.decode(
-                    token,
-                    secret,
-                    algorithms=[settings.JWT_ALGORITHM],
-                    audience=settings.JWT_AUDIENCE,
-                    issuer=settings.JWT_ISSUER,
-                )
-                return payload
-            except ExpiredSignatureError:
-                raise JWTVerificationError("Token has expired")
-            except JWTClaimsError:
-                # Note: Detailed error information not logged to avoid leaking JWT validation logic
-                raise JWTVerificationError("Invalid token claims")
-            except JWTError:
-                continue
-
-        logger.warning("JWT verification failed")
-        # Note: Detailed error information not logged to avoid leaking sensitive JWT structure/config
-        raise JWTVerificationError("Token verification failed")
-    except JWTVerificationError:
-        raise
-    except JWTError:
-        logger.warning("JWT verification failed")
-        raise JWTVerificationError("Token verification failed")
-=======
     if not settings.JWT_SECRET:
         raise JWTVerificationError("JWT_SECRET is required when JWT_ENABLED=true")
 
@@ -102,7 +66,6 @@ def decode_jwt(token: str) -> dict:
 
     logger.warning("JWT verification failed")
     raise JWTVerificationError("Token verification failed") from last_error
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
 
 def extract_user_claims(payload: dict) -> dict:

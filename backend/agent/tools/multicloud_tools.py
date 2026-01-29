@@ -13,6 +13,7 @@ from backend.services.connector_base import ToolResult
 # Cloud Service Comparison
 # ============================================================================
 
+
 async def compare_cloud_services(context: Dict[str, Any]) -> ToolResult:
     """
     Compare equivalent services across cloud providers.
@@ -33,17 +34,21 @@ async def compare_cloud_services(context: Dict[str, Any]) -> ToolResult:
         available = ", ".join(service_map.keys())
         return ToolResult(
             output=f"Unknown service type: {service_type}. Available: {available}",
-            sources=[]
+            sources=[],
         )
 
     # Build comparison table
-    comparison = _build_service_comparison(service_type, providers, requirements, service_map)
+    comparison = _build_service_comparison(
+        service_type, providers, requirements, service_map
+    )
 
     # Generate pricing estimates
     pricing = _estimate_pricing(service_type, providers, requirements)
 
     # Generate recommendations
-    recommendations = _generate_recommendations(service_type, providers, requirements, pricing)
+    recommendations = _generate_recommendations(
+        service_type, providers, requirements, pricing
+    )
 
     output = f"""# Cloud Service Comparison: {service_type.upper()}
 
@@ -87,7 +92,9 @@ async def generate_multi_region_config(context: Dict[str, Any]) -> ToolResult:
     strategy = context.get("strategy", "active-active")
 
     # Generate Terraform configuration
-    terraform_config = _generate_multi_region_terraform(provider, regions, services, strategy)
+    terraform_config = _generate_multi_region_terraform(
+        provider, regions, services, strategy
+    )
 
     # Generate architecture diagram
     diagram = _generate_multi_region_diagram(provider, regions, services, strategy)
@@ -155,16 +162,20 @@ async def migrate_cloud_provider(context: Dict[str, Any]) -> ToolResult:
     workspace_path = context.get("workspace_path", ".")
     source_provider = context.get("source_provider", "aws")
     target_provider = context.get("target_provider", "gcp")
-    services_to_migrate = context.get("services_to_migrate", "all")
+    context.get("services_to_migrate", "all")
 
     # Analyze current infrastructure
     current_infra = await _analyze_infrastructure(workspace_path, source_provider)
 
     # Generate service mappings
-    service_mappings = _map_services_for_migration(current_infra, source_provider, target_provider)
+    service_mappings = _map_services_for_migration(
+        current_infra, source_provider, target_provider
+    )
 
     # Generate migration plan
-    migration_plan = _generate_migration_plan(service_mappings, source_provider, target_provider)
+    migration_plan = _generate_migration_plan(
+        service_mappings, source_provider, target_provider
+    )
 
     # Generate target Terraform
     target_terraform = _generate_target_terraform(service_mappings, target_provider)
@@ -306,7 +317,9 @@ async def generate_cloud_landing_zone(context: Dict[str, Any]) -> ToolResult:
     compliance_frameworks = context.get("compliance_frameworks", [])
 
     # Generate account/project structure
-    account_structure = _generate_account_structure(provider, organization_name, environments)
+    account_structure = _generate_account_structure(
+        provider, organization_name, environments
+    )
 
     # Generate networking configuration
     network_config = _generate_landing_zone_networking(provider, environments)
@@ -374,7 +387,9 @@ async def analyze_cloud_spend(context: Dict[str, Any]) -> ToolResult:
     """
     provider = context.get("provider", "aws")
     workspace_path = context.get("workspace_path", ".")
-    focus_areas = context.get("focus_areas", ["compute", "storage", "network", "database"])
+    focus_areas = context.get(
+        "focus_areas", ["compute", "storage", "network", "database"]
+    )
 
     # Analyze infrastructure
     resources = await _detect_resources(workspace_path, provider)
@@ -428,6 +443,7 @@ async def analyze_cloud_spend(context: Dict[str, Any]) -> ToolResult:
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
 
 def _get_service_mappings() -> Dict[str, Dict[str, str]]:
     """Get service name mappings across providers."""
@@ -517,7 +533,7 @@ def _build_service_comparison(
     service_type: str,
     providers: List[str],
     requirements: Dict[str, Any],
-    service_map: Dict
+    service_map: Dict,
 ) -> str:
     """Build service comparison table."""
     services = service_map.get(service_type, {})
@@ -534,7 +550,9 @@ def _build_service_comparison(
         strengths = details.get("strengths", "-")
         limitations = details.get("limitations", "-")
 
-        lines.append(f"| {provider.upper()} | {service_name} | {features} | {strengths} | {limitations} |")
+        lines.append(
+            f"| {provider.upper()} | {service_name} | {features} | {strengths} | {limitations} |"
+        )
 
     return "\n".join(lines)
 
@@ -596,12 +614,19 @@ def _get_provider_details() -> Dict[str, Dict[str, Dict[str, str]]]:
     }
 
 
-def _estimate_pricing(service_type: str, providers: List[str], requirements: Dict) -> str:
+def _estimate_pricing(
+    service_type: str, providers: List[str], requirements: Dict
+) -> str:
     """Estimate pricing for services."""
     # Base monthly prices (simplified estimates)
     base_prices = {
         "compute": {"aws": 50, "gcp": 45, "azure": 48, "digitalocean": 24},
-        "kubernetes": {"aws": 73, "gcp": 0, "azure": 72, "digitalocean": 12},  # GKE control plane is free
+        "kubernetes": {
+            "aws": 73,
+            "gcp": 0,
+            "azure": 72,
+            "digitalocean": 12,
+        },  # GKE control plane is free
         "database": {"aws": 100, "gcp": 90, "azure": 95, "digitalocean": 15},
         "storage": {"aws": 23, "gcp": 20, "azure": 22, "digitalocean": 5},
         "cache": {"aws": 40, "gcp": 35, "azure": 38, "digitalocean": 15},
@@ -626,17 +651,16 @@ def _estimate_pricing(service_type: str, providers: List[str], requirements: Dic
 
 
 def _generate_recommendations(
-    service_type: str,
-    providers: List[str],
-    requirements: Dict,
-    pricing: str
+    service_type: str, providers: List[str], requirements: Dict, pricing: str
 ) -> str:
     """Generate recommendations based on analysis."""
     recommendations = []
 
     # Best for cost
     recommendations.append("### Best for Cost")
-    recommendations.append("- **DigitalOcean** - Lowest entry point for small to medium workloads")
+    recommendations.append(
+        "- **DigitalOcean** - Lowest entry point for small to medium workloads"
+    )
     recommendations.append("- **GCP** - Per-second billing and sustained use discounts")
 
     # Best for enterprise
@@ -647,7 +671,9 @@ def _generate_recommendations(
     # Best for Kubernetes
     if service_type == "kubernetes":
         recommendations.append("\n### Best for Kubernetes")
-        recommendations.append("- **GCP (GKE)** - Original K8s creators, best managed experience")
+        recommendations.append(
+            "- **GCP (GKE)** - Original K8s creators, best managed experience"
+        )
         recommendations.append("- **EKS** - Best ecosystem integration")
 
     # Best for startups
@@ -682,18 +708,68 @@ def _get_feature_matrix() -> Dict[str, Dict[str, Dict[str, str]]]:
     """Get feature support matrix."""
     return {
         "compute": {
-            "Spot/Preemptible Instances": {"aws": "Yes", "gcp": "Yes", "azure": "Yes", "digitalocean": "No"},
-            "ARM-based Instances": {"aws": "Yes (Graviton)", "gcp": "Yes (Tau)", "azure": "Yes", "digitalocean": "No"},
-            "GPU Instances": {"aws": "Yes", "gcp": "Yes", "azure": "Yes", "digitalocean": "Yes"},
-            "Bare Metal": {"aws": "Yes", "gcp": "Yes", "azure": "Yes", "digitalocean": "No"},
-            "Reserved Capacity": {"aws": "1-3 year", "gcp": "1-3 year", "azure": "1-3 year", "digitalocean": "No"},
+            "Spot/Preemptible Instances": {
+                "aws": "Yes",
+                "gcp": "Yes",
+                "azure": "Yes",
+                "digitalocean": "No",
+            },
+            "ARM-based Instances": {
+                "aws": "Yes (Graviton)",
+                "gcp": "Yes (Tau)",
+                "azure": "Yes",
+                "digitalocean": "No",
+            },
+            "GPU Instances": {
+                "aws": "Yes",
+                "gcp": "Yes",
+                "azure": "Yes",
+                "digitalocean": "Yes",
+            },
+            "Bare Metal": {
+                "aws": "Yes",
+                "gcp": "Yes",
+                "azure": "Yes",
+                "digitalocean": "No",
+            },
+            "Reserved Capacity": {
+                "aws": "1-3 year",
+                "gcp": "1-3 year",
+                "azure": "1-3 year",
+                "digitalocean": "No",
+            },
         },
         "kubernetes": {
-            "Managed Control Plane": {"aws": "Yes ($73/mo)", "gcp": "Yes (Free)", "azure": "Yes ($72/mo)", "digitalocean": "Yes ($12/mo)"},
-            "Autopilot/Serverless": {"aws": "Fargate", "gcp": "Autopilot", "azure": "Virtual Nodes", "digitalocean": "No"},
-            "Multi-cluster Management": {"aws": "Yes", "gcp": "Yes (Fleet)", "azure": "Yes (Arc)", "digitalocean": "No"},
-            "GPU Support": {"aws": "Yes", "gcp": "Yes", "azure": "Yes", "digitalocean": "Yes"},
-            "Windows Containers": {"aws": "Yes", "gcp": "Yes", "azure": "Yes", "digitalocean": "No"},
+            "Managed Control Plane": {
+                "aws": "Yes ($73/mo)",
+                "gcp": "Yes (Free)",
+                "azure": "Yes ($72/mo)",
+                "digitalocean": "Yes ($12/mo)",
+            },
+            "Autopilot/Serverless": {
+                "aws": "Fargate",
+                "gcp": "Autopilot",
+                "azure": "Virtual Nodes",
+                "digitalocean": "No",
+            },
+            "Multi-cluster Management": {
+                "aws": "Yes",
+                "gcp": "Yes (Fleet)",
+                "azure": "Yes (Arc)",
+                "digitalocean": "No",
+            },
+            "GPU Support": {
+                "aws": "Yes",
+                "gcp": "Yes",
+                "azure": "Yes",
+                "digitalocean": "Yes",
+            },
+            "Windows Containers": {
+                "aws": "Yes",
+                "gcp": "Yes",
+                "azure": "Yes",
+                "digitalocean": "No",
+            },
         },
     }
 
@@ -723,10 +799,7 @@ def _generate_migration_notes(service_type: str, providers: List[str]) -> str:
 
 
 def _generate_multi_region_terraform(
-    provider: str,
-    regions: List[str],
-    services: List[str],
-    strategy: str
+    provider: str, regions: List[str], services: List[str], strategy: str
 ) -> str:
     """Generate multi-region Terraform configuration."""
     if provider == "aws":
@@ -737,9 +810,11 @@ def _generate_multi_region_terraform(
         return _generate_azure_multi_region(regions, services, strategy)
 
 
-def _generate_aws_multi_region(regions: List[str], services: List[str], strategy: str) -> str:
+def _generate_aws_multi_region(
+    regions: List[str], services: List[str], strategy: str
+) -> str:
     """Generate AWS multi-region Terraform."""
-    config = f'''# AWS Multi-Region Configuration
+    config = f"""# AWS Multi-Region Configuration
 # Strategy: {strategy}
 
 terraform {{
@@ -752,21 +827,21 @@ terraform {{
 }}
 
 # Provider for each region
-'''
+"""
 
     for i, region in enumerate(regions):
         alias = region.replace("-", "_")
-        config += f'''
+        config += f"""
 provider "aws" {{
   alias  = "{alias}"
   region = "{region}"
 }}
-'''
+"""
 
     # Add VPC for each region
     for region in regions:
         alias = region.replace("-", "_")
-        config += f'''
+        config += f"""
 # VPC in {region}
 module "vpc_{alias}" {{
   source  = "terraform-aws-modules/vpc/aws"
@@ -786,11 +861,11 @@ module "vpc_{alias}" {{
   enable_nat_gateway = true
   single_nat_gateway = false
 }}
-'''
+"""
 
     # Add Global Accelerator for active-active
     if strategy == "active-active":
-        config += '''
+        config += """
 # Global Accelerator for traffic distribution
 resource "aws_globalaccelerator_accelerator" "main" {
   name            = "multi-region-accelerator"
@@ -807,27 +882,31 @@ resource "aws_globalaccelerator_listener" "main" {
     to_port   = 443
   }
 }
-'''
+"""
 
     return config
 
 
-def _generate_gcp_multi_region(regions: List[str], services: List[str], strategy: str) -> str:
+def _generate_gcp_multi_region(
+    regions: List[str], services: List[str], strategy: str
+) -> str:
     """Generate GCP multi-region Terraform."""
     # Build subnets configuration
     subnets = []
     for i, r in enumerate(regions):
         alias = r.replace("-", "_")
-        subnets.append(f'''
+        subnets.append(
+            f"""
 resource "google_compute_subnetwork" "subnet_{alias}" {{
   name          = "subnet-{r}"
   ip_cidr_range = "10.{i}.0.0/20"
   region        = "{r}"
   network       = google_compute_network.main.id
-}}''')
+}}"""
+        )
     subnets_config = "\n".join(subnets)
 
-    return f'''# GCP Multi-Region Configuration
+    return f"""# GCP Multi-Region Configuration
 # Strategy: {strategy}
 
 terraform {{
@@ -864,39 +943,45 @@ resource "google_compute_global_forwarding_rule" "default" {{
   port_range = "443"
   ip_address = google_compute_global_address.default.address
 }}
-'''
+"""
 
 
-def _generate_azure_multi_region(regions: List[str], services: List[str], strategy: str) -> str:
+def _generate_azure_multi_region(
+    regions: List[str], services: List[str], strategy: str
+) -> str:
     """Generate Azure multi-region Terraform."""
     # Build resource groups configuration
     resource_groups = []
     for r in regions:
         alias = r.replace("-", "_")
-        resource_groups.append(f'''
+        resource_groups.append(
+            f"""
 resource "azurerm_resource_group" "rg_{alias}" {{
   name     = "rg-{r}"
   location = "{r}"
-}}''')
+}}"""
+        )
     rg_config = "\n".join(resource_groups)
 
     # Build virtual networks configuration
     vnets = []
     for i, r in enumerate(regions):
         alias = r.replace("-", "_")
-        vnets.append(f'''
+        vnets.append(
+            f"""
 resource "azurerm_virtual_network" "vnet_{alias}" {{
   name                = "vnet-{r}"
   location            = azurerm_resource_group.rg_{alias}.location
   resource_group_name = azurerm_resource_group.rg_{alias}.name
   address_space       = ["10.{i}.0.0/16"]
-}}''')
+}}"""
+        )
     vnet_config = "\n".join(vnets)
 
     first_region_alias = regions[0].replace("-", "_")
     routing_method = strategy.replace("-", "_").title()
 
-    return f'''# Azure Multi-Region Configuration
+    return f"""# Azure Multi-Region Configuration
 # Strategy: {strategy}
 
 terraform {{
@@ -938,17 +1023,14 @@ resource "azurerm_traffic_manager_profile" "main" {{
     tolerated_number_of_failures = 3
   }}
 }}
-'''
+"""
 
 
 def _generate_multi_region_diagram(
-    provider: str,
-    regions: List[str],
-    services: List[str],
-    strategy: str
+    provider: str, regions: List[str], services: List[str], strategy: str
 ) -> str:
     """Generate ASCII architecture diagram."""
-    return f'''```
+    return f"""```
                         ┌─────────────────────────────────────────┐
                         │            Global Load Balancer          │
                         │         ({provider.upper()} {'Global Accelerator' if provider == 'aws' else 'GLB' if provider == 'gcp' else 'Traffic Manager'})          │
@@ -975,13 +1057,13 @@ def _generate_multi_region_diagram(
     └───────────────┘           └───────────────┘           └───────────────┘
 
     Strategy: {strategy.replace('-', ' ').title()}
-```'''
+```"""
 
 
 def _generate_dns_config(provider: str, regions: List[str], strategy: str) -> str:
     """Generate DNS configuration for multi-region."""
     if provider == "aws":
-        return '''# Route 53 Latency-based Routing
+        return """# Route 53 Latency-based Routing
 resource "aws_route53_record" "api" {
   zone_id = var.zone_id
   name    = "api.example.com"
@@ -1004,14 +1086,14 @@ resource "aws_route53_health_check" "region" {
   resource_path     = "/health"
   failure_threshold = "3"
   request_interval  = "30"
-}'''
+}"""
     else:
         return "# DNS configuration for " + provider.upper()
 
 
 def _generate_multi_region_monitoring(provider: str, regions: List[str]) -> str:
     """Generate monitoring configuration."""
-    return f'''# Multi-Region Monitoring Configuration
+    return f"""# Multi-Region Monitoring Configuration
 
 alerts:
   - name: regional_latency_high
@@ -1053,7 +1135,7 @@ dashboards:
       - title: Replication Lag
         type: gauge
         queries:
-          - metric: db_replication_lag_seconds'''
+          - metric: db_replication_lag_seconds"""
 
 
 def _get_strategy_details(strategy: str) -> str:
@@ -1109,7 +1191,9 @@ def _get_strategy_details(strategy: str) -> str:
     return strategies.get(strategy, "Strategy details not available.")
 
 
-def _generate_failover_procedures(provider: str, regions: List[str], strategy: str) -> str:
+def _generate_failover_procedures(
+    provider: str, regions: List[str], strategy: str
+) -> str:
     """Generate failover procedures."""
     return """### Automated Failover
 
@@ -1207,14 +1291,18 @@ def _map_services_for_migration(current_infra: str, source: str, target: str) ->
     mappings = _get_service_mappings()
 
     lines = ["### Service Mappings\n"]
-    lines.append(f"| {source.upper()} Service | {target.upper()} Equivalent | Migration Notes |")
+    lines.append(
+        f"| {source.upper()} Service | {target.upper()} Equivalent | Migration Notes |"
+    )
     lines.append("|--------------|------------------|-----------------|")
 
     for service_type, providers in mappings.items():
         source_service = providers.get(source, "N/A")
         target_service = providers.get(target, "N/A")
         if source_service != "N/A":
-            lines.append(f"| {source_service} | {target_service} | Check configuration compatibility |")
+            lines.append(
+                f"| {source_service} | {target_service} | Check configuration compatibility |"
+            )
 
     return "\n".join(lines)
 
@@ -1259,7 +1347,7 @@ def _generate_migration_plan(mappings: str, source: str, target: str) -> str:
 def _generate_target_terraform(mappings: str, target: str) -> str:
     """Generate target Terraform configuration."""
     if target == "gcp":
-        return '''# GCP Target Infrastructure
+        return """# GCP Target Infrastructure
 
 provider "google" {
   project = var.project_id
@@ -1299,7 +1387,7 @@ resource "google_sql_database_instance" "main" {
 resource "google_storage_bucket" "assets" {
   name     = "${var.project_id}-assets"
   location = var.region
-}'''
+}"""
     else:
         return f"# {target.upper()} Target Infrastructure\n# Configuration placeholder"
 
@@ -1444,7 +1532,9 @@ async def _detect_resources(workspace_path: str, provider: str) -> List[Dict[str
     return resources
 
 
-def _calculate_costs(resources: List[Dict], provider: str, usage_pattern: str) -> List[Dict]:
+def _calculate_costs(
+    resources: List[Dict], provider: str, usage_pattern: str
+) -> List[Dict]:
     """Calculate cost estimates for resources."""
     # Simplified pricing (actual pricing varies by region, instance type, etc.)
     pricing = {
@@ -1477,7 +1567,11 @@ def _calculate_costs(resources: List[Dict], provider: str, usage_pattern: str) -
         count = resource.get("count", 1)
 
         if res_type == "storage":
-            cost = resource.get("size_gb", 100) * provider_pricing.get("storage", 0.023) * count
+            cost = (
+                resource.get("size_gb", 100)
+                * provider_pricing.get("storage", 0.023)
+                * count
+            )
         else:
             type_pricing = provider_pricing.get(res_type, {})
             if isinstance(type_pricing, dict):
@@ -1491,12 +1585,14 @@ def _calculate_costs(resources: List[Dict], provider: str, usage_pattern: str) -
         elif usage_pattern == "variable":
             cost *= 1.1
 
-        costs.append({
-            "resource": resource.get("name", res_type),
-            "type": res_type,
-            "quantity": count,
-            "cost": cost,
-        })
+        costs.append(
+            {
+                "resource": resource.get("name", res_type),
+                "type": res_type,
+                "quantity": count,
+                "cost": cost,
+            }
+        )
 
     return costs
 
@@ -1552,12 +1648,16 @@ def _compare_provider_costs(resources: List[Dict], usage_pattern: str) -> str:
     for comp in comparisons:
         diff = ((comp["total"] - cheapest) / cheapest * 100) if cheapest > 0 else 0
         diff_str = f"+{diff:.1f}%" if diff > 0 else "Lowest"
-        lines.append(f"| {comp['provider'].upper()} | ${comp['total']:,.2f} | {diff_str} |")
+        lines.append(
+            f"| {comp['provider'].upper()} | ${comp['total']:,.2f} | {diff_str} |"
+        )
 
     return "\n".join(lines)
 
 
-def _generate_cost_optimizations(resources: List[Dict], provider: str, costs: List[Dict]) -> str:
+def _generate_cost_optimizations(
+    resources: List[Dict], provider: str, costs: List[Dict]
+) -> str:
     """Generate cost optimization recommendations."""
     recommendations = [
         "### Immediate Savings Opportunities\n",
@@ -1618,7 +1718,9 @@ def _generate_spot_opportunities(resources: List[Dict], provider: str) -> str:
 """
 
 
-def _generate_account_structure(provider: str, org_name: str, environments: List[str]) -> str:
+def _generate_account_structure(
+    provider: str, org_name: str, environments: List[str]
+) -> str:
     """Generate account/project structure."""
     if provider == "aws":
         return f"""### AWS Organization Structure
@@ -1953,7 +2055,9 @@ def _format_optimizations(optimizations: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-def _generate_detailed_analysis(resources: List[Dict], provider: str, focus_areas: List[str]) -> str:
+def _generate_detailed_analysis(
+    resources: List[Dict], provider: str, focus_areas: List[str]
+) -> str:
     """Generate detailed analysis by category."""
     analysis = []
 
@@ -2030,28 +2134,36 @@ def _analyze_area(resources: List[Dict], provider: str, area: str) -> List[Dict]
     optimizations = []
 
     if area == "compute":
-        optimizations.append({
-            "resource": "web-server",
-            "recommendation": "Use reserved instances",
-            "savings": 50,
-        })
-        optimizations.append({
-            "resource": "worker",
-            "recommendation": "Use spot instances",
-            "savings": 80,
-        })
+        optimizations.append(
+            {
+                "resource": "web-server",
+                "recommendation": "Use reserved instances",
+                "savings": 50,
+            }
+        )
+        optimizations.append(
+            {
+                "resource": "worker",
+                "recommendation": "Use spot instances",
+                "savings": 80,
+            }
+        )
     elif area == "storage":
-        optimizations.append({
-            "resource": "assets-bucket",
-            "recommendation": "Enable intelligent tiering",
-            "savings": 20,
-        })
+        optimizations.append(
+            {
+                "resource": "assets-bucket",
+                "recommendation": "Enable intelligent tiering",
+                "savings": 20,
+            }
+        )
     elif area == "database":
-        optimizations.append({
-            "resource": "main-db",
-            "recommendation": "Use reserved capacity",
-            "savings": 40,
-        })
+        optimizations.append(
+            {
+                "resource": "main-db",
+                "recommendation": "Use reserved capacity",
+                "savings": 40,
+            }
+        )
 
     return optimizations
 

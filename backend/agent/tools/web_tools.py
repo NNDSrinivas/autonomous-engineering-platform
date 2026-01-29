@@ -37,49 +37,83 @@ def _clean_html(html_content: str) -> str:
     Uses regex-based extraction for simplicity and no extra dependencies.
     """
     # Remove script and style elements
-    text = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r'<noscript[^>]*>.*?</noscript>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(
+        r"<script[^>]*>.*?</script>", "", html_content, flags=re.DOTALL | re.IGNORECASE
+    )
+    text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(
+        r"<noscript[^>]*>.*?</noscript>", "", text, flags=re.DOTALL | re.IGNORECASE
+    )
 
     # Remove HTML comments
-    text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
 
     # Extract title
-    title_match = re.search(r'<title[^>]*>(.*?)</title>', text, flags=re.DOTALL | re.IGNORECASE)
+    title_match = re.search(
+        r"<title[^>]*>(.*?)</title>", text, flags=re.DOTALL | re.IGNORECASE
+    )
     title = html.unescape(title_match.group(1).strip()) if title_match else ""
 
     # Extract meta description
-    desc_match = re.search(r'<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']', text, flags=re.IGNORECASE)
+    desc_match = re.search(
+        r'<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']',
+        text,
+        flags=re.IGNORECASE,
+    )
     if not desc_match:
-        desc_match = re.search(r'<meta[^>]*content=["\'](.*?)["\'][^>]*name=["\']description["\']', text, flags=re.IGNORECASE)
+        desc_match = re.search(
+            r'<meta[^>]*content=["\'](.*?)["\'][^>]*name=["\']description["\']',
+            text,
+            flags=re.IGNORECASE,
+        )
     description = html.unescape(desc_match.group(1).strip()) if desc_match else ""
 
     # Convert common block elements to newlines
-    text = re.sub(r'<(br|hr)[^>]*/?>', '\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'</(p|div|h[1-6]|li|tr|article|section|header|footer)>', '\n\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<(p|div|h[1-6]|li|tr|article|section|header|footer)[^>]*>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r"<(br|hr)[^>]*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"</(p|div|h[1-6]|li|tr|article|section|header|footer)>",
+        "\n\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"<(p|div|h[1-6]|li|tr|article|section|header|footer)[^>]*>",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
 
     # Extract link text with URL for important links
     def replace_link(match):
         href = match.group(1)
-        link_text = re.sub(r'<[^>]+>', '', match.group(2))
-        if href and link_text and not href.startswith('#') and not href.startswith('javascript:'):
+        link_text = re.sub(r"<[^>]+>", "", match.group(2))
+        if (
+            href
+            and link_text
+            and not href.startswith("#")
+            and not href.startswith("javascript:")
+        ):
             return f"{link_text}"
         return link_text
 
-    text = re.sub(r'<a[^>]*href=["\'](.*?)["\'][^>]*>(.*?)</a>', replace_link, text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(
+        r'<a[^>]*href=["\'](.*?)["\'][^>]*>(.*?)</a>',
+        replace_link,
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
 
     # Remove all remaining HTML tags
-    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r"<[^>]+>", " ", text)
 
     # Decode HTML entities
     text = html.unescape(text)
 
     # Clean up whitespace
-    text = re.sub(r'[ \t]+', ' ', text)  # Multiple spaces to single space
-    text = re.sub(r'\n[ \t]+', '\n', text)  # Remove leading whitespace from lines
-    text = re.sub(r'[ \t]+\n', '\n', text)  # Remove trailing whitespace from lines
-    text = re.sub(r'\n{3,}', '\n\n', text)  # Max 2 consecutive newlines
+    text = re.sub(r"[ \t]+", " ", text)  # Multiple spaces to single space
+    text = re.sub(r"\n[ \t]+", "\n", text)  # Remove leading whitespace from lines
+    text = re.sub(r"[ \t]+\n", "\n", text)  # Remove trailing whitespace from lines
+    text = re.sub(r"\n{3,}", "\n\n", text)  # Max 2 consecutive newlines
     text = text.strip()
 
     # Combine title, description, and content
@@ -98,7 +132,7 @@ def _is_valid_url(url: str) -> bool:
     """Validate URL format and scheme."""
     try:
         parsed = urlparse(url)
-        return parsed.scheme in ('http', 'https') and bool(parsed.netloc)
+        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
     except Exception:
         return False
 
@@ -140,8 +174,8 @@ async def fetch_url(
         }
 
     # Add scheme if missing
-    if not url.startswith(('http://', 'https://')):
-        url = 'https://' + url
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
 
     if not _is_valid_url(url):
         return {
@@ -177,10 +211,10 @@ async def fetch_url(
             raw_content = response.text
 
             # Extract text from HTML if requested
-            if extract_text and 'html' in content_type:
+            if extract_text and "html" in content_type:
                 content = _clean_html(raw_content)
                 # Extract title for response
-                title_match = re.search(r'# (.*?)\n', content)
+                title_match = re.search(r"# (.*?)\n", content)
                 title = title_match.group(1) if title_match else ""
             else:
                 content = raw_content
@@ -188,7 +222,10 @@ async def fetch_url(
 
             # Truncate if too long
             if len(content) > max_len:
-                content = content[:max_len] + f"\n\n[... Content truncated at {max_len} characters ...]"
+                content = (
+                    content[:max_len]
+                    + f"\n\n[... Content truncated at {max_len} characters ...]"
+                )
 
             return {
                 "success": True,
@@ -293,12 +330,14 @@ async def search_web(
 
             results = []
             for item in data.get("results", []):
-                results.append({
-                    "title": item.get("title", ""),
-                    "url": item.get("url", ""),
-                    "content": item.get("content", ""),
-                    "score": item.get("score", 0),
-                })
+                results.append(
+                    {
+                        "title": item.get("title", ""),
+                        "url": item.get("url", ""),
+                        "content": item.get("content", ""),
+                        "score": item.get("score", 0),
+                    }
+                )
 
             answer = data.get("answer", "")
 

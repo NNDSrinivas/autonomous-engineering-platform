@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -109,23 +108,43 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="NAVI CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    run_cmd = sub.add_parser("run", help="Call /api/navi/process and optionally apply edits")
+    run_cmd = sub.add_parser(
+        "run", help="Call /api/navi/process and optionally apply edits"
+    )
     run_cmd.add_argument("--message", required=True, help="User request to NAVI")
     run_cmd.add_argument("--workspace", required=True, help="Workspace root path")
-    run_cmd.add_argument("--backend-url", default=DEFAULT_BACKEND_URL, help="Backend base URL")
-    run_cmd.add_argument("--provider", default=None, help="LLM provider (openai, anthropic, ...)")
+    run_cmd.add_argument(
+        "--backend-url", default=DEFAULT_BACKEND_URL, help="Backend base URL"
+    )
+    run_cmd.add_argument(
+        "--provider", default=None, help="LLM provider (openai, anthropic, ...)"
+    )
     run_cmd.add_argument("--model", default=None, help="LLM model")
     run_cmd.add_argument("--api-key", default=None, help="API key (optional)")
-    run_cmd.add_argument("--apply", action="store_true", help="Apply file edits locally")
-    run_cmd.add_argument("--yes", action="store_true", help="Auto-approve command execution")
-    run_cmd.add_argument("--no-commands", action="store_true", help="Do not run commands")
-    run_cmd.add_argument("--save-response", default=None, help="Write response JSON to file")
+    run_cmd.add_argument(
+        "--apply", action="store_true", help="Apply file edits locally"
+    )
+    run_cmd.add_argument(
+        "--yes", action="store_true", help="Auto-approve command execution"
+    )
+    run_cmd.add_argument(
+        "--no-commands", action="store_true", help="Do not run commands"
+    )
+    run_cmd.add_argument(
+        "--save-response", default=None, help="Write response JSON to file"
+    )
 
     apply_cmd = sub.add_parser("apply", help="Apply a saved NAVI response JSON")
-    apply_cmd.add_argument("--response", default=None, help="Path to response JSON (or stdin)")
+    apply_cmd.add_argument(
+        "--response", default=None, help="Path to response JSON (or stdin)"
+    )
     apply_cmd.add_argument("--workspace", required=True, help="Workspace root path")
-    apply_cmd.add_argument("--yes", action="store_true", help="Auto-approve command execution")
-    apply_cmd.add_argument("--no-commands", action="store_true", help="Do not run commands")
+    apply_cmd.add_argument(
+        "--yes", action="store_true", help="Auto-approve command execution"
+    )
+    apply_cmd.add_argument(
+        "--no-commands", action="store_true", help="Do not run commands"
+    )
 
     return parser
 

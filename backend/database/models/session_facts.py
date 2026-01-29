@@ -202,7 +202,7 @@ class SessionFact(Base):
             "category",
             "fact_key",
             unique=True,
-            postgresql_where=Column("is_current") == True,
+            postgresql_where=Column("is_current"),
         ),
         Index("idx_session_fact_category", "category"),
         Index("idx_session_fact_current", "is_current"),

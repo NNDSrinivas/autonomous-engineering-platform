@@ -202,7 +202,9 @@ class EnterpriseProject(Base):
         return {
             "id": str(self.id),
             "user_id": self.user_id,
-            "workspace_session_id": str(self.workspace_session_id) if self.workspace_session_id else None,
+            "workspace_session_id": (
+                str(self.workspace_session_id) if self.workspace_session_id else None
+            ),
             "initiative_id": self.initiative_id,
             "name": self.name,
             "description": self.description,
@@ -221,8 +223,12 @@ class EnterpriseProject(Base):
             "last_checkpoint_iteration": self.last_checkpoint_iteration,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "last_active_at": self.last_active_at.isoformat() if self.last_active_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "last_active_at": (
+                self.last_active_at.isoformat() if self.last_active_at else None
+            ),
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
         }
 
 
@@ -610,7 +616,9 @@ class ProjectTaskQueue(Base):
             "blocked_reason": self.blocked_reason,
             "assigned_agent_id": self.assigned_agent_id,
             "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
             "verification_criteria": self.verification_criteria or [],
             "verification_result": self.verification_result,
             "verification_passed": self.verification_passed,

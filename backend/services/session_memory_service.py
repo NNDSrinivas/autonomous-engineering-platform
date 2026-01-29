@@ -22,6 +22,7 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class SessionFact:
     """A single fact extracted from a conversation."""
+
     category: str  # e.g., "server", "file", "decision", "error"
     key: str  # e.g., "port", "running_status", "file_path"
     value: str  # e.g., "3001", "running", "/src/app.ts"
@@ -33,6 +34,7 @@ class SessionFact:
 @dataclass
 class SessionMemory:
     """Memory store for a single conversation session."""
+
     session_id: str
     facts: Dict[str, SessionFact] = field(default_factory=dict)  # key -> fact
     recent_actions: List[Dict[str, Any]] = field(default_factory=list)
@@ -186,11 +188,11 @@ class SessionMemoryService:
         facts = []
         # Match patterns like "port 3000", "localhost:3001", ":8080"
         port_patterns = [
-            r'port\s*[:\s]?\s*(\d{2,5})',
-            r'localhost:(\d{2,5})',
-            r'127\.0\.0\.1:(\d{2,5})',
-            r'0\.0\.0\.0:(\d{2,5})',
-            r'running\s+(?:on|at)\s+.*?:(\d{2,5})',
+            r"port\s*[:\s]?\s*(\d{2,5})",
+            r"localhost:(\d{2,5})",
+            r"127\.0\.0\.1:(\d{2,5})",
+            r"0\.0\.0\.0:(\d{2,5})",
+            r"running\s+(?:on|at)\s+.*?:(\d{2,5})",
         ]
 
         ports_found: Set[str] = set()
@@ -199,13 +201,15 @@ class SessionMemoryService:
             ports_found.update(matches)
 
         for port in ports_found:
-            facts.append(SessionFact(
-                category="server",
-                key=f"port_{port}",
-                value=port,
-                timestamp=timestamp,
-                source_message_id=message_id,
-            ))
+            facts.append(
+                SessionFact(
+                    category="server",
+                    key=f"port_{port}",
+                    value=port,
+                    timestamp=timestamp,
+                    source_message_id=message_id,
+                )
+            )
 
         # Also store the "main" port if there's a clear indication
         if ports_found:
@@ -217,13 +221,15 @@ class SessionMemoryService:
                 primary_port = list(ports_found)[0]
 
             if primary_port:
-                facts.append(SessionFact(
-                    category="server",
-                    key="primary_port",
-                    value=primary_port,
-                    timestamp=timestamp,
-                    source_message_id=message_id,
-                ))
+                facts.append(
+                    SessionFact(
+                        category="server",
+                        key="primary_port",
+                        value=primary_port,
+                        timestamp=timestamp,
+                        source_message_id=message_id,
+                    )
+                )
 
         return facts
 
@@ -236,39 +242,43 @@ class SessionMemoryService:
 
         # Check for running indicators
         running_patterns = [
-            r'server\s+is\s+(now\s+)?running',
-            r'successfully\s+started',
-            r'application\s+is\s+running',
-            r'project\s+is\s+(now\s+)?(up\s+and\s+)?running',
-            r'started\s+(?:on|at)\s+',
+            r"server\s+is\s+(now\s+)?running",
+            r"successfully\s+started",
+            r"application\s+is\s+running",
+            r"project\s+is\s+(now\s+)?(up\s+and\s+)?running",
+            r"started\s+(?:on|at)\s+",
         ]
 
         stopped_patterns = [
-            r'server\s+stopped',
-            r'server\s+is\s+not\s+running',
-            r'failed\s+to\s+start',
+            r"server\s+stopped",
+            r"server\s+is\s+not\s+running",
+            r"failed\s+to\s+start",
         ]
 
         for pattern in running_patterns:
             if re.search(pattern, lower_text):
-                facts.append(SessionFact(
-                    category="server",
-                    key="status",
-                    value="running",
-                    timestamp=timestamp,
-                    source_message_id=message_id,
-                ))
+                facts.append(
+                    SessionFact(
+                        category="server",
+                        key="status",
+                        value="running",
+                        timestamp=timestamp,
+                        source_message_id=message_id,
+                    )
+                )
                 break
 
         for pattern in stopped_patterns:
             if re.search(pattern, lower_text):
-                facts.append(SessionFact(
-                    category="server",
-                    key="status",
-                    value="stopped",
-                    timestamp=timestamp,
-                    source_message_id=message_id,
-                ))
+                facts.append(
+                    SessionFact(
+                        category="server",
+                        key="status",
+                        value="stopped",
+                        timestamp=timestamp,
+                        source_message_id=message_id,
+                    )
+                )
                 break
 
         return facts
@@ -280,20 +290,24 @@ class SessionMemoryService:
         facts = []
 
         # Match file paths
-        path_pattern = r'(?:^|[\s`"\'])(/[^\s`"\']+\.[a-z]{1,5}|[a-z]+/[^\s`"\']+\.[a-z]{1,5})'
+        path_pattern = (
+            r'(?:^|[\s`"\'])(/[^\s`"\']+\.[a-z]{1,5}|[a-z]+/[^\s`"\']+\.[a-z]{1,5})'
+        )
         matches = re.findall(path_pattern, text, re.MULTILINE | re.IGNORECASE)
 
         seen = set()
         for match in matches[:10]:  # Limit to 10 files
             if match not in seen:
                 seen.add(match)
-                facts.append(SessionFact(
-                    category="file",
-                    key=f"mentioned_{len(facts)}",
-                    value=match,
-                    timestamp=timestamp,
-                    source_message_id=message_id,
-                ))
+                facts.append(
+                    SessionFact(
+                        category="file",
+                        key=f"mentioned_{len(facts)}",
+                        value=match,
+                        timestamp=timestamp,
+                        source_message_id=message_id,
+                    )
+                )
 
         return facts
 
@@ -306,13 +320,15 @@ class SessionMemoryService:
         matches = re.findall(url_pattern, text)
 
         for i, url in enumerate(matches[:5]):  # Limit to 5 URLs
-            facts.append(SessionFact(
-                category="discovery",
-                key=f"url_{i}",
-                value=url,
-                timestamp=timestamp,
-                source_message_id=message_id,
-            ))
+            facts.append(
+                SessionFact(
+                    category="discovery",
+                    key=f"url_{i}",
+                    value=url,
+                    timestamp=timestamp,
+                    source_message_id=message_id,
+                )
+            )
 
         return facts
 
@@ -324,20 +340,22 @@ class SessionMemoryService:
 
         # Look for command blocks or ran/executed patterns
         ran_patterns = [
-            r'(?:ran|executed|running)[\s:]+`([^`]+)`',
-            r'command[\s:]+`([^`]+)`',
+            r"(?:ran|executed|running)[\s:]+`([^`]+)`",
+            r"command[\s:]+`([^`]+)`",
         ]
 
         for pattern in ran_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for i, cmd in enumerate(matches[:5]):
-                facts.append(SessionFact(
-                    category="task",
-                    key=f"command_{i}",
-                    value=cmd,
-                    timestamp=timestamp,
-                    source_message_id=message_id,
-                ))
+                facts.append(
+                    SessionFact(
+                        category="task",
+                        key=f"command_{i}",
+                        value=cmd,
+                        timestamp=timestamp,
+                        source_message_id=message_id,
+                    )
+                )
 
         return facts
 
@@ -350,21 +368,23 @@ class SessionMemoryService:
 
         # Look for error patterns
         error_patterns = [
-            r'error[:\s]+([^\n.]+)',
-            r'failed[:\s]+([^\n.]+)',
-            r'exception[:\s]+([^\n.]+)',
+            r"error[:\s]+([^\n.]+)",
+            r"failed[:\s]+([^\n.]+)",
+            r"exception[:\s]+([^\n.]+)",
         ]
 
         for pattern in error_patterns:
             matches = re.findall(pattern, lower_text)
             for i, error in enumerate(matches[:3]):
-                facts.append(SessionFact(
-                    category="error",
-                    key=f"error_{i}",
-                    value=error.strip()[:200],  # Limit length
-                    timestamp=timestamp,
-                    source_message_id=message_id,
-                ))
+                facts.append(
+                    SessionFact(
+                        category="error",
+                        key=f"error_{i}",
+                        value=error.strip()[:200],  # Limit length
+                        timestamp=timestamp,
+                        source_message_id=message_id,
+                    )
+                )
 
         return facts
 
@@ -376,20 +396,22 @@ class SessionMemoryService:
 
         # Look for decision indicators
         decision_patterns = [
-            r'(?:decided|choosing|using|selected|went with)[:\s]+([^\n.]+)',
-            r'(?:the solution is|fix is|answer is)[:\s]+([^\n.]+)',
+            r"(?:decided|choosing|using|selected|went with)[:\s]+([^\n.]+)",
+            r"(?:the solution is|fix is|answer is)[:\s]+([^\n.]+)",
         ]
 
         for pattern in decision_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for i, decision in enumerate(matches[:3]):
-                facts.append(SessionFact(
-                    category="decision",
-                    key=f"decision_{i}",
-                    value=decision.strip()[:200],
-                    timestamp=timestamp,
-                    source_message_id=message_id,
-                ))
+                facts.append(
+                    SessionFact(
+                        category="decision",
+                        key=f"decision_{i}",
+                        value=decision.strip()[:200],
+                        timestamp=timestamp,
+                        source_message_id=message_id,
+                    )
+                )
 
         return facts
 
@@ -403,43 +425,51 @@ class SessionMemoryService:
 
         if action_type == "command":
             cmd = action.get("command", "")
-            output = action.get("output", "")
+            action.get("output", "")
             exit_code = action.get("exit_code", action.get("exitCode"))
 
-            facts.append(SessionFact(
-                category="task",
-                key="last_command",
-                value=cmd,
-                timestamp=timestamp,
-                source_message_id=message_id,
-            ))
+            facts.append(
+                SessionFact(
+                    category="task",
+                    key="last_command",
+                    value=cmd,
+                    timestamp=timestamp,
+                    source_message_id=message_id,
+                )
+            )
 
             if exit_code == 0:
-                facts.append(SessionFact(
-                    category="task",
-                    key="last_command_status",
-                    value="success",
-                    timestamp=timestamp,
-                    source_message_id=message_id,
-                ))
+                facts.append(
+                    SessionFact(
+                        category="task",
+                        key="last_command_status",
+                        value="success",
+                        timestamp=timestamp,
+                        source_message_id=message_id,
+                    )
+                )
             elif exit_code is not None:
-                facts.append(SessionFact(
-                    category="error",
-                    key="last_command_status",
-                    value=f"failed with exit code {exit_code}",
-                    timestamp=timestamp,
-                    source_message_id=message_id,
-                ))
+                facts.append(
+                    SessionFact(
+                        category="error",
+                        key="last_command_status",
+                        value=f"failed with exit code {exit_code}",
+                        timestamp=timestamp,
+                        source_message_id=message_id,
+                    )
+                )
 
         elif action_type in ["create", "edit"]:
             file_path = action.get("file") or action.get("path", "")
-            facts.append(SessionFact(
-                category="file",
-                key=f"modified_{action_type}",
-                value=file_path,
-                timestamp=timestamp,
-                source_message_id=message_id,
-            ))
+            facts.append(
+                SessionFact(
+                    category="file",
+                    key=f"modified_{action_type}",
+                    value=file_path,
+                    timestamp=timestamp,
+                    source_message_id=message_id,
+                )
+            )
 
         return facts
 

@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 class DatabaseType(Enum):
     """Supported database types - comprehensive list of 150+ databases."""
+
     # =========================================================================
     # RELATIONAL DATABASES (RDBMS)
     # =========================================================================
@@ -380,6 +381,7 @@ class DatabaseType(Enum):
 
 class MigrationTool(Enum):
     """Supported migration tools - comprehensive list across 50+ languages."""
+
     # JavaScript/TypeScript ORMs
     PRISMA = "prisma"
     DRIZZLE = "drizzle"
@@ -619,6 +621,7 @@ class MigrationTool(Enum):
 
 class MigrationDirection(Enum):
     """Migration direction."""
+
     UP = "up"
     DOWN = "down"
 
@@ -626,6 +629,7 @@ class MigrationDirection(Enum):
 @dataclass
 class MigrationInfo:
     """Information about a migration."""
+
     id: str
     name: str
     applied: bool
@@ -636,6 +640,7 @@ class MigrationInfo:
 @dataclass
 class DatabaseBackup:
     """Database backup information."""
+
     id: str
     database: str
     created_at: datetime
@@ -647,6 +652,7 @@ class DatabaseBackup:
 @dataclass
 class DatabaseResult:
     """Result of a database operation."""
+
     success: bool
     operation: str
     migrations_applied: List[str] = field(default_factory=list)
@@ -713,22 +719,28 @@ class DatabaseExecutorService:
             setup_parts.append(
                 f'export NVM_DIR="{nvm_dir}" && '
                 f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-                f'{nvm_use}'
+                f"{nvm_use}"
             )
 
         # Check for fnm
         fnm_path = os.path.join(home, ".fnm")
         if os.path.exists(fnm_path):
-            setup_parts.append(f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true')
+            setup_parts.append(
+                f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
+            )
 
         # Check for volta
         volta_home = os.environ.get("VOLTA_HOME", os.path.join(home, ".volta"))
         if os.path.exists(volta_home):
-            setup_parts.append(f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"')
+            setup_parts.append(
+                f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"'
+            )
 
         return " && ".join(setup_parts) if setup_parts else ""
 
-    async def detect_migration_tool(self, workspace_path: str) -> Optional[MigrationTool]:
+    async def detect_migration_tool(
+        self, workspace_path: str
+    ) -> Optional[MigrationTool]:
         """Detect the migration tool used in the project."""
         workspace = Path(workspace_path)
 
@@ -737,7 +749,9 @@ class DatabaseExecutorService:
             return MigrationTool.PRISMA
 
         # Check for Drizzle
-        if (workspace / "drizzle.config.ts").exists() or (workspace / "drizzle.config.js").exists():
+        if (workspace / "drizzle.config.ts").exists() or (
+            workspace / "drizzle.config.js"
+        ).exists():
             return MigrationTool.DRIZZLE
 
         # Check for Alembic (Python)
@@ -756,7 +770,9 @@ class DatabaseExecutorService:
             return MigrationTool.KNEX
 
         # Check for TypeORM
-        if (workspace / "ormconfig.json").exists() or (workspace / "ormconfig.js").exists():
+        if (workspace / "ormconfig.json").exists() or (
+            workspace / "ormconfig.js"
+        ).exists():
             return MigrationTool.TYPEORM
 
         # Check for Sequelize
@@ -837,7 +853,9 @@ class DatabaseExecutorService:
                 return result
 
         if progress_callback:
-            progress_callback(f"Running {tool.value} migrations ({direction.value})...", 20)
+            progress_callback(
+                f"Running {tool.value} migrations ({direction.value})...", 20
+            )
 
         # Execute based on tool
         executors = {
@@ -925,15 +943,36 @@ class DatabaseExecutorService:
         if progress_callback:
             progress_callback(f"Creating {database_type.value} backup...", 20)
 
-        backup_file = Path(output_dir) / f"{database_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        backup_file = (
+            Path(output_dir)
+            / f"{database_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        )
 
         try:
             if database_type == DatabaseType.POSTGRESQL:
-                result = await self._backup_postgres(connection_string, database_name, backup_file, compress, progress_callback)
+                result = await self._backup_postgres(
+                    connection_string,
+                    database_name,
+                    backup_file,
+                    compress,
+                    progress_callback,
+                )
             elif database_type == DatabaseType.MYSQL:
-                result = await self._backup_mysql(connection_string, database_name, backup_file, compress, progress_callback)
+                result = await self._backup_mysql(
+                    connection_string,
+                    database_name,
+                    backup_file,
+                    compress,
+                    progress_callback,
+                )
             elif database_type == DatabaseType.MONGODB:
-                result = await self._backup_mongodb(connection_string, database_name, backup_file, compress, progress_callback)
+                result = await self._backup_mongodb(
+                    connection_string,
+                    database_name,
+                    backup_file,
+                    compress,
+                    progress_callback,
+                )
             else:
                 result.error = f"Backup not supported for {database_type.value}"
         except Exception as e:
@@ -966,11 +1005,17 @@ class DatabaseExecutorService:
 
         try:
             if database_type == DatabaseType.POSTGRESQL:
-                result = await self._restore_postgres(connection_string, backup_file, progress_callback)
+                result = await self._restore_postgres(
+                    connection_string, backup_file, progress_callback
+                )
             elif database_type == DatabaseType.MYSQL:
-                result = await self._restore_mysql(connection_string, backup_file, progress_callback)
+                result = await self._restore_mysql(
+                    connection_string, backup_file, progress_callback
+                )
             elif database_type == DatabaseType.MONGODB:
-                result = await self._restore_mongodb(connection_string, backup_file, progress_callback)
+                result = await self._restore_mongodb(
+                    connection_string, backup_file, progress_callback
+                )
             else:
                 result.error = f"Restore not supported for {database_type.value if database_type else 'unknown'}"
         except Exception as e:
@@ -1012,13 +1057,21 @@ class DatabaseExecutorService:
         if tool == MigrationTool.PRISMA:
             result = await self._run_prisma_seed(workspace_path, progress_callback)
         elif tool == MigrationTool.KNEX:
-            result = await self._run_knex_seed(workspace_path, seed_file, progress_callback)
+            result = await self._run_knex_seed(
+                workspace_path, seed_file, progress_callback
+            )
         elif tool == MigrationTool.DJANGO:
-            result = await self._run_django_loaddata(workspace_path, seed_file, progress_callback)
+            result = await self._run_django_loaddata(
+                workspace_path, seed_file, progress_callback
+            )
         elif tool == MigrationTool.SEQUELIZE:
-            result = await self._run_sequelize_seed(workspace_path, seed_file, progress_callback)
+            result = await self._run_sequelize_seed(
+                workspace_path, seed_file, progress_callback
+            )
         else:
-            result.error = f"Seeding not implemented for {tool.value if tool else 'unknown'}"
+            result.error = (
+                f"Seeding not implemented for {tool.value if tool else 'unknown'}"
+            )
 
         result.duration_seconds = (datetime.utcnow() - start_time).total_seconds()
         self._operation_history.append(result)
@@ -1056,7 +1109,7 @@ class DatabaseExecutorService:
         if output["returncode"] == 0:
             result.success = True
             # Parse applied migrations from output
-            migrations = re.findall(r'(\d+_\w+)', output["stdout"])
+            migrations = re.findall(r"(\d+_\w+)", output["stdout"])
             if direction == MigrationDirection.UP:
                 result.migrations_applied = migrations
             else:
@@ -1153,7 +1206,13 @@ class DatabaseExecutorService:
                 result.error = "Django rollback requires specifying app and migration (e.g., 'myapp 0001')"
                 return result
             parts = target.split()
-            cmd = ["python", "manage.py", "migrate", parts[0], parts[1] if len(parts) > 1 else "zero"]
+            cmd = [
+                "python",
+                "manage.py",
+                "migrate",
+                parts[0],
+                parts[1] if len(parts) > 1 else "zero",
+            ]
 
         if dry_run:
             cmd.append("--plan")
@@ -1328,8 +1387,7 @@ class DatabaseExecutorService:
         """Get Prisma migration status."""
         migrations = []
         output = await self._run_command(
-            ["npx", "prisma", "migrate", "status"],
-            cwd=workspace_path
+            ["npx", "prisma", "migrate", "status"], cwd=workspace_path
         )
 
         # Parse output for migration info
@@ -1337,11 +1395,13 @@ class DatabaseExecutorService:
             if "applied" in line.lower() or "pending" in line.lower():
                 parts = line.split()
                 if len(parts) >= 2:
-                    migrations.append(MigrationInfo(
-                        id=parts[0],
-                        name=parts[0],
-                        applied="applied" in line.lower(),
-                    ))
+                    migrations.append(
+                        MigrationInfo(
+                            id=parts[0],
+                            name=parts[0],
+                            applied="applied" in line.lower(),
+                        )
+                    )
 
         return migrations
 
@@ -1349,25 +1409,23 @@ class DatabaseExecutorService:
         """Get Alembic migration status."""
         migrations = []
         output = await self._run_command(
-            ["alembic", "history", "--verbose"],
-            cwd=workspace_path
+            ["alembic", "history", "--verbose"], cwd=workspace_path
         )
 
-        current = await self._run_command(
-            ["alembic", "current"],
-            cwd=workspace_path
-        )
+        current = await self._run_command(["alembic", "current"], cwd=workspace_path)
         current_rev = current["stdout"].strip().split()[0] if current["stdout"] else ""
 
         for line in output["stdout"].split("\n"):
-            match = re.match(r'([a-f0-9]+)\s+.*->\s+([a-f0-9]+)', line)
+            match = re.match(r"([a-f0-9]+)\s+.*->\s+([a-f0-9]+)", line)
             if match:
                 rev = match.group(2)
-                migrations.append(MigrationInfo(
-                    id=rev,
-                    name=line,
-                    applied=rev <= current_rev if current_rev else False,
-                ))
+                migrations.append(
+                    MigrationInfo(
+                        id=rev,
+                        name=line,
+                        applied=rev <= current_rev if current_rev else False,
+                    )
+                )
 
         return migrations
 
@@ -1375,19 +1433,20 @@ class DatabaseExecutorService:
         """Get Django migration status."""
         migrations = []
         output = await self._run_command(
-            ["python", "manage.py", "showmigrations", "--list"],
-            cwd=workspace_path
+            ["python", "manage.py", "showmigrations", "--list"], cwd=workspace_path
         )
 
         for line in output["stdout"].split("\n"):
             if "[X]" in line or "[ ]" in line:
                 applied = "[X]" in line
                 name = line.replace("[X]", "").replace("[ ]", "").strip()
-                migrations.append(MigrationInfo(
-                    id=name,
-                    name=name,
-                    applied=applied,
-                ))
+                migrations.append(
+                    MigrationInfo(
+                        id=name,
+                        name=name,
+                        applied=applied,
+                    )
+                )
 
         return migrations
 
@@ -1415,14 +1474,15 @@ class DatabaseExecutorService:
         if compress:
             # Pipe through gzip
             proc1 = await asyncio.create_subprocess_exec(
-                "pg_dump", connection_string,
+                "pg_dump",
+                connection_string,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             proc2 = await asyncio.create_subprocess_exec(
                 "gzip",
                 stdin=proc1.stdout,
-                stdout=open(output_file, 'wb'),
+                stdout=open(output_file, "wb"),
                 stderr=asyncio.subprocess.PIPE,
             )
             await proc2.wait()
@@ -1433,7 +1493,9 @@ class DatabaseExecutorService:
 
         if returncode == 0:
             result.success = True
-            file_size = os.path.getsize(output_file) if os.path.exists(output_file) else 0
+            file_size = (
+                os.path.getsize(output_file) if os.path.exists(output_file) else 0
+            )
             result.backup_created = DatabaseBackup(
                 id=str(datetime.utcnow().timestamp()),
                 database=database_name,
@@ -1507,7 +1569,9 @@ class DatabaseExecutorService:
 
         if output["returncode"] == 0:
             result.success = True
-            result.rollback_command = f"mongorestore --uri {connection_string} {output_dir}"
+            result.rollback_command = (
+                f"mongorestore --uri {connection_string} {output_dir}"
+            )
 
             if progress_callback:
                 progress_callback(f"MongoDB backup created: {output_dir}", 100)
@@ -1530,7 +1594,9 @@ class DatabaseExecutorService:
             cmd = f"gunzip -c {backup_file} | psql {connection_string}"
             output = await self._run_shell_command(cmd)
         else:
-            output = await self._run_command(["psql", connection_string, "-f", backup_file])
+            output = await self._run_command(
+                ["psql", connection_string, "-f", backup_file]
+            )
 
         if output["returncode"] == 0:
             result.success = True
@@ -1601,8 +1667,7 @@ class DatabaseExecutorService:
         result = DatabaseResult(success=False, operation="prisma_seed")
 
         output = await self._run_command(
-            ["npx", "prisma", "db", "seed"],
-            cwd=workspace_path
+            ["npx", "prisma", "db", "seed"], cwd=workspace_path
         )
         result.output = output["stdout"]
 
@@ -1654,8 +1719,7 @@ class DatabaseExecutorService:
             return result
 
         output = await self._run_command(
-            ["python", "manage.py", "loaddata", fixture],
-            cwd=workspace_path
+            ["python", "manage.py", "loaddata", fixture], cwd=workspace_path
         )
         result.output = output["stdout"]
 
@@ -1697,7 +1761,9 @@ class DatabaseExecutorService:
     # Connection Check Methods
     # -------------------------------------------------------------------------
 
-    async def _check_postgres_connection(self, connection_string: str) -> Tuple[bool, str]:
+    async def _check_postgres_connection(
+        self, connection_string: str
+    ) -> Tuple[bool, str]:
         """Check PostgreSQL connection."""
         output = await self._run_command(["psql", connection_string, "-c", "SELECT 1"])
         if output["returncode"] == 0:
@@ -1711,14 +1777,20 @@ class DatabaseExecutorService:
             return True, "MySQL connection successful"
         return False, output["stderr"]
 
-    async def _check_mongodb_connection(self, connection_string: str) -> Tuple[bool, str]:
+    async def _check_mongodb_connection(
+        self, connection_string: str
+    ) -> Tuple[bool, str]:
         """Check MongoDB connection."""
-        output = await self._run_command(["mongosh", connection_string, "--eval", "db.runCommand({ping:1})"])
+        output = await self._run_command(
+            ["mongosh", connection_string, "--eval", "db.runCommand({ping:1})"]
+        )
         if output["returncode"] == 0:
             return True, "MongoDB connection successful"
         return False, output["stderr"]
 
-    async def _check_sqlite_connection(self, connection_string: str) -> Tuple[bool, str]:
+    async def _check_sqlite_connection(
+        self, connection_string: str
+    ) -> Tuple[bool, str]:
         """Check SQLite connection."""
         db_path = connection_string.replace("sqlite:///", "").replace("sqlite://", "")
         if os.path.exists(db_path):
@@ -1743,7 +1815,9 @@ class DatabaseExecutorService:
                 env_setup = self._get_node_env_setup(cwd)
                 cmd_str = " ".join(cmd)
                 if env_setup:
-                    full_cmd = f"unset npm_config_prefix 2>/dev/null; {env_setup} && {cmd_str}"
+                    full_cmd = (
+                        f"unset npm_config_prefix 2>/dev/null; {env_setup} && {cmd_str}"
+                    )
                 else:
                     full_cmd = f"unset npm_config_prefix 2>/dev/null; {cmd_str}"
 
@@ -1778,7 +1852,9 @@ class DatabaseExecutorService:
                 "stderr": str(e),
             }
 
-    async def _run_shell_command(self, cmd: str, cwd: Optional[str] = None) -> Dict[str, Any]:
+    async def _run_shell_command(
+        self, cmd: str, cwd: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Run a shell command."""
         try:
             env = self._get_command_env()

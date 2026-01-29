@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 class CICDProvider(Enum):
     """Supported CI/CD providers"""
+
     GITHUB_ACTIONS = "github_actions"
     GITLAB_CI = "gitlab_ci"
     CIRCLECI = "circleci"
@@ -46,6 +47,7 @@ class CICDProvider(Enum):
 
 class PipelineStatus(Enum):
     """Pipeline execution status"""
+
     PENDING = "pending"
     QUEUED = "queued"
     RUNNING = "running"
@@ -58,6 +60,7 @@ class PipelineStatus(Enum):
 
 class DeploymentEnvironment(Enum):
     """Deployment target environments"""
+
     DEVELOPMENT = "development"
     STAGING = "staging"
     PRODUCTION = "production"
@@ -67,6 +70,7 @@ class DeploymentEnvironment(Enum):
 @dataclass
 class PipelineRun:
     """Represents a pipeline run"""
+
     run_id: str
     provider: CICDProvider
     workflow_name: str
@@ -87,6 +91,7 @@ class PipelineRun:
 @dataclass
 class TestResult:
     """Structured test results"""
+
     total_tests: int
     passed: int
     failed: int
@@ -100,6 +105,7 @@ class TestResult:
 @dataclass
 class DeploymentResult:
     """Deployment verification result"""
+
     deployment_id: str
     environment: DeploymentEnvironment
     status: str  # success, failed, pending
@@ -184,7 +190,13 @@ class CICDExecutionService:
         try:
             if provider_enum == CICDProvider.GITHUB_ACTIONS:
                 async for event in self._trigger_github_actions(
-                    owner, repo, workflow, branch, inputs, wait_for_completion, timeout_minutes
+                    owner,
+                    repo,
+                    workflow,
+                    branch,
+                    inputs,
+                    wait_for_completion,
+                    timeout_minutes,
                 ):
                     yield event
 
@@ -201,9 +213,7 @@ class CICDExecutionService:
                     yield event
 
             elif provider_enum == CICDProvider.LOCAL:
-                async for event in self._run_local_pipeline(
-                    workflow, branch, inputs
-                ):
+                async for event in self._run_local_pipeline(workflow, branch, inputs):
                     yield event
 
             else:
@@ -262,7 +272,10 @@ class CICDExecutionService:
                     }
                 else:
                     error_text = await resp.text()
-                    yield {"type": "error", "message": f"Failed to trigger: {error_text}"}
+                    yield {
+                        "type": "error",
+                        "message": f"Failed to trigger: {error_text}",
+                    }
                     return
 
         except Exception as e:
@@ -373,7 +386,7 @@ class CICDExecutionService:
                                             "conclusion": job["conclusion"],
                                             "duration_seconds": self._parse_duration(
                                                 job.get("started_at"),
-                                                job.get("completed_at")
+                                                job.get("completed_at"),
                                             ),
                                         }
                                         for job in jobs_data.get("jobs", [])
@@ -410,6 +423,7 @@ class CICDExecutionService:
 
         # URL encode the project path
         import urllib.parse
+
         project_id = urllib.parse.quote(f"{project_path}/{repo}", safe="")
 
         # Trigger pipeline
@@ -436,12 +450,19 @@ class CICDExecutionService:
 
                     if wait_for_completion:
                         async for event in self._watch_gitlab_pipeline(
-                            project_id, pipeline_id, headers, gitlab_url, timeout_minutes
+                            project_id,
+                            pipeline_id,
+                            headers,
+                            gitlab_url,
+                            timeout_minutes,
                         ):
                             yield event
                 else:
                     error_text = await resp.text()
-                    yield {"type": "error", "message": f"Failed to trigger: {error_text}"}
+                    yield {
+                        "type": "error",
+                        "message": f"Failed to trigger: {error_text}",
+                    }
 
         except Exception as e:
             yield {"type": "error", "message": f"Request failed: {e}"}
@@ -471,7 +492,10 @@ class CICDExecutionService:
             try:
                 async with session.get(url, headers=headers) as resp:
                     if resp.status != 200:
-                        yield {"type": "error", "message": "Failed to get pipeline status"}
+                        yield {
+                            "type": "error",
+                            "message": "Failed to get pipeline status",
+                        }
                         break
 
                     data = await resp.json()
@@ -567,7 +591,10 @@ class CICDExecutionService:
                             yield event
                 else:
                     error_text = await resp.text()
-                    yield {"type": "error", "message": f"Failed to trigger: {error_text}"}
+                    yield {
+                        "type": "error",
+                        "message": f"Failed to trigger: {error_text}",
+                    }
 
         except Exception as e:
             yield {"type": "error", "message": f"Request failed: {e}"}
@@ -598,7 +625,10 @@ class CICDExecutionService:
             try:
                 async with session.get(url, headers=headers) as resp:
                     if resp.status != 200:
-                        yield {"type": "error", "message": "Failed to get workflow status"}
+                        yield {
+                            "type": "error",
+                            "message": "Failed to get workflow status",
+                        }
                         break
 
                     data = await resp.json()
@@ -715,7 +745,9 @@ class CICDExecutionService:
 
         # Auto-detect test command if not provided
         if not test_command:
-            test_command = await self._detect_test_command(workspace_path, test_framework)
+            test_command = await self._detect_test_command(
+                workspace_path, test_framework
+            )
 
         if not test_command:
             yield {"type": "error", "message": "Could not detect test command"}
@@ -786,8 +818,9 @@ class CICDExecutionService:
                     return "npm run test:ci"
 
         # Check for pytest (Python)
-        if os.path.exists(os.path.join(workspace_path, "pytest.ini")) or \
-           os.path.exists(os.path.join(workspace_path, "pyproject.toml")):
+        if os.path.exists(os.path.join(workspace_path, "pytest.ini")) or os.path.exists(
+            os.path.join(workspace_path, "pyproject.toml")
+        ):
             return "pytest -v"
 
         # Check for Cargo.toml (Rust)
@@ -843,6 +876,7 @@ class CICDExecutionService:
         if "pytest" in framework or "pytest" in output.lower():
             # Parse pytest output
             import re
+
             match = re.search(r"(\d+) passed", output)
             if match:
                 results["passed"] = int(match.group(1))
@@ -885,7 +919,7 @@ class CICDExecutionService:
         Yields:
             Verification progress and results
         """
-        env = DeploymentEnvironment(environment)
+        DeploymentEnvironment(environment)
 
         yield {
             "type": "verification_start",
@@ -944,12 +978,14 @@ class CICDExecutionService:
                 try:
                     async with session.request(method, test_url, timeout=30) as resp:
                         passed = resp.status == expected_status
-                        smoke_results.append({
-                            "name": test.get("name", test_url),
-                            "passed": passed,
-                            "status_code": resp.status,
-                            "expected": expected_status,
-                        })
+                        smoke_results.append(
+                            {
+                                "name": test.get("name", test_url),
+                                "passed": passed,
+                                "status_code": resp.status,
+                                "expected": expected_status,
+                            }
+                        )
 
                         yield {
                             "type": "smoke_test_result",
@@ -958,13 +994,17 @@ class CICDExecutionService:
                         }
 
                 except Exception as e:
-                    smoke_results.append({
-                        "name": test.get("name", test_url),
-                        "passed": False,
-                        "error": str(e),
-                    })
+                    smoke_results.append(
+                        {
+                            "name": test.get("name", test_url),
+                            "passed": False,
+                            "error": str(e),
+                        }
+                    )
 
-        all_smoke_passed = all(r["passed"] for r in smoke_results) if smoke_results else True
+        all_smoke_passed = (
+            all(r["passed"] for r in smoke_results) if smoke_results else True
+        )
 
         yield {
             "type": "verification_complete",

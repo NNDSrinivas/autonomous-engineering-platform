@@ -22,6 +22,7 @@ def _get_github_client():
     """Get GitHub client or return None if not configured."""
     try:
         from backend.integrations.github.service import GitHubService
+
         token = os.getenv("GITHUB_TOKEN", "")
         if not token:
             return None
@@ -177,7 +178,9 @@ async def github_create_issue(
             "error": str (if failure)
         }
     """
-    logger.info(f"[TOOL:github_create_issue] user={user_id}, repo={repo}, title={title}")
+    logger.info(
+        f"[TOOL:github_create_issue] user={user_id}, repo={repo}, title={title}"
+    )
 
     try:
         gh_client = _get_github_client()
@@ -319,7 +322,9 @@ async def github_add_issue_comment(
             "error": str (if failure)
         }
     """
-    logger.info(f"[TOOL:github_add_issue_comment] user={user_id}, repo={repo}, issue={issue_number}")
+    logger.info(
+        f"[TOOL:github_add_issue_comment] user={user_id}, repo={repo}, issue={issue_number}"
+    )
 
     try:
         gh_client = _get_github_client()
@@ -372,7 +377,9 @@ async def github_add_pr_review(
             "error": str (if failure)
         }
     """
-    logger.info(f"[TOOL:github_add_pr_review] user={user_id}, repo={repo}, pr={pr_number}, event={event}")
+    logger.info(
+        f"[TOOL:github_add_pr_review] user={user_id}, repo={repo}, pr={pr_number}, event={event}"
+    )
 
     try:
         gh_client = _get_github_client()
@@ -517,7 +524,9 @@ async def github_merge_pr(
             "error": str (if failure)
         }
     """
-    logger.info(f"[TOOL:github_merge_pr] user={user_id}, repo={repo}, pr={pr_number}, method={merge_method}")
+    logger.info(
+        f"[TOOL:github_merge_pr] user={user_id}, repo={repo}, pr={pr_number}, method={merge_method}"
+    )
 
     try:
         gh_client = _get_github_client()

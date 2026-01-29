@@ -88,14 +88,20 @@ class CheckpointService:
             existing.interrupt_reason = None
             existing.retry_count = 0
             existing.last_retry_at = None
-            existing.expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
+            existing.expires_at = datetime.now(timezone.utc) + timedelta(
+                hours=expires_hours
+            )
             existing.updated_at = datetime.now(timezone.utc)
 
             self.db.commit()
             self.db.refresh(existing)
             logger.info(
                 "Updated existing checkpoint",
-                extra={"user_id": user_id, "session_id": session_id, "message_id": message_id}
+                extra={
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "message_id": message_id,
+                },
             )
             return existing
 
@@ -120,7 +126,11 @@ class CheckpointService:
 
         logger.info(
             "Created new checkpoint",
-            extra={"checkpoint_id": str(checkpoint.id), "user_id": user_id, "session_id": session_id}
+            extra={
+                "checkpoint_id": str(checkpoint.id),
+                "user_id": user_id,
+                "session_id": session_id,
+            },
         )
         return checkpoint
 
@@ -248,12 +258,14 @@ class CheckpointService:
             return None
 
         modified_files = checkpoint.modified_files or []
-        modified_files.append({
-            "path": file_path,
-            "operation": operation,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "success": success,
-        })
+        modified_files.append(
+            {
+                "path": file_path,
+                "operation": operation,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": success,
+            }
+        )
         checkpoint.modified_files = modified_files
         checkpoint.updated_at = datetime.now(timezone.utc)
 
@@ -287,12 +299,14 @@ class CheckpointService:
             return None
 
         executed_commands = checkpoint.executed_commands or []
-        executed_commands.append({
-            "command": command,
-            "exitCode": exit_code,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "success": success,
-        })
+        executed_commands.append(
+            {
+                "command": command,
+                "exitCode": exit_code,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": success,
+            }
+        )
         checkpoint.executed_commands = executed_commands
         checkpoint.updated_at = datetime.now(timezone.utc)
 
@@ -331,7 +345,7 @@ class CheckpointService:
 
         logger.info(
             "Marked checkpoint as interrupted",
-            extra={"checkpoint_id": str(checkpoint.id), "reason": reason}
+            extra={"checkpoint_id": str(checkpoint.id), "reason": reason},
         )
         return checkpoint
 
@@ -362,7 +376,7 @@ class CheckpointService:
 
         logger.info(
             "Marked checkpoint as completed",
-            extra={"checkpoint_id": str(checkpoint.id)}
+            extra={"checkpoint_id": str(checkpoint.id)},
         )
         return checkpoint
 
@@ -396,7 +410,7 @@ class CheckpointService:
 
         logger.info(
             "Marked checkpoint as failed",
-            extra={"checkpoint_id": str(checkpoint.id), "reason": reason}
+            extra={"checkpoint_id": str(checkpoint.id), "reason": reason},
         )
         return checkpoint
 
@@ -483,8 +497,7 @@ class CheckpointService:
         self.db.commit()
 
         logger.info(
-            "Deleted checkpoint",
-            extra={"user_id": user_id, "session_id": session_id}
+            "Deleted checkpoint", extra={"user_id": user_id, "session_id": session_id}
         )
         return True
 
@@ -535,17 +548,35 @@ class CheckpointService:
         if existing:
             # Update existing checkpoint with frontend data
             existing.message_id = checkpoint_data.get("messageId", existing.message_id)
-            existing.user_message = checkpoint_data.get("userMessage", existing.user_message)
-            existing.workspace_path = checkpoint_data.get("workspacePath", existing.workspace_path)
+            existing.user_message = checkpoint_data.get(
+                "userMessage", existing.user_message
+            )
+            existing.workspace_path = checkpoint_data.get(
+                "workspacePath", existing.workspace_path
+            )
             existing.status = checkpoint_data.get("status", existing.status)
-            existing.current_step_index = checkpoint_data.get("currentStepIndex", existing.current_step_index)
-            existing.total_steps = checkpoint_data.get("totalSteps", existing.total_steps)
+            existing.current_step_index = checkpoint_data.get(
+                "currentStepIndex", existing.current_step_index
+            )
+            existing.total_steps = checkpoint_data.get(
+                "totalSteps", existing.total_steps
+            )
             existing.steps = checkpoint_data.get("steps", existing.steps)
-            existing.modified_files = checkpoint_data.get("modifiedFiles", existing.modified_files)
-            existing.executed_commands = checkpoint_data.get("executedCommands", existing.executed_commands)
-            existing.partial_content = checkpoint_data.get("partialContent", existing.partial_content)
-            existing.streaming_state = checkpoint_data.get("streamingState", existing.streaming_state)
-            existing.retry_count = checkpoint_data.get("retryCount", existing.retry_count)
+            existing.modified_files = checkpoint_data.get(
+                "modifiedFiles", existing.modified_files
+            )
+            existing.executed_commands = checkpoint_data.get(
+                "executedCommands", existing.executed_commands
+            )
+            existing.partial_content = checkpoint_data.get(
+                "partialContent", existing.partial_content
+            )
+            existing.streaming_state = checkpoint_data.get(
+                "streamingState", existing.streaming_state
+            )
+            existing.retry_count = checkpoint_data.get(
+                "retryCount", existing.retry_count
+            )
             existing.updated_at = datetime.now(timezone.utc)
 
             if checkpoint_data.get("interruptedAt"):

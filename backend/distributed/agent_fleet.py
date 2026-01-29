@@ -837,7 +837,11 @@ class DistributedAgentFleet:
                 max_votes = len(voters)
                 winning_index = i
 
-        winning_solution = conflict.proposed_solutions[winning_index] if conflict.proposed_solutions else {}
+        winning_solution = (
+            conflict.proposed_solutions[winning_index]
+            if conflict.proposed_solutions
+            else {}
+        )
 
         return {
             "strategy": "majority_vote",
@@ -878,7 +882,9 @@ class DistributedAgentFleet:
                     break
             else:
                 # Vote for most aligned solution based on skills match
-                best_match_idx = self._find_best_skill_match(agent, conflict.proposed_solutions)
+                best_match_idx = self._find_best_skill_match(
+                    agent, conflict.proposed_solutions
+                )
                 weighted_scores[best_match_idx] += weight
 
         # Find solution with highest weighted score
@@ -889,7 +895,11 @@ class DistributedAgentFleet:
                 max_score = score
                 winning_index = i
 
-        winning_solution = conflict.proposed_solutions[winning_index] if conflict.proposed_solutions else {}
+        winning_solution = (
+            conflict.proposed_solutions[winning_index]
+            if conflict.proposed_solutions
+            else {}
+        )
 
         return {
             "strategy": "weighted_vote",
@@ -950,7 +960,11 @@ class DistributedAgentFleet:
         if not deciding_agent:
             return {
                 "strategy": "hierarchical",
-                "resolution": conflict.proposed_solutions[0] if conflict.proposed_solutions else None,
+                "resolution": (
+                    conflict.proposed_solutions[0]
+                    if conflict.proposed_solutions
+                    else None
+                ),
                 "deciding_agent": None,
             }
 
@@ -967,7 +981,9 @@ class DistributedAgentFleet:
         # Fall back to first solution
         return {
             "strategy": "hierarchical",
-            "resolution": conflict.proposed_solutions[0] if conflict.proposed_solutions else None,
+            "resolution": (
+                conflict.proposed_solutions[0] if conflict.proposed_solutions else None
+            ),
             "deciding_agent": deciding_agent.agent_id,
             "deciding_role": deciding_agent.role.value,
         }
@@ -995,7 +1011,9 @@ class DistributedAgentFleet:
                 solution_support[best_idx] += 1
 
             # Check for consensus (all agents agree)
-            total_agents = len([a for a in conflict.conflicting_agents if a in self.agents])
+            total_agents = len(
+                [a for a in conflict.conflicting_agents if a in self.agents]
+            )
             for idx, support_count in solution_support.items():
                 if support_count == total_agents:
                     return {
@@ -1007,7 +1025,9 @@ class DistributedAgentFleet:
 
             # Find most supported solution for next iteration
             if solution_support:
-                best_idx = max(solution_support.keys(), key=lambda k: solution_support[k])
+                best_idx = max(
+                    solution_support.keys(), key=lambda k: solution_support[k]
+                )
                 # Merge best solution with aspects of others
                 merged_solution = dict(solutions[best_idx])
                 for i, sol in enumerate(solutions):
@@ -1056,7 +1076,9 @@ class DistributedAgentFleet:
             # Score based on skill match and specialization
             skill_score = len(set(agent.skills) & set(relevant_skills))
             spec_score = len(set(agent.specializations) & set(relevant_skills))
-            total_score = skill_score * 2 + spec_score * 3  # Weight specializations higher
+            total_score = (
+                skill_score * 2 + spec_score * 3
+            )  # Weight specializations higher
 
             if total_score > best_score:
                 best_score = total_score
@@ -1065,7 +1087,11 @@ class DistributedAgentFleet:
         if not best_expert:
             return {
                 "strategy": "expert_decision",
-                "resolution": conflict.proposed_solutions[0] if conflict.proposed_solutions else None,
+                "resolution": (
+                    conflict.proposed_solutions[0]
+                    if conflict.proposed_solutions
+                    else None
+                ),
                 "expert_agent": None,
             }
 
@@ -1082,7 +1108,9 @@ class DistributedAgentFleet:
 
         return {
             "strategy": "expert_decision",
-            "resolution": conflict.proposed_solutions[0] if conflict.proposed_solutions else None,
+            "resolution": (
+                conflict.proposed_solutions[0] if conflict.proposed_solutions else None
+            ),
             "expert_agent": best_expert.agent_id,
             "expert_skills": best_expert.skills,
             "relevance_score": best_score,
@@ -1112,7 +1140,9 @@ class DistributedAgentFleet:
             # Combined performance score (higher is better)
             # Normalize completion time (lower is better, so invert)
             time_score = 1 / (avg_completion_time / 60 + 1)  # Normalize to hours
-            perf_score = (success_rate * 0.4 + quality_score * 0.4 + time_score * 0.2) * agent.trust_score
+            perf_score = (
+                success_rate * 0.4 + quality_score * 0.4 + time_score * 0.2
+            ) * agent.trust_score
 
             if perf_score > best_score:
                 best_score = perf_score
@@ -1121,7 +1151,11 @@ class DistributedAgentFleet:
         if not best_performer:
             return {
                 "strategy": "performance_based",
-                "resolution": conflict.proposed_solutions[0] if conflict.proposed_solutions else None,
+                "resolution": (
+                    conflict.proposed_solutions[0]
+                    if conflict.proposed_solutions
+                    else None
+                ),
                 "top_performer": None,
             }
 
@@ -1138,7 +1172,9 @@ class DistributedAgentFleet:
 
         return {
             "strategy": "performance_based",
-            "resolution": conflict.proposed_solutions[0] if conflict.proposed_solutions else None,
+            "resolution": (
+                conflict.proposed_solutions[0] if conflict.proposed_solutions else None
+            ),
             "top_performer": best_performer.agent_id,
             "performance_score": best_score,
         }
@@ -1172,7 +1208,9 @@ class DistributedAgentFleet:
         }
 
         for conflict_type, type_conflicts in conflicts_by_type.items():
-            strategy = strategy_for_type.get(conflict_type, ConflictResolutionStrategy.MAJORITY_VOTE)
+            strategy = strategy_for_type.get(
+                conflict_type, ConflictResolutionStrategy.MAJORITY_VOTE
+            )
 
             for conflict_dict in type_conflicts:
                 # Convert dict to ConflictCase
@@ -1192,23 +1230,29 @@ class DistributedAgentFleet:
                 # Apply resolution strategy
                 try:
                     resolution = await self.resolve_conflict(conflict, strategy)
-                    resolutions.append({
-                        "conflict_id": conflict.conflict_id,
-                        "type": conflict_type,
-                        "strategy": strategy.value,
-                        "resolution": resolution,
-                        "success": True,
-                    })
+                    resolutions.append(
+                        {
+                            "conflict_id": conflict.conflict_id,
+                            "type": conflict_type,
+                            "strategy": strategy.value,
+                            "resolution": resolution,
+                            "success": True,
+                        }
+                    )
                 except Exception as e:
-                    logger.error(f"Failed to resolve conflict {conflict.conflict_id}: {e}")
-                    resolutions.append({
-                        "conflict_id": conflict.conflict_id,
-                        "type": conflict_type,
-                        "strategy": strategy.value,
-                        "resolution": None,
-                        "success": False,
-                        "error": str(e),
-                    })
+                    logger.error(
+                        f"Failed to resolve conflict {conflict.conflict_id}: {e}"
+                    )
+                    resolutions.append(
+                        {
+                            "conflict_id": conflict.conflict_id,
+                            "type": conflict_type,
+                            "strategy": strategy.value,
+                            "resolution": None,
+                            "success": False,
+                            "error": str(e),
+                        }
+                    )
 
         return {
             "conflicts_resolved": len([r for r in resolutions if r["success"]]),

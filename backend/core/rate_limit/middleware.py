@@ -16,11 +16,12 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.core.auth.models import User
-from backend.core.rate_limit.config import RateLimitCategory, DEFAULT_RATE_LIMITS
-from backend.core.rate_limit.service import (
-    rate_limit_service,
-    RateLimitBackendUnavailable,
+from backend.core.rate_limit.config import (
+    RateLimitCategory,
+    DEFAULT_RATE_LIMITS,
+    RateLimitRule,
 )
+from backend.core.rate_limit.service import rate_limit_service
 from backend.core.rate_limit.metrics import (
     rate_limit_metrics,
     log_rate_limit_decision,
@@ -409,7 +410,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
             return response
 
-        except RateLimitBackendUnavailable as e:
+        except Exception as e:
             log_rate_limit_middleware_error(str(e), path, method)
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

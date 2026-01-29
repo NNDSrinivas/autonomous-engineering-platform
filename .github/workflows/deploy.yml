@@ -29,7 +29,7 @@ jobs:
         with:
           host: ${{ env.EC2_HOST }}
           username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd /opt/aep-backend
             git fetch --all
@@ -43,7 +43,7 @@ jobs:
         with:
           host: ${{ env.EC2_HOST }}
           username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             echo "Checking container status..."
             docker ps --filter "name=aep-backend"

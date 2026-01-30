@@ -10,6 +10,9 @@ This test validates:
 3. Risk scoring and audit logging operate properly
 4. Rollback capabilities are available
 5. Emergency bypass mechanisms work
+
+Note: These tests require OPENAI_API_KEY to be set as they instantiate
+the GovernedClosedLoopOrchestrator which uses the OpenAI client internally.
 """
 
 import os
@@ -32,6 +35,12 @@ from backend.agent.closedloop.auto_planner import (
 from backend.agent.closedloop.execution_controller import (
     ExecutionResult,
     ExecutionStatus,
+)
+
+# Skip all tests in this module if OPENAI_API_KEY is not set
+pytestmark = pytest.mark.skipif(
+    not os.getenv("OPENAI_API_KEY"),
+    reason="OPENAI_API_KEY not set - governance tests require OpenAI client",
 )
 
 

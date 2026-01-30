@@ -7,9 +7,20 @@ Create Date: 2025-10-27 17:00:00.000000
 """
 
 import os
+import logging
 import sqlalchemy as sa
 from alembic import op
-from pgvector.sqlalchemy import Vector
+
+# Try to import pgvector for type checking
+try:
+    from pgvector.sqlalchemy import Vector
+
+    HAS_PGVECTOR = True
+except ImportError:
+    HAS_PGVECTOR = False
+    Vector = None
+
+logger = logging.getLogger("alembic.0013_memory_graph")
 
 # revision identifiers, used by Alembic.
 revision = "0013_memory_graph"
@@ -70,19 +81,36 @@ def upgrade():
         ),
     )
 
-    # Try to add pgvector column for semantic search
-    try:
-        op.add_column(
-            "memory_node",
-            sa.Column("embedding_vec", Vector(EMBED_DIM), nullable=True),
-        )
-    except Exception:
-        # Fallback to raw SQL for PostgreSQL
-        dialect = op.get_bind().dialect.name
-        if dialect == "postgresql":
-            op.execute(
-                f"ALTER TABLE memory_node ADD COLUMN embedding_vec vector({EMBED_DIM});"
+    # Check if pgvector is available before trying to use it
+    bind = op.get_bind()
+    is_postgresql = bind.dialect.name == "postgresql"
+    pgvector_available = False
+
+    if is_postgresql:
+        try:
+            # Check if the vector extension is available in the database
+            result = bind.execute(
+                sa.text("SELECT * FROM pg_extension WHERE extname = 'vector'")
             )
+            pgvector_available = result.fetchone() is not None
+        except Exception as e:
+            logger.info(f"[alembic/0013_memory_graph] Could not check pgvector: {e}")
+
+    # Try to add pgvector column for semantic search if available
+    if pgvector_available and HAS_PGVECTOR and Vector is not None:
+        try:
+            op.add_column(
+                "memory_node",
+                sa.Column("embedding_vec", Vector(EMBED_DIM), nullable=True),
+            )
+        except Exception as e:
+            logger.warning(
+                f"[alembic/0013_memory_graph] Could not add vector column: {e}"
+            )
+    else:
+        logger.info(
+            "[alembic/0013_memory_graph] pgvector not available - skipping embedding_vec column"
+        )
 
     # Create memory_edge table
     # Represents relationships between nodes with confidence and weight
@@ -164,17 +192,21 @@ def upgrade():
     op.create_index("idx_memory_edge_dst", "memory_edge", ["dst_id"], unique=False)
 
     # Create HNSW index on embedding_vec for ANN search (PostgreSQL with pgvector only)
-    dialect = op.get_bind().dialect.name
-    if dialect == "postgresql":
-        # HNSW index with same configuration as PR-16
-        # m=16 (connections per layer), ef_construction=64 (build quality)
-        op.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_memory_node_embedding_hnsw
-            ON memory_node USING hnsw (embedding_vec vector_cosine_ops)
-            WITH (m = 16, ef_construction = 64);
-            """
-        )
+    if pgvector_available:
+        try:
+            # HNSW index with same configuration as PR-16
+            # m=16 (connections per layer), ef_construction=64 (build quality)
+            op.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_memory_node_embedding_hnsw
+                ON memory_node USING hnsw (embedding_vec vector_cosine_ops)
+                WITH (m = 16, ef_construction = 64);
+                """
+            )
+        except Exception as e:
+            logger.warning(
+                f"[alembic/0013_memory_graph] Could not create HNSW index: {e}"
+            )
 
 
 def downgrade():

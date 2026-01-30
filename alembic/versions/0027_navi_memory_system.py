@@ -44,7 +44,7 @@ def upgrade():
             # First check if pgvector is already installed
             result = conn.execute(
                 sa.text(
-                    "SELECT * FROM pg_extension WHERE extname = :extname"
+                    "SELECT 1 FROM pg_extension WHERE extname = :extname LIMIT 1"
                 ).bindparams(extname="vector")
             )
             if result.fetchone() is not None:
@@ -53,7 +53,7 @@ def upgrade():
                 # Check if extension is available to install
                 result = conn.execute(
                     sa.text(
-                        "SELECT * FROM pg_available_extensions WHERE name = :extname"
+                        "SELECT 1 FROM pg_available_extensions WHERE name = :extname LIMIT 1"
                     ).bindparams(extname="vector")
                 )
                 if result.fetchone() is not None:
@@ -555,7 +555,7 @@ def downgrade():
         try:
             result = conn.execute(
                 sa.text(
-                    "SELECT * FROM pg_extension WHERE extname = :extname"
+                    "SELECT 1 FROM pg_extension WHERE extname = :extname LIMIT 1"
                 ).bindparams(extname="vector")
             )
             pgvector_enabled = result.fetchone() is not None

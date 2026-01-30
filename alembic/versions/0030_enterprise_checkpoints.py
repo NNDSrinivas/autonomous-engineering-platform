@@ -21,6 +21,12 @@ def upgrade() -> None:
     # Skip for SQLite (CI uses SQLite for unit tests, this is PostgreSQL-specific)
     bind = op.get_bind()
     if bind.dialect.name != "postgresql":
+        import logging
+
+        logging.getLogger(__name__).info(
+            "Skipping enterprise_checkpoints migration for non-PostgreSQL database (%s)",
+            bind.dialect.name,
+        )
         return
 
     # Create enterprise_checkpoints table
@@ -202,12 +208,20 @@ def downgrade() -> None:
     # Skip for SQLite
     bind = op.get_bind()
     if bind.dialect.name != "postgresql":
+        import logging
+
+        logging.getLogger(__name__).info(
+            "Skipping enterprise_checkpoints downgrade for non-PostgreSQL database (%s)",
+            bind.dialect.name,
+        )
         return
 
     # Drop indexes
     op.drop_index("idx_checkpoint_created", table_name="enterprise_checkpoints")
     op.drop_index("idx_checkpoint_project_valid", table_name="enterprise_checkpoints")
-    op.drop_index("idx_checkpoint_project_iteration", table_name="enterprise_checkpoints")
+    op.drop_index(
+        "idx_checkpoint_project_iteration", table_name="enterprise_checkpoints"
+    )
 
     # Drop table
     op.drop_table("enterprise_checkpoints")

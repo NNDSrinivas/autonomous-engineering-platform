@@ -636,11 +636,18 @@ class BackupManager:
     def _git_stash(self, timestamp: str) -> Dict[str, Any]:
         """Stash git changes before destructive operation."""
         try:
+            # Validate and normalize workspace path before using it as subprocess cwd
+            workspace_path = os.path.abspath(self.workspace_path)
+            if not os.path.isdir(workspace_path):
+                return {
+                    "success": False,
+                    "error": f"Invalid workspace_path for git operations: {workspace_path}",
+                }
             # Sanitize timestamp to prevent command injection
             safe_timestamp = "".join(c for c in timestamp if c.isalnum() or c in "-_")
             result = subprocess.run(
                 ["git", "stash", "push", "-m", f"NAVI backup {safe_timestamp}"],
-                cwd=self.workspace_path,
+                cwd=workspace_path,
                 capture_output=True,
                 text=True,
             )
@@ -701,12 +708,19 @@ class BackupManager:
     def _git_backup_branch(self, timestamp: str) -> Dict[str, Any]:
         """Create backup branch before force push."""
         try:
+            # Validate and normalize workspace path before using it as subprocess cwd
+            workspace_path = os.path.abspath(self.workspace_path)
+            if not os.path.isdir(workspace_path):
+                return {
+                    "success": False,
+                    "error": f"Invalid workspace_path for git operations: {workspace_path}",
+                }
             # Sanitize timestamp to prevent command injection
             safe_timestamp = "".join(c for c in timestamp if c.isalnum() or c in "-_")
             branch_name = f"navi-backup-{safe_timestamp}"
             result = subprocess.run(
                 ["git", "branch", branch_name],
-                cwd=self.workspace_path,
+                cwd=workspace_path,
                 capture_output=True,
                 text=True,
             )

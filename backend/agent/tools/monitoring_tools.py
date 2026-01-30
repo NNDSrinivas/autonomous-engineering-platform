@@ -497,7 +497,9 @@ async def setup_error_tracking(
     lines.append("\n### 3. Environment Variables")
     lines.append("```env")
     if provider == "sentry":
-        dsn_placeholder = dsn or "https://xxx@xxx.ingest.sentry.io/xxx"
+        dsn_placeholder = (
+            dsn or "https://your-key@your-project.ingest.sentry.io/your-project-id"
+        )
         lines.append(f"SENTRY_DSN={dsn_placeholder}")
         if project_type == "nextjs":
             lines.append(f"NEXT_PUBLIC_SENTRY_DSN={dsn_placeholder}")

@@ -188,7 +188,8 @@ jobs:
               echo "Integration tests failed after retry"
               exit 1
             fi
-            echo "Retrying integration tests..."
+            echo "Retrying integration tests after 5 second delay..."
+            sleep 5
           done
 
           kill $MAIN_PID 2>/dev/null || true

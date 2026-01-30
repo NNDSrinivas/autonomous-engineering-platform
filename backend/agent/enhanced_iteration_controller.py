@@ -564,7 +564,8 @@ class EnhancedIterationController:
                         for t in failed_tests
                     ]
                 )
-                error_hash = hashlib.md5(error_str.encode()).hexdigest()[:8]
+                # Use SHA-256 instead of MD5 to follow best practices
+                error_hash = hashlib.sha256(error_str.encode()).hexdigest()[:8]
 
         result = IterationResult(
             iteration_number=self.state.iteration_count + 1,

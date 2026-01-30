@@ -78,7 +78,7 @@ class MondayService(ConnectorServiceBase):
                     counts["board"] += 1
 
                 logger.info(
-                    "monday.sync_boards",
+                    "navi_monday_sync_boards",
                     user_id=user_id,
                     count=counts["board"],
                 )
@@ -118,7 +118,7 @@ class MondayService(ConnectorServiceBase):
                         counts["item"] += 1
 
                 logger.info(
-                    "monday.sync_items",
+                    "navi_monday_sync_items",
                     user_id=user_id,
                     count=counts["item"],
                 )

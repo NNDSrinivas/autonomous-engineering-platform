@@ -18,6 +18,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 import logging
 import json
+from dotenv import load_dotenv
+
+# Load .env file to ensure API keys are available in os.environ
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 

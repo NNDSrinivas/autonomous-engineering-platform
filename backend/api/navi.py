@@ -111,9 +111,9 @@ class RunState(BaseModel):
     context: ContextPack
     plan: Optional[Plan] = None
     current_step: int = 0
-    status: Literal[
-        "idle", "planning", "executing", "verifying", "done", "failed"
-    ] = "idle"
+    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = (
+        "idle"
+    )
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: float = Field(default_factory=time.time)
 
@@ -1181,9 +1181,7 @@ async def analyze_working_changes(
                             "severity": (
                                 "high"
                                 if any(i["severity"] == "high" for i in issues)
-                                else "medium"
-                                if issues
-                                else "low"
+                                else "medium" if issues else "low"
                             ),
                             "issues": issues,
                             "diff": change.get("diff", "")[:1000],
@@ -1228,7 +1226,6 @@ async def analyze_working_changes(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
         },
     )
 
@@ -1337,8 +1334,6 @@ async def stream_repo_review(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
         },
     )
 
@@ -1367,8 +1362,6 @@ async def test_stream():
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
         },
     )
 
@@ -5501,7 +5494,6 @@ async def navi_chat(
                     headers={
                         "Cache-Control": "no-cache",
                         "Connection": "keep-alive",
-                        "Access-Control-Allow-Origin": "*",
                     },
                 )
 
@@ -5510,17 +5502,17 @@ async def navi_chat(
                 # Fall through to standard processing
 
         # Standard request processing
-        print("[DEBUG-FLOW] Starting standard request processing")
+        logger.debug("Starting standard request processing")
         if any(word in msg_lower for word in ["review", "diff", "changes", "git"]):
-            print("[DEBUG-FLOW] Matched review/diff/changes/git")
+            logger.debug("Matched review/diff/changes/git")
             progress_tracker.update_status("Analyzing Git repository...")
             progress_tracker.complete_step("Detected Git diff request")
         elif any(word in msg_lower for word in ["explain", "what", "describe"]):
-            print("[DEBUG-FLOW] Matched explain/what/describe")
+            logger.debug("Matched explain/what/describe")
             progress_tracker.update_status("Scanning codebase...")
             progress_tracker.complete_step("Detected explanation request")
         elif any(word in msg_lower for word in ["fix", "error", "debug", "issue"]):
-            print("[DEBUG-FLOW] Matched fix/error/debug/issue")
+            logger.debug("Matched fix/error/debug/issue")
             progress_tracker.update_status("Analyzing code issues...")
             progress_tracker.complete_step("Detected debugging request")
         elif (
@@ -5530,8 +5522,9 @@ async def navi_chat(
             )
             and workspace_root
         ):
-            print(
-                f"[DEBUG-FLOW] Matched autonomous coding keywords with workspace_root={workspace_root}"
+            logger.debug(
+                "Matched autonomous coding keywords with workspace_root=%s",
+                workspace_root,
             )
             progress_tracker.update_status("Preparing autonomous coding...")
             progress_tracker.complete_step("Detected coding request")
@@ -5548,7 +5541,7 @@ async def navi_chat(
                 "code",
             ]
             if any(keyword in msg_lower for keyword in coding_keywords):
-                print("[DEBUG-FLOW] ENTERING AUTONOMOUS CODING BLOCK")
+                logger.debug("Entering autonomous coding block")
                 try:
                     # Simple autonomous coding integration
                     reply = f"""I can help you implement that autonomously! 
@@ -5576,7 +5569,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
                         }
                     ]
 
-                    print("[DEBUG-FLOW] RETURNING AUTONOMOUS RESPONSE")
+                    logger.debug("Returning autonomous response")
                     return ChatResponse(
                         content=reply,
                         actions=actions,
@@ -5588,24 +5581,91 @@ To get started, I need to analyze your codebase and create a detailed implementa
                     )
 
                 except Exception as e:
-                    print(f"[DEBUG-FLOW] AUTONOMOUS CODING EXCEPTION: {e}")
-                    logger.error("Autonomous coding failed", error=str(e))
+                    logger.exception("Autonomous coding failed: %s", e)
                     # Fall back to regular agent loop
                     progress_tracker.update_status(
                         "Falling back to standard analysis..."
                     )
             else:
-                print("[DEBUG-FLOW] Coding keywords check failed")
+                logger.debug("Coding keywords check failed")
         else:
-            print("[DEBUG-FLOW] No specific patterns matched - default processing")
+            logger.debug("No specific patterns matched - default processing")
             progress_tracker.update_status("Analyzing your request...")
             progress_tracker.complete_step("Request type identified")
 
-        print("[DEBUG-FLOW] Continuing to agent loop")
+        logger.debug("Continuing to agent loop")
+
+        # =================================================================
+        # IMAGE PROCESSING: Check for image attachments and analyze them
+        # This allows NAVI to "see" screenshots and images in the regular
+        # (non-streaming) chat endpoint
+        # =================================================================
+        image_context = ""
+        if request.attachments:
+            logger.info(
+                f"[NAVI-CHAT] Processing {len(request.attachments)} attachments"
+            )
+            for att in request.attachments:
+                att_kind = getattr(att, "kind", None) or (
+                    att.get("kind") if isinstance(att, dict) else None
+                )
+                logger.info(f"[NAVI-CHAT] Attachment kind: {att_kind}")
+                if att_kind == "image":
+                    att_content = getattr(att, "content", None) or (
+                        att.get("content") if isinstance(att, dict) else None
+                    )
+                    if att_content:
+                        try:
+                            from backend.services.vision_service import (
+                                VisionClient,
+                            )
+
+                            # Extract base64 data from data URL
+                            if att_content.startswith("data:"):
+                                # Format: data:image/png;base64,<data>
+                                base64_data = (
+                                    att_content.split(",", 1)[1]
+                                    if "," in att_content
+                                    else att_content
+                                )
+                            else:
+                                base64_data = att_content
+
+                            # Use vision AI to analyze the image
+                            # Use the same provider as the user's selected model
+                            vision_provider = _get_vision_provider_for_model(
+                                request.model
+                            )
+                            analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
+
+                            logger.info(
+                                f"[NAVI-CHAT] Analyzing image with vision provider: {vision_provider}"
+                            )
+                            vision_response = await VisionClient.analyze_image(
+                                image_data=base64_data,
+                                prompt=analysis_prompt,
+                                provider=vision_provider,
+                            )
+                            image_context += (
+                                f"\n\n=== IMAGE ANALYSIS ===\n{vision_response}\n"
+                            )
+                            logger.info("[NAVI-CHAT] Image analyzed successfully")
+                        except Exception as img_err:
+                            logger.warning(
+                                f"[NAVI-CHAT] Image analysis failed: {img_err}"
+                            )
+
+        # Augment the message with image context if present
+        augmented_message = request.message
+        if image_context:
+            augmented_message = (
+                f"{request.message}\n\n[CONTEXT FROM ATTACHED IMAGE(S)]{image_context}"
+            )
+            logger.info("[NAVI-CHAT] Message augmented with image analysis")
 
         agent_result = await run_agent_loop(
             user_id=user_id,
-            message=request.message,
+            message=augmented_message,  # Use augmented message with image context
             model=_resolve_model(request.model),
             mode=mode,
             db=db,
@@ -5919,7 +5979,6 @@ async def navi_chat_stream(
                             try:
                                 from backend.services.vision_service import (
                                     VisionClient,
-                                    VisionProvider,
                                 )
 
                                 # Extract base64 data from data URL
@@ -5934,12 +5993,16 @@ async def navi_chat_stream(
                                     base64_data = att_content
 
                                 # Use vision AI to analyze the image
+                                # Use the same provider as the user's selected model
+                                vision_provider = _get_vision_provider_for_model(
+                                    request.model
+                                )
                                 analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
                                 vision_response = await VisionClient.analyze_image(
                                     image_data=base64_data,
                                     prompt=analysis_prompt,
-                                    provider=VisionProvider.ANTHROPIC,
+                                    provider=vision_provider,
                                 )
                                 image_context += (
                                     f"\n\n=== IMAGE ANALYSIS ===\n{vision_response}\n"
@@ -6064,6 +6127,7 @@ async def navi_chat_stream(
                             kind = "command"
                             label = tool_name
                             detail = ""
+                            purpose = None  # Command context: why running this
 
                             if tool_name == "read_file":
                                 kind = "read"
@@ -6080,7 +6144,62 @@ async def navi_chat_stream(
                             elif tool_name == "run_command":
                                 kind = "command"
                                 label = "Running"
-                                detail = tool_args.get("command", "")
+                                cmd = tool_args.get("command", "")
+                                detail = cmd
+                                # Generate purpose based on command pattern (Bug 5 fix)
+                                cmd_lower = cmd.lower()
+                                if (
+                                    "npm install" in cmd_lower
+                                    or "pip install" in cmd_lower
+                                    or "yarn add" in cmd_lower
+                                ):
+                                    purpose = "Installing dependencies to ensure all required packages are available"
+                                elif (
+                                    "npm run dev" in cmd_lower
+                                    or "npm start" in cmd_lower
+                                ):
+                                    purpose = "Starting the development server to run the application"
+                                elif (
+                                    "npm run build" in cmd_lower
+                                    or "npm run compile" in cmd_lower
+                                ):
+                                    purpose = "Building the project to compile and bundle the code"
+                                elif (
+                                    "npm test" in cmd_lower
+                                    or "pytest" in cmd_lower
+                                    or "jest" in cmd_lower
+                                ):
+                                    purpose = "Running tests to verify the code is working correctly"
+                                elif "git " in cmd_lower:
+                                    purpose = (
+                                        "Running git command to manage version control"
+                                    )
+                                elif (
+                                    "lsof" in cmd_lower
+                                    or "netstat" in cmd_lower
+                                    or "ps " in cmd_lower
+                                ):
+                                    purpose = "Checking system processes and port usage"
+                                elif "kill" in cmd_lower or "pkill" in cmd_lower:
+                                    purpose = "Stopping a running process"
+                                elif "curl" in cmd_lower or "wget" in cmd_lower:
+                                    purpose = "Making an HTTP request to check connectivity or fetch data"
+                                elif "mkdir" in cmd_lower:
+                                    purpose = (
+                                        "Creating a directory for the project structure"
+                                    )
+                                elif "rm " in cmd_lower or "rm -" in cmd_lower:
+                                    purpose = (
+                                        "Removing files or directories to clean up"
+                                    )
+                                elif (
+                                    "cat " in cmd_lower
+                                    or "head " in cmd_lower
+                                    or "tail " in cmd_lower
+                                ):
+                                    purpose = "Reading file contents for inspection"
+                                elif "grep" in cmd_lower:
+                                    purpose = "Searching for patterns in files"
                             elif tool_name == "search_files":
                                 kind = "search"
                                 label = "Searching"
@@ -6090,7 +6209,15 @@ async def navi_chat_stream(
                                 label = "Listing"
                                 detail = tool_args.get("path", "")
 
-                            yield f"data: {json.dumps({'activity': {'kind': kind, 'label': label, 'detail': detail, 'status': 'running'}})}\n\n"
+                            activity_data = {
+                                "kind": kind,
+                                "label": label,
+                                "detail": detail,
+                                "status": "running",
+                            }
+                            if purpose:
+                                activity_data["purpose"] = purpose
+                            yield f"data: {json.dumps({'activity': activity_data})}\n\n"
 
                         elif event.type == AgentEventType.TOOL_RESULT:
                             # event.data = {"id": ..., "name": ..., "result": {...}}
@@ -6731,6 +6858,7 @@ async def navi_chat_stream_v2(
                     model=model_name_use,
                     context=enhanced_context,  # Use enhanced context with file info
                     conversation_history=request.conversation_history,  # Pass conversation history for context
+                    conversation_id=request.conversation_id,  # Pass session ID for memory tracking
                 ):
                     yield f"data: {json.dumps(event.to_dict())}\n\n"
 
@@ -6797,8 +6925,9 @@ class AutonomousTaskRequest(BaseModel):
     workspace_root: Optional[str] = None  # Alias from VS Code extension
     run_verification: bool = True
     max_iterations: int = 5
-    # Additional fields from VS Code extension (ignored but accepted)
+    # Additional fields from VS Code extension
     conversation_history: Optional[list] = None
+    attachments: Optional[list] = None  # Support image/file attachments
     conversation_id: Optional[str] = None
     mode: Optional[str] = None
     user_id: Optional[str] = None
@@ -6880,11 +7009,46 @@ def _map_model_to_provider(model: Optional[str]) -> tuple[str, str]:
     return "openai", "gpt-4o"
 
 
+def _get_vision_provider_for_model(model: Optional[str]):
+    """
+    Get the appropriate VisionProvider for the user's selected model.
+
+    Maps the chat model provider to the corresponding vision provider:
+    - OpenAI models -> VisionProvider.OPENAI (GPT-4 Vision)
+    - Anthropic models -> VisionProvider.ANTHROPIC (Claude Vision)
+    - Google models -> VisionProvider.GOOGLE (Gemini Vision)
+    - Others -> Default to ANTHROPIC (Claude has strong vision capabilities)
+    """
+    from backend.services.vision_service import VisionProvider
+
+    if not model:
+        return VisionProvider.ANTHROPIC  # Default to Claude
+
+    provider, _ = _map_model_to_provider(model)
+
+    if provider == "openai":
+        return VisionProvider.OPENAI
+    elif provider == "anthropic":
+        return VisionProvider.ANTHROPIC
+    elif provider == "google":
+        return VisionProvider.GOOGLE
+    else:
+        # Groq and other providers don't have vision - fall back to Claude
+        return VisionProvider.ANTHROPIC
+
+
 @router.post("/chat/autonomous")
 async def navi_autonomous_task(
     request: AutonomousTaskRequest,
     http_request: Request,
 ):
+    # DEBUG: Print to stdout to ensure this endpoint is being called
+    print("[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
+    print(
+        f"[NAVI Autonomous DEBUG] Message: {request.message[:100] if request.message else 'None'}..."
+    )
+    print(f"[NAVI Autonomous DEBUG] Attachments: {request.attachments}")
+    print("[NAVI Autonomous DEBUG] =====================================")
     """
     NAVI Autonomous Task Execution
 
@@ -6938,6 +7102,71 @@ async def navi_autonomous_task(
     else:
         api_key = os.environ.get("OPENAI_API_KEY", "")
 
+    # Process image attachments if present
+    augmented_message = request.message
+    logger.info(
+        f"[NAVI Autonomous] Checking attachments: {request.attachments is not None}, count: {len(request.attachments) if request.attachments else 0}"
+    )
+    if request.attachments:
+        logger.info(
+            f"[NAVI Autonomous] Processing {len(request.attachments)} attachments"
+        )
+        image_context = ""
+        for att in request.attachments:
+            logger.info(
+                f"[NAVI Autonomous] Attachment: {type(att)}, keys: {att.keys() if isinstance(att, dict) else 'N/A'}"
+            )
+            att_kind = (
+                att.get("kind") if isinstance(att, dict) else getattr(att, "kind", None)
+            )
+            logger.info(f"[NAVI Autonomous] Attachment kind: {att_kind}")
+            if att_kind == "image":
+                att_content = (
+                    att.get("content")
+                    if isinstance(att, dict)
+                    else getattr(att, "content", None)
+                )
+                if att_content:
+                    try:
+                        from backend.services.vision_service import (
+                            VisionClient,
+                        )
+
+                        # Extract base64 data from data URL
+                        if att_content.startswith("data:"):
+                            base64_data = (
+                                att_content.split(",", 1)[1]
+                                if "," in att_content
+                                else att_content
+                            )
+                        else:
+                            base64_data = att_content
+
+                        # Use vision AI to analyze the image
+                        # Use the same provider as the user's selected model
+                        vision_provider = _get_vision_provider_for_model(request.model)
+                        analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
+
+                        vision_response = await VisionClient.analyze_image(
+                            image_data=base64_data,
+                            prompt=analysis_prompt,
+                            provider=vision_provider,
+                        )
+                        image_context += (
+                            f"\n\n=== IMAGE ANALYSIS ===\n{vision_response}\n"
+                        )
+                        logger.info("[NAVI Autonomous] Image analyzed successfully")
+                    except Exception as img_err:
+                        logger.warning(
+                            f"[NAVI Autonomous] Image analysis failed: {img_err}"
+                        )
+
+        if image_context:
+            augmented_message = (
+                f"{request.message}\n\n[CONTEXT FROM ATTACHED IMAGE(S)]{image_context}"
+            )
+            logger.info("[NAVI Autonomous] Message augmented with image analysis")
+
     async def stream_generator():
         """Generate SSE events from the autonomous agent."""
         try:
@@ -6949,7 +7178,7 @@ async def navi_autonomous_task(
             )
 
             async for event in agent.execute_task(
-                request=request.message,
+                request=augmented_message,  # Use augmented message with image context
                 run_verification=request.run_verification,
             ):
                 yield f"data: {json.dumps(event)}\n\n"

@@ -9,10 +9,8 @@ and contextual analysis for targeted autonomous repairs.
 import re
 import logging
 from typing import Dict, List, Tuple, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections import defaultdict
-from pydantic import Field
-
 from .ci_types import FailureType, CILogs, FailureContext
 
 logger = logging.getLogger(__name__)
@@ -26,7 +24,7 @@ class ClassificationRule:
     patterns: List[str]
     confidence_weight: float
     context_keywords: List[str]
-    exclusion_patterns: List[str] = Field(default_factory=list)
+    exclusion_patterns: List[str] = field(default_factory=list)
 
 
 class FailureClassifier:

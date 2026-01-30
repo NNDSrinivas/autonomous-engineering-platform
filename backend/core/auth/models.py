@@ -67,6 +67,10 @@ class User(BaseModel):
         default_factory=list,
         description="Project IDs the user has access to",
     )
+    plan_tier: str = Field(
+        default="default",
+        description="Plan tier for rate limiting (default, premium, enterprise)",
+    )
 
     class Config:
         """Pydantic model configuration."""

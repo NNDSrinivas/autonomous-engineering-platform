@@ -502,6 +502,8 @@ export function CodeCompanionShell() {
   const [user, setUser] = useState<UserInfo | undefined>(undefined);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activityPanelOpen, setActivityPanelOpen] = useState(false);
+  const [activityJumpCommandId, setActivityJumpCommandId] = useState<string | null>(null);
+  const [chatJumpCommandId, setChatJumpCommandId] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [externalPanelRequest, setExternalPanelRequest] = useState<SidebarPanelType>(null);
@@ -547,11 +549,31 @@ export function CodeCompanionShell() {
 
   const activityPanelState = useActivityPanel();
 
+  useEffect(() => {
+    if (activityPanelState.isVisible && activityPanelState.steps.length > 0) {
+      setActivityPanelOpen(true);
+    }
+  }, [activityPanelState.isVisible, activityPanelState.steps.length]);
+
   // Listen for messages from extension
   useEffect(() => {
     const unsubscribe = onMessage((message: any) => {
       if (message.type === "auth.stateChange") {
         setIsAuthenticated(message.isAuthenticated);
+        const currentConfig = (window as any).__AEP_CONFIG__ || {};
+        if (message.isAuthenticated && message.authToken) {
+          (window as any).__AEP_CONFIG__ = {
+            ...currentConfig,
+            authToken: message.authToken,
+            orgId: message.orgId ?? currentConfig.orgId,
+            userId: message.userId ?? currentConfig.userId,
+          };
+        } else if (!message.isAuthenticated) {
+          (window as any).__AEP_CONFIG__ = {
+            ...currentConfig,
+            authToken: undefined,
+          };
+        }
         if (message.user) {
           setUser(message.user);
         } else {
@@ -578,6 +600,33 @@ export function CodeCompanionShell() {
     postMessage({ type: "auth.signOut" });
     setUserMenuOpen(false);
   };
+
+  const handleOpenActivityForCommand = useCallback((commandId: string) => {
+    if (!commandId) return;
+    setActivityPanelOpen(true);
+    setActivityJumpCommandId(commandId);
+  }, []);
+
+  const handleViewCommandInChat = useCallback((commandId: string) => {
+    if (!commandId) return;
+    setChatJumpCommandId(commandId);
+  }, []);
+
+  useEffect(() => {
+    if (!activityJumpCommandId) return;
+    const timer = window.setTimeout(() => {
+      setActivityJumpCommandId(null);
+    }, 20000);
+    return () => window.clearTimeout(timer);
+  }, [activityJumpCommandId]);
+
+  useEffect(() => {
+    if (!chatJumpCommandId) return;
+    const timer = window.setTimeout(() => {
+      setChatJumpCommandId(null);
+    }, 20000);
+    return () => window.clearTimeout(timer);
+  }, [chatJumpCommandId]);
 
   // Handle MCP tool execution
   const handleExecuteMcpTool = useCallback(async (toolName: string, args: Record<string, unknown>): Promise<void> => {
@@ -849,6 +898,16 @@ export function CodeCompanionShell() {
                 </div>
               </button>
 
+              {/* Activity Panel Toggle */}
+              <button
+                className="navi-header-icon-btn navi-animated-icon navi-activity-toggle"
+                title={activityPanelOpen ? "Hide Activity" : "Show Activity"}
+                onClick={() => setActivityPanelOpen((prev) => !prev)}
+              >
+                <span className="navi-icon-glow" />
+                <Activity className="h-4 w-4 navi-activity-icon" />
+              </button>
+
               {/* Help - Opens documentation */}
               <button
                 className="navi-header-icon-btn navi-animated-icon navi-help-btn"
@@ -883,6 +942,10 @@ export function CodeCompanionShell() {
                     )}
                     <span className="navi-user-name">
                       {user?.name || user?.email?.split('@')[0] || 'User'}
+                    </span>
+                    <span className="navi-auth-status">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Signed in
                     </span>
                     <ChevronRight className={`h-3 w-3 navi-user-chevron ${userMenuOpen ? 'rotate-90' : ''}`} />
                   </button>
@@ -997,7 +1060,11 @@ export function CodeCompanionShell() {
           {/* Main Chat Area */}
           <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-              <NaviChatPanel activityPanelState={activityPanelState} />
+              <NaviChatPanel
+                activityPanelState={activityPanelState}
+                onOpenActivityForCommand={handleOpenActivityForCommand}
+                highlightCommandId={chatJumpCommandId}
+              />
 
               {/* Activity Panel - Right Sidebar */}
               {activityPanelOpen && activityPanelState.isVisible && (
@@ -1005,14 +1072,17 @@ export function CodeCompanionShell() {
                   <ActivityPanel
                     steps={activityPanelState.steps}
                     currentStep={activityPanelState.currentStep}
+                    highlightCommandId={activityJumpCommandId}
+                    onViewInChat={handleViewCommandInChat}
                     onFileClick={(filePath) => {
                       postMessage({ type: 'openFile', filePath });
                     }}
+                    onViewHistory={() => setHistoryOpen(true)}
                     onAcceptAll={() => {
-                      console.log('[Activity] Accept all changes');
+                      // TODO: wire up bulk accept flow
                     }}
                     onRejectAll={() => {
-                      console.log('[Activity] Reject all changes');
+                      // TODO: wire up bulk reject flow
                     }}
                   />
                   <button
@@ -2315,6 +2385,20 @@ export function CodeCompanionShell() {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .navi-auth-status {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 6px;
+          border-radius: 999px;
+          background: hsl(var(--primary) / 0.15);
+          color: hsl(var(--primary));
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
         .navi-user-chevron {

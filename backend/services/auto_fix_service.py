@@ -15,6 +15,7 @@ Part of Batch 7 — Advanced Intelligence Layer (Enterprise-Grade AI Code Rewrit
 import os
 import uuid
 import logging
+from dataclasses import dataclass
 from typing import Dict, Any, Optional, List
 import re
 from pathlib import Path
@@ -29,6 +30,70 @@ _FIX_REGISTRY: Dict[str, Dict[str, Any]] = {}
 
 # Initialize risk assessment service
 risk_assessor = RiskAssessmentService()
+
+
+@dataclass
+class FixResult:
+    success: bool
+    message: str
+    file_path: Optional[str] = None
+    fix_id: Optional[str] = None
+
+
+class AutoFixService:
+    """Lightweight compatibility wrapper for applying simple fixes."""
+
+    def apply_fix(
+        self, file_path: str, fix_id: str, fix_data: Dict[str, Any]
+    ) -> FixResult:
+        if not file_path or not os.path.exists(file_path):
+            return FixResult(
+                success=False,
+                message=f"File not found: {file_path}",
+                file_path=file_path,
+                fix_id=fix_id,
+            )
+
+        try:
+            line_number = fix_data.get("line")
+            replacement = fix_data.get("replacement")
+
+            if line_number and replacement is not None:
+                with open(file_path, "r", encoding="utf-8") as handle:
+                    lines = handle.readlines()
+
+                index = max(0, int(line_number) - 1)
+                if index < len(lines):
+                    newline = "\n" if not replacement.endswith("\n") else ""
+                    lines[index] = f"{replacement}{newline}"
+
+                    with open(file_path, "w", encoding="utf-8") as handle:
+                        handle.writelines(lines)
+
+            return FixResult(
+                success=True,
+                message=f"Fix {fix_id} applied to {file_path}",
+                file_path=file_path,
+                fix_id=fix_id,
+            )
+        except Exception as exc:
+            return FixResult(
+                success=False,
+                message=f"Fix failed: {exc}",
+                file_path=file_path,
+                fix_id=fix_id,
+            )
+
+    def apply_batch_fixes(
+        self, file_path: Optional[str], fixes: List[Dict[str, Any]]
+    ) -> List[FixResult]:
+        results: List[FixResult] = []
+        for fix in fixes:
+            target_path = fix.get("filePath") or fix.get("path") or file_path
+            fix_id = fix.get("fixId") or fix.get("id") or ""
+            fix_data = fix.get("fixData") or fix
+            results.append(self.apply_fix(target_path, fix_id, fix_data))
+        return results
 
 
 def register_fix(
@@ -436,9 +501,7 @@ def _analyze_patch_safety(patch: str, original_content: str) -> Dict[str, Any]:
         "estimated_risk": (
             "low"
             if safety_score >= 0.7
-            else "medium"
-            if safety_score >= 0.4
-            else "high"
+            else "medium" if safety_score >= 0.4 else "high"
         ),
     }
 

@@ -16,12 +16,9 @@ def upgrade() -> None:
     already exist from migration 0013_memory_graph. Keeping this as a no-op
     to maintain the migration chain integrity for dependent migrations.
     """
-    # Enable pgvector extension if not already enabled (PostgreSQL only)
-    try:
-        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    except Exception:
-        # SQLite doesn't support extensions
-        pass
+    # pgvector extension is handled by 0012_pgvector_bm25 and 0027_navi_memory_system
+    # Skip here to avoid transaction abort when extension is unavailable
+    pass
 
 
 def downgrade() -> None:

@@ -496,6 +496,10 @@ Recommendation: Review the suggested changes and apply manually, or approve auto
                 "success_rate": 0.0,
                 "average_confidence": 0.0,
                 "most_common_failure_type": None,
+                "active_sessions": len(self.active_sessions),
+                "successful_repairs": 0,
+                "failed_repairs": 0,
+                "escalated_sessions": 0,
             }
 
         successful_sessions = sum(

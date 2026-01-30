@@ -221,7 +221,7 @@ async def search_zoom_recordings(
 
 
 ZOOM_TOOLS = {
-    "zoom.list_recordings": list_zoom_recordings,
-    "zoom.get_transcript": get_zoom_transcript,
-    "zoom.search_recordings": search_zoom_recordings,
+    "zoom_list_recordings": list_zoom_recordings,
+    "zoom_get_transcript": get_zoom_transcript,
+    "zoom_search_recordings": search_zoom_recordings,
 }

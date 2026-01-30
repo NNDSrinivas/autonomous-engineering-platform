@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict
+import os
 
 
 class RateLimitCategory(str, Enum):
@@ -61,6 +62,17 @@ class RateLimitQuota:
     global_requests_per_second: int = 1000
 
 
+# Environment overrides for tests/dev
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 # Default rate limiting configuration
 DEFAULT_RATE_LIMITS = RateLimitQuota(
     user_rules={
@@ -77,9 +89,9 @@ DEFAULT_RATE_LIMITS = RateLimitQuota(
             queue_depth_limit=50,
         ),
         RateLimitCategory.WRITE: RateLimitRule(
-            requests_per_minute=60,  # 1 request/second sustained
-            requests_per_hour=2000,  # Conservative for mutations
-            burst_allowance=20,
+            requests_per_minute=_env_int("RL_FB_PM", 60),  # Feedback limit override
+            requests_per_hour=_env_int("RL_FB_PM", 60) * 60,
+            burst_allowance=_env_int("RL_FB_BURST", 20),
             queue_depth_limit=100,
         ),
         RateLimitCategory.SEARCH: RateLimitRule(
@@ -101,9 +113,9 @@ DEFAULT_RATE_LIMITS = RateLimitQuota(
             queue_depth_limit=30,
         ),
         RateLimitCategory.UPLOAD: RateLimitRule(
-            requests_per_minute=10,  # Large operations
-            requests_per_hour=100,
-            burst_allowance=3,
+            requests_per_minute=_env_int("RL_AI_GEN_PM", 10),
+            requests_per_hour=_env_int("RL_AI_GEN_PM", 10) * 60,
+            burst_allowance=_env_int("RL_AI_GEN_BURST", 3),
             queue_depth_limit=10,
         ),
         RateLimitCategory.EXPORT: RateLimitRule(
@@ -173,3 +185,14 @@ PREMIUM_RATE_LIMITS = RateLimitQuota(
     org_multiplier=25.0,  # Premium orgs get higher multipliers
     global_requests_per_second=5000,
 )
+
+
+# Environment overrides for tests/dev
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default

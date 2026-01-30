@@ -1075,7 +1075,7 @@ export class ConnectorsPanel {
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource}; connect-src http://127.0.0.1:8788 http://localhost:8788;">
+    content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource}; connect-src http://127.0.0.1:8787 http://localhost:8787 ws://127.0.0.1:8787 ws://localhost:8787;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="${styleUri}?v=${cacheBust}" rel="stylesheet" />
   <title>Connections</title>

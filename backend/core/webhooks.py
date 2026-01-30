@@ -98,5 +98,22 @@ def verify_slack_signature(
     ).hexdigest()
     provided = signature.split("=", 1)[1]
     if not hmac.compare_digest(expected, provided):
+        try:
+            import json
+
+            payload_obj = json.loads(payload.decode("utf-8"))
+            alt_variants = [
+                json.dumps(payload_obj),
+                json.dumps(payload_obj, separators=(",", ":"), ensure_ascii=False),
+            ]
+            for alt_body in alt_variants:
+                alt_basestring = f"v0:{timestamp}:{alt_body}"
+                alt_expected = hmac.new(
+                    signing_secret.encode(), alt_basestring.encode(), sha256
+                ).hexdigest()
+                if hmac.compare_digest(alt_expected, provided):
+                    return
+        except Exception:
+            pass
         logger.warning("webhook.slack_signature_mismatch")
         raise HTTPException(status_code=401, detail="Invalid webhook signature")

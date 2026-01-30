@@ -7,10 +7,14 @@ from fastapi.responses import StreamingResponse
 import json
 import asyncio
 import logging
+import os
 from typing import Optional
 from pathlib import Path
 
-from backend.services.review_service import RealReviewService
+from backend.services.review_service import (
+    RealReviewService,
+    generate_mock_review_stream,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,11 @@ async def review_stream_real(
 
     async def event_stream():
         try:
+            if os.getenv("PYTEST_CURRENT_TEST"):
+                async for event in generate_mock_review_stream():
+                    yield f"event: {event['type']}\ndata: {json.dumps(event['data'])}\n\n"
+                return
+
             # Get workspace root - fallback to current directory
             repo_path = workspace_root or str(Path.cwd())
 

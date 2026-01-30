@@ -205,7 +205,7 @@ async def get_sonarqube_quality_gate(
 
 
 SONARQUBE_TOOLS = {
-    "sonarqube.list_projects": list_sonarqube_projects,
-    "sonarqube.list_issues": list_sonarqube_issues,
-    "sonarqube.get_quality_gate": get_sonarqube_quality_gate,
+    "sonarqube_list_projects": list_sonarqube_projects,
+    "sonarqube_list_issues": list_sonarqube_issues,
+    "sonarqube_get_quality_gate": get_sonarqube_quality_gate,
 }

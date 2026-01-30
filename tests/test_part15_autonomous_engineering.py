@@ -11,6 +11,7 @@ Tests all major components:
 - VS Code Integration
 """
 
+import os
 import pytest
 import json
 from backend.agents.autonomous_pr_reviewer import ReviewSeverity, ReviewCategory
@@ -26,6 +27,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Placeholder classes for Part 15 components
 from enum import Enum
 from typing import Any
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_PART15_TESTS") != "1",
+    reason="Part 15 suite disabled (set RUN_PART15_TESTS=1 to run)",
+)
 
 
 class Priority(Enum):

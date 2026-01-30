@@ -124,7 +124,28 @@ export class DeviceAuthService {
             return;
           }
 
-          if (response.status === 428) {
+          const isPendingStatus = response.status === 428;
+          let pendingFromBody = false;
+          let errorText = "";
+
+          try {
+            const maybeJson = await response.clone().json();
+            const detail = (maybeJson as { detail?: string }).detail;
+            const errorCode = (maybeJson as { error_code?: string }).error_code;
+            pendingFromBody = detail === "authorization_pending";
+            errorText = JSON.stringify(maybeJson);
+            // Treat pending responses as non-fatal even if status was normalized by middleware.
+            if (pendingFromBody && !isPendingStatus) {
+              // Fall through to pending handling below.
+            } else if (errorCode && detail && !isPendingStatus) {
+              errorText = JSON.stringify({ detail, error_code: errorCode });
+            }
+          } catch (error) {
+            // Non-JSON response; fall back to text.
+            errorText = await response.text();
+          }
+
+          if (isPendingStatus || pendingFromBody) {
             // Authorization pending, continue polling
             if (attempts < maxAttempts) {
               this.pollInterval = setTimeout(poll, interval * 1000);
@@ -135,7 +156,6 @@ export class DeviceAuthService {
           }
 
           // Other error
-          const errorText = await response.text();
           reject(new Error(errorText || `HTTP ${response.status}`));
         } catch (error) {
           reject(error);

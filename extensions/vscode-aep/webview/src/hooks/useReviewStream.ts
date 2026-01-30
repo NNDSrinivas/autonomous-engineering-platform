@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { resolveBackendBase } from '../api/navi/client';
+import { resolveBackendBase, buildHeaders } from '../api/navi/client';
 
 export interface ReviewEntry {
   filePath: string;
@@ -49,8 +49,16 @@ export function useReviewStream(apiBaseUrl?: string) {
       isComplete: false,
     });
 
-    // Create EventSource connection
-    const eventSource = new EventSource(`${baseUrl}/api/navi/repo/review/stream`);
+    // Create EventSource connection (pass token via query param since EventSource can't set headers)
+    const headers = buildHeaders();
+    const authHeader = headers.Authorization || headers.authorization;
+    const token = authHeader ? authHeader.replace(/^Bearer\s+/i, '') : '';
+    const streamUrl = new URL(`${baseUrl}/api/navi/repo/review/stream`);
+    if (token) {
+      streamUrl.searchParams.set('access_token', token);
+    }
+
+    const eventSource = new EventSource(streamUrl.toString());
     eventSourceRef.current = eventSource;
 
     eventSource.onmessage = (event) => {

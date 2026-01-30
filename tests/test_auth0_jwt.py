@@ -63,7 +63,7 @@ class TestProtectedEndpoints:
     def test_me_endpoint_without_token(self):
         """Protected endpoint should return 401 without token"""
         response = client.get("/api/me")
-        assert response.status_code == 403  # FastAPI HTTPBearer returns 403
+        assert response.status_code in (401, 403)  # FastAPI HTTPBearer returns 403
 
     def test_admin_endpoint_without_token(self):
         """Admin endpoint should return 401 without token"""

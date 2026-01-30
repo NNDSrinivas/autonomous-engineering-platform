@@ -15,8 +15,7 @@ import type {
 } from '../types/intent';
 import { IntentFamily, IntentKind } from '../types/intent';
 import { IntentKind as PlannerIntentKind } from '../types/plan';
-
-const BACKEND_BASE_URL = 'http://127.0.0.1:8787';
+import { resolveBackendBase, buildHeaders } from '../api/navi/client';
 
 export class IntentService {
   private static instance: IntentService;
@@ -35,11 +34,9 @@ export class IntentService {
    */
   async generatePlan(intent: NaviIntent, sessionId?: string): Promise<any> {
     try {
-      const response = await fetch(`${BACKEND_BASE_URL}/api/navi/plan`, {
+      const response = await fetch(`${resolveBackendBase()}/api/navi/plan`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({
           intent,
           session_id: sessionId || null
@@ -67,11 +64,9 @@ export class IntentService {
    */
   async executeNext(sessionId: string, toolResult?: any): Promise<any> {
     try {
-      const response = await fetch(`${BACKEND_BASE_URL}/api/navi/next`, {
+      const response = await fetch(`${resolveBackendBase()}/api/navi/next`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({
           session_id: sessionId,
           tool_result: toolResult || null
@@ -140,11 +135,9 @@ export class IntentService {
     try {
       console.log('[IntentService] Classifying message:', request.message);
 
-      const response = await fetch(`${BACKEND_BASE_URL}/api/agent/classify`, {
+      const response = await fetch(`${resolveBackendBase()}/api/agent/classify`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({
           message: request.message,
           metadata: request.context?.metadata || {},

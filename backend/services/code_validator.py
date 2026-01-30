@@ -178,6 +178,36 @@ class CodeValidator:
         except Exception:
             return False
 
+    def _get_node_env(self) -> dict:
+        """Get environment for Node.js commands with nvm compatibility."""
+        env = os.environ.copy()
+        env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
+        env["SHELL"] = env.get("SHELL", "/bin/bash")
+        return env
+
+    def _get_node_command_with_setup(self, cmd_args: List[str]) -> Tuple[str, dict]:
+        """
+        Get shell command with nvm setup for Node.js tools.
+        Returns (command_string, env_dict).
+        """
+        env = self._get_node_env()
+        home = os.environ.get("HOME", os.path.expanduser("~"))
+
+        # Build command with nvm setup
+        cmd_str = " ".join(cmd_args)
+        nvm_dir = env.get("NVM_DIR", os.path.join(home, ".nvm"))
+        if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
+            full_cmd = (
+                f"unset npm_config_prefix 2>/dev/null; "
+                f'export NVM_DIR="{nvm_dir}" && '
+                f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
+                f"nvm use default 2>/dev/null || true && {cmd_str}"
+            )
+        else:
+            full_cmd = cmd_str
+
+        return full_cmd, env
+
     def detect_language(self, filepath: str, content: str = None) -> str:
         """Detect language from filepath or content."""
         path = Path(filepath)
@@ -403,11 +433,18 @@ class CodeValidator:
             temp_path = f.name
 
         try:
+            # Use shell command with nvm setup for proper Node.js environment
+            full_cmd, env = self._get_node_command_with_setup(
+                ["node", "--check", temp_path]
+            )
             proc = subprocess.run(
-                ["node", "--check", temp_path],
+                full_cmd,
+                shell=True,
+                executable="/bin/bash",
                 capture_output=True,
                 text=True,
                 timeout=10,
+                env=env,
             )
             if proc.returncode != 0:
                 result.syntax_valid = False
@@ -445,21 +482,31 @@ class CodeValidator:
             temp_path = f.name
 
         try:
+            # Use shell command with nvm setup for proper Node.js environment
+            full_cmd, env = self._get_node_command_with_setup(
+                ["tsc", "--noEmit", "--esModuleInterop", "--skipLibCheck", temp_path]
+            )
             proc = subprocess.run(
-                ["tsc", "--noEmit", "--esModuleInterop", "--skipLibCheck", temp_path],
+                full_cmd,
+                shell=True,
+                executable="/bin/bash",
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env=env,
             )
             if proc.returncode != 0:
-                for line in proc.stderr.strip().split("\n")[:5]:
-                    result.issues.append(
-                        ValidationIssue(
-                            level=ValidationLevel.ERROR,
-                            message=line[:200],
-                            rule="typescript",
+                # tsc outputs errors to stdout, not stderr
+                output = proc.stdout or proc.stderr
+                for line in output.strip().split("\n")[:5]:
+                    if line.strip():
+                        result.issues.append(
+                            ValidationIssue(
+                                level=ValidationLevel.ERROR,
+                                message=line[:200],
+                                rule="typescript",
+                            )
                         )
-                    )
                 result.type_check_passed = False
         except Exception as e:
             logger.warning(f"TS validation failed: {e}")

@@ -24,6 +24,161 @@ from backend.models.review import ReviewEntry, ReviewIssue, ReviewProgress
 logger = logging.getLogger(__name__)
 
 
+class ReviewService:
+    """Legacy wrapper for review endpoints (compatibility layer)."""
+
+    def __init__(
+        self, repo_path: Optional[str] = None, analysis_depth: str = "standard"
+    ):
+        self._real: Optional[RealReviewService] = None
+        self.repo_path = repo_path
+        self.analysis_depth = analysis_depth
+
+    def _get_real(self) -> "RealReviewService":
+        if self._real is None:
+            self._real = RealReviewService(
+                repo_path=self.repo_path, analysis_depth=self.analysis_depth
+            )
+        return self._real
+
+    def review_files(
+        self, files: List[str], progress_callback: Optional[Any] = None
+    ) -> List[ReviewEntry]:
+        if not files:
+            return []
+
+        results: List[ReviewEntry] = []
+
+        for file_path in files:
+            if not file_path or not os.path.exists(file_path):
+                continue
+
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
+                    content = handle.read()
+            except Exception as exc:
+                logger.warning(f"ReviewService could not read {file_path}: {exc}")
+                continue
+
+            issues: List[ReviewIssue] = []
+            ext = Path(file_path).suffix.lower()
+            lines = content.splitlines()
+
+            for idx, line in enumerate(lines, start=1):
+                lower = line.lower()
+
+                if ext in {".js", ".ts", ".jsx", ".tsx"}:
+                    if "console.log" in line:
+                        issues.append(
+                            ReviewIssue(
+                                severity="warning",
+                                title="console_log",
+                                message="Remove console.log statements for production.",
+                                suggestion="Remove or replace with proper logging.",
+                                line_number=idx,
+                                can_auto_fix=True,
+                            )
+                        )
+                    if "var " in line:
+                        issues.append(
+                            ReviewIssue(
+                                severity="warning",
+                                title="var_declaration",
+                                message="Avoid 'var' declarations; use let/const.",
+                                suggestion="Replace var with let/const.",
+                                line_number=idx,
+                                can_auto_fix=True,
+                            )
+                        )
+                    if "undefined" in line:
+                        issues.append(
+                            ReviewIssue(
+                                severity="info",
+                                title="undefined_usage",
+                                message="Potential undefined usage in expression.",
+                                suggestion="Check for undefined values before use.",
+                                line_number=idx,
+                                can_auto_fix=False,
+                            )
+                        )
+
+                if ext == ".py":
+                    if "print(" in line:
+                        issues.append(
+                            ReviewIssue(
+                                severity="warning",
+                                title="debug_print",
+                                message="Remove debug print statements for production.",
+                                suggestion="Replace with proper logging.",
+                                line_number=idx,
+                                can_auto_fix=False,
+                            )
+                        )
+                    if "import " in line and "unused" in lower:
+                        issues.append(
+                            ReviewIssue(
+                                severity="info",
+                                title="unused_import",
+                                message="Unused import detected.",
+                                suggestion="Remove unused import.",
+                                line_number=idx,
+                                can_auto_fix=True,
+                            )
+                        )
+                    if "unused" in lower and "var" in lower:
+                        issues.append(
+                            ReviewIssue(
+                                severity="info",
+                                title="unused_variable",
+                                message="Unused variable detected.",
+                                suggestion="Remove or use the variable.",
+                                line_number=idx,
+                                can_auto_fix=True,
+                            )
+                        )
+
+            llm_result = self._analyze_with_llm(file_path, content)
+            llm_issues: List[ReviewIssue] = []
+            if isinstance(llm_result, dict):
+                for issue in llm_result.get("issues", []):
+                    llm_issues.append(
+                        ReviewIssue(
+                            severity=issue.get("severity", "warning"),
+                            title=issue.get("type", "issue"),
+                            message=issue.get(
+                                "description", "Issue detected during review."
+                            ),
+                            suggestion=issue.get("fix_suggestion"),
+                            line_number=issue.get("line"),
+                            can_auto_fix=bool(issue.get("fix_suggestion")),
+                        )
+                    )
+
+            if llm_issues:
+                issues = llm_issues
+
+            results.append(
+                ReviewEntry(
+                    file=file_path,
+                    diff="",
+                    content=content,
+                    issues=issues,
+                    file_type=ext.lstrip("."),
+                    status=None,
+                )
+            )
+
+        return results
+
+    def review_working_tree(self) -> List[ReviewEntry]:
+        # Placeholder until working-tree review is wired to this wrapper.
+        return []
+
+    def _analyze_with_llm(self, file_path: str, content: str) -> Dict[str, Any]:
+        """LLM analysis hook (mocked in tests)."""
+        return {}
+
+
 class RealReviewService:
     """Service for analyzing real code changes from git with LLM-powered review"""
 

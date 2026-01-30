@@ -110,6 +110,7 @@ interface SidebarPanelProps {
   onSignOut: () => void;
   onExecuteMcpTool: (toolName: string, args: Record<string, unknown>) => Promise<void>;
   onOpenFullPanel?: () => void;
+  onOpenEnterpriseProjects?: () => void;
   externalPanelRequest?: PanelType;
   onClearExternalPanelRequest?: () => void;
 }
@@ -205,6 +206,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
   onSignOut,
   onExecuteMcpTool,
   onOpenFullPanel,
+  onOpenEnterpriseProjects,
   externalPanelRequest,
   onClearExternalPanelRequest,
 }) => {
@@ -407,6 +409,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
         user={user}
         onSignIn={onSignIn}
         onSignOut={onSignOut}
+        onOpenEnterpriseProjects={onOpenEnterpriseProjects}
       />
 
       {/* Rules Panel - Full featured */}

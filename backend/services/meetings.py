@@ -1,5 +1,6 @@
 import uuid
 import datetime as dt
+from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from ..models.meetings import Meeting, TranscriptSegment, MeetingSummary, ActionItem
@@ -12,7 +13,7 @@ def new_uuid() -> str:
 
 
 def create_meeting(
-    db: Session, title: str | None, provider: str | None, org_id: str | None
+    db: Session, title: Optional[str], provider: Optional[str], org_id: Optional[str]
 ) -> Meeting:
     """Create a new meeting and persist it to the database.
 
@@ -40,7 +41,7 @@ def create_meeting(
     return m
 
 
-def get_meeting_by_session(db: Session, session_id: str) -> Meeting | None:
+def get_meeting_by_session(db: Session, session_id: str) -> Optional[Meeting]:
     """Retrieve a meeting by its session ID.
 
     Args:
@@ -57,9 +58,9 @@ def append_segment(
     db: Session,
     meeting_id: str,
     text_content: str,
-    speaker: str | None,
-    ts_start_ms: int | None,
-    ts_end_ms: int | None,
+    speaker: Optional[str],
+    ts_start_ms: Optional[int],
+    ts_end_ms: Optional[int],
 ) -> TranscriptSegment:
     """Add a transcript segment to a meeting.
 
@@ -91,10 +92,10 @@ def append_segment(
 def finalize_meeting(
     db: Session,
     meeting: Meeting,
-    bullets: list[str],
-    decisions: list[str],
-    risks: list[str],
-    actions: list[dict],
+    bullets: List[str],
+    decisions: List[str],
+    risks: List[str],
+    actions: List[Dict[str, Any]],
 ) -> None:
     """Finalize a meeting by saving summary and action items.
 
@@ -137,7 +138,7 @@ def finalize_meeting(
     db.commit()
 
 
-def get_summary(db: Session, session_id: str) -> dict | None:
+def get_summary(db: Session, session_id: str) -> Optional[Dict[str, Any]]:
     m = get_meeting_by_session(db, session_id)
     if not m:
         return None
@@ -172,7 +173,7 @@ def get_summary(db: Session, session_id: str) -> dict | None:
     }
 
 
-def list_actions(db: Session, session_id: str) -> list[dict]:
+def list_actions(db: Session, session_id: str) -> List[Dict[str, Any]]:
     m = get_meeting_by_session(db, session_id)
     if not m:
         return []
@@ -195,8 +196,8 @@ def list_actions(db: Session, session_id: str) -> list[dict]:
 
 
 def search_meetings(
-    db: Session, q: str | None, since: str | None, people: str | None
-) -> list[dict]:
+    db: Session, q: Optional[str], since: Optional[str], people: Optional[str]
+) -> List[Dict[str, Any]]:
     # simple hybrid: text ILIKE on segments or title; since filter on started_at
     clauses = []
     params = {}

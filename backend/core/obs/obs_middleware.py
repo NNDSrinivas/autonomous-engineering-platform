@@ -8,6 +8,7 @@ from starlette.responses import Response
 
 from .obs_logging import logger
 from .obs_metrics import REQ_COUNTER, REQ_LATENCY
+from .obs_context import bind_request_context, clear_request_context
 
 HEADER_REQ_ID = "X-Request-Id"
 HTTP_STATUS_INTERNAL_ERROR = "500"
@@ -59,6 +60,9 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         # attach for downstream use (e.g., audit)
         request.state.request_id = req_id
         request.state.req_id = req_id  # Backward compatibility for AuditMiddleware
+        trace_id = _extract_trace_id(request)
+        request.state.trace_id = trace_id
+        ctx_tokens = bind_request_context(req_id, trace_id, None, None)
 
         try:
             response = await call_next(request)
@@ -81,11 +85,13 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 "request failed",
                 extra={
                     "request_id": req_id,
+                    "trace_id": trace_id,
                     "route": route,
                     "method": request.method,
                     "status": int(HTTP_STATUS_INTERNAL_ERROR),
                 },
             )
+            clear_request_context(ctx_tokens)
             raise
 
         # success path
@@ -119,6 +125,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 "request",
                 extra={
                     "request_id": req_id,
+                    "trace_id": trace_id,
                     "route": route,
                     "method": request.method,
                     "status": int(status),
@@ -147,4 +154,18 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 response.headers["Server-Timing"] = f"{trimmed}, app_obs;dur={dur_ms}"
         else:
             response.headers["Server-Timing"] = f"app_obs;dur={dur_ms}"
+        clear_request_context(ctx_tokens)
         return response
+
+
+def _extract_trace_id(request: Request) -> str | None:
+    traceparent = request.headers.get("traceparent")
+    if not traceparent:
+        return None
+    try:
+        parts = traceparent.split("-")
+        if len(parts) >= 4 and len(parts[1]) == 32:
+            return parts[1]
+    except Exception:
+        return None
+    return None

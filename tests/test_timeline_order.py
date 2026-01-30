@@ -7,9 +7,12 @@ Verifies that:
 4. Timeline includes all relevant nodes
 """
 
+import pytest
 from httpx import Client
 from datetime import datetime
 from tests.conftest import assert_response_ok
+
+pytestmark = pytest.mark.integration
 
 
 def test_timeline_is_ordered(api_client: Client, seeded_graph):

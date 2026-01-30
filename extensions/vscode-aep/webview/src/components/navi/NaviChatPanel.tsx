@@ -71,7 +71,8 @@ import {
   Zap,
 } from "lucide-react";
 import { useWorkspace } from "../../context/WorkspaceContext";
-import { resolveBackendBase } from "../../api/navi/client";
+import { NaviInlineCommand } from "../command";
+import { resolveBackendBase, buildHeaders } from "../../api/navi/client";
 import { ORG, USER_ID } from "../../api/client";
 import { getRecommendedModel, getProgressMessages, detectTaskType, type TaskType } from "../../lib/llmRouter";
 import {
@@ -112,6 +113,8 @@ import { AutonomousStepApproval } from "../AutonomousStepApproval";
 import { NaviActionRunner } from "./NaviActionRunner";
 import { NaviApprovalPanel, ActionWithRisk } from "./NaviApprovalPanel";
 import { ExecutionPlanStepper, ExecutionPlanStep } from "./ExecutionPlanStepper";
+import { FileChangeSummary } from "./FileChangeSummary";
+import { useActivityPanelPreferences } from "../../hooks/useActivityPanelPreferences";
 import "./NaviChatPanel.css";
 import Prism from 'prismjs';
 import type { ActivityEvent as ActivityEventPayload } from "../../types/activity";
@@ -471,9 +474,14 @@ type ActivityEvent = {
   status?: "running" | "done" | "error";
   timestamp: string;
   output?: string; // Command output for IN/OUT display
+  exitCode?: number; // Command exit code
   additions?: number; // Lines added for edit/create operations
   deletions?: number; // Lines removed for edit operations
   _sequence?: number; // PHASE 5: Internal sequence number for guaranteed ordering
+  // Command context fields (Bug 5 fix)
+  purpose?: string; // Why this command/action is being run
+  explanation?: string; // What the result means
+  nextAction?: string; // What will happen next
 };
 
 type ActivityFile = {
@@ -497,6 +505,7 @@ type ActionSummaryEntry = {
   success: boolean;
   message?: string;
   originalContent?: string; // For undo functionality
+  wasCreated?: boolean; // True if file was newly created (for undo = delete)
 };
 
 // Inline change summary bar state (Cursor-style)
@@ -510,6 +519,7 @@ type InlineChangeSummary = {
     additions: number;
     deletions: number;
     originalContent?: string;
+    wasCreated?: boolean; // True if file was newly created (for undo = delete)
   }>;
   timestamp: string;
 };
@@ -1081,10 +1091,34 @@ function DiffFileCard({ fileDiff }: { fileDiff: FileDiffDetail }) {
 
 interface NaviChatPanelProps {
   activityPanelState?: ReturnType<typeof import("../../hooks/useActivityPanel").useActivityPanel>;
+  onOpenActivityForCommand?: (commandId: string) => void;
+  highlightCommandId?: string | null;
 }
 
-export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps = {}) {
+export default function NaviChatPanel({ activityPanelState, onOpenActivityForCommand, highlightCommandId }: NaviChatPanelProps = {}) {
   const { workspaceRoot, repoName, isLoading } = useWorkspace();
+  const activityPanelRef = useRef(activityPanelState);
+
+  useEffect(() => {
+    activityPanelRef.current = activityPanelState;
+  }, [activityPanelState]);
+
+  useEffect(() => {
+    if (!highlightCommandId) return;
+    setInlineCommandHighlightId(highlightCommandId);
+    const el = document.querySelector(
+      `[data-command-id="${highlightCommandId}"]`
+    ) as HTMLElement | null;
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    const timer = window.setTimeout(() => {
+      setInlineCommandHighlightId((current) =>
+        current === highlightCommandId ? null : current
+      );
+    }, 20000);
+    return () => window.clearTimeout(timer);
+  }, [highlightCommandId]);
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1102,6 +1136,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const [historySortOpen, setHistorySortOpen] = useState(false);
   const [, setHistoryRefreshTrigger] = useState(0);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [inlineCommandHighlightId, setInlineCommandHighlightId] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [authRequiredDetail, setAuthRequiredDetail] = useState<string>("");
+  const pendingAuthRetryRef = useRef(false);
 
   // Settings panel state
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1131,6 +1169,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     syntaxHighlighting: true,
     animationsEnabled: true,
   });
+  const [activityPanelPreferences, setActivityPanelPreferences] = useActivityPanelPreferences();
 
   // Notification Settings
   const [notificationSettings, setNotificationSettings] = useState({
@@ -1212,6 +1251,20 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   }
   const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
   const [planCollapsed, setPlanCollapsed] = useState(true);
+
+  // Build verification state - tracks build/typecheck results after task completion
+  type BuildVerificationResult = {
+    success: boolean;
+    skipped?: boolean;
+    message?: string;
+    project_type?: string;
+    command?: string;
+    command_name?: string;
+    output?: string;
+    errors?: string[];
+    return_code?: number;
+  };
+  const [buildVerification, setBuildVerification] = useState<BuildVerificationResult | null>(null);
 
   // Dynamic placeholder suggestions
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -1339,6 +1392,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         status: "running" | "done" | "error";
         exitCode?: number;
         durationMs?: number;
+        actionIndex?: number | null;
+        activityStepIndex?: number;
         meta?: {
           kind?: string;
           threshold?: number;
@@ -1395,6 +1450,22 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     scope: 'staged' | 'unstaged';
   }>>([]);
   const [changeDetailsOpen, setChangeDetailsOpen] = useState(false);
+
+  // Sync latest terminal output into Activity Panel as a fallback
+  useEffect(() => {
+    if (!activityPanelState || terminalEntries.length === 0) return;
+    if (!activityPanelState.steps.length) return;
+
+    const latest = terminalEntries[terminalEntries.length - 1];
+    const stepIndex = activityPanelState.currentStep ?? 0;
+    activityPanelState.upsertCommand(stepIndex, latest.id, {
+      command: latest.command,
+      status: latest.status,
+      exitCode: latest.exitCode,
+      stdout: latest.output,
+      truncated: latest.truncated,
+    });
+  }, [terminalEntries, activityPanelState]);
 
   // Phase 1.4: Diagnostics scoped to changed files
   const [diagnosticsByFile, setDiagnosticsByFile] = useState<Array<{
@@ -1502,16 +1573,25 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const pushActivityEvent = (event: ActivityEvent) => {
     // PHASE 5: Add sequence number for reliable ordering
     setActivityEvents((prev) => {
+      // FIX: When a new "running" activity starts, mark all previous "running" activities as "done"
+      // This ensures spinners stop when NAVI moves to the next step
+      let workingPrev = prev;
+      if (event.status === "running") {
+        workingPrev = prev.map((item) =>
+          item.status === "running" ? { ...item, status: "done" as const } : item
+        );
+      }
+
       // ENHANCED DEDUPLICATION: Check by label AND detail to avoid deduplicating different file reads
       // File reads all have label "Reading" or "Read" but different detail (file path)
       // So we need to match BOTH to properly deduplicate
-      const existingByLabelAndDetail = prev.findIndex(
+      const existingByLabelAndDetail = workingPrev.findIndex(
         (item) => item.label === event.label && item.detail === event.detail
       );
 
       if (existingByLabelAndDetail >= 0) {
         // Update existing activity instead of adding duplicate
-        const next = [...prev];
+        const next = [...workingPrev];
         next[existingByLabelAndDetail] = {
           ...next[existingByLabelAndDetail],
           kind: event.kind, // Update kind in case it changed
@@ -1523,10 +1603,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       }
 
       // Also check by ID
-      const existingById = prev.findIndex((item) => item.id === event.id);
+      const existingById = workingPrev.findIndex((item) => item.id === event.id);
       if (existingById >= 0) {
-        const next = [...prev];
-        next[existingById] = { ...event, _sequence: prev[existingById]._sequence };
+        const next = [...workingPrev];
+        next[existingById] = { ...event, _sequence: workingPrev[existingById]._sequence };
         return next;
       }
 
@@ -1538,7 +1618,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       };
 
       // Add new event and sort by sequence number for guaranteed order
-      const updated = [...prev, sequencedEvent];
+      const updated = [...workingPrev, sequencedEvent];
       updated.sort((a, b) => {
         const seqA = a._sequence || 0;
         const seqB = b._sequence || 0;
@@ -1657,6 +1737,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           additions: entry.additions ?? 0,
           deletions: entry.deletions ?? 0,
           originalContent: entry.originalContent,
+          wasCreated: entry.wasCreated,
         })),
         timestamp: nowIso(),
       };
@@ -1835,11 +1916,23 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   useEffect(() => {
     const handleDocumentClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.classList.contains('navi-link--file')) {
+
+      // Check if clicked element or any parent is a file link
+      const fileLink = target.classList.contains('navi-link--file')
+        ? target
+        : target.closest('.navi-link--file') as HTMLElement | null;
+
+      // Also check if clicked on the wrapper span (for SVG icon clicks)
+      const fileLinkWrapper = target.closest('.navi-file-link') as HTMLElement | null;
+      const anchorFromWrapper = fileLinkWrapper?.querySelector('.navi-link--file') as HTMLElement | null;
+
+      const finalLink = fileLink || anchorFromWrapper;
+
+      if (finalLink) {
         e.preventDefault();
         e.stopPropagation();
-        const filePath = target.getAttribute('data-file-path');
-        const lineStr = target.getAttribute('data-line');
+        const filePath = finalLink.getAttribute('data-file-path');
+        const lineStr = finalLink.getAttribute('data-line');
         const line = lineStr ? parseInt(lineStr, 10) : undefined;
         if (filePath) {
           console.log('[NAVI] Opening file:', filePath, 'at line:', line);
@@ -1898,10 +1991,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         console.log('[NAVI] Backend health check - URL:', `${backendBase}/api/navi/chat`);
         const res = await fetch(`${backendBase}/api/navi/chat`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Org-Id": ORG,
-          },
+          headers: buildHeaders(),
           body: JSON.stringify({
             message: "health_check",
             attachments: [],
@@ -2206,6 +2296,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
     const unsub = vscodeApi.onMessage((msg) => {
       if (!msg || typeof msg !== "object") return;
+      const activityPanel = activityPanelRef.current;
 
       if (msg.type === "hydrateState") {
         const nextModelId = typeof msg.modelId === "string" ? msg.modelId : AUTO_MODEL_ID;
@@ -2228,6 +2319,42 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           ? (nextModeId as ChatMode)
           : "agent";
         setChatMode(normalizedMode);
+        return;
+      }
+
+      if (msg.type === "auth.stateChange") {
+        if (msg.isAuthenticated) {
+          const currentConfig = (window as any).__AEP_CONFIG__ || {};
+          if (msg.authToken) {
+            (window as any).__AEP_CONFIG__ = {
+              ...currentConfig,
+              authToken: msg.authToken,
+              orgId: msg.orgId ?? currentConfig.orgId,
+              userId: msg.userId ?? currentConfig.userId,
+            };
+          }
+          setAuthRequired(false);
+          setAuthRequiredDetail("");
+          if (pendingAuthRetryRef.current && lastSentRef.current && !sending) {
+            pendingAuthRetryRef.current = false;
+            showToast("Signed in. Retrying your last request…", "info");
+            void handleSend(lastSentRef.current);
+          } else if (pendingAuthRetryRef.current && lastSentRef.current && sending) {
+            setTimeout(() => {
+              if (!sending && pendingAuthRetryRef.current && lastSentRef.current) {
+                pendingAuthRetryRef.current = false;
+                showToast("Signed in. Retrying your last request…", "info");
+                void handleSend(lastSentRef.current);
+              }
+            }, 300);
+          }
+        } else {
+          const currentConfig = (window as any).__AEP_CONFIG__ || {};
+          (window as any).__AEP_CONFIG__ = {
+            ...currentConfig,
+            authToken: undefined,
+          };
+        }
         return;
       }
 
@@ -2628,56 +2755,24 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         lastLiveProgressRef.current = "";
         clearSendTimeout();
 
-        // Generate task summary from activity files if no task.complete message was sent
-        // and there are activity files or actions to summarize
-        // BUT only if there were no errors - don't show "Task Complete" for failed tasks!
-        if (activityFiles.length > 0 || incomingActions.length > 0) {
-          const filesModified = activityFiles.filter(f => f.scope === 'unstaged' || f.scope === 'working').length;
-          const filesCreated = incomingActions.filter((a: any) => a.type === 'createFile').length;
-          const filesRead = activityEvents.filter(e => e.kind === 'read').length;
-
-          // Check for errors - don't show Task Complete if there were failures
-          const hasErrors = activityEvents.some(e => e.kind === 'error' || e.status === 'error');
-          const hasFailedCommands = activityEvents.some(
-            e => e.kind === 'command' && (e.status === 'error' || (e.output && /error|failed|cannot|unable/i.test(e.output)))
-          );
-
-          // Check response text for failure indicators
-          const responseText = msg.text || '';
-          const responseIndicatesFailure = /(?:couldn't|could not|unable to|failed to|error|issue|problem|not working|not responding|still.*issue)/i.test(responseText);
-
-          // Don't show Task Complete if there were errors or the response indicates failure
-          if (hasErrors || hasFailedCommands || responseIndicatesFailure) {
-            console.log('[NaviChatPanel] ⚠️ Not showing Task Complete due to errors or failures');
-            // Don't set task summary - the task didn't actually complete successfully
-          } else {
-            // Extract summary from the response text
-            const summaryLines = responseText.split('\n').slice(0, 3).join(' ').substring(0, 200);
-
-            // Build file list
-            const filesList = activityFiles.map(f => ({
-              path: f.path,
-              action: (f.scope === 'working' ? 'modified' : 'modified') as 'created' | 'modified' | 'read',
-              additions: f.additions,
-              deletions: f.deletions,
-            }));
-
-            // Only set task summary if there were significant FILE changes (not just commands)
-            // Command-only tasks should verify success before showing Task Complete
-            if (filesModified > 0 || filesCreated > 0) {
-              setTaskSummary({
-                filesRead,
-                filesModified,
-                filesCreated,
-                iterations: 1,
-                verificationPassed: null,
-                nextSteps: [],
-                summaryText: summaryLines || 'Task completed successfully.',
-                filesList: filesList.length > 0 ? filesList : undefined,
-              });
-            }
-          }
-        }
+        // TASK COMPLETION: Now handled by backend via task_complete event
+        // The backend (streaming_agent.py) uses TaskContext to track:
+        // - Tool calls started/completed
+        // - File modifications/creations
+        // - Command executions and their success
+        // - Verification results
+        //
+        // The frontend receives a task_complete event with:
+        // - success: boolean - Whether task succeeded
+        // - state: TaskState - Current state (complete, failed, idle)
+        // - is_actionable_task: boolean - Whether task had file changes or commands
+        //
+        // This replaces heuristic regex-based detection which was error-prone.
+        // The Task Complete UI is now shown ONLY when:
+        // 1. Backend emits task_complete with success=true
+        // 2. is_actionable_task=true (file changes or commands run)
+        //
+        // See the "task_complete" event handler above for the implementation.
 
         // AUTO-EXECUTE: If auto-execute mode is enabled, automatically approve and execute all actions
         if (autoExecuteModeRef.current && incomingActions.length > 0) {
@@ -2758,6 +2853,19 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           })),
           isExecuting: true,
         });
+        if (activityPanel) {
+          const steps = (msg.data.steps || []).map((s: any) => ({
+            description: s.title || s.detail || `Step ${s.index ?? ''}`.trim(),
+          }));
+          activityPanel.initializeSteps(
+            {
+              mode: 'autonomous_coding',
+              total_steps: steps.length,
+              current_step: 0,
+            },
+            steps
+          );
+        }
         return;
       }
 
@@ -2796,10 +2904,26 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           deletions: f.deletions,
         }));
 
+        // Calculate actual file changes
+        const filesModifiedCount = summary.files_modified || filesList.filter(f => f.action === 'modified').length;
+        const filesCreatedCount = summary.files_created || filesList.filter(f => f.action === 'created').length;
+        const hasFileChanges = filesModifiedCount > 0 || filesCreatedCount > 0 || filesList.length > 0;
+
+        // ONLY show Task Complete UI if there were actual file changes
+        // This prevents showing "Task Complete" when NAVI only provided analysis
+        if (!hasFileChanges) {
+          console.log('[NaviChatPanel] ⏳ No file changes detected - NOT showing Task Complete UI (analysis-only response)');
+          // Still update next steps if provided
+          if (Array.isArray(summary.next_steps) && summary.next_steps.length > 0) {
+            setLastNextSteps(summary.next_steps);
+          }
+          return;
+        }
+
         setTaskSummary({
           filesRead: summary.files_read || 0,
-          filesModified: summary.files_modified || filesList.filter(f => f.action === 'modified').length,
-          filesCreated: summary.files_created || filesList.filter(f => f.action === 'created').length,
+          filesModified: filesModifiedCount,
+          filesCreated: filesCreatedCount,
           iterations: summary.iterations || 1,
           verificationPassed: summary.verification_passed ?? null,
           nextSteps: Array.isArray(summary.next_steps) ? summary.next_steps : [],
@@ -2811,6 +2935,104 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         // Also update next steps if provided
         if (Array.isArray(summary.next_steps) && summary.next_steps.length > 0) {
           setLastNextSteps(summary.next_steps);
+        }
+        return;
+      }
+
+      // Handle build verification events from backend
+      // This is emitted after file changes to verify the build/typecheck passes
+      if (msg.type === "build_verification" && msg.build_verification) {
+        const buildResult = msg.build_verification;
+        console.log('[NaviChatPanel] 🔨 Build verification result:', buildResult);
+
+        setBuildVerification(buildResult);
+
+        // Add activity event for build verification
+        if (!buildResult.skipped) {
+          pushActivityEvent({
+            id: makeActivityId(),
+            kind: buildResult.success ? 'success' : 'error',
+            label: buildResult.command_name || 'Build verification',
+            detail: buildResult.success
+              ? 'Build passed successfully'
+              : `Build failed: ${buildResult.errors?.slice(0, 2).join(', ') || 'Unknown error'}`,
+            status: 'done',
+            timestamp: nowIso(),
+          });
+        }
+        return;
+      }
+
+      // Handle BACKEND-DRIVEN task completion (proper solution)
+      // This event is emitted by streaming_agent.py with semantic completion status
+      // It replaces heuristic regex-based detection in the "done" handler
+      if (msg.type === "task_complete" && msg.task_complete) {
+        const taskData = msg.task_complete;
+        console.log('[NaviChatPanel] 🎯 Backend task_complete event:', taskData);
+
+        // ONLY show Task Complete UI if:
+        // 1. Task was successful
+        // 2. It was an actionable task (file changes or commands run)
+        if (taskData.success && taskData.is_actionable_task) {
+          const summary = taskData.summary || {};
+          const taskState = summary.task_state || {};
+
+          // Build file list from activity files
+          const filesList = activityFiles.map(f => ({
+            path: f.path,
+            action: (f.status === 'done' ? 'modified' : 'modified') as 'created' | 'modified' | 'read',
+            additions: f.additions,
+            deletions: f.deletions,
+          }));
+
+          // Get build verification from event payload or existing state
+          const buildResult = taskData.build_verification || buildVerification;
+          const buildPassed = buildResult ? (buildResult.skipped || buildResult.success) : null;
+
+          // Create verification details if we have build info
+          const verificationDetails = buildResult && !buildResult.skipped ? {
+            build: {
+              passed: buildResult.success,
+              errors: buildResult.errors || [],
+            },
+          } : undefined;
+
+          // Generate appropriate summary text
+          let summaryText = 'Task completed successfully.';
+          if (buildResult && !buildResult.skipped) {
+            if (buildResult.success) {
+              summaryText = `Task completed. ${buildResult.command_name || 'Build'} passed.`;
+            } else {
+              summaryText = `Task completed with ${buildResult.errors?.length || 0} build error(s).`;
+            }
+          }
+
+          setTaskSummary({
+            filesRead: taskState.files_modified?.length || 0,
+            filesModified: summary.files_modified || taskState.files_modified?.length || filesList.length,
+            filesCreated: summary.files_created || taskState.files_created?.length || 0,
+            iterations: 1,
+            verificationPassed: buildPassed,
+            nextSteps: [],
+            summaryText,
+            filesList: filesList.length > 0 ? filesList : undefined,
+            verificationDetails,
+          });
+
+          // Clear build verification state after using it
+          setBuildVerification(null);
+
+          console.log('[NaviChatPanel] ✅ Showing Task Complete UI (backend-verified)', {
+            buildResult,
+            verificationDetails,
+          });
+        } else {
+          console.log('[NaviChatPanel] ⏳ Task not complete or not actionable:', {
+            success: taskData.success,
+            state: taskData.state,
+            is_actionable_task: taskData.is_actionable_task
+          });
+          // Don't show Task Complete UI - task either failed or was just informational
         }
         return;
       }
@@ -2917,6 +3139,25 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const meta =
           msg.meta && typeof msg.meta === "object" ? msg.meta : undefined;
         const actionIndex = currentActionIndexRef.current;
+        let activityStepIndex =
+          activityPanel &&
+          typeof actionIndex === 'number' &&
+          actionIndex >= 0 &&
+          actionIndex < activityPanel.steps.length
+            ? actionIndex
+            : activityPanel &&
+              typeof activityPanel.currentStep === 'number' &&
+              activityPanel.currentStep >= 0 &&
+              activityPanel.currentStep < activityPanel.steps.length
+              ? activityPanel.currentStep
+              : undefined;
+        if (
+          activityStepIndex === undefined &&
+          activityPanel &&
+          activityPanel.steps.length > 0
+        ) {
+          activityStepIndex = 0;
+        }
         const entry = {
           messageId,
           command,
@@ -2926,6 +3167,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           status: "running" as const,
           meta,
           actionIndex, // Track which action this command belongs to
+          activityStepIndex,
         };
         commandStateRef.current.set(msg.commandId, entry);
         const activityId = makeActivityId();
@@ -2964,6 +3206,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             startedAt: nowIso(),
           },
         ].slice(-MAX_TERMINAL_ENTRIES));
+
+        if (activityPanel && activityStepIndex !== undefined) {
+          activityPanel.upsertCommand(activityStepIndex, terminalId, {
+            command,
+            status: "running",
+          });
+        }
         return;
       }
 
@@ -2971,7 +3220,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const entry = commandStateRef.current.get(msg.commandId);
         if (!entry) return;
         const terminalId = String(msg.commandId);
-        const actionIndex = entry.meta?.actionIndex ?? null;
+        const actionIndex = entry.actionIndex ?? null;
+        const stream = msg.stream === "stderr" ? "stderr" : "stdout";
         const next = appendWithLimit(entry.output, String(msg.text), MAX_COMMAND_OUTPUT);
         // CRITICAL: Update entry.output so it's available for self-healing!
         entry.output = next.text;
@@ -2994,6 +3244,27 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             return updated;
           });
         }
+
+        if (activityPanel && entry.activityStepIndex !== undefined) {
+          activityPanel.appendCommandOutput(
+            entry.activityStepIndex,
+            terminalId,
+            String(msg.text),
+            stream
+          );
+        } else if (activityPanel && activityPanel.steps.length > 0) {
+          const fallbackStep = activityPanel.currentStep ?? 0;
+          activityPanel.upsertCommand(fallbackStep, terminalId, {
+            command: entry.command,
+            status: entry.status,
+          });
+          activityPanel.appendCommandOutput(
+            fallbackStep,
+            terminalId,
+            String(msg.text),
+            stream
+          );
+        }
         // IMPORTANT: Don't return early - we're updating entry which is a ref!
         // But we can return since no other processing needed
         return;
@@ -3003,7 +3274,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const entry = commandStateRef.current.get(msg.commandId);
         if (!entry) return;
         const terminalId = String(msg.commandId);
-        const actionIndex = entry.meta?.actionIndex ?? null;
+        const actionIndex = entry.actionIndex ?? null;
         entry.status = "done";
         entry.exitCode =
           typeof msg.exitCode === "number" ? msg.exitCode : entry.exitCode;
@@ -3081,8 +3352,79 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           }
         }
 
+        // Update the activity event with final status and output
+        const activityId = commandActivityRef.current.get(msg.commandId);
+        const finalStatus = entry.exitCode !== undefined && entry.exitCode !== 0 ? "error" : "done";
+        if (activityId) {
+          setActivityEvents((prev) =>
+            prev.map((event) =>
+              event.id === activityId
+                ? {
+                  ...event,
+                  status: finalStatus as "running" | "done" | "error",
+                  output: entry.output, // Include the command output
+                  exitCode: entry.exitCode,
+                }
+                : event
+            )
+          );
+
+          // Also update per-action activities for inline display
+          if (actionIndex !== null) {
+            setPerActionActivities((prev) => {
+              const next = new Map(prev);
+              const existing = next.get(actionIndex) || [];
+              const updatedActivities = existing.map((evt) =>
+                evt.id === activityId
+                  ? { ...evt, status: finalStatus as "running" | "done" | "error", output: entry.output, exitCode: entry.exitCode }
+                  : evt
+              );
+              next.set(actionIndex, updatedActivities);
+              return next;
+            });
+          }
+
+          // Also update storedActivities on messages (for display after streaming ends)
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.storedActivities && m.storedActivities.some((a) => a.id === activityId)) {
+                return {
+                  ...m,
+                  storedActivities: m.storedActivities.map((a) =>
+                    a.id === activityId
+                      ? { ...a, status: finalStatus as "running" | "done" | "error", output: entry.output, exitCode: entry.exitCode }
+                      : a
+                  ),
+                };
+              }
+              return m;
+            })
+          );
+
+          commandActivityRef.current.delete(msg.commandId);
+        }
+
         reportCoverageIfNeeded(entry);
-        commandStateRef.current.delete(msg.commandId);
+        if (activityPanel && entry.activityStepIndex !== undefined) {
+          activityPanel.updateCommandStatus(
+            entry.activityStepIndex,
+            terminalId,
+            finalStatus,
+            entry.exitCode
+          );
+        } else if (activityPanel && activityPanel.steps.length > 0) {
+          const fallbackStep = activityPanel.currentStep ?? 0;
+          activityPanel.upsertCommand(fallbackStep, terminalId, {
+            command: entry.command,
+            status: entry.status,
+          });
+          activityPanel.updateCommandStatus(
+            fallbackStep,
+            terminalId,
+            finalStatus,
+            entry.exitCode
+          );
+        }
         return;
       }
 
@@ -3123,7 +3465,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           })
         );
         const activityId = commandActivityRef.current.get(msg.commandId);
-        const actionIndex = (entry as any).actionIndex ?? null;
+        const actionIndex = entry.actionIndex ?? null;
         if (activityId) {
           setActivityEvents((prev) =>
             prev.map((event) =>
@@ -3177,6 +3519,38 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           }
         }
         commandStateRef.current.delete(msg.commandId);
+        if (activityPanelState && entry.activityStepIndex !== undefined) {
+          activityPanelState.appendCommandOutput(
+            entry.activityStepIndex,
+            terminalId,
+            `\n${errorText}`,
+            "stderr"
+          );
+          activityPanelState.updateCommandStatus(
+            entry.activityStepIndex,
+            terminalId,
+            "error",
+            entry.exitCode
+          );
+        } else if (activityPanelState && activityPanelState.steps.length > 0) {
+          const fallbackStep = activityPanelState.currentStep ?? 0;
+          activityPanelState.upsertCommand(fallbackStep, terminalId, {
+            command: entry.command,
+            status: entry.status,
+          });
+          activityPanelState.appendCommandOutput(
+            fallbackStep,
+            terminalId,
+            `\n${errorText}`,
+            "stderr"
+          );
+          activityPanelState.updateCommandStatus(
+            fallbackStep,
+            terminalId,
+            "error",
+            entry.exitCode
+          );
+        }
         return;
       }
 
@@ -3385,6 +3759,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             success: isCommandSuccess,
             message: message ? String(message) : undefined,
             originalContent: data?.originalContent, // For undo functionality
+            wasCreated: data?.wasCreated, // True if file was newly created (undo = delete)
           });
 
           pendingActionCountRef.current = Math.max(0, pendingActionCountRef.current - 1);
@@ -3732,6 +4107,19 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             showToast(`Error: ${message}`, 'error');
           }
 
+          const normalizedMessage = String(message).toLowerCase();
+          if (
+            normalizedMessage.includes("http 401") ||
+            normalizedMessage.includes("unauthorized") ||
+            normalizedMessage.includes("authorization header") ||
+            normalizedMessage.includes("missing or invalid authorization")
+          ) {
+            setAuthRequired(true);
+            setAuthRequiredDetail(String(message));
+            pendingAuthRetryRef.current = true;
+            showToast("Sign in required to continue.", "warning");
+          }
+
           // Add error activity with full detail
           pushActivityEvent({
             id: makeActivityId(),
@@ -3992,6 +4380,11 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           const label = data.label || 'Running command';
           const detail = data.detail || data.command || '';
           const status = data.status || 'running';
+          // Context fields for command explanations (Bug 5 fix)
+          const purpose = data.purpose || data.context?.purpose;
+          const explanation = data.explanation || data.context?.explanation;
+          const nextAction = data.nextAction || data.context?.nextAction;
+          const output = data.output || data.result?.stdout || data.result?.output;
 
           if (status === 'done') {
             setActivityEvents((prev) => {
@@ -4000,7 +4393,14 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               );
               if (existingIdx >= 0) {
                 const updated = [...prev];
-                updated[existingIdx] = { ...updated[existingIdx], status: 'done', detail };
+                updated[existingIdx] = {
+                  ...updated[existingIdx],
+                  status: 'done',
+                  detail,
+                  output,
+                  explanation,
+                  nextAction,
+                };
                 return updated;
               }
               return [...prev, {
@@ -4010,6 +4410,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 detail,
                 status: "done" as const,
                 timestamp: nowIso(),
+                output,
+                purpose,
+                explanation,
+                nextAction,
               }];
             });
           } else {
@@ -4020,6 +4424,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               detail,
               status: "running",
               timestamp: nowIso(),
+              purpose,
               ...(data.toolId ? { toolId: data.toolId } : {}),
             } as any);
           }
@@ -4528,10 +4933,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Org-Id": ORG,
-      },
+      headers: buildHeaders(),
       body: JSON.stringify(body),
     });
     const rawText = await res.text();
@@ -5816,8 +6218,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const handleUndoChanges = async () => {
     if (!inlineChangeSummary) return;
 
-    // Request undo for each file with original content
-    const filesToUndo = inlineChangeSummary.files.filter((f) => f.originalContent !== undefined);
+    // Request undo for each file - either restore original content or delete if newly created
+    const filesToUndo = inlineChangeSummary.files.filter(
+      (f) => f.originalContent !== undefined || f.wasCreated
+    );
 
     if (filesToUndo.length === 0) {
       showToast("Cannot undo: original content not available", "error");
@@ -5831,11 +6235,30 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         type: "undoFileChange",
         filePath: file.path,
         originalContent: file.originalContent,
+        wasCreated: file.wasCreated, // If true, extension will delete the file
       });
     }
 
     setInlineChangeSummary(null);
     showToast(`Undone ${filesToUndo.length} file change${filesToUndo.length > 1 ? "s" : ""}`, "info");
+  };
+
+  // Handler for "Preview All" button - opens diff view for all changed files
+  const handlePreviewAllChanges = () => {
+    if (!inlineChangeSummary || inlineChangeSummary.files.length === 0) return;
+
+    // Open diff view for each file
+    for (const file of inlineChangeSummary.files) {
+      if (file.path) {
+        vscodeApi.postMessage({
+          type: 'openNativeDiff',
+          filePath: file.path,
+          scope: 'working',
+        });
+      }
+    }
+
+    showToast(`Opening ${inlineChangeSummary.files.length} file diff${inlineChangeSummary.files.length > 1 ? "s" : ""}`, "info");
   };
 
   const handleApproveAction = (actions: AgentAction[], actionIndex: number) => {
@@ -5910,7 +6333,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const fetchAutonomousSteps = async (taskId: string) => {
     try {
       const response = await fetch(
-        `${resolveBackendBase()}/api/autonomous/tasks/${taskId}/steps`
+        `${resolveBackendBase()}/api/autonomous/tasks/${taskId}/steps`,
+        { headers: buildHeaders() }
       );
       if (response.ok) {
         const steps = await response.json();
@@ -6090,24 +6514,69 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       return ext || 'default';
     };
 
+    // Get different SVG icon based on file type
+    const getFileIconSvg = (path: string, color: string): string => {
+      const ext = path.substring(path.lastIndexOf('.')).toLowerCase();
+      const iconClass = getFileIconClass(path);
+      const baseClass = `navi-file-svg navi-file-svg--${iconClass}`;
+      const baseStyle = `color: ${color}`;
+
+      // Code files - icon with brackets <>
+      const codeExts = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.py', '.pyw', '.go', '.rs', '.rb', '.java', '.kt', '.c', '.cpp', '.h', '.cs', '.php', '.swift', '.vue', '.svelte', '.html', '.htm', '.css', '.scss', '.sass', '.less'];
+      if (codeExts.includes(ext)) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 12L8 14L10 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 12L16 14L14 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      }
+
+      // JSON files - brackets {}
+      if (['.json', '.jsonc'].includes(ext)) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 12C8.45 12 8 12.45 8 13V13.5C8 14.05 7.55 14.5 7 14.5C7.55 14.5 8 14.95 8 15.5V16C8 16.55 8.45 17 9 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 12C15.55 12 16 12.45 16 13V13.5C16 14.05 16.45 14.5 17 14.5C16.45 14.5 16 14.95 16 15.5V16C16 16.55 15.55 17 15 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      }
+
+      // Config/settings files - cog icon
+      const configExts = ['.yaml', '.yml', '.toml', '.env', '.ini', '.conf', '.config', '.lock'];
+      if (configExts.includes(ext) || path.toLowerCase().includes('dockerfile')) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="14.5" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M12 11.5V12.5M12 16.5V17.5M14.12 13.38L13.41 13.38M10.59 15.62L9.88 15.62M14.12 15.62L13.41 14.91M10.59 13.38L9.88 14.09" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>`;
+      }
+
+      // Text/markdown files - document with lines
+      const textExts = ['.md', '.mdx', '.txt', '.rst', '.doc', '.docx', '.rtf'];
+      if (textExts.includes(ext)) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="17" x2="13" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+      }
+
+      // SQL files - database icon
+      if (['.sql'].includes(ext)) {
+        return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="12" cy="13" rx="4" ry="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 13V16C8 16.83 9.79 17.5 12 17.5C14.21 17.5 16 16.83 16 16V13" stroke="currentColor" stroke-width="1.5"/></svg>`;
+      }
+
+      // Default file icon
+      return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    };
+
     // Make URLs and file paths clickable
     const makeLinksClickable = (html: string): string => {
       let result = html;
 
       // First, handle markdown links: [text](url) - convert to anchor tags
       // This prevents the URL from being matched again by the raw URL pattern
-      const markdownLinkPattern = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+      // Handle URLs with accidental spaces ANYWHERE (LLM tokenization artifact)
+      // Pattern allows spaces in: "http ://", "http: //", "http :/ /", etc.
+      const markdownLinkPattern = /\[([^\]]+)\]\((https?\s*:\s*\/\s*\/\s*[^)]+)\)/g;
       result = result.replace(markdownLinkPattern, (_match, text, url) => {
-        // If text is the same as URL (e.g., [http://localhost:3000](http://localhost:3000))
+        // Clean up URL: remove ALL spaces from the URL
+        const cleanUrl = url.replace(/\s+/g, '');
+        // Clean up display text too
+        const cleanText = text.replace(/\s+/g, '');
+        // If text matches URL (e.g., [http://localhost:3000](http://localhost:3000))
         // just show the URL once
-        const displayText = text === url ? url : text;
-        return `<a href="${url}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+        const displayText = cleanText === cleanUrl ? cleanUrl : cleanText;
+        return `<a href="${cleanUrl}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
       });
 
-      // URL pattern - matches http/https links that are NOT already inside an anchor tag
+      // URL pattern - matches http/https links with potential spaces (LLM tokenization)
+      // Pattern allows: "http://", "http ://", "http: //", "http :/ /" etc.
       // Skip URLs that are already converted (inside href="" or between > and <)
-      // Stop at common sentence-ending punctuation when followed by space/end
-      const urlPattern = /(https?:\/\/[^\s<>"'\[\]]+)/g;
+      const urlPattern = /(https?\s*:\s*\/\s*\/\s*[^\s<>"'\[\]]+)/g;
       result = result.replace(urlPattern, (url: string, _p1: string, position: number) => {
         // Check if this URL is already inside an anchor tag by looking at context
         const before = result.substring(Math.max(0, position - 15), position);
@@ -6115,8 +6584,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         if (/href="$/.test(before) || /">$/.test(before)) {
           return url; // Don't modify - already in anchor
         }
-        // Remove trailing punctuation that's likely sentence-ending (but keep port numbers like :3000)
-        let cleanUrl = url;
+        // Clean up URL: remove all internal spaces
+        let cleanUrl = url.replace(/\s+/g, '');
         // Only strip trailing period/comma if it's at the very end (likely punctuation, not part of URL)
         if (/[.,;:!?]$/.test(cleanUrl) && !/:\d+[.,;:!?]?$/.test(cleanUrl)) {
           cleanUrl = cleanUrl.replace(/[.,;:!?]+$/, '');
@@ -6124,24 +6593,28 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         return `<a href="${cleanUrl}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
       });
 
-      // File path pattern - VERY restrictive to avoid false positives
+      // File path pattern - matches common code file paths
       // Only match paths that:
       // 1. Start with / (absolute path like /Users/foo/bar.txt)
       // 2. Start with ./ or ../ (relative path like ./src/file.ts)
-      // 3. Have directory structure with common code directories (src/, lib/, components/, etc.)
+      // 3. Have directory structure with common code directories
+      // 4. Match filenames with extensions when wrapped in backticks
       // Do NOT match: Next.js, server.The, fresh.I've, Node.js, etc.
-      const filePathPattern = /(?:^|[\s(])((\/[\w\-.]+)+\.\w+|(\.\.?\/[\w\-./]+\.\w+)|((?:src|lib|components|pages|app|backend|frontend|extensions|webview|utils|services|api|hooks|types)\/[\w\-./]+\.\w+))(?::(\d+))?(?=[\s),.:;!?]|$)/g;
-      result = result.replace(filePathPattern, (match, fullPath, _p1, _p2, _p3, lineNum) => {
+      const commonDirs = 'src|lib|components|pages|app|backend|frontend|extensions|webview|utils|services|api|hooks|types|tests|test|__tests__|spec|config|configs|scripts|bin|dist|build|public|static|assets|styles|css|templates|views|models|controllers|routes|middleware|helpers|core|common|shared|modules|features|domains';
+      const filePathPattern = new RegExp(
+        `(?:^|[\\s(])((\\/[\\w\\-.]+)+\\.\\w+|(\\.\\.\\/[\\w\\-./]+\\.\\w+)|((?:${commonDirs})\\/[\\w\\-./]+\\.\\w+)|([\\w\\-]+\\.(?:tsx?|jsx?|py|go|rs|rb|java|cs|cpp|c|h|css|scss|less|html|json|ya?ml|toml|md|sql)))(?::(\\d+))?(?=[\\s),.:;!?]|$)`,
+        'g'
+      );
+      result = result.replace(filePathPattern, (match, fullPath, _p1, _p2, _p3, _p4, lineNum) => {
         // Preserve leading whitespace/punctuation
         const leadingMatch = match.match(/^[\s(]/) || [''];
         const leading = leadingMatch[0];
         const pathPart = match.slice(leading.length);
         const pathWithoutLine = pathPart.replace(/:(\d+)$/, '');
         const iconColor = getFileIconColor(pathWithoutLine);
-        const iconClass = getFileIconClass(pathWithoutLine);
         const dataLine = lineNum ? ` data-line="${lineNum}"` : '';
-        // Use inline SVG file icon with dynamic color
-        const svgIcon = `<svg class="navi-file-svg navi-file-svg--${iconClass}" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="color: ${iconColor}"><path d="M3 1.5C3 1.22386 3.22386 1 3.5 1H9.29289L13 4.70711V14.5C13 14.7761 12.7761 15 12.5 15H3.5C3.22386 15 3 14.7761 3 14.5V1.5Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1"/><path d="M9 1V5H13" stroke="currentColor" stroke-width="1"/></svg>`;
+        // Use file-type specific SVG icon
+        const svgIcon = getFileIconSvg(pathWithoutLine, iconColor);
         // Wrap in span with SVG icon
         return `${leading}<span class="navi-file-link">${svgIcon}<a href="#" class="navi-link navi-link--file" data-file-path="${pathWithoutLine}"${dataLine}>${pathWithoutLine}</a></span>`;
       });
@@ -6439,10 +6912,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       const backendBase = resolveBackendBase();
       const response = await fetch(`${backendBase}/api/navi/analyze-changes`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Org-Id': ORG,
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({
           workspace_root: effectiveRoot
         }),
@@ -6832,6 +7302,44 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           </span>
           {/* Animated thinking bar */}
           <span className="navi-thinking-bar" />
+        </div>
+      )}
+
+      {authRequired && (
+        <div className="navi-auth-required">
+          <div className="navi-auth-required-icon">
+            <Shield className="h-4 w-4" />
+          </div>
+          <div className="navi-auth-required-content">
+            <div className="navi-auth-required-title">Sign in required</div>
+            <div className="navi-auth-required-detail">
+              {authRequiredDetail || "Your session is missing a valid token. Please sign in to continue."}
+            </div>
+          </div>
+          <div className="navi-auth-required-actions">
+            <button
+              type="button"
+              className="navi-auth-required-btn"
+              onClick={() => {
+                setAuthRequired(false);
+                setAuthRequiredDetail("");
+                vscodeApi.postMessage({ type: "auth.signIn" });
+              }}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              className="navi-auth-required-dismiss"
+              onClick={() => {
+                setAuthRequired(false);
+                setAuthRequiredDetail("");
+                pendingAuthRetryRef.current = false;
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
@@ -7317,6 +7825,52 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                     </button>
                   </div>
                 </div>
+                <div className="navi-settings-group">
+                  <h4 className="navi-settings-group-title">
+                    <Activity className="h-4 w-4" />
+                    Activity Panel
+                  </h4>
+                  <div className="navi-settings-item">
+                    <div className="navi-settings-item-info">
+                      <span className="navi-settings-item-label">Show commands</span>
+                      <span className="navi-settings-item-desc">Display commands in the Activity panel</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`navi-settings-toggle ${activityPanelPreferences.showCommands ? "is-on" : ""}`}
+                      onClick={() => setActivityPanelPreferences({ showCommands: !activityPanelPreferences.showCommands })}
+                    >
+                      {activityPanelPreferences.showCommands ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                    </button>
+                  </div>
+                  <div className="navi-settings-item">
+                    <div className="navi-settings-item-info">
+                      <span className="navi-settings-item-label">Show command output</span>
+                      <span className="navi-settings-item-desc">Include stdout/stderr preview in Activity panel</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`navi-settings-toggle ${activityPanelPreferences.showCommandOutput ? "is-on" : ""}`}
+                      onClick={() => setActivityPanelPreferences({ showCommandOutput: !activityPanelPreferences.showCommandOutput })}
+                      disabled={!activityPanelPreferences.showCommands}
+                    >
+                      {activityPanelPreferences.showCommandOutput ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                    </button>
+                  </div>
+                  <div className="navi-settings-item">
+                    <div className="navi-settings-item-info">
+                      <span className="navi-settings-item-label">Show file changes</span>
+                      <span className="navi-settings-item-desc">Display file changes in the Activity panel</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`navi-settings-toggle ${activityPanelPreferences.showFileChanges ? "is-on" : ""}`}
+                      onClick={() => setActivityPanelPreferences({ showFileChanges: !activityPanelPreferences.showFileChanges })}
+                    >
+                      {activityPanelPreferences.showFileChanges ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -7529,47 +8083,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 className={`navi-chat-bubble navi-chat-bubble--${m.role}`}
                 data-testid={m.role === "assistant" ? "ai-response" : undefined}
               >
-                {/* THINKING INDICATOR: Shows processing status during streaming */}
-                {/* Only show when streaming AND no real tool activities have appeared yet */}
-                {/* Check for filtered activities (read, edit, create, command) - not liveProgress/status events */}
-                {(() => {
-                  // Check if there are any real tool activities (not just liveProgress/status)
-                  const hasRealActivities = activityEvents.some(
-                    evt => evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create' || evt.kind === 'command'
-                  );
-                  const shouldShowThinking = m.role === "assistant" && m.isStreaming &&
-                    !hasRealActivities && narrativeLines.length === 0 && !m.content;
-
-                  if (!shouldShowThinking) return null;
-
-                  return (
-                    <div className="navi-thinking-block">
-                      <div
-                        className="navi-thinking-header"
-                        onClick={() => accumulatedThinking ? setThinkingExpanded(prev => !prev) : undefined}
-                        style={{ cursor: accumulatedThinking ? 'pointer' : 'default' }}
-                      >
-                        {accumulatedThinking && (
-                          <ChevronRight
-                            size={14}
-                            className={`navi-thinking-chevron ${thinkingExpanded ? 'expanded' : ''}`}
-                          />
-                        )}
-                        <span className="navi-thinking-label">
-                          {"Thinking...".split("").map((char, i) => (
-                            <span key={i} className="navi-thinking-label-char">{char}</span>
-                          ))}
-                        </span>
-                      </div>
-                      {/* Only show content if there's actual thinking from the model (Anthropic extended thinking) */}
-                      {thinkingExpanded && accumulatedThinking && (
-                        <div className="navi-thinking-content navi-thinking-content--streaming">
-                          {accumulatedThinking}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                {/* THINKING INDICATOR: Moved to bottom of chat for better UX */}
+                {/* See "Bottom Thinking Indicator" section after messages map */}
                 {/* After completion: Show thinking block only if there's stored thinking */}
                 {m.role === "assistant" && !m.isStreaming && m.storedThinking && (
                   <div className="navi-thinking-block navi-thinking-block--complete">
@@ -7595,14 +8110,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 {/* ASSISTANT MESSAGE: Show response text first, then activities inline */}
                 {m.role === "assistant" && (
                   <div className="navi-response-stream">
-                    {/* Execution Plan Stepper - shows task steps with real-time status */}
-                    {executionPlan && m.isStreaming && (
-                      <ExecutionPlanStepper
-                        planId={executionPlan.planId}
-                        steps={executionPlan.steps}
-                        isExecuting={executionPlan.isExecuting}
-                      />
-                    )}
+                    {/* ExecutionPlanStepper moved to above input bar for better visibility */}
                     {(() => {
                       // Get activities and narratives (live during streaming, stored after)
                       const activitiesToUse = m.isStreaming ? activityEvents : (m.storedActivities || []);
@@ -7611,9 +8119,31 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                       // Only show actual tool activities - filter out meta/thinking activities
                       // Keep: read, edit, create, command (real file/command operations)
                       // Filter out: info, thinking, analysis, etc. (meta activities)
-                      const filteredActivities = activitiesToUse.filter(
+                      // Also deduplicate: if same command has both running and done, only show done
+                      const toolActivities = activitiesToUse.filter(
                         (evt) => evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create' || evt.kind === 'command'
                       );
+
+                      // Deduplicate command activities - prefer done/error over running
+                      const seenCommands = new Map<string, ActivityEvent>();
+                      for (const evt of toolActivities) {
+                        if (evt.kind === 'command') {
+                          const key = evt.detail || evt.id;
+                          const existing = seenCommands.get(key);
+                          // Keep if: no existing, or existing is running and this is done/error
+                          if (!existing || (existing.status === 'running' && evt.status !== 'running')) {
+                            seenCommands.set(key, evt);
+                          }
+                        }
+                      }
+
+                      const filteredActivities = toolActivities.filter((evt) => {
+                        if (evt.kind === 'command') {
+                          const key = evt.detail || evt.id;
+                          return seenCommands.get(key) === evt;
+                        }
+                        return true;
+                      });
 
                       // Check if we have any tool activities to show
                       const hasActivities = filteredActivities.length > 0 || narrativesToUse.length > 0;
@@ -7642,6 +8172,29 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                         const timeB = b.itemType === 'narrative' ? b.timestamp : b.data.timestamp;
                         return new Date(timeA).getTime() - new Date(timeB).getTime();
                       });
+
+                      // Combine consecutive narrative items to prevent broken markdown patterns
+                      // (e.g., [text](url) split across chunks)
+                      type MergedItem =
+                        | { itemType: 'narrative'; id: string; text: string; timestamp: string }
+                        | { itemType: 'activity'; data: ActivityEvent };
+
+                      const mergedItems: MergedItem[] = [];
+                      for (const item of allItems) {
+                        if (item.itemType === 'narrative') {
+                          const lastItem = mergedItems[mergedItems.length - 1];
+                          if (lastItem && lastItem.itemType === 'narrative') {
+                            // Combine with previous narrative - no space if last ends with opening bracket/paren
+                            const lastChar = lastItem.text.slice(-1);
+                            const separator = ['[', '(', '\n'].includes(lastChar) ? '' : ' ';
+                            lastItem.text += separator + item.text;
+                          } else {
+                            mergedItems.push({ ...item });
+                          }
+                        } else {
+                          mergedItems.push(item);
+                        }
+                      }
 
                       // Render activity item helper
                       const renderActivityItem = (evt: ActivityEvent) => {
@@ -7688,20 +8241,31 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                                 </span>
                               )}
                             </div>
-                            {isCommand && evt.detail && (
-                              <div className="navi-claude-command-block">
-                                <div className="navi-claude-command-row">
-                                  <span className="navi-claude-io-label">IN</span>
-                                  <code className="navi-claude-command-text">{evt.detail}</code>
-                                </div>
-                                {evt.output && (
-                                  <div className="navi-claude-command-row">
-                                    <span className="navi-claude-io-label">OUT</span>
-                                    <code className="navi-claude-output-text">{evt.output}</code>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            {isCommand && evt.detail && (() => {
+                              // Look up output from terminalEntries as fallback
+                              const terminalEntry = [...terminalEntries].reverse().find(
+                                (te) => te.command === evt.detail
+                              );
+                              const commandOutput = evt.output || terminalEntry?.output || '';
+                              const commandExitCode = evt.exitCode ?? terminalEntry?.exitCode;
+                              const commandStatus = evt.status || terminalEntry?.status || 'done';
+
+                              return (
+                                <NaviInlineCommand
+                                  commandId={terminalEntry?.id}
+                                  command={evt.detail}
+                                  output={commandOutput}
+                                  status={commandStatus}
+                                  showOutput={false}
+                                  purpose={evt.purpose}
+                                  explanation={evt.explanation}
+                                  nextAction={evt.nextAction}
+                                  exitCode={commandExitCode}
+                                  onOpenActivity={onOpenActivityForCommand}
+                                  highlighted={terminalEntry?.id === inlineCommandHighlightId}
+                                />
+                              );
+                            })()}
                           </div>
                         );
                       };
@@ -7717,9 +8281,17 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                           // Handle inline code `code`
                           result = result.replace(/`([^`]+)`/g, '<code class="navi-inline-code">$1</code>');
                           // Handle markdown links [text](url) - process these FIRST
+                          // Also handle URLs with accidental spaces (LLM tokenization artifact)
                           result = result.replace(
-                            /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
-                            '<a href="$2" class="navi-inline-link" target="_blank" rel="noopener noreferrer">$1</a>'
+                            /\[([^\]]+)\]\((https?:\/\/\s*[^)]+)\)/g,
+                            (_match, linkText, url) => {
+                              // Clean up URL: remove spaces that might have been introduced by LLM tokenization
+                              const cleanUrl = url.replace(/\s+/g, '');
+                              // If text is same as URL (with or without spaces), show URL once
+                              const cleanText = linkText.replace(/\s+/g, '');
+                              const displayText = cleanText === cleanUrl ? cleanUrl : linkText;
+                              return `<a href="${cleanUrl}" class="navi-inline-link" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+                            }
                           );
                           // Handle plain URLs (skip if preceded by [ or ]( which indicates markdown link syntax)
                           result = result.replace(
@@ -7825,7 +8397,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                       return (
                         <div data-testid="ai-response-text" className="navi-interleaved-stream">
                           {/* Render items in chronological order - interleave text and activities */}
-                          {allItems.map((item, idx) => {
+                          {/* Using mergedItems to combine consecutive narratives for proper markdown parsing */}
+                          {mergedItems.map((item, idx) => {
                             if (item.itemType === 'narrative') {
                               return renderNarrativeItem(item.text, item.id);
                             } else {
@@ -7869,12 +8442,15 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                                 alt={att.label || 'Attached image'}
                                 className="navi-message-attachment-image"
                                 style={{
-                                  maxWidth: '200px',
-                                  maxHeight: '150px',
-                                  borderRadius: 8,
+                                  maxWidth: '120px',
+                                  maxHeight: '90px',
+                                  borderRadius: 6,
                                   marginBottom: 4,
-                                  border: '1px solid rgba(255,255,255,0.1)'
+                                  border: '1px solid rgba(255,255,255,0.15)',
+                                  cursor: 'pointer',
+                                  objectFit: 'cover'
                                 }}
+                                title="Click to view full size"
                               />
                             ) : (
                               <div className="navi-message-attachment-file" style={{
@@ -8407,33 +8983,21 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
         {/* Inline change summary bar (Cursor-style) - shows after action completion */}
         {inlineChangeSummary && (
-          <div className="navi-inline-change-summary">
-            <div className="navi-inline-change-summary-content">
-              <span className="navi-inline-change-summary-text">
-                {inlineChangeSummary.fileCount} file{inlineChangeSummary.fileCount !== 1 ? "s" : ""} changed
-              </span>
-              <span className="navi-inline-change-summary-stats">
-                <span className="navi-inline-change-summary-add">+{inlineChangeSummary.totalAdditions}</span>
-                <span className="navi-inline-change-summary-del">-{inlineChangeSummary.totalDeletions}</span>
-              </span>
-            </div>
-            <div className="navi-inline-change-summary-actions">
-              <button
-                type="button"
-                className="navi-inline-change-btn navi-inline-change-btn--keep"
-                onClick={handleKeepChanges}
-              >
-                Keep
-              </button>
-              <button
-                type="button"
-                className="navi-inline-change-btn navi-inline-change-btn--undo"
-                onClick={handleUndoChanges}
-              >
-                Undo
-              </button>
-            </div>
-          </div>
+          <FileChangeSummary
+            files={inlineChangeSummary.files.map((file) => ({
+              path: file.path,
+              additions: file.additions,
+              deletions: file.deletions,
+              originalContent: file.originalContent,
+              wasCreated: file.wasCreated,
+            }))}
+            totalAdditions={inlineChangeSummary.totalAdditions}
+            totalDeletions={inlineChangeSummary.totalDeletions}
+            onKeep={handleKeepChanges}
+            onUndo={handleUndoChanges}
+            onFileClick={handleOpenSummaryDiff}
+            onPreviewAll={handlePreviewAllChanges}
+          />
         )}
 
         {/* Next steps suggestions - show when available and not streaming */}
@@ -8526,6 +9090,60 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             </div>
           </div>
         )}
+
+        {/* Bottom Thinking Indicator - Shows at END of chat during initial streaming */}
+        {/* BUG FIX: Moved here from inside message bubble to ensure it shows at bottom */}
+        {(() => {
+          // Check if there are any real tool activities (not just liveProgress/status)
+          const hasRealActivities = activityEvents.some(
+            evt => evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create' || evt.kind === 'command'
+          );
+          // Show thinking indicator at bottom when:
+          // 1. We are sending/streaming
+          // 2. No real activities have started
+          // 3. No message content yet in the last message
+          const lastMessage = messages[messages.length - 1];
+          const shouldShowBottomThinking = sending &&
+            !hasRealActivities &&
+            narrativeLines.length === 0 &&
+            (!lastMessage?.content || lastMessage.content.trim() === '');
+
+          if (!shouldShowBottomThinking) return null;
+
+          return (
+            <div className="navi-chat-bubble-row navi-chat-bubble-row--assistant">
+              <div className="navi-chat-avatar navi-chat-avatar--assistant">
+                <Zap className="h-4 w-4 navi-icon-3d" />
+              </div>
+              <div className="navi-chat-bubble navi-chat-bubble--assistant">
+                <div className="navi-thinking-block navi-thinking-block--bottom">
+                  <div
+                    className="navi-thinking-header"
+                    onClick={() => accumulatedThinking ? setThinkingExpanded(prev => !prev) : undefined}
+                    style={{ cursor: accumulatedThinking ? 'pointer' : 'default' }}
+                  >
+                    {accumulatedThinking && (
+                      <ChevronRight
+                        size={14}
+                        className={`navi-thinking-chevron ${thinkingExpanded ? 'expanded' : ''}`}
+                      />
+                    )}
+                    <span className="navi-thinking-label">
+                      {"Thinking...".split("").map((char, i) => (
+                        <span key={i} className="navi-thinking-label-char">{char}</span>
+                      ))}
+                    </span>
+                  </div>
+                  {thinkingExpanded && accumulatedThinking && (
+                    <div className="navi-thinking-content navi-thinking-content--streaming">
+                      {accumulatedThinking}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Task Complete Panel - shows after task finishes */}
         {!sending && taskSummary && (
@@ -8654,6 +9272,27 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                     </span>
                   )}
                 </div>
+                {/* Show build errors if any */}
+                {taskSummary.verificationDetails?.build && !taskSummary.verificationDetails.build.passed && taskSummary.verificationDetails.build.errors && taskSummary.verificationDetails.build.errors.length > 0 && (
+                  <div className="navi-build-errors">
+                    <div className="navi-build-errors-header">
+                      <AlertCircle size={14} />
+                      <span>Build Errors ({taskSummary.verificationDetails.build.errors.length})</span>
+                    </div>
+                    <div className="navi-build-errors-list">
+                      {taskSummary.verificationDetails.build.errors.slice(0, 5).map((error, idx) => (
+                        <div key={idx} className="navi-build-error-item">
+                          <code>{error}</code>
+                        </div>
+                      ))}
+                      {taskSummary.verificationDetails.build.errors.length > 5 && (
+                        <div className="navi-build-error-more">
+                          +{taskSummary.verificationDetails.build.errors.length - 5} more errors
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -9384,81 +10023,36 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         )}
 
         {hasChangeSummary && changeSummary && (
-          <div className="navi-change-summary navi-change-summary--compact">
-            <div className="navi-change-summary-header">
-              <div className="navi-change-summary-title">
-                {changeSummary.count} file{changeSummary.count !== 1 ? "s" : ""} changed
-                {changeTotals && (
-                  <span className="navi-change-summary-inline">
-                    {changeTotals.hasStats ? (
-                      <>
-                        <span className="navi-change-summary-add">+{changeTotals.additions}</span>
-                        <span className="navi-change-summary-del">-{changeTotals.deletions}</span>
-                      </>
-                    ) : (
-                      <span className="navi-change-summary-unknown">+— -—</span>
-                    )}
-                  </span>
-                )}
-              </div>
-              <div className="navi-change-summary-actions">
-                <button
-                  type="button"
-                  className="navi-change-summary-action"
-                  onClick={handleUndoChanges}
-                >
-                  <RotateCcw className="h-3.5 w-3.5 navi-icon-3d" />
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  className="navi-change-summary-action"
-                  onClick={handleReviewChanges}
-                >
-                  Review
-                  <ChevronRight className="h-3.5 w-3.5 navi-icon-3d" />
-                </button>
-              </div>
-            </div>
-            {changeDetailsOpen && (
-              <div className="navi-change-summary-list">
-                {changeSummary.files.map((file) => {
-                  const hasStats =
-                    typeof file.additions === "number" || typeof file.deletions === "number";
-                  return (
-                    <button
-                      key={file.path}
-                      type="button"
-                      className="navi-change-summary-row"
-                      onClick={() => handleOpenSummaryDiff(file.path)}
-                    >
-                      <span className="navi-change-summary-path">{toWorkspaceRelativePath(file.path)}</span>
-                      <span className="navi-change-summary-stats">
-                        {hasStats ? (
-                          <>
-                            {typeof file.additions === "number" && (
-                              <span className="navi-change-summary-add">+{file.additions}</span>
-                            )}
-                            {typeof file.deletions === "number" && (
-                              <span className="navi-change-summary-del">-{file.deletions}</span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="navi-change-summary-unknown">—</span>
-                        )}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <FileChangeSummary
+            files={changeSummary.files.map((file) => ({
+              path: toWorkspaceRelativePath(file.path),
+              additions: file.additions,
+              deletions: file.deletions,
+            }))}
+            totalAdditions={changeTotals?.additions}
+            totalDeletions={changeTotals?.deletions}
+            onKeep={handleKeepChanges}
+            onUndo={handleUndoChanges}
+            onFileClick={handleOpenSummaryDiff}
+          />
         )}
 
         <AttachmentChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
         />
+
+        {/* Execution Plan Stepper - Positioned ABOVE input bar for visibility */}
+        {/* Shows task steps with real-time status during streaming */}
+        {executionPlan && executionPlan.steps.length > 0 && (
+          <div className="navi-plan-stepper-floating">
+            <ExecutionPlanStepper
+              planId={executionPlan.planId}
+              steps={executionPlan.steps}
+              isExecuting={executionPlan.isExecuting}
+            />
+          </div>
+        )}
 
         <div className="navi-chat-input-row">
           <AttachmentToolbar className="navi-chat-input-tools" />
@@ -9745,58 +10339,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           </div>
         </div>
 
-        <div className="navi-terminal-panel">
-          <div className="navi-terminal-header">
-            <div className="navi-terminal-title">
-              <Terminal className="navi-icon-3d" />
-              Terminal
-              <span className={`navi-terminal-status ${terminalRunning ? "is-running" : ""}`}>
-                {terminalRunning ? "Running" : "Idle"}
-              </span>
-            </div>
-            <div className="navi-terminal-actions">
-              <button
-                type="button"
-                className="navi-terminal-action"
-                onClick={() => setTerminalEntries([])}
-                aria-label="Clear terminal"
-                title="Clear"
-              >
-                <Trash2 className="navi-icon-3d" />
-              </button>
-              <button
-                type="button"
-                className="navi-terminal-action"
-                onClick={() => setTerminalOpen((prev) => !prev)}
-                aria-label="Toggle terminal"
-                title="Collapse"
-              >
-                <ChevronDown className={`navi-icon-3d ${terminalOpen ? "is-open" : ""}`} />
-              </button>
-            </div>
-          </div>
-          {terminalOpen && (
-            <div className="navi-terminal-body">
-              {terminalEntries.length === 0 ? (
-                <div className="navi-terminal-empty">No terminal activity yet.</div>
-              ) : (
-                terminalEntries.slice(-MAX_TERMINAL_ENTRIES).map((entry) => (
-                  <div key={entry.id} className={`navi-terminal-entry navi-terminal-entry--${entry.status}`}>
-                    <div className="navi-terminal-entry-head">
-                      <span className="navi-terminal-entry-command">$ {entry.command}</span>
-                      <span className="navi-terminal-entry-status">{entry.status}</span>
-                    </div>
-                    <pre className="navi-terminal-entry-output">
-                      {entry.output || (entry.status === "running"
-                        ? "Running..."
-                        : `No output${entry.exitCode !== undefined ? ` (exit ${entry.exitCode})` : ""}`)}
-                    </pre>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Inline toast */}

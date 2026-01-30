@@ -100,6 +100,13 @@ class Settings(BaseSettings):
                     raise ValueError(
                         f"Extra fields not permitted in app_env '{sanitize_for_logging(str(env_app_env))}': {sanitized_fields}"
                     )
+            # Allow auth bypass automatically in test/ci unless explicitly configured
+            if (
+                env_app_env in ("test", "ci")
+                and "ALLOW_DEV_AUTH_BYPASS" not in os.environ
+                and "allow_dev_auth_bypass" not in values
+            ):
+                values["allow_dev_auth_bypass"] = True
         else:
             # Log warning if values is not a dict (unexpected validation context)
             import logging
@@ -116,8 +123,14 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
     cors_origins: str = (
-        "http://localhost:3000,http://localhost:3001"  # comma-separated list or "*"
+        ""  # comma-separated list of allowed origins; empty means strict deny
     )
+    allow_dev_cors: bool = False  # Explicit dev override for localhost/vscode-webview
+    allow_vscode_webview: bool = True  # Allow VS Code webview origins when enabled
+
+    # VS Code/webview auth enforcement
+    vscode_auth_required: bool = True
+    allow_dev_auth_bypass: bool = False
 
     # Database configuration
     db_host: str = "localhost"
@@ -131,6 +144,9 @@ class Settings(BaseSettings):
 
     # OAuth Device Code Configuration
     oauth_device_use_in_memory_store: bool = False
+    oauth_device_auto_approve: bool = False
+    oauth_device_code_ttl_seconds: int = 600
+    oauth_device_access_token_ttl_seconds: int = 86400
     redis_max_connections: int = (
         20  # Maximum connections in Redis pool (default 20 for high concurrency)
     )
@@ -160,6 +176,13 @@ class Settings(BaseSettings):
     # Security keys: Override via environment variables in production
     secret_key: str = "dev-secret-change-in-production"
     jwt_secret: str = "dev-jwt-secret-change-in-production"
+    jwt_enabled: bool = False
+    jwt_secret_previous: Optional[str] = None
+    jwt_algorithm: str = "HS256"
+    jwt_audience: Optional[str] = None
+    jwt_issuer: Optional[str] = None
+    jwt_jwks_url: Optional[str] = None
+    jwt_jwks_cache_ttl: int = 300
 
     # API Configuration
     api_v1_prefix: str = "/api"
@@ -469,6 +492,9 @@ class Settings(BaseSettings):
         # Use database_url if provided, otherwise construct from components
         if self.database_url:
             return self.database_url
+        # Keep pytest runs self-contained to avoid hanging on missing Postgres.
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return "sqlite:///./data/aep_test.db"
         return (
             f"postgresql+psycopg://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"

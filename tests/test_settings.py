@@ -15,8 +15,11 @@ try:
     from backend.core.settings import settings
     sys.exit(1)  # Should not reach here
 except ValueError as e:
-    if 'JWT_SECRET must be set when JWT_ENABLED=true' in str(e):
+    # Check for the expected error message (with or without JWKS mention)
+    error_msg = str(e)
+    if 'JWT_SECRET' in error_msg and 'JWT_ENABLED=true' in error_msg:
         sys.exit(0)  # Expected error
+    print(f"Wrong error: {e}", file=sys.stderr)
     sys.exit(2)  # Wrong error
 """
     # Run in temp directory to avoid loading .env file, but keep PYTHONPATH
@@ -24,6 +27,8 @@ except ValueError as e:
     env = os.environ.copy()
     env["JWT_ENABLED"] = "true"
     env.pop("JWT_SECRET", None)  # Ensure JWT_SECRET is not set
+    env.pop("JWT_SECRET_PREVIOUS", None)  # Ensure JWT_SECRET_PREVIOUS is not set
+    env.pop("JWT_JWKS_URL", None)  # Ensure JWT_JWKS_URL is not set
     env["PYTHONPATH"] = project_root
 
     with tempfile.TemporaryDirectory() as tmpdir:

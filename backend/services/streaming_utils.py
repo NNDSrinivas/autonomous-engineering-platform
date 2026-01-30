@@ -50,6 +50,21 @@ class ActivityKind(str, Enum):
     DELETE = "delete"
     COMMAND = "command"
 
+    # Execution (real operations)
+    EXECUTION = "execution"
+    DEPLOYMENT = "deployment"
+    INFRASTRUCTURE = "infrastructure"
+    DATABASE = "database"
+    MIGRATION = "migration"
+    BACKUP = "backup"
+    ROLLBACK = "rollback"
+
+    # Confirmation flow
+    CONFIRMATION_REQUIRED = "confirmation_required"
+    CONFIRMATION_PENDING = "confirmation_pending"
+    CONFIRMATION_APPROVED = "confirmation_approved"
+    CONFIRMATION_REJECTED = "confirmation_rejected"
+
     # Status
     RECOVERY = "recovery"
     RESPONSE = "response"
@@ -522,3 +537,394 @@ def cleanup_session(session_id: str) -> Optional[Dict[str, Any]]:
         session = _global_sessions.pop(session_id)
         return session.get_metrics()
     return None
+
+
+# =============================================================================
+# EXECUTION STREAMING UTILITIES - For real operation execution
+# =============================================================================
+
+
+@dataclass
+class ExecutionRequestEvent:
+    """Event for execution request requiring user confirmation."""
+
+    request_id: str
+    operation: str
+    category: str
+    risk_level: str
+    description: str
+    warnings: List[Dict[str, Any]]
+    affected_resources: List[str]
+    requires_confirmation: bool
+    confirmation_phrase: Optional[str] = None
+    ui_config: Optional[Dict[str, Any]] = None
+    expires_at: Optional[str] = None
+    rollback_plan: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": "execution_request",
+            "request_id": self.request_id,
+            "operation": self.operation,
+            "category": self.category,
+            "risk_level": self.risk_level,
+            "description": self.description,
+            "warnings": self.warnings,
+            "affected_resources": self.affected_resources,
+            "requires_confirmation": self.requires_confirmation,
+            "confirmation_phrase": self.confirmation_phrase,
+            "ui_config": self.ui_config,
+            "expires_at": self.expires_at,
+            "rollback_plan": self.rollback_plan,
+        }
+
+
+@dataclass
+class ExecutionProgressEvent:
+    """Event for execution progress updates."""
+
+    request_id: str
+    operation: str
+    phase: str  # "starting", "running", "completing", "completed", "failed", "rolling_back"
+    progress: float  # 0.0 to 1.0
+    message: str
+    output_lines: Optional[List[str]] = None
+    current_step: Optional[str] = None
+    total_steps: Optional[int] = None
+    current_step_num: Optional[int] = None
+    deployment_url: Optional[str] = None
+    rollback_command: Optional[str] = None
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        result = {
+            "type": "execution_progress",
+            "request_id": self.request_id,
+            "operation": self.operation,
+            "phase": self.phase,
+            "progress": round(self.progress, 2),
+            "message": self.message,
+        }
+        if self.output_lines:
+            result["output_lines"] = self.output_lines[-50:]  # Last 50 lines
+        if self.current_step:
+            result["current_step"] = self.current_step
+        if self.total_steps:
+            result["total_steps"] = self.total_steps
+        if self.current_step_num:
+            result["current_step_num"] = self.current_step_num
+        if self.deployment_url:
+            result["deployment_url"] = self.deployment_url
+        if self.rollback_command:
+            result["rollback_command"] = self.rollback_command
+        if self.error:
+            result["error"] = self.error
+        return result
+
+
+@dataclass
+class ExecutionResultEvent:
+    """Event for execution completion."""
+
+    request_id: str
+    operation: str
+    success: bool
+    message: str
+    duration_ms: Optional[float] = None
+    deployment_url: Optional[str] = None
+    output: Optional[str] = None
+    rollback_command: Optional[str] = None
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        result = {
+            "type": "execution_result",
+            "request_id": self.request_id,
+            "operation": self.operation,
+            "success": self.success,
+            "message": self.message,
+        }
+        if self.duration_ms:
+            result["duration_ms"] = round(self.duration_ms, 1)
+        if self.deployment_url:
+            result["deployment_url"] = self.deployment_url
+        if self.output:
+            result["output"] = self.output[:5000]  # Limit output size
+        if self.rollback_command:
+            result["rollback_command"] = self.rollback_command
+        if self.error:
+            result["error"] = self.error
+        return result
+
+
+class ExecutionStreamingSession(StreamingSession):
+    """
+    Extended streaming session with execution-specific events.
+
+    Provides real-time updates for infrastructure, deployment, and database operations.
+    """
+
+    def __init__(self, session_id: Optional[str] = None):
+        super().__init__(session_id)
+        self._execution_requests: Dict[str, ExecutionRequestEvent] = {}
+
+    def execution_request(
+        self,
+        request_id: str,
+        operation: str,
+        category: str,
+        risk_level: str,
+        description: str,
+        warnings: List[Dict[str, Any]],
+        affected_resources: List[str],
+        requires_confirmation: bool = True,
+        confirmation_phrase: Optional[str] = None,
+        ui_config: Optional[Dict[str, Any]] = None,
+        expires_at: Optional[str] = None,
+        rollback_plan: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Emit an execution request event requiring user confirmation.
+
+        Returns:
+            Dict with 'execution_request' key
+        """
+        event = ExecutionRequestEvent(
+            request_id=request_id,
+            operation=operation,
+            category=category,
+            risk_level=risk_level,
+            description=description,
+            warnings=warnings,
+            affected_resources=affected_resources,
+            requires_confirmation=requires_confirmation,
+            confirmation_phrase=confirmation_phrase,
+            ui_config=ui_config,
+            expires_at=expires_at,
+            rollback_plan=rollback_plan,
+        )
+        self._execution_requests[request_id] = event
+        return {"execution_request": event.to_dict()}
+
+    def execution_progress(
+        self,
+        request_id: str,
+        operation: str,
+        phase: str,
+        progress: float,
+        message: str,
+        output_lines: Optional[List[str]] = None,
+        current_step: Optional[str] = None,
+        total_steps: Optional[int] = None,
+        current_step_num: Optional[int] = None,
+        deployment_url: Optional[str] = None,
+        rollback_command: Optional[str] = None,
+        error: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Emit an execution progress event.
+
+        Returns:
+            Dict with 'execution_progress' key
+        """
+        event = ExecutionProgressEvent(
+            request_id=request_id,
+            operation=operation,
+            phase=phase,
+            progress=progress,
+            message=message,
+            output_lines=output_lines,
+            current_step=current_step,
+            total_steps=total_steps,
+            current_step_num=current_step_num,
+            deployment_url=deployment_url,
+            rollback_command=rollback_command,
+            error=error,
+        )
+        return {"execution_progress": event.to_dict()}
+
+    def execution_result(
+        self,
+        request_id: str,
+        operation: str,
+        success: bool,
+        message: str,
+        duration_ms: Optional[float] = None,
+        deployment_url: Optional[str] = None,
+        output: Optional[str] = None,
+        rollback_command: Optional[str] = None,
+        error: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Emit an execution result event.
+
+        Returns:
+            Dict with 'execution_result' key
+        """
+        event = ExecutionResultEvent(
+            request_id=request_id,
+            operation=operation,
+            success=success,
+            message=message,
+            duration_ms=duration_ms,
+            deployment_url=deployment_url,
+            output=output,
+            rollback_command=rollback_command,
+            error=error,
+        )
+        return {"execution_result": event.to_dict()}
+
+
+async def stream_execution_progress(
+    session: ExecutionStreamingSession,
+    request_id: str,
+    operation: str,
+    steps: List[str],
+    execute_step_fn,  # async callable(step_name) -> (success, output, error)
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """
+    Stream progress of a multi-step execution operation.
+
+    Args:
+        session: Execution streaming session
+        request_id: Execution request ID
+        operation: Operation name
+        steps: List of step names
+        execute_step_fn: Async function to execute each step
+
+    Yields:
+        Progress events
+    """
+    total_steps = len(steps)
+    output_lines = []
+    start_time = time.time()
+
+    # Starting
+    yield session.execution_progress(
+        request_id=request_id,
+        operation=operation,
+        phase="starting",
+        progress=0.0,
+        message=f"Starting {operation}...",
+        total_steps=total_steps,
+    )
+
+    for i, step in enumerate(steps, 1):
+        # Step starting
+        yield session.execution_progress(
+            request_id=request_id,
+            operation=operation,
+            phase="running",
+            progress=(i - 1) / total_steps,
+            message=f"Executing: {step}",
+            current_step=step,
+            current_step_num=i,
+            total_steps=total_steps,
+            output_lines=output_lines,
+        )
+
+        # Execute step
+        try:
+            success, output, error = await execute_step_fn(step)
+            if output:
+                output_lines.extend(output.split("\n"))
+
+            if not success:
+                # Step failed
+                yield session.execution_progress(
+                    request_id=request_id,
+                    operation=operation,
+                    phase="failed",
+                    progress=(i - 1) / total_steps,
+                    message=f"Failed at: {step}",
+                    current_step=step,
+                    current_step_num=i,
+                    total_steps=total_steps,
+                    output_lines=output_lines,
+                    error=error,
+                )
+
+                duration_ms = (time.time() - start_time) * 1000
+                yield session.execution_result(
+                    request_id=request_id,
+                    operation=operation,
+                    success=False,
+                    message=f"Execution failed at step: {step}",
+                    duration_ms=duration_ms,
+                    output="\n".join(output_lines),
+                    error=error,
+                )
+                return
+
+        except Exception as e:
+            yield session.execution_progress(
+                request_id=request_id,
+                operation=operation,
+                phase="failed",
+                progress=(i - 1) / total_steps,
+                message=f"Error in: {step}",
+                current_step=step,
+                error=str(e),
+            )
+            return
+
+        # Step completed
+        yield session.execution_progress(
+            request_id=request_id,
+            operation=operation,
+            phase="running",
+            progress=i / total_steps,
+            message=f"Completed: {step}",
+            current_step=step,
+            current_step_num=i,
+            total_steps=total_steps,
+            output_lines=output_lines,
+        )
+
+    # All steps completed
+    duration_ms = (time.time() - start_time) * 1000
+    yield session.execution_progress(
+        request_id=request_id,
+        operation=operation,
+        phase="completed",
+        progress=1.0,
+        message=f"{operation} completed successfully",
+        total_steps=total_steps,
+        output_lines=output_lines,
+    )
+
+    yield session.execution_result(
+        request_id=request_id,
+        operation=operation,
+        success=True,
+        message=f"{operation} completed successfully",
+        duration_ms=duration_ms,
+        output="\n".join(output_lines),
+    )
+
+
+def format_execution_event_for_sse(event_dict: Dict[str, Any]) -> str:
+    """
+    Format an execution event for Server-Sent Events.
+
+    Args:
+        event_dict: Event dictionary (execution_request, execution_progress, or execution_result)
+
+    Returns:
+        SSE-formatted string
+    """
+    import json
+
+    # Determine event type for SSE event field
+    event_type = "message"
+    if "execution_request" in event_dict:
+        event_type = "execution_request"
+    elif "execution_progress" in event_dict:
+        event_type = "execution_progress"
+    elif "execution_result" in event_dict:
+        event_type = "execution_result"
+
+    return f"event: {event_type}\ndata: {json.dumps(event_dict)}\n\n"

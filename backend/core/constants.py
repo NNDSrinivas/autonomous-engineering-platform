@@ -30,7 +30,7 @@ MIN_SHARED_TERMS_COUNT = 3
 # Temporal reasoning limits
 MAX_CAUSALITY_PATHS = 10
 MAX_PATH_LENGTH = 5
-MAX_NODES_IN_CONTEXT = 10  # Used for narrative generation and API validation
+MAX_NODES_IN_CONTEXT = 12  # Used for narrative generation and API validation
 MAX_EDGES_IN_CONTEXT = 20  # Limit edges shown in LLM context
 MAX_PATHS_IN_CONTEXT = 5  # Limit causality chains shown in LLM context
 

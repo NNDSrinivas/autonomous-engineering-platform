@@ -279,7 +279,7 @@ async def get_event_details(
 
 
 GOOGLE_CALENDAR_TOOLS = {
-    "gcalendar.list_events": list_upcoming_events,
-    "gcalendar.todays_events": get_todays_events,
-    "gcalendar.get_event": get_event_details,
+    "gcalendar_list_events": list_upcoming_events,
+    "gcalendar_todays_events": get_todays_events,
+    "gcalendar_get_event": get_event_details,
 }

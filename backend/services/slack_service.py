@@ -21,6 +21,24 @@ from backend.services.connector_base import (
 logger = logging.getLogger(__name__)
 slack_logger = structlog.get_logger(__name__)
 
+try:
+    from backend.integrations.slack_client import SlackClient  # type: ignore
+except Exception:  # pragma: no cover
+    SlackClient = None  # type: ignore[misc]
+
+
+def _get_client(db: Optional[Session] = None) -> Optional["SlackClient"]:
+    """
+    Helper to construct a SlackClient instance if the integration is available.
+    """
+    if SlackClient is None:
+        return None
+
+    try:
+        return SlackClient()
+    except Exception:
+        return None
+
 
 class SlackService(ConnectorServiceBase):
     """Slack connector service implementation."""

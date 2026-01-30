@@ -53,89 +53,91 @@ def upgrade():
             "Check your EMBED_DIM environment variable and ensure it matches your embedding model's dimensions."
         )
 
-    # Enable pgvector extension (safe if not PostgreSQL or already exists)
-    try:
-        op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-    except Exception as e:
-        # Expected for SQLite or databases without pgvector
-        # Log for debugging in case of unexpected PostgreSQL issues (permissions, version)
-        logger.debug(f"Could not enable pgvector extension: {e}")
-        pass
+    # Check dialect to avoid PostgreSQL-specific operations on SQLite
+    bind = op.get_bind()
+    is_postgresql = bind.dialect.name == "postgresql"
 
-    # Add vector column for ANN search
-    # Keep existing JSON embedding column for backwards compatibility
-    try:
-        # Try using SQLAlchemy UserDefinedType first
-        op.add_column(
-            "memory_chunk",
-            sa.Column("embedding_vec", sa.types.UserDefinedType(), nullable=True),
+    if not is_postgresql:
+        # Skip pgvector/tsvector operations for non-PostgreSQL databases
+        logger.info(
+            f"[alembic/0012_pgvector_bm25] Skipping pgvector/tsvector features for {bind.dialect.name}"
         )
+        return
+
+    # Check if pgvector extension is available before attempting to use it
+    pgvector_available = False
+    try:
+        # Check if the extension is available in the database
+        result = bind.execute(
+            sa.text("SELECT * FROM pg_available_extensions WHERE name = 'vector'")
+        )
+        pgvector_available = result.fetchone() is not None
     except Exception as e:
-        # Fallback to raw SQL for vector type
-        # Use EMBED_DIM from configuration for consistency
-        logger.debug(f"UserDefinedType failed, trying raw SQL: {e}")
+        logger.info(
+            f"[alembic/0012_pgvector_bm25] Could not check pgvector availability: {e}"
+        )
+
+    if pgvector_available:
+        # Enable pgvector extension (PostgreSQL only)
         try:
+            op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            # Add vector column for ANN search
             op.execute(
                 f"ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS embedding_vec vector({EMBED_DIM});"
             )
-        except Exception as e2:
-            # Expected for SQLite or databases without vector support
-            logger.debug(f"Could not add embedding_vec column: {e2}")
-            pass
+        except Exception as e:
+            # Log for debugging in case of unexpected PostgreSQL issues (permissions, version)
+            logger.warning(f"Could not enable pgvector or add vector column: {e}")
+    else:
+        logger.info(
+            "[alembic/0012_pgvector_bm25] pgvector extension not available - skipping vector column"
+        )
 
     # Add tsvector column and GIN index for BM25/FTS (PostgreSQL only)
+    # Add text_tsv column for precomputed tsvector using raw SQL
+    # (we've already confirmed this is PostgreSQL above)
     try:
-        # Add text_tsv column for precomputed tsvector
-        # Use tsvector type for proper FTS performance
+        op.execute(
+            "ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS text_tsv tsvector;"
+        )
+    except Exception as e:
+        logger.warning(f"Could not add text_tsv column: {e}")
+
+    # Populate existing rows with tsvector data using batched updates
+    # Note: This migration implements batched updates by default to populate the text_tsv column.
+    # Rows are updated in batches (default: 1000 per batch) to minimize lock duration and reduce
+    # migration impact on large tables. This approach is safe for most datasets (<1M rows);
+    # for tables with 1M+ rows, consider SKIP_TSVECTOR_UPDATE=1.
+    #
+    # For large tables (1M+ rows), even batched updates may take significant time.
+    # In such cases, you can skip the batched update during migration by setting:
+    #   SKIP_TSVECTOR_UPDATE=1
+    # This will skip the entire batched update process. You must then backfill text_tsv
+    # for existing rows after migration (e.g., using a custom script).
+    #
+    # Guidance for large tables (1M+ rows):
+    #   1. Set SKIP_TSVECTOR_UPDATE=1 to skip the batched update in migration.
+    #   2. Run a batched UPDATE post-migration with separate transactions (e.g., 1000 rows per batch).
+    #   3. See scripts/backfill_pgvector.py for a reference batching pattern.
+    if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":
+        logger.info(
+            "[alembic/0012_pgvector_bm25] Skipping tsvector UPDATE due to SKIP_TSVECTOR_UPDATE=1. "
+            "You must populate text_tsv for existing rows after migration (e.g., via batched UPDATE)."
+        )
+    else:
+        logger.info(
+            "[alembic/0012_pgvector_bm25] Running batched UPDATE to populate text_tsv. "
+            "This minimizes lock duration but may take longer for large datasets."
+        )
+        # Batched update to avoid long table locks
+        batch_size = 1000
+        updated_rows = batch_size
+        conn = op.get_bind()
+        # Limit iterations for very large tables: configurable via MAX_TSVECTOR_ROWS env var (default: 10M rows)
+        MAX_EXPECTED_ROWS = int(os.getenv("MAX_TSVECTOR_ROWS", "10000000"))
+        max_iterations = MAX_EXPECTED_ROWS // batch_size
+        iteration = 0
         try:
-            from sqlalchemy.dialects import postgresql
-
-            op.add_column(
-                "memory_chunk",
-                sa.Column("text_tsv", postgresql.TSVECTOR(), nullable=True),
-            )
-        except ImportError:
-            # Fallback to raw SQL if dialect not available, but only if the DB is PostgreSQL
-            bind = op.get_bind()
-            if bind.dialect.name == "postgresql":
-                op.execute(
-                    "ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS text_tsv tsvector;"
-                )
-
-        # Populate existing rows with tsvector data using batched updates
-        # Note: This migration implements batched updates by default to populate the text_tsv column.
-        # Rows are updated in batches (default: 1000 per batch) to minimize lock duration and reduce
-        # migration impact on large tables. This approach is safe for most datasets (<1M rows);
-        # for tables with 1M+ rows, consider SKIP_TSVECTOR_UPDATE=1.
-        #
-        # For large tables (1M+ rows), even batched updates may take significant time.
-        # In such cases, you can skip the batched update during migration by setting:
-        #   SKIP_TSVECTOR_UPDATE=1
-        # This will skip the entire batched update process. You must then backfill text_tsv
-        # for existing rows after migration (e.g., using a custom script).
-        #
-        # Guidance for large tables (1M+ rows):
-        #   1. Set SKIP_TSVECTOR_UPDATE=1 to skip the batched update in migration.
-        #   2. Run a batched UPDATE post-migration with separate transactions (e.g., 1000 rows per batch).
-        #   3. See scripts/backfill_pgvector.py for a reference batching pattern.
-        if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":
-            logger.info(
-                "[alembic/0012_pgvector_bm25] Skipping tsvector UPDATE due to SKIP_TSVECTOR_UPDATE=1. "
-                "You must populate text_tsv for existing rows after migration (e.g., via batched UPDATE)."
-            )
-        else:
-            logger.info(
-                "[alembic/0012_pgvector_bm25] Running batched UPDATE to populate text_tsv. "
-                "This minimizes lock duration but may take longer for large datasets."
-            )
-            # Batched update to avoid long table locks
-            batch_size = 1000
-            updated_rows = batch_size
-            conn = op.get_bind()
-            # Limit iterations for very large tables: configurable via MAX_TSVECTOR_ROWS env var (default: 10M rows)
-            MAX_EXPECTED_ROWS = int(os.getenv("MAX_TSVECTOR_ROWS", "10000000"))
-            max_iterations = MAX_EXPECTED_ROWS // batch_size
-            iteration = 0
             while updated_rows > 0 and iteration < max_iterations:
                 iteration += 1
                 result = conn.execute(
@@ -164,15 +166,17 @@ def upgrade():
             logger.info(
                 "[alembic/0012_pgvector_bm25] Batched update for memory_chunk.text_tsv complete."
             )
+        except Exception as e:
+            logger.warning(f"Could not populate text_tsv: {e}")
 
-        # Create GIN index on precomputed text_tsv column for efficient full-text search
+    # Create GIN index on precomputed text_tsv column for efficient full-text search
+    try:
         op.execute(
             "CREATE INDEX IF NOT EXISTS idx_memory_chunk_tsv "
             "ON memory_chunk USING GIN (text_tsv);"
         )
-    except Exception:
-        # SQLite or databases without tsvector support
-        pass
+    except Exception as e:
+        logger.warning(f"Could not create text_tsv index: {e}")
 
 
 def downgrade():

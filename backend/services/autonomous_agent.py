@@ -18,11 +18,64 @@ import os
 import subprocess
 import asyncio
 import uuid
+import re
 from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 
+# Enterprise iteration control (Phase 4)
+from backend.agent.enhanced_iteration_controller import (
+    EnhancedIterationController,
+)
+
+# Human checkpoint gate detection (Phase 5)
+from backend.services.checkpoint_gate_detector import (
+    CheckpointGateDetector,
+    GateTrigger,
+)
+
 logger = logging.getLogger(__name__)
+
+# ========== PLAN DETECTION ==========
+# Patterns to detect execution plans in LLM output
+
+# Pattern to detect plan headers like "### Steps:", "**Plan:**", "Steps to follow:"
+PLAN_INTRO_PATTERN = re.compile(
+    r"(?:###?\s*(?:Steps|Plan|Execution Plan|Action Plan)[:\s]*\n|"
+    r"\*\*(?:Steps|Plan)[:\s]*\*\*\n|"
+    r"(?:Here(?:'s| is) (?:my |the )?plan|Let me (?:outline|plan)|I(?:'ll| will) (?:follow these|proceed with)|Steps to follow)[:\s]*\n)"
+    r"((?:\s*\d+\..*(?:\n|$))+)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Pattern to match individual numbered steps
+STEP_PATTERN = re.compile(r"^\s*(\d+)\.\s*\**([^:\n*]+)\**(?::\s*(.*))?$", re.MULTILINE)
+
+
+def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse an execution plan from LLM text output.
+    Returns plan dict with steps if found, None otherwise.
+    """
+    match = PLAN_INTRO_PATTERN.search(text)
+    if not match:
+        return None
+
+    steps_text = match.group(1)
+    steps = []
+
+    for step_match in STEP_PATTERN.finditer(steps_text):
+        step_num = int(step_match.group(1))
+        title = step_match.group(2).strip()
+        detail = (step_match.group(3) or "").strip()
+
+        if title:  # Only add if we have a title
+            steps.append({"index": step_num, "title": title, "detail": detail})
+
+    if len(steps) >= 2:  # Only return if we have at least 2 steps
+        return {"plan_id": f"plan-{uuid.uuid4().hex[:8]}", "steps": steps}
+
+    return None
 
 
 class TaskStatus(Enum):
@@ -44,6 +97,17 @@ class VerificationType(Enum):
     BUILD = "build"
     LINT = "lint"
     CUSTOM = "custom"
+
+
+class TaskComplexity(Enum):
+    """Complexity level of a task for adaptive optimization."""
+
+    SIMPLE = (
+        "simple"  # Single file, small change, high confidence (typo, rename, import)
+    )
+    MEDIUM = "medium"  # Multiple files OR moderate changes
+    COMPLEX = "complex"  # Multi-file refactor, new features, architecture changes
+    ENTERPRISE = "enterprise"  # Long-running projects spanning weeks/months (unlimited iterations)
 
 
 @dataclass
@@ -99,11 +163,14 @@ class TaskContext:
     verification_results: List[VerificationResult] = field(default_factory=list)
     error_history: List[Dict[str, Any]] = field(default_factory=list)
     iteration: int = 0
-    max_iterations: int = 10  # Increased to allow more alternative attempts
+    max_iterations: int = 25  # Default, will be adjusted by complexity
     status: TaskStatus = TaskStatus.PLANNING
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
     project_type: Optional[str] = None
     framework: Optional[str] = None
+    complexity: TaskComplexity = (
+        TaskComplexity.MEDIUM
+    )  # Task complexity for adaptive optimization
     tool_calls_per_iteration: Dict[int, List[str]] = field(
         default_factory=dict
     )  # Track tool calls per iteration
@@ -117,6 +184,99 @@ class TaskContext:
         default_factory=list
     )  # Track what approaches failed
     consecutive_same_error_count: int = 0  # Count of consecutive identical errors
+    plan_id: Optional[str] = None  # Plan ID for execution plan stepper tracking
+    current_step_index: int = 0  # Current step index for real-time progress tracking
+    step_count: int = 0  # Total number of steps in the plan
+    step_progress_emitted: Dict[int, str] = field(
+        default_factory=dict
+    )  # Track which step updates have been emitted
+    # Enterprise mode fields
+    enterprise_project_id: Optional[str] = (
+        None  # Link to EnterpriseProject if running in enterprise mode
+    )
+    enterprise_controller: Optional[EnhancedIterationController] = (
+        None  # Enterprise iteration controller
+    )
+    checkpoint_interval: int = (
+        10  # Create checkpoint every N iterations in enterprise mode
+    )
+    last_checkpoint_iteration: int = 0  # Track when last checkpoint was created
+    gate_detector: Optional[CheckpointGateDetector] = (
+        None  # Human checkpoint gate detector
+    )
+    pending_gate: Optional[GateTrigger] = None  # Gate waiting for human decision
+
+    @classmethod
+    def with_adaptive_limits(
+        cls,
+        complexity: TaskComplexity,
+        task_id: str,
+        original_request: str,
+        workspace_path: str,
+        **kwargs,
+    ) -> "TaskContext":
+        """Create context with iteration limits based on task complexity."""
+        limits = {
+            TaskComplexity.SIMPLE: 8,  # Quick fixes - enough for environment issues
+            TaskComplexity.MEDIUM: 15,  # Moderate tasks - handle retries and variations
+            TaskComplexity.COMPLEX: 25,  # Complex tasks - full exploration with fallbacks
+            TaskComplexity.ENTERPRISE: 999999,  # Enterprise projects - effectively unlimited (checkpointed)
+        }
+        return cls(
+            task_id=task_id,
+            original_request=original_request,
+            workspace_path=workspace_path,
+            max_iterations=limits[complexity],
+            complexity=complexity,
+            **kwargs,
+        )
+
+    @classmethod
+    def for_enterprise_project(
+        cls,
+        task_id: str,
+        original_request: str,
+        workspace_path: str,
+        enterprise_project_id: str,
+        checkpoint_interval: int = 10,
+        enable_gate_detection: bool = True,
+        **kwargs,
+    ) -> "TaskContext":
+        """
+        Create context for enterprise project with unlimited iterations and checkpointing.
+
+        Enterprise mode enables:
+        - Effectively unlimited iterations (999999)
+        - Automatic checkpointing every N iterations
+        - Integration with EnterpriseProject state
+        - Smart context summarization on overflow
+        - Human checkpoint gate detection and triggers
+        """
+        # Create enhanced iteration controller for enterprise mode
+        controller = EnhancedIterationController.for_enterprise(
+            project_id=enterprise_project_id,
+            checkpoint_interval=checkpoint_interval,
+        )
+
+        # Create gate detector for human checkpoints
+        gate_detector = (
+            CheckpointGateDetector(enterprise_project_id)
+            if enable_gate_detection
+            else None
+        )
+
+        return cls(
+            task_id=task_id,
+            original_request=original_request,
+            workspace_path=workspace_path,
+            max_iterations=999999,  # Effectively unlimited
+            complexity=TaskComplexity.ENTERPRISE,
+            enterprise_project_id=enterprise_project_id,
+            enterprise_controller=controller,
+            checkpoint_interval=checkpoint_interval,
+            gate_detector=gate_detector,
+            **kwargs,
+        )
 
 
 class ProjectAnalyzer:
@@ -254,16 +414,105 @@ class VerificationRunner:
     def __init__(self, workspace_path: str):
         self.workspace_path = workspace_path
 
+    def _get_node_env_setup(self) -> str:
+        """Get Node.js environment setup commands for nvm/fnm/volta."""
+        home = os.environ.get("HOME", os.path.expanduser("~"))
+        setup_parts = []
+
+        # Check for nvm
+        nvm_dir = os.environ.get("NVM_DIR", os.path.join(home, ".nvm"))
+        if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
+            # Check for .nvmrc or .node-version in workspace
+            nvmrc_path = os.path.join(self.workspace_path, ".nvmrc")
+            node_version_path = os.path.join(self.workspace_path, ".node-version")
+            if os.path.exists(nvmrc_path) or os.path.exists(node_version_path):
+                nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
+            else:
+                nvm_use = (
+                    "nvm use default 2>/dev/null || nvm use node 2>/dev/null || true"
+                )
+
+            setup_parts.append(
+                f'export NVM_DIR="{nvm_dir}" && '
+                f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
+                f"{nvm_use}"
+            )
+
+        # Check for fnm
+        fnm_path = os.path.join(home, ".fnm")
+        if os.path.exists(fnm_path):
+            setup_parts.append(
+                f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
+            )
+
+        # Check for volta
+        volta_home = os.environ.get("VOLTA_HOME", os.path.join(home, ".volta"))
+        if os.path.exists(volta_home):
+            setup_parts.append(
+                f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"'
+            )
+
+        # Add common paths as fallback
+        common_paths = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            os.path.join(home, ".npm-global/bin"),
+        ]
+        node_modules_bin = os.path.join(self.workspace_path, "node_modules", ".bin")
+        if os.path.exists(node_modules_bin):
+            common_paths.insert(0, node_modules_bin)
+        existing_paths = [p for p in common_paths if os.path.exists(p)]
+        if existing_paths:
+            setup_parts.append(f'export PATH="{":".join(existing_paths)}:$PATH"')
+
+        return " && ".join(setup_parts) if setup_parts else ""
+
+    def _is_node_command(self, command: str) -> bool:
+        """Check if command requires Node.js environment."""
+        node_commands = [
+            "npm",
+            "npx",
+            "node",
+            "yarn",
+            "pnpm",
+            "tsc",
+            "tsx",
+            "jest",
+            "vitest",
+        ]
+        cmd_parts = command.split()
+        return bool(cmd_parts and cmd_parts[0] in node_commands)
+
     async def run_command(
         self, command: str, timeout: int = 120
     ) -> Tuple[bool, str, int]:
         """Run a command and return (success, output, exit_code)."""
         try:
+            # Set up environment with npm_config_prefix removed (conflicts with nvm)
+            env = os.environ.copy()
+            env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
+            env["SHELL"] = env.get("SHELL", "/bin/bash")
+
+            # Add Node environment setup for Node commands
+            full_command = command
+            if self._is_node_command(command):
+                env_setup = self._get_node_env_setup()
+                if env_setup:
+                    # Also unset npm_config_prefix in the shell
+                    full_command = (
+                        f"unset npm_config_prefix 2>/dev/null; {env_setup} && {command}"
+                    )
+                    logger.info(
+                        f"[VerificationRunner] Node env setup added for: {command}"
+                    )
+
             process = await asyncio.create_subprocess_shell(
-                command,
+                full_command,
                 cwd=self.workspace_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                executable="/bin/bash",  # Use bash for better compatibility
+                env=env,
             )
 
             try:
@@ -343,6 +592,42 @@ class VerificationRunner:
 
         return results
 
+    async def quick_validate(self, files: List[str]) -> Tuple[bool, str]:
+        """
+        Fast syntax validation without full build.
+        Used for simple tasks to skip expensive verification.
+        """
+        from pathlib import Path
+
+        if not files:
+            return True, "No files to validate"
+
+        for file_path in files:
+            ext = Path(file_path).suffix.lower()
+
+            if ext in [".ts", ".tsx", ".js", ".jsx"]:
+                # Quick TypeScript/JS syntax check using node --check
+                cmd = f'node --check "{file_path}"'
+                success, output, _ = await self.run_command(cmd, timeout=10)
+                if not success:
+                    return False, f"Syntax error in {file_path}: {output[:500]}"
+
+            elif ext == ".py":
+                # Quick Python syntax check
+                cmd = f'python3 -m py_compile "{file_path}"'
+                success, output, _ = await self.run_command(cmd, timeout=10)
+                if not success:
+                    return False, f"Syntax error in {file_path}: {output[:500]}"
+
+            elif ext == ".json":
+                # Quick JSON validation
+                cmd = f"python3 -c \"import json; json.load(open('{file_path}'))\""
+                success, output, _ = await self.run_command(cmd, timeout=5)
+                if not success:
+                    return False, f"Invalid JSON in {file_path}: {output[:500]}"
+
+        return True, "Syntax OK"
+
 
 # Enhanced system prompt for autonomous operation
 AUTONOMOUS_SYSTEM_PROMPT = """You are NAVI, an autonomous AI software engineer that solves ANY problem END-TO-END.
@@ -351,6 +636,32 @@ AUTONOMOUS_SYSTEM_PROMPT = """You are NAVI, an autonomous AI software engineer t
 You are not just a coding assistant - you are a FULL SOFTWARE ENGINEER.
 You handle EVERYTHING: code, infrastructure, databases, DevOps, architecture, debugging, deployment - ANY software engineering challenge.
 Execute until the task is DONE. NEVER stop to ask permission or explain what the user should do.
+
+## CRITICAL: IMPLEMENT, DON'T JUST ANALYZE
+**THE #1 MISTAKE YOU MUST AVOID:** Providing analysis/explanations without actually implementing the fix.
+
+❌ **WRONG (Analysis-only response):**
+```
+"I've analyzed the code. The issue appears to be in LoadingScreen.tsx on line 42.
+To fix this, you should:
+1. Add a timeout handler
+2. Check the state initialization
+3. Update the useEffect dependency array"
+```
+
+✅ **CORRECT (Actually implementing):**
+```
+"Found the issue in LoadingScreen.tsx. Fixing it now..."
+[Uses edit_file tool to make the actual change]
+"Fixed! The progress bar now works correctly. Let me verify..."
+[Uses run_command to test]
+```
+
+**RULES:**
+1. If you identify a problem, FIX IT using write_file/edit_file/run_command
+2. NEVER give a list of "steps the user should take" - DO those steps yourself
+3. After reading code and finding issues, your NEXT action must be a fix, not more text
+4. "I'll address this" or "Let me fix that" MUST be immediately followed by tool calls that actually fix it
 
 ## TROUBLESHOOTING - ACT FAST, DON'T OVER-ANALYZE
 When a user reports something isn't working (e.g., "site not loading", "server not starting"):
@@ -391,6 +702,55 @@ INSTEAD, YOU MUST:
 - Work around limitations creatively
 - Find different tools/methods to achieve the same goal
 - Keep iterating until you succeed or exhaust ALL alternatives
+
+## HANDLING NON-AUTOMATABLE TASKS
+If you encounter a step or task that genuinely requires human action (like user testing, manual approval, physical verification), you should:
+
+1. **Acknowledge it clearly**: "This step (e.g., 'user testing') requires human action and cannot be automated."
+2. **Complete what you CAN do**: "I've completed the implementation and automated tests. The code is ready for manual user testing."
+3. **Provide clear instructions**: "To complete user testing, open the application at localhost:3000 and verify..."
+4. **Mark it as needing human action** - don't report it as an error, report it as "ready for human verification"
+
+Examples of tasks that require human action:
+- User acceptance testing (UAT)
+- Visual design review
+- Production deployment approval
+- Physical hardware verification
+- Third-party service manual setup
+
+**DO NOT** get stuck in a loop trying to "perform user testing" - you cannot click buttons as a human user.
+**DO** complete all automatable parts and clearly hand off the manual step.
+
+## AUTOMATED TESTING - DO THIS PROACTIVELY
+You SHOULD proactively run automated tests as part of your workflow:
+
+**Testing you CAN and SHOULD do:**
+1. **Unit tests**: `npm test`, `pytest`, `jest`, `go test`, `cargo test`
+2. **Integration tests**: Run test suites that test components together
+3. **E2E tests**: Run Playwright, Cypress, Selenium if configured in the project
+4. **Type checking**: `tsc --noEmit`, `mypy`, `pyright`
+5. **Linting**: `eslint`, `pylint`, `prettier --check`
+6. **Build verification**: `npm run build`, `cargo build`, `go build`
+7. **API tests**: `curl` endpoints, run Newman/Postman collections
+
+**When to run tests:**
+- After implementing new features → Run relevant tests
+- After fixing bugs → Run tests to verify the fix
+- After refactoring → Run full test suite
+- Before completing a task → Run build and type checks
+
+**If tests don't exist:**
+- Consider writing basic tests for new code
+- At minimum, verify the code compiles/builds
+
+**Example workflow:**
+```
+1. Implement the feature
+2. Run `npm run build` to verify it compiles
+3. Run `npm test` to check existing tests pass
+4. If tests fail, fix them
+5. Complete the task
+```
 
 ## Your Scope - UNLIMITED
 You tackle ANY software engineering problem:
@@ -745,10 +1105,12 @@ class AutonomousAgent:
         api_key: str,
         provider: str = "openai",
         model: Optional[str] = None,
+        db_session=None,  # Database session for checkpoint persistence
     ):
         self.workspace_path = workspace_path
         self.api_key = api_key
         self.provider = provider
+        self.db_session = db_session  # For checkpoint persistence
         # Always prefer Claude for autonomous tasks - it's significantly better at agentic work
         # Claude excels at: tool use, following complex instructions, multi-step reasoning
         if model:
@@ -774,6 +1136,72 @@ class AutonomousAgent:
         logger.info(
             f"[AutonomousAgent] Verification commands: {self.verification_commands}"
         )
+
+    def _assess_task_complexity(
+        self, request: str, context: Optional[TaskContext] = None
+    ) -> TaskComplexity:
+        """
+        Assess task complexity to determine verification strategy and iteration limits.
+
+        Returns:
+            TaskComplexity.SIMPLE: Single file fixes, typos, renames, imports (3 iterations, quick validation)
+            TaskComplexity.MEDIUM: Multiple files, moderate changes (5 iterations, lint+typecheck)
+            TaskComplexity.COMPLEX: Refactors, new features, architecture (10 iterations, full verification)
+        """
+        request_lower = request.lower()
+
+        # Simple task indicators
+        simple_indicators = [
+            len(request) < 150,  # Short request
+            any(
+                kw in request_lower
+                for kw in ["typo", "rename", "import", "missing", "unused", "spelling"]
+            ),
+            "fix" in request_lower and "all" not in request_lower,
+            any(
+                kw in request_lower
+                for kw in ["add import", "remove import", "update import"]
+            ),
+        ]
+
+        # Check files modified count if context available
+        if context and context.files_modified:
+            simple_indicators.append(len(context.files_modified) == 1)
+
+        # Complex task indicators
+        complex_indicators = [
+            len(request) > 300,
+            any(
+                kw in request_lower
+                for kw in [
+                    "refactor",
+                    "implement",
+                    "create",
+                    "build",
+                    "multiple",
+                    "entire",
+                    "whole",
+                    "all files",
+                    "architecture",
+                    "redesign",
+                ]
+            ),
+            "feature" in request_lower,
+            "add feature" in request_lower or "new feature" in request_lower,
+        ]
+
+        # Check files modified count for complexity
+        if context and context.files_modified:
+            complex_indicators.append(len(context.files_modified) > 3)
+
+        simple_score = sum(simple_indicators)
+        complex_score = sum(complex_indicators)
+
+        if complex_score >= 2:
+            return TaskComplexity.COMPLEX
+        elif simple_score >= 2:
+            return TaskComplexity.SIMPLE
+        return TaskComplexity.MEDIUM
 
     def _extract_error_signatures(
         self, results: List[VerificationResult], iteration: int
@@ -972,6 +1400,86 @@ class AutonomousAgent:
             )
         )
 
+    def _is_fix_request(self, request: str) -> bool:
+        """
+        Detect if the user's request is asking for a fix/implementation vs just a question.
+        Returns True if the user wants something DONE, not just analyzed.
+        """
+        request_lower = request.lower()
+
+        # Patterns that indicate the user wants action taken
+        action_patterns = [
+            "fix",
+            "solve",
+            "resolve",
+            "repair",
+            "debug",
+            "make it work",
+            "get it working",
+            "stop",
+            "start",
+            "implement",
+            "add",
+            "create",
+            "build",
+            "set up",
+            "setup",
+            "update",
+            "change",
+            "modify",
+            "edit",
+            "remove",
+            "delete",
+            "install",
+            "configure",
+            "run",
+            "execute",
+            "deploy",
+            "not working",
+            "doesn't work",
+            "isn't working",
+            "won't work",
+            "broken",
+            "error",
+            "issue",
+            "problem",
+            "bug",
+            "stuck",
+            "failing",
+            "failed",
+            "crashed",
+            "can't",
+            "cannot",
+            "help me",
+            "please",
+            "need to",
+            "want to",
+            "trying to",
+        ]
+
+        # Patterns that indicate just a question (not needing action)
+        question_only_patterns = [
+            "what is",
+            "what are",
+            "what does",
+            "how does",
+            "why is",
+            "why does",
+            "explain",
+            "tell me about",
+            "what's the difference",
+            "can you explain",
+        ]
+
+        # Check if it's primarily a question
+        is_question_only = any(
+            pattern in request_lower for pattern in question_only_patterns
+        )
+        has_action_intent = any(pattern in request_lower for pattern in action_patterns)
+
+        # If it has action patterns or is not purely a question, treat as fix request
+        return has_action_intent or not is_question_only
+
     def _build_system_prompt(self, context: TaskContext) -> str:
         """Build system prompt with current context."""
         # No longer including iteration/error info in prompt to keep responses clean
@@ -981,20 +1489,66 @@ class AutonomousAgent:
         """
         Diagnose the development environment ONCE at the start.
         This prevents the agent from blindly guessing what tools are available.
+        Properly sources nvm/volta/fnm before checking Node.js tools.
         """
         diagnostics = []
+        home = os.environ.get("HOME", os.path.expanduser("~"))
+
+        # Build nvm activation command
+        nvm_activate = (
+            f'export NVM_DIR="{home}/.nvm" && '
+            f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" 2>/dev/null'
+        )
+
+        # Build volta activation command
+        volta_activate = (
+            f'export VOLTA_HOME="{home}/.volta" && '
+            f'export PATH="$VOLTA_HOME/bin:$PATH"'
+        )
+
+        # Build fnm activation command
+        fnm_activate = 'eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
+
+        # Combined Node.js environment setup (tries all managers)
+        node_env_setup = f"{nvm_activate} || {volta_activate} || {fnm_activate}"
 
         checks = [
-            # Node.js ecosystem
-            ("Node.js", "node --version 2>/dev/null || echo 'not found'"),
-            ("npm", "npm --version 2>/dev/null || echo 'not found'"),
+            # Node.js ecosystem - WITH proper environment activation
+            (
+                "Node.js",
+                f"({node_env_setup}) && node --version 2>/dev/null || "
+                f"/opt/homebrew/bin/node --version 2>/dev/null || "
+                f"/usr/local/bin/node --version 2>/dev/null || "
+                f"echo 'not found'",
+            ),
+            (
+                "npm",
+                f"({node_env_setup}) && npm --version 2>/dev/null || "
+                f"/opt/homebrew/bin/npm --version 2>/dev/null || "
+                f"/usr/local/bin/npm --version 2>/dev/null || "
+                f"echo 'not found'",
+            ),
+            (
+                "npx",
+                f"({node_env_setup}) && npx --version 2>/dev/null || "
+                f"/opt/homebrew/bin/npx --version 2>/dev/null || "
+                f"echo 'not found'",
+            ),
             (
                 "nvm",
-                "bash -c 'source ~/.nvm/nvm.sh 2>/dev/null && nvm --version' 2>/dev/null || echo 'not found'",
+                f'{nvm_activate} && nvm --version 2>/dev/null || echo "not found"',
+            ),
+            (
+                "volta",
+                'command -v volta >/dev/null 2>&1 && volta --version 2>/dev/null || echo "not found"',
+            ),
+            (
+                "fnm",
+                'command -v fnm >/dev/null 2>&1 && fnm --version 2>/dev/null || echo "not found"',
             ),
             (
                 "Available Node versions",
-                "ls ~/.nvm/versions/node/ 2>/dev/null | tr '\\n' ' ' || echo 'none'",
+                f"ls {home}/.nvm/versions/node/ 2>/dev/null | tr '\\n' ' ' || echo 'none'",
             ),
             # Python ecosystem
             (
@@ -1014,6 +1568,11 @@ class AutonomousAgent:
             ("OS", "uname -s 2>/dev/null"),
             # Current directory info
             ("Working dir", f"echo '{self.workspace_path}'"),
+            # Check if node_modules exists
+            (
+                "node_modules",
+                f"[ -d '{self.workspace_path}/node_modules' ] && echo 'exists' || echo 'missing (run npm install)'",
+            ),
         ]
 
         for name, cmd in checks:
@@ -1113,6 +1672,24 @@ class AutonomousAgent:
                     label = "Process request"
                 desc = request[:100] if len(request) > 100 else request
 
+            # Emit plan_start event in the format the frontend expects
+            plan_id = f"plan-{uuid.uuid4().hex[:8]}"
+            context.plan_id = plan_id  # Store plan_id in context for step_update events
+            yield {
+                "type": "plan_start",
+                "data": {
+                    "plan_id": plan_id,
+                    "steps": [
+                        {
+                            "index": 1,
+                            "title": label,
+                            "detail": desc,
+                            "status": "pending",
+                        }
+                    ],
+                },
+            }
+            # Also emit legacy format for backwards compatibility
             yield {
                 "type": "plan",
                 "steps": [
@@ -1133,15 +1710,52 @@ ENVIRONMENT:
 
 Create steps that are SPECIFIC to this task, not generic.
 
-Examples of GOOD task-specific steps:
-- For "create a login page": "Create LoginForm component", "Add authentication logic", "Style login page"
-- For "fix CSS errors": "Identify missing CSS modules", "Create CTASection.module.css", "Update component imports"
-- For "implement API": "Create API route handlers", "Add database queries", "Test endpoints"
+**CRITICAL: Only include steps that an AI agent can AUTOMATICALLY execute.**
+You are an autonomous coding agent that can:
+- Read, create, edit, and delete files
+- Run terminal commands (build, test, lint, install packages)
+- Search and analyze code
+- Run automated tests (unit, integration, E2E)
+- Execute build and type checking
 
-Examples of BAD generic steps (don't use these):
+You CANNOT:
+- Perform manual user testing (requires human clicking/interacting)
+- Get user feedback (requires human)
+- Deploy to production (requires approval)
+- Conduct interviews or surveys
+- Access external systems that require authentication you don't have
+
+**TESTING GUIDELINES - USE AUTOMATED TESTING:**
+When a task involves testing, ALWAYS use automatable testing:
+✅ GOOD testing steps:
+- "Run unit tests" (npm test, pytest, jest)
+- "Write E2E tests" (Playwright, Cypress)
+- "Run integration tests"
+- "Verify with automated tests"
+- "Add test coverage for new code"
+- "Run linting and type checks"
+
+❌ BAD testing steps (NEVER use):
+- "Perform user testing" (requires human)
+- "User acceptance testing" (requires human)
+- "Manual testing" (requires human)
+- "Get user feedback" (requires human)
+
+Examples of GOOD task-specific steps:
+- For "create a login page": "Create LoginForm component", "Add authentication logic", "Write tests for login"
+- For "fix CSS errors": "Identify missing CSS modules", "Create CTASection.module.css", "Run build to verify"
+- For "implement API": "Create API route handlers", "Add database queries", "Write and run API tests"
+- For "improve UI design": "Update component styles", "Add animations", "Run visual regression tests"
+
+Examples of BAD steps (DO NOT use these):
 - "Analyze codebase" (too vague)
 - "Implement changes" (not specific)
 - "Run verification" (always implied)
+- "Perform user testing" (requires human - NEVER include this)
+- "Get user feedback" (requires human)
+- "Deploy to production" (requires approval)
+- "Conduct A/B testing" (requires human users)
+- "Manual QA testing" (requires human)
 
 Respond with ONLY a JSON object:
 {{
@@ -1204,6 +1818,24 @@ Return ONLY the JSON, no markdown or explanations."""
                     }
                 )
 
+            # Emit plan_start event in the format the frontend expects
+            plan_id = f"plan-{uuid.uuid4().hex[:8]}"
+            context.plan_id = plan_id  # Store plan_id in context for step_update events
+            yield {
+                "type": "plan_start",
+                "data": {
+                    "plan_id": plan_id,
+                    "steps": [
+                        {
+                            "index": s["id"],
+                            "title": s["label"],
+                            "detail": s["description"],
+                        }
+                        for s in formatted_steps
+                    ],
+                },
+            }
+            # Also emit legacy format for backwards compatibility
             yield {
                 "type": "plan",
                 "steps": formatted_steps,
@@ -1309,6 +1941,24 @@ Return ONLY the JSON, no markdown or explanations."""
                     },
                 ]
 
+            # Emit plan_start event in the format the frontend expects
+            plan_id = f"plan-{uuid.uuid4().hex[:8]}"
+            context.plan_id = plan_id  # Store plan_id in context for step_update events
+            yield {
+                "type": "plan_start",
+                "data": {
+                    "plan_id": plan_id,
+                    "steps": [
+                        {
+                            "index": s["id"],
+                            "title": s["label"],
+                            "detail": s["description"],
+                        }
+                        for s in fallback_steps
+                    ],
+                },
+            }
+            # Also emit legacy format for backwards compatibility
             yield {
                 "type": "plan",
                 "steps": fallback_steps,
@@ -1316,10 +1966,105 @@ Return ONLY the JSON, no markdown or explanations."""
                 "is_complex": True,
             }
 
+    def _calculate_step_progress(
+        self, context: TaskContext, tool_name: str
+    ) -> Optional[Dict]:
+        """
+        Calculate step progress based on tool activity and emit step_update if needed.
+
+        Maps tool activities to plan steps:
+        - Step 0 (Check dependencies/Analyze): read_file, search_files, list_directory
+        - Step 1 (Create/Implement): write_file, edit_file
+        - Step 2 (Update/Finalize): run_command, additional writes
+        """
+        if not context.plan_id or context.step_count == 0:
+            return None
+
+        # Determine which step we should be on based on activities
+        len(context.files_read) > 0
+        has_writes = len(context.files_modified) + len(context.files_created) > 0
+        has_commands = len(context.commands_run) > 0
+
+        # Map tool types to step phases
+        write_tools = {"write_file", "edit_file", "create_file"}
+        command_tools = {
+            "run_command",
+            "run_dangerous_command",
+            "run_interactive_command",
+        }
+
+        # Determine target step based on current tool and overall progress
+        if context.step_count == 1:
+            # Single step plan - always on step 0
+            target_step = 0
+        elif context.step_count == 2:
+            # Two step plan: analysis -> implementation
+            if tool_name in write_tools or has_writes:
+                target_step = 1
+            else:
+                target_step = 0
+        else:
+            # 3+ step plan: analysis -> implementation -> finalize
+            if tool_name in command_tools or has_commands:
+                target_step = min(2, context.step_count - 1)
+            elif tool_name in write_tools or has_writes:
+                target_step = 1
+            else:
+                target_step = 0
+
+        # Only emit if we're advancing or haven't emitted this step yet
+        current_emitted = context.step_progress_emitted.get(target_step)
+
+        # Mark previous steps as completed if we're advancing
+        events = []
+        if target_step > context.current_step_index:
+            # Complete previous steps
+            for i in range(context.current_step_index, target_step):
+                if context.step_progress_emitted.get(i) != "completed":
+                    events.append(
+                        {
+                            "type": "step_update",
+                            "data": {
+                                "plan_id": context.plan_id,
+                                "step_index": i,
+                                "status": "completed",
+                            },
+                        }
+                    )
+                    context.step_progress_emitted[i] = "completed"
+
+            # Mark new step as running
+            context.current_step_index = target_step
+
+        # Ensure current step is marked as running
+        if current_emitted != "running" and current_emitted != "completed":
+            events.append(
+                {
+                    "type": "step_update",
+                    "data": {
+                        "plan_id": context.plan_id,
+                        "step_index": target_step,
+                        "status": "running",
+                    },
+                }
+            )
+            context.step_progress_emitted[target_step] = "running"
+
+        return events if events else None
+
     async def _execute_tool(
         self, tool_name: str, arguments: Dict[str, Any], context: TaskContext
     ) -> Dict[str, Any]:
         """Execute a tool and track the action in context."""
+        # === TOOL EXECUTION TRACING ===
+        logger.info("-" * 40)
+        logger.info(f"[AutonomousAgent] 🔧 TOOL CALL: {tool_name}")
+        logger.info(
+            f"[AutonomousAgent] Arguments: {json.dumps(arguments, default=str)[:500]}"
+        )
+        logger.info(f"[AutonomousAgent] Iteration: {context.iteration}")
+        logger.info("-" * 40)
+
         try:
             if tool_name == "read_file":
                 path = os.path.join(self.workspace_path, arguments["path"])
@@ -1434,15 +2179,77 @@ Return ONLY the JSON, no markdown or explanations."""
                 if arguments.get("cwd"):
                     cwd = os.path.join(self.workspace_path, arguments["cwd"])
 
+                command = arguments["command"]
+
+                # Set up environment with npm_config_prefix removed (conflicts with nvm)
+                env = os.environ.copy()
+                env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
+                env["SHELL"] = env.get("SHELL", "/bin/bash")
+
+                # Detect if this is a Node.js command that needs nvm setup
+                node_commands = [
+                    "npm",
+                    "npx",
+                    "node",
+                    "yarn",
+                    "pnpm",
+                    "bun",
+                    "tsc",
+                    "next",
+                ]
+                cmd_parts = command.split()
+                is_node_cmd = cmd_parts and any(
+                    cmd_parts[0] == nc or cmd_parts[0].endswith(f"/{nc}")
+                    for nc in node_commands
+                )
+
+                # If it's a node command and doesn't already source nvm, add the setup
+                if is_node_cmd and "nvm.sh" not in command:
+                    home = os.environ.get("HOME", os.path.expanduser("~"))
+                    nvm_dir = env.get("NVM_DIR", os.path.join(home, ".nvm"))
+                    if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
+                        # Check for .nvmrc in workspace
+                        nvmrc_path = os.path.join(cwd, ".nvmrc")
+                        node_version_path = os.path.join(cwd, ".node-version")
+                        if os.path.exists(nvmrc_path) or os.path.exists(
+                            node_version_path
+                        ):
+                            nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
+                        else:
+                            nvm_use = "nvm use default 2>/dev/null || true"
+
+                        # Prepend nvm setup to command
+                        command = (
+                            f'export NVM_DIR="{nvm_dir}" && '
+                            f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
+                            f"{nvm_use} && {command}"
+                        )
+                        logger.info("[AutonomousAgent] Added nvm setup to command")
+
+                # If command is already wrapped in bash -c, extract the inner command
+                # to avoid double-wrapping issues
+                if command.strip().startswith("bash -c"):
+                    # Extract command from bash -c '...' or bash -c "..."
+                    import shlex
+
+                    try:
+                        parts = shlex.split(command)
+                        if len(parts) >= 3 and parts[0] == "bash" and parts[1] == "-c":
+                            command = parts[2]
+                            logger.info("[AutonomousAgent] Unwrapped bash -c command")
+                    except Exception:
+                        pass  # Keep original if parsing fails
+
                 # Use bash explicitly to support 'source' command for nvm/pyenv
                 result = subprocess.run(
-                    arguments["command"],
+                    command,
                     shell=True,
                     executable="/bin/bash",
                     cwd=cwd,
                     capture_output=True,
                     text=True,
                     timeout=120,
+                    env=env,
                 )
 
                 context.commands_run.append(
@@ -1507,11 +2314,236 @@ Return ONLY the JSON, no markdown or explanations."""
 
                 return {"success": True, "entries": entries}
 
+            elif tool_name == "start_server":
+                import time
+                import urllib.request
+                import urllib.error
+
+                command = arguments["command"]
+                port = arguments["port"]
+                health_path = arguments.get("health_path", "/")
+                startup_time = arguments.get("startup_time", 10)
+
+                # Set up environment with npm_config_prefix removed (conflicts with nvm)
+                env = os.environ.copy()
+                env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
+                env["SHELL"] = env.get("SHELL", "/bin/bash")
+
+                # First, kill any existing process on the port
+                try:
+                    subprocess.run(
+                        f"lsof -ti :{port} | xargs kill -9 2>/dev/null || true",
+                        shell=True,
+                        capture_output=True,
+                        timeout=10,
+                        env=env,
+                    )
+                except Exception:
+                    pass
+
+                # Also remove any lock files for Next.js
+                try:
+                    lock_path = os.path.join(
+                        self.workspace_path, ".next", "dev", "lock"
+                    )
+                    if os.path.exists(lock_path):
+                        os.remove(lock_path)
+                except Exception:
+                    pass
+
+                # Detect if this is a Node.js command that needs nvm setup
+                node_commands = ["npm", "npx", "node", "yarn", "pnpm", "bun", "next"]
+                cmd_parts = command.split()
+                is_node_cmd = cmd_parts and any(
+                    cmd_parts[0] == nc or cmd_parts[0].endswith(f"/{nc}")
+                    for nc in node_commands
+                )
+
+                # If it's a node command and doesn't already source nvm, add the setup
+                server_command = command
+                if is_node_cmd and "nvm.sh" not in command:
+                    home = os.environ.get("HOME", os.path.expanduser("~"))
+                    nvm_dir = env.get("NVM_DIR", os.path.join(home, ".nvm"))
+                    if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
+                        # Check for .nvmrc in workspace
+                        nvmrc_path = os.path.join(self.workspace_path, ".nvmrc")
+                        node_version_path = os.path.join(
+                            self.workspace_path, ".node-version"
+                        )
+                        if os.path.exists(nvmrc_path) or os.path.exists(
+                            node_version_path
+                        ):
+                            nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
+                        else:
+                            nvm_use = "nvm use default 2>/dev/null || true"
+
+                        # Prepend nvm setup to command
+                        server_command = (
+                            f'export NVM_DIR="{nvm_dir}" && '
+                            f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
+                            f"{nvm_use} && {command}"
+                        )
+                        logger.info(
+                            "[AutonomousAgent] Added nvm setup to start_server command"
+                        )
+
+                # Start the server in background using nohup
+                log_file = os.path.join(self.workspace_path, ".navi-server.log")
+                # Escape single quotes in command for bash -c
+                escaped_command = server_command.replace("'", "'\\''")
+                bg_command = f"cd {self.workspace_path} && nohup bash -c '{escaped_command}' > {log_file} 2>&1 &"
+
+                try:
+                    subprocess.run(bg_command, shell=True, timeout=5, env=env)
+                except subprocess.TimeoutExpired:
+                    pass  # Expected - we're running in background
+
+                # Wait for server to start, checking periodically
+                url = f"http://localhost:{port}{health_path}"
+                server_started = False
+                last_error = ""
+
+                for i in range(startup_time * 2):  # Check every 0.5 seconds
+                    time.sleep(0.5)
+                    try:
+                        req = urllib.request.Request(url, method="HEAD")
+                        with urllib.request.urlopen(req, timeout=2) as response:
+                            if response.status < 500:
+                                server_started = True
+                                break
+                    except urllib.error.HTTPError as e:
+                        # Even a 404 means server is running
+                        if e.code < 500:
+                            server_started = True
+                            break
+                        last_error = f"HTTP {e.code}"
+                    except urllib.error.URLError as e:
+                        last_error = str(e.reason)
+                    except Exception as e:
+                        last_error = str(e)
+
+                # Get any log output
+                log_content = ""
+                try:
+                    with open(log_file, "r") as f:
+                        log_content = f.read()[-1000:]  # Last 1000 chars
+                except Exception:
+                    pass
+
+                # Track the command
+                context.commands_run.append(
+                    {
+                        "command": command,
+                        "success": server_started,
+                        "type": "start_server",
+                    }
+                )
+
+                if server_started:
+                    return {
+                        "success": True,
+                        "message": f"Server started successfully on port {port}",
+                        "url": url,
+                        "verified": True,
+                        "log_preview": log_content[:500] if log_content else None,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Server did not respond after {startup_time} seconds",
+                        "last_error": last_error,
+                        "url": url,
+                        "log_preview": (
+                            log_content if log_content else "No log output captured"
+                        ),
+                        "suggestion": "Check the log output for errors. Common issues: port already in use, missing dependencies, build errors.",
+                    }
+
+            elif tool_name == "check_endpoint":
+                import urllib.request
+                import urllib.error
+
+                url = arguments["url"]
+                method = arguments.get("method", "GET")
+                expected_status = arguments.get("expected_status", 200)
+
+                try:
+                    req = urllib.request.Request(url, method=method)
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        body_preview = response.read(500).decode(
+                            "utf-8", errors="ignore"
+                        )
+                        return {
+                            "success": response.status == expected_status,
+                            "status": response.status,
+                            "responding": True,
+                            "body_preview": body_preview,
+                        }
+                except urllib.error.HTTPError as e:
+                    return {
+                        "success": e.code == expected_status,
+                        "status": e.code,
+                        "responding": True,
+                        "error": f"HTTP {e.code}: {e.reason}",
+                    }
+                except urllib.error.URLError as e:
+                    return {
+                        "success": False,
+                        "responding": False,
+                        "error": f"Connection failed: {e.reason}",
+                    }
+                except Exception as e:
+                    return {"success": False, "responding": False, "error": str(e)}
+
+            elif tool_name == "stop_server":
+                port = arguments["port"]
+
+                try:
+                    # Find and kill processes on the port
+                    result = subprocess.run(
+                        f"lsof -ti :{port} | xargs kill -9 2>/dev/null",
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+
+                    # Verify the port is free
+                    check = subprocess.run(
+                        f"lsof -ti :{port}",
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+
+                    if not check.stdout.strip():
+                        return {
+                            "success": True,
+                            "message": f"Server on port {port} stopped successfully",
+                            "port_free": True,
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": f"Failed to stop server on port {port}",
+                            "port_free": False,
+                        }
+                except Exception as e:
+                    return {"success": False, "error": str(e)}
+
             else:
+                logger.error(f"[AutonomousAgent] ❌ UNKNOWN TOOL: {tool_name}")
+                logger.error(
+                    "[AutonomousAgent] Available tools: read_file, write_file, edit_file, run_command, search_files, list_directory, start_server, check_endpoint, stop_server"
+                )
                 return {"success": False, "error": f"Unknown tool: {tool_name}"}
 
         except Exception as e:
-            logger.error(f"Tool execution error: {tool_name} - {e}")
+            logger.error(f"[AutonomousAgent] ❌ TOOL EXCEPTION: {tool_name} - {e}")
+            import traceback
+
+            logger.error(f"[AutonomousAgent] Traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e)}
 
     def _generate_next_steps(self, context: TaskContext) -> List[str]:
@@ -1562,6 +2594,81 @@ Return ONLY the JSON, no markdown or explanations."""
         # Limit to 3 most relevant steps
         return steps[:3]
 
+    def _can_parallelize_tools(
+        self, tools: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Separate tools into parallelizable reads and sequential writes.
+        Read operations (search, list, read_file) can be parallelized.
+        Write operations must execute sequentially to maintain consistency.
+        """
+        # Write operations for the autonomous agent's local tools
+        # These mutate files, run commands, or have side effects
+        LOCAL_WRITE_OPERATIONS = {
+            "write_file",
+            "edit_file",
+            "run_command",
+            "start_server",
+            "stop_server",
+        }
+
+        parallel_reads = []
+        sequential_writes = []
+
+        for tool in tools:
+            tool_name = tool.get("name", "")
+            if tool_name in LOCAL_WRITE_OPERATIONS:
+                sequential_writes.append(tool)
+            else:
+                parallel_reads.append(tool)
+
+        return parallel_reads, sequential_writes
+
+    async def _execute_tools_parallel(
+        self, tools: List[Dict[str, Any]], context: TaskContext, max_concurrent: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Execute multiple read-only tools in parallel using asyncio.gather.
+        Uses a semaphore to limit concurrent executions.
+        """
+        if not tools:
+            return []
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def execute_with_semaphore(tool: Dict[str, Any]) -> Dict[str, Any]:
+            async with semaphore:
+                tool_name = tool.get("name", "")
+                args = tool.get("input", tool.get("arguments", {}))
+                try:
+                    result = await self._execute_tool(tool_name, args, context)
+                    return {"tool": tool, "result": result, "success": True}
+                except Exception as e:
+                    logger.error(
+                        f"[AutonomousAgent] Parallel tool execution failed for {tool_name}: {e}"
+                    )
+                    return {"tool": tool, "result": {"error": str(e)}, "success": False}
+
+        tasks = [execute_with_semaphore(t) for t in tools]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Handle any gather-level exceptions
+        processed = []
+        for i, r in enumerate(results):
+            if isinstance(r, Exception):
+                logger.error(f"[AutonomousAgent] Parallel execution exception: {r}")
+                processed.append(
+                    {
+                        "tool": tools[i] if i < len(tools) else {},
+                        "result": {"error": str(r)},
+                        "success": False,
+                    }
+                )
+            else:
+                processed.append(r)
+
+        return processed
+
     async def _call_llm_with_tools(
         self, messages: List[Dict[str, Any]], context: TaskContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -1583,6 +2690,22 @@ Return ONLY the JSON, no markdown or explanations."""
         import aiohttp
         from backend.services.streaming_agent import NAVI_TOOLS
 
+        # === LLM API CALL TRACING ===
+        logger.info("=" * 60)
+        logger.info("[AutonomousAgent] 🤖 CALLING ANTHROPIC API")
+        logger.info(f"[AutonomousAgent] Model: {self.model}")
+        logger.info(f"[AutonomousAgent] Messages Count: {len(messages)}")
+        logger.info(
+            f"[AutonomousAgent] Tools Available: {[t['name'] for t in NAVI_TOOLS]}"
+        )
+        logger.info(
+            f"[AutonomousAgent] Last Message Role: {messages[-1]['role'] if messages else 'N/A'}"
+        )
+        if messages:
+            last_content = str(messages[-1].get("content", ""))[:200]
+            logger.info(f"[AutonomousAgent] Last Message Preview: {last_content}...")
+        logger.info("=" * 60)
+
         async with aiohttp.ClientSession() as session:
             while True:
                 payload = {
@@ -1600,6 +2723,8 @@ Return ONLY the JSON, no markdown or explanations."""
                     "anthropic-version": "2023-06-01",
                 }
 
+                logger.info("[AutonomousAgent] 📡 Sending request to Anthropic...")
+
                 async with session.post(
                     "https://api.anthropic.com/v1/messages",
                     headers=headers,
@@ -1608,12 +2733,19 @@ Return ONLY the JSON, no markdown or explanations."""
                         total=600
                     ),  # 10 minutes for complex operations
                 ) as response:
+                    logger.info(
+                        f"[AutonomousAgent] 📥 Response Status: {response.status}"
+                    )
+
                     if response.status != 200:
                         error = await response.text()
+                        logger.error(f"[AutonomousAgent] ❌ API Error: {error[:500]}")
                         yield {"type": "error", "error": error}
                         return
 
                     text_buffer = ""
+                    full_text_for_plan = ""  # Accumulate text for plan detection
+                    detected_plan = None  # Track if we've detected a plan
                     tool_calls = []
                     current_tool = None
                     stop_reason = None
@@ -1634,6 +2766,9 @@ Return ONLY the JSON, no markdown or explanations."""
                             if event_type == "content_block_start":
                                 block = data.get("content_block", {})
                                 if block.get("type") == "tool_use":
+                                    logger.info(
+                                        f"[AutonomousAgent] 🔧 LLM requesting tool: {block.get('name')}"
+                                    )
                                     current_tool = {
                                         "id": block.get("id"),
                                         "name": block.get("name"),
@@ -1648,6 +2783,25 @@ Return ONLY the JSON, no markdown or explanations."""
                                 if delta.get("type") == "text_delta":
                                     text = delta.get("text", "")
                                     text_buffer += text
+                                    full_text_for_plan += text
+
+                                    # Check for plan in accumulated text (only if not already detected)
+                                    if (
+                                        not detected_plan
+                                        and len(full_text_for_plan) > 100
+                                    ):
+                                        detected_plan = parse_execution_plan(
+                                            full_text_for_plan
+                                        )
+                                        if detected_plan:
+                                            logger.info(
+                                                f"[AutonomousAgent] ⚡ Detected execution plan with {len(detected_plan['steps'])} steps"
+                                            )
+                                            yield {
+                                                "type": "plan_start",
+                                                "data": detected_plan,
+                                            }
+
                                     if len(text_buffer) >= 30 or text.endswith(
                                         (".", "!", "?", "\n")
                                     ):
@@ -1682,9 +2836,19 @@ Return ONLY the JSON, no markdown or explanations."""
                                     }
 
                                     # Execute the tool
+                                    logger.info(
+                                        f"[AutonomousAgent] ⚙️ Executing tool: {current_tool['name']}"
+                                    )
                                     result = await self._execute_tool(
                                         current_tool["name"], args, context
                                     )
+                                    logger.info(
+                                        f"[AutonomousAgent] ✅ Tool result: success={result.get('success', 'N/A')}"
+                                    )
+                                    if not result.get("success"):
+                                        logger.warning(
+                                            f"[AutonomousAgent] ⚠️ Tool error: {result.get('error', 'Unknown error')}"
+                                        )
                                     yield {
                                         "type": "tool_result",
                                         "tool_result": {
@@ -1726,8 +2890,19 @@ Return ONLY the JSON, no markdown or explanations."""
                     if text_buffer:
                         yield {"type": "text", "text": text_buffer}
 
+                    # Log stop reason
+                    logger.info(f"[AutonomousAgent] 🛑 LLM Stop Reason: {stop_reason}")
+                    logger.info(f"[AutonomousAgent] Tool Calls Made: {len(tool_calls)}")
+                    if tool_calls:
+                        logger.info(
+                            f"[AutonomousAgent] Tools Called: {[tc['name'] for tc in tool_calls]}"
+                        )
+
                     # Continue if tool use
                     if stop_reason == "tool_use" and tool_calls:
+                        logger.info(
+                            "[AutonomousAgent] 🔄 Continuing with tool results - sending back to LLM"
+                        )
                         assistant_content = []
                         for tc in tool_calls:
                             assistant_content.append(
@@ -1756,6 +2931,9 @@ Return ONLY the JSON, no markdown or explanations."""
                         tool_calls = []
                         continue
                     else:
+                        logger.info(
+                            "[AutonomousAgent] ✅ LLM turn complete - stop_reason: end_turn"
+                        )
                         return
 
     async def _call_openai(
@@ -1763,7 +2941,19 @@ Return ONLY the JSON, no markdown or explanations."""
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Call OpenAI with function calling."""
         import aiohttp
-        from backend.services.streaming_agent import NAVI_FUNCTIONS_OPENAI
+        from backend.services.streaming_agent import (
+            NAVI_FUNCTIONS_OPENAI,
+            OPENAI_TO_NAVI_TOOL_NAME,
+        )
+
+        # === LLM API CALL TRACING (OpenAI) ===
+        logger.info("=" * 60)
+        logger.info(
+            f"[AutonomousAgent] 🤖 CALLING OPENAI API (Provider: {self.provider})"
+        )
+        logger.info(f"[AutonomousAgent] Model: {self.model}")
+        logger.info(f"[AutonomousAgent] Messages Count: {len(messages)}")
+        logger.info("=" * 60)
 
         full_messages = [{"role": "system", "content": system_prompt}] + messages
 
@@ -1784,14 +2974,16 @@ Return ONLY the JSON, no markdown or explanations."""
                 base_url = "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
-                    headers[
-                        "Authorization"
-                    ] = f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
+                    headers["Authorization"] = (
+                        f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
+                    )
                 elif self.provider == "groq":
                     base_url = "https://api.groq.com/openai/v1"
-                    headers[
-                        "Authorization"
-                    ] = f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                    headers["Authorization"] = (
+                        f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                    )
+
+                logger.info(f"[AutonomousAgent] 📡 Sending request to {base_url}...")
 
                 async with session.post(
                     f"{base_url}/chat/completions",
@@ -1801,12 +2993,19 @@ Return ONLY the JSON, no markdown or explanations."""
                         total=600
                     ),  # 10 minutes for complex operations
                 ) as response:
+                    logger.info(
+                        f"[AutonomousAgent] 📥 Response Status: {response.status}"
+                    )
+
                     if response.status != 200:
                         error = await response.text()
+                        logger.error(f"[AutonomousAgent] ❌ API Error: {error[:500]}")
                         yield {"type": "error", "error": error}
                         return
 
                     text_buffer = ""
+                    full_text_for_plan = ""  # Accumulate text for plan detection
+                    detected_plan = None  # Track if we've detected a plan
                     tool_calls: Dict[int, Dict[str, Any]] = {}
                     finish_reason = None
 
@@ -1828,6 +3027,22 @@ Return ONLY the JSON, no markdown or explanations."""
                             if delta.get("content"):
                                 text = delta["content"]
                                 text_buffer += text
+                                full_text_for_plan += text
+
+                                # Check for plan in accumulated text (only if not already detected)
+                                if not detected_plan and len(full_text_for_plan) > 100:
+                                    detected_plan = parse_execution_plan(
+                                        full_text_for_plan
+                                    )
+                                    if detected_plan:
+                                        logger.info(
+                                            f"[AutonomousAgent] ⚡ Detected execution plan with {len(detected_plan['steps'])} steps"
+                                        )
+                                        yield {
+                                            "type": "plan_start",
+                                            "data": detected_plan,
+                                        }
+
                                 if len(text_buffer) >= 30 or text.endswith(
                                     (".", "!", "?", "\n")
                                 ):
@@ -1846,7 +3061,13 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if tc.get("id"):
                                         tool_calls[idx]["id"] = tc["id"]
                                     if tc.get("function", {}).get("name"):
-                                        tool_calls[idx]["name"] = tc["function"]["name"]
+                                        # Convert OpenAI-sanitized name back to original NAVI name
+                                        openai_name = tc["function"]["name"]
+                                        tool_calls[idx]["name"] = (
+                                            OPENAI_TO_NAVI_TOOL_NAME.get(
+                                                openai_name, openai_name
+                                            )
+                                        )
                                     if tc.get("function", {}).get("arguments"):
                                         tool_calls[idx]["arguments"] += tc["function"][
                                             "arguments"
@@ -1877,6 +3098,8 @@ Return ONLY the JSON, no markdown or explanations."""
                             {"role": "assistant", "tool_calls": assistant_tool_calls}
                         )
 
+                        # OPTIMIZATION: Separate read and write operations for parallel execution
+                        all_tools_parsed = []
                         for idx in sorted(tool_calls.keys()):
                             tc = tool_calls[idx]
                             try:
@@ -1887,17 +3110,89 @@ Return ONLY the JSON, no markdown or explanations."""
                                 )
                             except json.JSONDecodeError:
                                 args = {}
+                            all_tools_parsed.append(
+                                {
+                                    "id": tc["id"],
+                                    "name": tc["name"],
+                                    "arguments": args,
+                                }
+                            )
 
+                        # Separate into parallel reads and sequential writes
+                        parallel_reads, sequential_writes = self._can_parallelize_tools(
+                            all_tools_parsed
+                        )
+
+                        # Execute read operations in parallel
+                        if parallel_reads:
+                            logger.info(
+                                f"[AutonomousAgent] ⚡ Executing {len(parallel_reads)} read operations in parallel"
+                            )
+                            parallel_results = await self._execute_tools_parallel(
+                                [
+                                    {"name": t["name"], "input": t["arguments"]}
+                                    for t in parallel_reads
+                                ],
+                                context,
+                            )
+
+                            # Yield events and add to messages in original order
+                            for i, pr in enumerate(parallel_results):
+                                tool_info = parallel_reads[i]
+                                yield {
+                                    "type": "tool_call",
+                                    "tool_call": {
+                                        "id": tool_info["id"],
+                                        "name": tool_info["name"],
+                                        "arguments": tool_info["arguments"],
+                                    },
+                                }
+
+                                # Emit step progress updates
+                                step_events = self._calculate_step_progress(
+                                    context, tool_info["name"]
+                                )
+                                if step_events:
+                                    for step_event in step_events:
+                                        yield step_event
+
+                                yield {
+                                    "type": "tool_result",
+                                    "tool_result": {
+                                        "id": tool_info["id"],
+                                        "result": pr["result"],
+                                    },
+                                }
+                                full_messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tool_info["id"],
+                                        "content": json.dumps(pr["result"]),
+                                    }
+                                )
+
+                        # Execute write operations sequentially (preserve order)
+                        for tc in sequential_writes:
                             yield {
                                 "type": "tool_call",
                                 "tool_call": {
                                     "id": tc["id"],
                                     "name": tc["name"],
-                                    "arguments": args,
+                                    "arguments": tc["arguments"],
                                 },
                             }
 
-                            result = await self._execute_tool(tc["name"], args, context)
+                            # Emit step progress updates BEFORE execution
+                            step_events = self._calculate_step_progress(
+                                context, tc["name"]
+                            )
+                            if step_events:
+                                for step_event in step_events:
+                                    yield step_event
+
+                            result = await self._execute_tool(
+                                tc["name"], tc["arguments"], context
+                            )
 
                             yield {
                                 "type": "tool_result",
@@ -1932,13 +3227,38 @@ Return ONLY the JSON, no markdown or explanations."""
         - {"type": "iteration", "iteration": N, "reason": "..."}
         - {"type": "complete", "summary": {...}}
         """
-        context = TaskContext(
+        # === EXECUTION TRACING ===
+        logger.info("=" * 60)
+        logger.info("[AutonomousAgent] 🚀 STARTING TASK EXECUTION")
+        logger.info(f"[AutonomousAgent] Request: {request[:100]}...")
+        logger.info(f"[AutonomousAgent] Provider: {self.provider}")
+        logger.info(f"[AutonomousAgent] Model: {self.model}")
+        logger.info(f"[AutonomousAgent] Workspace: {self.workspace_path}")
+        logger.info(f"[AutonomousAgent] API Key Set: {'YES' if self.api_key else 'NO'}")
+        logger.info(
+            f"[AutonomousAgent] API Key Length: {len(self.api_key) if self.api_key else 0}"
+        )
+        logger.info("=" * 60)
+
+        # Assess task complexity for adaptive optimization
+        complexity = self._assess_task_complexity(request)
+        logger.info(f"[AutonomousAgent] 📊 Task complexity: {complexity.value}")
+
+        # Create context with adaptive iteration limits
+        context = TaskContext.with_adaptive_limits(
+            complexity=complexity,
             task_id=str(uuid.uuid4()),
             original_request=request,
             workspace_path=self.workspace_path,
             project_type=self.project_type,
             framework=self.framework,
         )
+        max_display = (
+            context.max_iterations
+            if context.complexity != TaskComplexity.ENTERPRISE
+            else "unlimited (checkpointed)"
+        )
+        logger.info(f"[AutonomousAgent] 🔄 Max iterations set to: {max_display}")
 
         yield {"type": "status", "status": "planning", "task_id": context.task_id}
 
@@ -1951,10 +3271,23 @@ Return ONLY the JSON, no markdown or explanations."""
             yield plan_event
             if plan_event.get("type") == "plan":
                 plan_steps = plan_event.get("steps", [])
+                context.step_count = len(
+                    plan_steps
+                )  # Store step count for progress tracking
 
-        # Update first step to in_progress
-        if plan_steps:
-            yield {"type": "step_update", "step_id": 1, "status": "in_progress"}
+        # Update first step to in_progress (running)
+        if plan_steps and context.plan_id:
+            context.step_progress_emitted[0] = (
+                "running"  # Track that we've emitted step 0 as running
+            )
+            yield {
+                "type": "step_update",
+                "data": {
+                    "plan_id": context.plan_id,
+                    "step_index": 0,  # 0-indexed for frontend
+                    "status": "running",
+                },
+            }
 
         # Include environment info in the initial request
         enhanced_request = f"""{request}
@@ -1971,6 +3304,86 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
             context.iteration += 1
             context.status = TaskStatus.EXECUTING
 
+            # === ENTERPRISE MODE CHECKPOINTING ===
+            if (
+                context.complexity == TaskComplexity.ENTERPRISE
+                and context.enterprise_controller
+            ):
+                # Record iteration in enterprise controller
+                iterations_since_checkpoint = (
+                    context.iteration - context.last_checkpoint_iteration
+                )
+
+                # Check if we should create a checkpoint
+                if iterations_since_checkpoint >= context.checkpoint_interval:
+                    logger.info(
+                        f"[AutonomousAgent] 📸 Creating enterprise checkpoint at iteration {context.iteration}"
+                    )
+                    context.last_checkpoint_iteration = context.iteration
+
+                    # PERSIST CHECKPOINT TO DATABASE for crash recovery
+                    checkpoint_id = None
+                    if self.db_session and context.enterprise_project_id:
+                        try:
+                            from backend.services.checkpoint_persistence_service import (
+                                CheckpointPersistenceService,
+                            )
+
+                            checkpoint_service = CheckpointPersistenceService(
+                                db_session=self.db_session,
+                                project_id=context.enterprise_project_id,
+                                llm_provider=self.provider,
+                                llm_api_key=self.api_key,
+                            )
+                            checkpoint_id = await checkpoint_service.save_checkpoint(
+                                task_context=context,
+                                checkpoint_type="automatic",
+                                reason=f"Automatic checkpoint at iteration {context.iteration}",
+                            )
+                            logger.info(
+                                f"[AutonomousAgent] ✅ Checkpoint {checkpoint_id} saved to database"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"[AutonomousAgent] Failed to save checkpoint: {e}"
+                            )
+
+                    # Emit checkpoint event for frontend
+                    yield {
+                        "type": "enterprise_checkpoint",
+                        "data": {
+                            "iteration": context.iteration,
+                            "project_id": context.enterprise_project_id,
+                            "checkpoint_id": checkpoint_id,
+                            "files_modified": context.files_modified,
+                            "files_created": context.files_created,
+                            "commands_run": len(context.commands_run),
+                        },
+                    }
+
+            # === ITERATION TRACING ===
+            logger.info("*" * 60)
+            max_display = (
+                context.max_iterations
+                if context.complexity != TaskComplexity.ENTERPRISE
+                else "∞"
+            )
+            logger.info(
+                f"[AutonomousAgent] 🔁 ITERATION {context.iteration}/{max_display}"
+            )
+            logger.info(f"[AutonomousAgent] Files Read: {len(context.files_read)}")
+            logger.info(
+                f"[AutonomousAgent] Files Modified: {len(context.files_modified)}"
+            )
+            logger.info(
+                f"[AutonomousAgent] Files Created: {len(context.files_created)}"
+            )
+            logger.info(f"[AutonomousAgent] Commands Run: {len(context.commands_run)}")
+            logger.info(
+                f"[AutonomousAgent] Consecutive Errors: {context.consecutive_same_error_count}"
+            )
+            logger.info("*" * 60)
+
             # Check for unrecoverable loops - terminate early to avoid wasting iterations
             if context.consecutive_same_error_count >= 5:
                 yield {"type": "status", "status": "failed"}
@@ -1983,6 +3396,22 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                     f"2. Providing more specific instructions\n"
                     f"3. Checking if there are missing dependencies or configuration\n",
                 }
+
+                # Mark plan as failed
+                if plan_steps and context.plan_id:
+                    yield {
+                        "type": "step_update",
+                        "data": {
+                            "plan_id": context.plan_id,
+                            "step_index": len(plan_steps) - 1,
+                            "status": "error",
+                        },
+                    }
+                    yield {
+                        "type": "plan_complete",
+                        "data": {"plan_id": context.plan_id},
+                    }
+
                 yield {
                     "type": "complete",
                     "summary": {
@@ -2017,17 +3446,29 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 yield {
                     "type": "iteration",
                     "iteration": context.iteration,
-                    "max": context.max_iterations,
+                    "max": (
+                        context.max_iterations
+                        if context.complexity != TaskComplexity.ENTERPRISE
+                        else None
+                    ),
                     "reason": reason,
                     "loop_count": context.consecutive_same_error_count,
+                    "enterprise_mode": context.complexity == TaskComplexity.ENTERPRISE,
+                    "last_checkpoint": (
+                        context.last_checkpoint_iteration
+                        if context.complexity == TaskComplexity.ENTERPRISE
+                        else None
+                    ),
                 }
 
             # Call LLM with tools
+            llm_output_text = ""
             async for event in self._call_llm_with_tools(messages, context):
                 yield event
 
-                # Track assistant text for conversation history
+                # Track assistant text for conversation history and gate detection
                 if event.get("type") == "text":
+                    llm_output_text += event.get("text", "")
                     if (
                         not context.conversation_history
                         or context.conversation_history[-1]["role"] != "assistant"
@@ -2037,10 +3478,138 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                         )
                     context.conversation_history[-1]["content"] += event["text"]
 
-            # Check if any files were modified
-            if not context.files_modified and not context.files_created:
-                # No changes made - task might be info-only or failed
+            # === ENTERPRISE MODE: Human Checkpoint Gate Detection ===
+            if (
+                context.complexity == TaskComplexity.ENTERPRISE
+                and context.gate_detector
+            ):
+                gates = context.gate_detector.detect_gates(
+                    llm_output=llm_output_text,
+                    files_to_create=context.files_created,
+                    files_to_modify=context.files_modified,
+                    commands_to_run=[
+                        cmd.get("command", "") for cmd in context.commands_run
+                    ],
+                    current_task=context.original_request,
+                )
+
+                if gates:
+                    # Found gate triggers - yield the highest priority one
+                    gate = gates[0]
+                    logger.info(
+                        f"[AutonomousAgent] 🚦 Human checkpoint gate triggered: {gate.gate_type} - {gate.title}"
+                    )
+
+                    # Store pending gate in context
+                    context.pending_gate = gate
+
+                    # Yield gate event for frontend
+                    yield {
+                        "type": "human_gate",
+                        "data": {
+                            "gate_type": gate.gate_type,
+                            "title": gate.title,
+                            "description": gate.description,
+                            "options": gate.options,
+                            "priority": gate.priority,
+                            "blocks_progress": gate.blocks_progress,
+                            "project_id": context.enterprise_project_id,
+                            "iteration": context.iteration,
+                            "trigger_context": gate.trigger_context,
+                        },
+                    }
+
+                    # If gate blocks progress, pause execution
+                    if gate.blocks_progress:
+                        logger.info(
+                            f"[AutonomousAgent] ⏸️ Pausing execution for human gate: {gate.title}"
+                        )
+                        yield {
+                            "type": "status",
+                            "status": "awaiting_human_decision",
+                            "gate_id": f"gate_{context.iteration}_{gate.gate_type}",
+                        }
+
+                        yield {
+                            "type": "complete",
+                            "summary": {
+                                "task_id": context.task_id,
+                                "files_read": context.files_read,
+                                "files_modified": context.files_modified,
+                                "files_created": context.files_created,
+                                "iterations": context.iteration,
+                                "verification_passed": False,
+                                "stopped_reason": "human_gate_pending",
+                                "pending_gate": {
+                                    "type": gate.gate_type,
+                                    "title": gate.title,
+                                    "options": gate.options,
+                                },
+                            },
+                        }
+                        return  # Stop execution until human decision
+
+            # Check if any actions were taken (files modified, created, OR commands run)
+            # Commands count as "doing something" - e.g., starting a server, running npm install
+            has_taken_action = (
+                context.files_modified
+                or context.files_created
+                or context.commands_run  # Commands also count as action!
+            )
+
+            if not has_taken_action:
+                # No actions taken - check if this was supposed to be a fix request
+                is_fix_request = self._is_fix_request(context.original_request)
+
+                if is_fix_request and context.iteration < context.max_iterations:
+                    # User asked for a fix but LLM only provided analysis - push it to implement
+                    logger.warning(
+                        f"[AutonomousAgent] ⚠️ FIX REQUEST but no actions taken in iteration {context.iteration}. "
+                        "Pushing LLM to actually implement the fix."
+                    )
+
+                    yield {
+                        "type": "text",
+                        "text": "\n\n🔧 **Now implementing the fix...**\n",
+                    }
+
+                    # Add a forceful follow-up message to make LLM actually implement
+                    implement_prompt = """
+⚠️ **STOP! You just provided analysis but didn't actually FIX anything.**
+
+The user asked you to FIX/SOLVE a problem. You MUST:
+1. Use write_file or edit_file to make the actual code changes
+2. Use run_command to execute fixes (install deps, restart servers, etc.)
+
+DO NOT:
+- Give more explanations or recommendations
+- Ask the user to do anything
+- Say "you should" or "you can"
+
+**IMPLEMENT THE FIX NOW.** Use the tools to make the changes.
+Based on your analysis, what specific file(s) need to be edited? Make those edits NOW.
+"""
+                    messages.append({"role": "user", "content": implement_prompt})
+                    continue  # Continue the loop to call LLM again with the implementation directive
+
+                # Task is genuinely info-only OR we've exhausted retries
                 yield {"type": "status", "status": "completed"}
+
+                # Mark plan as complete if we have one
+                if plan_steps and context.plan_id:
+                    for i in range(len(plan_steps)):
+                        yield {
+                            "type": "step_update",
+                            "data": {
+                                "plan_id": context.plan_id,
+                                "step_index": i,
+                                "status": "completed",
+                            },
+                        }
+                    yield {
+                        "type": "plan_complete",
+                        "data": {"plan_id": context.plan_id},
+                    }
 
                 # For info-only tasks, suggest follow-up questions
                 next_steps = [
@@ -2064,31 +3633,183 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 }
                 return
 
-            # Run verification if enabled
+            # Run verification if enabled - use complexity-based strategy
+            # OPTIMIZATION: Skip verification entirely if no files were modified
+            if not (context.files_modified or context.files_created):
+                # No files changed - skip verification for info/status tasks
+                logger.info(
+                    "[AutonomousAgent] ⏭️ Skipping verification - no files modified or created"
+                )
+                yield {
+                    "type": "text",
+                    "text": "\n✅ **Task completed** (no code changes needed)\n",
+                }
+                yield {"type": "status", "status": "completed"}
+
+                # Mark plan as complete if we have one
+                if plan_steps and context.plan_id:
+                    for i in range(len(plan_steps)):
+                        yield {
+                            "type": "step_update",
+                            "data": {
+                                "plan_id": context.plan_id,
+                                "step_index": i,
+                                "status": "completed",
+                            },
+                        }
+                    yield {
+                        "type": "plan_complete",
+                        "data": {"plan_id": context.plan_id},
+                    }
+
+                next_steps = self._generate_next_steps(context)
+                if next_steps:
+                    yield {"type": "next_steps", "next_steps": next_steps}
+
+                yield {
+                    "type": "complete",
+                    "summary": {
+                        "task_id": context.task_id,
+                        "files_read": len(context.files_read),
+                        "files_modified": 0,
+                        "files_created": 0,
+                        "iterations": context.iteration,
+                        "verification_skipped": True,
+                        "next_steps": next_steps,
+                    },
+                }
+                return
+
             if run_verification and self.verification_commands:
                 context.status = TaskStatus.VERIFYING
                 yield {"type": "status", "status": "verifying"}
 
                 # Update step progress - mark previous steps completed, verification in progress
-                if plan_steps:
-                    # Mark all previous steps as completed
-                    for i, step in enumerate(plan_steps[:-1], 1):
+                if plan_steps and context.plan_id:
+                    # Mark all previous steps as completed (0-indexed for frontend)
+                    for i in range(len(plan_steps) - 1):
                         yield {
                             "type": "step_update",
-                            "step_id": i,
-                            "status": "completed",
+                            "data": {
+                                "plan_id": context.plan_id,
+                                "step_index": i,
+                                "status": "completed",
+                            },
                         }
-                    # Mark last step (usually verification) as in progress
+                    # Mark last step (usually verification) as running
                     yield {
                         "type": "step_update",
-                        "step_id": len(plan_steps),
-                        "status": "in_progress",
+                        "data": {
+                            "plan_id": context.plan_id,
+                            "step_index": len(plan_steps) - 1,
+                            "status": "running",
+                        },
                     }
 
+                # OPTIMIZATION: Use complexity-based verification strategy
+                if (
+                    context.complexity == TaskComplexity.SIMPLE
+                    and context.files_modified
+                ):
+                    # For simple tasks: quick syntax validation only
+                    yield {
+                        "type": "text",
+                        "text": "\n\n**Quick validation (simple task)...**\n",
+                    }
+                    logger.info(
+                        "[AutonomousAgent] 🚀 Using quick validation for simple task"
+                    )
+
+                    is_valid, error_msg = await self.verifier.quick_validate(
+                        list(context.files_modified)
+                    )
+
+                    if is_valid:
+                        # Quick validation passed - complete immediately
+                        logger.info(
+                            "[AutonomousAgent] ✅ Quick validation passed - skipping full build"
+                        )
+                        yield {
+                            "type": "text",
+                            "text": "\n✅ **Quick validation passed!**\n",
+                        }
+                        yield {"type": "status", "status": "completed"}
+
+                        # Mark all plan steps as completed (0-indexed for frontend)
+                        if plan_steps and context.plan_id:
+                            for i in range(len(plan_steps)):
+                                yield {
+                                    "type": "step_update",
+                                    "data": {
+                                        "plan_id": context.plan_id,
+                                        "step_index": i,
+                                        "status": "completed",
+                                    },
+                                }
+                            # Emit plan_complete to close the panel
+                            yield {
+                                "type": "plan_complete",
+                                "data": {"plan_id": context.plan_id},
+                            }
+
+                        next_steps = self._generate_next_steps(context)
+                        if next_steps:
+                            yield {"type": "next_steps", "next_steps": next_steps}
+
+                        yield {
+                            "type": "complete",
+                            "summary": {
+                                "task_id": context.task_id,
+                                "files_read": len(context.files_read),
+                                "files_modified": len(context.files_modified),
+                                "files_created": len(context.files_created),
+                                "iterations": context.iteration,
+                                "verification_passed": True,
+                                "quick_validation": True,
+                                "next_steps": next_steps,
+                            },
+                        }
+                        return
+                    else:
+                        # Quick validation failed - syntax error
+                        yield {
+                            "type": "text",
+                            "text": f"\n⚠️ **Syntax error:** {error_msg}\n",
+                        }
+                        # Continue to retry loop - don't do full verification
+                        context.error_history.append(
+                            {
+                                "type": "syntax",
+                                "errors": [error_msg],
+                                "iteration": context.iteration,
+                            }
+                        )
+                        context.status = TaskStatus.FIXING
+                        yield {"type": "status", "status": "fixing"}
+                        # Add error to messages for retry
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": f"Syntax error detected: {error_msg}\nPlease fix and try again.",
+                            }
+                        )
+                        continue  # Skip to next iteration
+
+                # For MEDIUM and COMPLEX tasks: run appropriate verification
                 yield {"type": "text", "text": "\n\n**Running verification...**\n"}
 
+                # Always run tests for MEDIUM and COMPLEX tasks (not just COMPLEX)
+                # Tests are crucial for validating changes work correctly
+                run_tests = context.complexity in (
+                    TaskComplexity.MEDIUM,
+                    TaskComplexity.COMPLEX,
+                )
+                logger.info(
+                    f"[AutonomousAgent] Running verification (run_tests={run_tests}) for {context.complexity.value} task"
+                )
+
                 results = await self.verifier.verify_changes(
-                    self.verification_commands, run_tests=True
+                    self.verification_commands, run_tests=run_tests
                 )
                 context.verification_results = results
 
@@ -2109,20 +3830,31 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 all_passed = all(r.success for r in results)
 
                 if all_passed:
+                    logger.info(
+                        "[AutonomousAgent] ✅ ALL VERIFICATIONS PASSED - TASK COMPLETE"
+                    )
                     yield {
                         "type": "text",
                         "text": "\n✅ **All verifications passed!**\n",
                     }
                     yield {"type": "status", "status": "completed"}
 
-                    # Mark all plan steps as completed
-                    if plan_steps:
-                        for step in plan_steps:
+                    # Mark all plan steps as completed (0-indexed for frontend)
+                    if plan_steps and context.plan_id:
+                        for i in range(len(plan_steps)):
                             yield {
                                 "type": "step_update",
-                                "step_id": step.get("id", 1),
-                                "status": "completed",
+                                "data": {
+                                    "plan_id": context.plan_id,
+                                    "step_index": i,
+                                    "status": "completed",
+                                },
                             }
+                        # Emit plan_complete to close the panel
+                        yield {
+                            "type": "plan_complete",
+                            "data": {"plan_id": context.plan_id},
+                        }
 
                     # Generate helpful next steps based on what was done
                     next_steps = self._generate_next_steps(context)
@@ -2144,6 +3876,10 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                     return
 
                 # Verification failed - prepare for retry
+                logger.warning("[AutonomousAgent] ⚠️ VERIFICATION FAILED - Will retry")
+                logger.warning(
+                    f"[AutonomousAgent] Failed verifications: {[r.type.value for r in results if not r.success]}"
+                )
                 context.status = TaskStatus.FIXING
                 yield {"type": "status", "status": "fixing"}
 
@@ -2316,6 +4052,22 @@ After fixing, I'll run verification again.""",
                 # No verification or no commands available
                 yield {"type": "status", "status": "completed"}
 
+                # Mark plan as complete if we have one
+                if plan_steps and context.plan_id:
+                    for i in range(len(plan_steps)):
+                        yield {
+                            "type": "step_update",
+                            "data": {
+                                "plan_id": context.plan_id,
+                                "step_index": i,
+                                "status": "completed",
+                            },
+                        }
+                    yield {
+                        "type": "plan_complete",
+                        "data": {"plan_id": context.plan_id},
+                    }
+
                 # Generate next steps
                 next_steps = self._generate_next_steps(context)
                 if next_steps:
@@ -2341,6 +4093,23 @@ After fixing, I'll run verification again.""",
             "type": "text",
             "text": f"\n⚠️ **Max iterations ({context.max_iterations}) reached.** Some issues may remain.\n",
         }
+
+        # Mark plan as failed/incomplete
+        if plan_steps and context.plan_id:
+            # Mark last step as error since we couldn't complete
+            yield {
+                "type": "step_update",
+                "data": {
+                    "plan_id": context.plan_id,
+                    "step_index": len(plan_steps) - 1,
+                    "status": "error",
+                },
+            }
+            yield {
+                "type": "plan_complete",
+                "data": {"plan_id": context.plan_id},
+            }
+
         yield {
             "type": "complete",
             "summary": {

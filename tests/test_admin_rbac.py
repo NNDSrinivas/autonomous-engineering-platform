@@ -84,6 +84,8 @@ def db() -> Generator[Session, None, None]:
 @pytest.fixture(scope="function")
 def client(db: Session) -> Generator[TestClient, None, None]:
     """Create a test client with database override."""
+    from unittest.mock import patch
+    from backend.core.settings import settings
 
     def override_get_db():
         try:
@@ -94,12 +96,13 @@ def client(db: Session) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[_get_db_for_auth] = override_get_db
 
-    # Use dev auth mode for tests
-    os.environ["JWT_ENABLED"] = "false"
+    # Use dev auth mode for tests - must patch the settings object directly
+    # since it's already initialized when the module loads
     os.environ["DEV_USER_ROLE"] = "admin"
     os.environ["DEV_USER_ID"] = "test-admin"
 
-    yield TestClient(app)
+    with patch.object(settings, "JWT_ENABLED", False):
+        yield TestClient(app)
 
     app.dependency_overrides.clear()
 

@@ -31,8 +31,19 @@ def upgrade():
     conn = op.get_bind()
     is_postgres = conn.dialect.name == "postgresql"
 
-    # Use Vector type for PostgreSQL, TEXT for SQLite/others
-    if is_postgres and HAS_PGVECTOR and Vector is not None:
+    # Check if pgvector extension is actually enabled in the database
+    pgvector_enabled = False
+    if is_postgres:
+        try:
+            result = conn.execute(
+                sa.text("SELECT * FROM pg_extension WHERE extname = 'vector'")
+            )
+            pgvector_enabled = result.fetchone() is not None
+        except Exception:
+            pass
+
+    # Use Vector type for PostgreSQL with pgvector, TEXT for SQLite/others
+    if is_postgres and HAS_PGVECTOR and Vector is not None and pgvector_enabled:
         embedding_type: Any = Vector(1536)
     else:
         embedding_type = sa.Text()
@@ -111,11 +122,11 @@ def upgrade():
     op.create_index("idx_navi_memory_importance", "navi_memory", ["importance"])
 
     # pgvector HNSW index for fast semantic search (PostgreSQL only)
-    if is_postgres and HAS_PGVECTOR:
+    if is_postgres and HAS_PGVECTOR and pgvector_enabled:
         op.execute(
             """
-            CREATE INDEX idx_navi_memory_embedding 
-            ON navi_memory 
+            CREATE INDEX idx_navi_memory_embedding
+            ON navi_memory
             USING hnsw (embedding_vec vector_cosine_ops)
         """
         )

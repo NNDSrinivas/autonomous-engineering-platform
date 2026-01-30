@@ -10,8 +10,12 @@ This test validates:
 3. Risk scoring and audit logging operate properly
 4. Rollback capabilities are available
 5. Emergency bypass mechanisms work
+
+Note: These tests require OPENAI_API_KEY to be set as they instantiate
+the GovernedClosedLoopOrchestrator which uses the OpenAI client internally.
 """
 
+import os
 import pytest
 import asyncio
 from unittest.mock import Mock, patch
@@ -32,6 +36,18 @@ from backend.agent.closedloop.execution_controller import (
     ExecutionResult,
     ExecutionStatus,
 )
+
+# Skip all tests in this module if OPENAI_API_KEY is not set
+pytestmark = pytest.mark.skipif(
+    not os.getenv("OPENAI_API_KEY"),
+    reason="OPENAI_API_KEY not set - governance tests require OpenAI client",
+)
+
+
+@pytest.fixture
+def mock_db_session():
+    """Mock database session for performance tests"""
+    return Mock()
 
 
 class TestGovernanceIntegration:
@@ -55,12 +71,14 @@ class TestGovernanceIntegration:
     @pytest.fixture
     def governed_execution_controller(self, mock_db_session):
         """Create governed execution controller for testing"""
-        return GovernedExecutionController(
+        controller = GovernedExecutionController(
             db_session=mock_db_session,
             workspace_path="/test/workspace",
             org_key="test_org",
             user_id="test_user",
         )
+        controller.audit_logger = Mock()
+        return controller
 
     @pytest.fixture
     def sample_action(self):
@@ -499,6 +517,10 @@ class TestGovernancePerformance:
     """Test governance system performance and reliability"""
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not os.getenv("OPENAI_API_KEY"),
+        reason="OPENAI_API_KEY not set - skipping test that requires OpenAI client",
+    )
     async def test_concurrent_governance_decisions(self, mock_db_session):
         """Test governance handles concurrent action evaluation"""
 

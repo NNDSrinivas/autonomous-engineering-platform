@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { resolveBackendBase, buildHeaders } from '../../api/navi/client';
 
 interface UserProfile {
   email?: string;
@@ -26,6 +27,7 @@ interface AccountPanelProps {
   user?: UserProfile;
   onSignIn: () => void;
   onSignOut: () => void;
+  onOpenEnterpriseProjects?: () => void;
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -111,6 +113,23 @@ const KeyboardIcon = () => (
   </svg>
 );
 
+const RocketIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+    <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+    <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+    <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+  </svg>
+);
+
+const ExternalLinkIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <polyline points="15 3 21 3 21 9" />
+    <line x1="10" y1="14" x2="21" y2="3" />
+  </svg>
+);
+
 export const AccountPanel: React.FC<AccountPanelProps> = ({
   isOpen,
   onClose,
@@ -118,6 +137,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
   user,
   onSignIn,
   onSignOut,
+  onOpenEnterpriseProjects,
 }) => {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [saving, setSaving] = useState(false);
@@ -128,7 +148,9 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
     if (!isAuthenticated) return;
 
     try {
-      const response = await fetch('/api/memory/preferences');
+      const response = await fetch(`${resolveBackendBase()}/api/memory/preferences`, {
+        headers: buildHeaders(),
+      });
       if (response.ok) {
         const data = await response.json();
         setPreferences(prev => ({ ...prev, ...data }));
@@ -149,9 +171,9 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
     // Save to backend
     setSaving(true);
     try {
-      await fetch('/api/memory/preferences', {
+      await fetch(`${resolveBackendBase()}/api/memory/preferences`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildHeaders(),
         body: JSON.stringify(newPrefs),
       });
     } catch {
@@ -270,6 +292,23 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
                         <span className="stat-label">Success Rate</span>
                       </div>
                     </div>
+
+                    {/* Enterprise Projects Button */}
+                    {onOpenEnterpriseProjects && (
+                      <div className="enterprise-projects-section">
+                        <button
+                          className="enterprise-projects-btn"
+                          onClick={onOpenEnterpriseProjects}
+                        >
+                          <RocketIcon />
+                          <span className="enterprise-btn-text">
+                            <span className="enterprise-btn-title">Enterprise Projects</span>
+                            <span className="enterprise-btn-subtitle">Manage long-running projects</span>
+                          </span>
+                          <ExternalLinkIcon />
+                        </button>
+                      </div>
+                    )}
 
                     <div className="profile-actions">
                       <button className="profile-action-btn">
@@ -751,6 +790,62 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
 
         .profile-action-btn svg {
           color: hsl(var(--primary));
+        }
+
+        /* Enterprise Projects Section */
+        .enterprise-projects-section {
+          margin-bottom: 16px;
+        }
+
+        .enterprise-projects-btn {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
+          padding: 14px 16px;
+          background: linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--accent) / 0.1));
+          border: 1px solid hsl(var(--primary) / 0.3);
+          border-radius: 12px;
+          color: hsl(var(--foreground));
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .enterprise-projects-btn:hover {
+          background: linear-gradient(135deg, hsl(var(--primary) / 0.25), hsl(var(--accent) / 0.15));
+          border-color: hsl(var(--primary) / 0.5);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px hsl(var(--primary) / 0.2);
+        }
+
+        .enterprise-projects-btn svg:first-child {
+          color: hsl(var(--primary));
+          flex-shrink: 0;
+        }
+
+        .enterprise-projects-btn svg:last-child {
+          color: hsl(var(--muted-foreground));
+          flex-shrink: 0;
+          margin-left: auto;
+        }
+
+        .enterprise-btn-text {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+          flex: 1;
+        }
+
+        .enterprise-btn-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: hsl(var(--foreground));
+        }
+
+        .enterprise-btn-subtitle {
+          font-size: 11px;
+          color: hsl(var(--muted-foreground));
         }
 
         /* Preferences Tab */

@@ -38,6 +38,15 @@ async def edit_file(user_id: str, path: str, new_content: str) -> Dict[str, Any]
     )
 
     try:
+        # Handle escaped newlines that might come from JSON serialization.
+        # Only convert when content appears to be fully escaped (no actual control characters yet),
+        # to avoid corrupting legitimate literals like the text "\n" in source code or docs.
+        has_escaped_sequences = any(seq in new_content for seq in ("\\n", "\\t", "\\r"))
+        has_real_control_chars = any(ch in new_content for ch in ("\n", "\t", "\r"))
+        if has_escaped_sequences and not has_real_control_chars:
+            new_content = new_content.replace("\\n", "\n")
+            new_content = new_content.replace("\\t", "\t")
+            new_content = new_content.replace("\\r", "\r")
         # Check if file exists
         if not os.path.exists(path):
             return {

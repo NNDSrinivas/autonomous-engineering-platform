@@ -198,6 +198,113 @@ Main processing endpoint.
 }
 ```
 
+### POST /api/navi/v2/plan
+
+Create a plan that requires approval before execution.
+
+**Request**:
+```json
+{
+  "message": "add a login page with validation",
+  "workspace": "/path/to/project",
+  "llm_provider": "anthropic",
+  "context": {
+    "currentFile": "src/App.tsx"
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "plan_id": "uuid",
+  "message": "I'll create a login page with validation...",
+  "requires_approval": true,
+  "actions_with_risk": [
+    {
+      "type": "createFile",
+      "path": "src/pages/Login.tsx",
+      "risk": "low",
+      "warnings": [],
+      "preview": "..."
+    }
+  ]
+}
+```
+
+### POST /api/navi/v2/plan/{plan_id}/approve
+
+Approve and execute specific actions from a plan.
+
+**Request**:
+```json
+{
+  "approved_action_indices": [0, 1]
+}
+```
+
+**Response**:
+```json
+{
+  "execution_id": "plan-123-exec",
+  "status": "completed",
+  "message": "Executed 2 approved actions.",
+  "updates": [
+    {"type": "action_start", "index": 0, "action": {...}},
+    {"type": "action_complete", "index": 0, "success": true},
+    {"type": "plan_complete"}
+  ]
+}
+```
+
+### POST /api/navi/v2/plan/{plan_id}/approve/stream
+
+SSE stream for live execution updates.
+
+**Request**:
+```json
+{
+  "approved_action_indices": [0, 1]
+}
+```
+
+**Response (SSE stream)**:
+```
+data: {"type":"action_start","index":0,"action":{...}}
+
+data: {"type":"action_complete","index":0,"success":true}
+
+data: {"type":"plan_complete"}
+```
+
+### POST /api/navi/apply
+
+Apply `file_edits` and optionally run `commands_run` (for non-VS Code clients).
+
+**Request**:
+```json
+{
+  "workspace": "/path/to/project",
+  "file_edits": [
+    {"filePath": "src/new.ts", "content": "export const x = 1;", "operation": "create"}
+  ],
+  "commands_run": ["npm test"],
+  "allow_commands": false
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "files_created": ["/path/to/project/src/new.ts"],
+  "files_modified": [],
+  "commands_run": [],
+  "command_failures": [],
+  "warnings": []
+}
+```
+
 ### POST /api/navi/detect-project
 
 Detect project type and technologies.

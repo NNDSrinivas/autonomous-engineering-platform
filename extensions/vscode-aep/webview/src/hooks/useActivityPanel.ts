@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { ActivityStep, FileChange } from '../components/ActivityPanel';
+import type { ActivityStep, FileChange, CommandPreview } from '../components/ActivityPanel';
 
 interface AgentRunMetadata {
   mode?: string;
@@ -13,6 +13,15 @@ export function useActivityPanel() {
   const [steps, setSteps] = useState<ActivityStep[]>([]);
   const [currentStep, setCurrentStep] = useState<number | undefined>();
   const [isVisible, setIsVisible] = useState(false);
+  const MAX_COMMAND_PREVIEW = 800;
+
+  const appendPreviewText = useCallback((current: string, addition: string) => {
+    const next = `${current}${addition}`;
+    if (next.length <= MAX_COMMAND_PREVIEW) {
+      return { text: next, truncated: false };
+    }
+    return { text: next.slice(-MAX_COMMAND_PREVIEW), truncated: true };
+  }, []);
 
   // Initialize steps from agentRun metadata
   const initializeSteps = useCallback((agentRun: AgentRunMetadata, planSteps?: any[]) => {
@@ -30,6 +39,7 @@ export function useActivityPanel() {
             operation: step.operation || 'modify',
             status: 'pending' as const,
           }] : [],
+          commands: [],
         })));
       } else {
         // Create placeholders
@@ -39,6 +49,7 @@ export function useActivityPanel() {
             description: `Step ${i + 1}`,
             status: 'pending',
             fileChanges: [],
+            commands: [],
           });
         }
       }
@@ -89,6 +100,102 @@ export function useActivityPanel() {
         // Add new
         return { ...step, fileChanges: [...step.fileChanges, fileChange] };
       }
+    }));
+  }, []);
+
+  const upsertCommand = useCallback((
+    stepIndex: number,
+    commandId: string,
+    update: Partial<CommandPreview>
+  ) => {
+    setSteps(prev => prev.map((step, idx) => {
+      if (idx !== stepIndex) return step;
+
+      const commands = step.commands || [];
+      const existingIndex = commands.findIndex(cmd => cmd.id === commandId);
+      if (existingIndex >= 0) {
+        const updated = {
+          ...commands[existingIndex],
+          ...update,
+          id: commandId,
+          updatedAt: Date.now(),
+        };
+        const next = [...commands];
+        next[existingIndex] = updated;
+        return { ...step, commands: next };
+      }
+
+      if (!update.command) return step;
+
+      return {
+        ...step,
+        commands: [
+          ...commands,
+          {
+            id: commandId,
+            command: update.command,
+            status: update.status || 'running',
+            stdout: update.stdout,
+            stderr: update.stderr,
+            truncated: update.truncated,
+            exitCode: update.exitCode,
+            updatedAt: Date.now(),
+          },
+        ],
+      };
+    }));
+  }, []);
+
+  const appendCommandOutput = useCallback((
+    stepIndex: number,
+    commandId: string,
+    text: string,
+    stream: 'stdout' | 'stderr'
+  ) => {
+    setSteps(prev => prev.map((step, idx) => {
+      if (idx !== stepIndex) return step;
+
+      const commands = step.commands || [];
+      const existingIndex = commands.findIndex(cmd => cmd.id === commandId);
+      if (existingIndex < 0) return step;
+
+      const command = commands[existingIndex];
+      const current = stream === 'stderr' ? (command.stderr || '') : (command.stdout || '');
+      const next = appendPreviewText(current, text);
+      const updated = {
+        ...command,
+        stdout: stream === 'stdout' ? next.text : command.stdout,
+        stderr: stream === 'stderr' ? next.text : command.stderr,
+        truncated: command.truncated || next.truncated,
+        updatedAt: Date.now(),
+      };
+      const nextCommands = [...commands];
+      nextCommands[existingIndex] = updated;
+      return { ...step, commands: nextCommands };
+    }));
+  }, [appendPreviewText]);
+
+  const updateCommandStatus = useCallback((
+    stepIndex: number,
+    commandId: string,
+    status: CommandPreview['status'],
+    exitCode?: number
+  ) => {
+    setSteps(prev => prev.map((step, idx) => {
+      if (idx !== stepIndex) return step;
+      const commands = step.commands || [];
+      const existingIndex = commands.findIndex(cmd => cmd.id === commandId);
+      if (existingIndex < 0) return step;
+
+      const updated = {
+        ...commands[existingIndex],
+        status,
+        exitCode: exitCode ?? commands[existingIndex].exitCode,
+        updatedAt: Date.now(),
+      };
+      const nextCommands = [...commands];
+      nextCommands[existingIndex] = updated;
+      return { ...step, commands: nextCommands };
     }));
   }, []);
 
@@ -171,6 +278,9 @@ export function useActivityPanel() {
     updateStepStatus,
     updateFileChange,
     addFileChange,
+    upsertCommand,
+    appendCommandOutput,
+    updateCommandStatus,
     parseProgressUpdate,
     clearActivity,
     toggleVisibility,

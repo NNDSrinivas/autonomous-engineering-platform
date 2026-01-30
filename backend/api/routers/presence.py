@@ -12,8 +12,10 @@ from backend.core.auth.deps import require_role
 from backend.core.auth.models import Role, User
 from backend.core.realtime_engine.presence import (
     cursor_channel,
+    note_org_heartbeat,
     note_heartbeat,
     presence_channel,
+    remove_org_user,
 )
 from backend.core.realtime_engine.schemas import (
     CursorEvent,
@@ -51,6 +53,7 @@ async def presence_join(
         )
 
     note_heartbeat(plan_id, user.user_id)
+    note_org_heartbeat(x_org_id, user.user_id)
     evt = PresenceEvent(
         type="join",
         plan_id=plan_id,
@@ -88,6 +91,7 @@ async def presence_heartbeat(
         )
 
     note_heartbeat(plan_id, user.user_id)
+    note_org_heartbeat(x_org_id, user.user_id)
     evt = PresenceEvent(
         type="heartbeat",
         plan_id=plan_id,
@@ -131,6 +135,7 @@ async def presence_leave(
         org_id=x_org_id,
         ts=int(time.time()),
     )
+    remove_org_user(x_org_id, user.user_id)
     await bc.publish(presence_channel(plan_id), evt.model_dump_json())
     return {"ok": True}
 

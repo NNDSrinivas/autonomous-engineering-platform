@@ -23,6 +23,7 @@ types used elsewhere).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Optional
 
@@ -706,18 +707,18 @@ class IntentClassifier:
         # Engineering intents
         if family == IntentFamily.ENGINEERING:
             # Check for greetings first
-            if _contains_any(
-                text,
-                (
-                    "hi",
-                    "hello",
-                    "hey",
-                    "good morning",
-                    "good afternoon",
-                    "good evening",
-                    "howdy",
-                    "greetings",
-                ),
+            greeting_terms = (
+                "hi",
+                "hello",
+                "hey",
+                "good morning",
+                "good afternoon",
+                "good evening",
+                "howdy",
+                "greetings",
+            )
+            if any(
+                re.search(rf"\b{re.escape(term)}\b", text) for term in greeting_terms
             ):
                 # Only if it's a pure greeting with minimal other words
                 words = text.strip().split()
@@ -750,6 +751,8 @@ class IntentClassifier:
                     "failing test",
                     "tests are failing",
                     "fix the bug",
+                    "bug",
+                    "bugs",
                     "stack trace",
                     "exception",
                     "runtime error",
@@ -799,11 +802,14 @@ class IntentClassifier:
                     "implement feature",
                     "add feature",
                     "new endpoint",
+                    "api endpoint",
+                    "new api endpoint",
                     "add api",
                     "create endpoint",
                     "support this use case",
                     "create a",
                     "build a",
+                    "build the",
                     "write a",
                     "make a",
                     "implement a",
@@ -868,7 +874,10 @@ class IntentClassifier:
                 text,
                 (
                     "run tests",
+                    "run the tests",
+                    "run all unit tests",
                     "execute tests",
+                    "execute pytest",
                     "run pytest",
                     "run unit tests",
                     "ci tests",

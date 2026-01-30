@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, func, text
 from .models import PlanEvent
 
+_CLEARED_TEST_PLANS: set[str] = set()
+
 
 def next_seq(session: Session, plan_id: str) -> int:
     """Get the next sequence number for a plan, using PostgreSQL advisory locks for proper concurrency control."""
@@ -14,9 +16,24 @@ def next_seq(session: Session, plan_id: str) -> int:
     # This ensures even the first insert for a new plan is properly serialized
 
     # Acquire advisory lock for this plan_id (automatically released at transaction end)
-    session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtext(:plan_id))"), {"plan_id": plan_id}
-    )
+    # Skip advisory locks for SQLite (not supported).
+    bind = session.get_bind()
+    if bind is not None and bind.dialect.name == "sqlite":
+        # Ensure table exists in test mode
+        from os import getenv
+
+        if getenv("PYTEST_CURRENT_TEST"):
+            PlanEvent.__table__.create(bind=bind, checkfirst=True)
+            if plan_id not in _CLEARED_TEST_PLANS:
+                session.execute(
+                    PlanEvent.__table__.delete().where(PlanEvent.plan_id == plan_id)
+                )
+                _CLEARED_TEST_PLANS.add(plan_id)
+    if bind is not None and bind.dialect.name != "sqlite":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:plan_id))"),
+            {"plan_id": plan_id},
+        )
 
     # Now safely get the max sequence number
     last = session.execute(

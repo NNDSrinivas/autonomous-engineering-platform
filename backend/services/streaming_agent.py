@@ -15,13 +15,18 @@ This matches Claude Code's conversational style where the AI talks through
 what it's doing while actually doing it.
 """
 
+import asyncio
 import json
 import logging
+import os
 import re
 import uuid
-from typing import AsyncGenerator, Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import AsyncGenerator, Dict, Any, List, Optional
+
+# Session memory for conversation context
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +131,493 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+# ========== BUILD VERIFICATION ==========
+# Automatically verify builds after task completion to ensure code quality
+
+
+def _get_command_env() -> dict:
+    """
+    Get environment for command execution with nvm compatibility fixes.
+    Removes npm_config_prefix which conflicts with nvm.
+    """
+    env = os.environ.copy()
+    env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
+    env["SHELL"] = env.get("SHELL", "/bin/bash")
+    return env
+
+
+def _get_node_env_setup(workspace_path: str) -> str:
+    """Get Node.js environment setup commands for nvm."""
+    home = os.environ.get("HOME", os.path.expanduser("~"))
+    nvm_dir = os.environ.get("NVM_DIR", os.path.join(home, ".nvm"))
+
+    if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
+        # Check for .nvmrc in workspace
+        nvmrc_path = os.path.join(workspace_path, ".nvmrc")
+        node_version_path = os.path.join(workspace_path, ".node-version")
+        if os.path.exists(nvmrc_path) or os.path.exists(node_version_path):
+            nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
+        else:
+            nvm_use = "nvm use default 2>/dev/null || true"
+
+        return (
+            f"unset npm_config_prefix 2>/dev/null; "
+            f'export NVM_DIR="{nvm_dir}" && '
+            f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
+            f"{nvm_use}"
+        )
+    return ""
+
+
+async def stream_with_tools_openai(
+    message: str,
+    workspace_path: str,
+    api_key: str,
+    model: str,
+    base_url: str = "https://api.openai.com/v1",
+    context: Optional[Dict[str, Any]] = None,
+    conversation_history: Optional[List[Dict[str, Any]]] = None,
+) -> AsyncGenerator["StreamEvent", None]:
+    """
+    Minimal streaming implementation for OpenAI-compatible providers.
+    Emits text chunks as StreamEventType.TEXT to keep the V2 endpoint functional.
+    """
+    from backend.services.llm_client import LLMClient, LLMMessage
+
+    if not api_key:
+        yield StreamEvent(
+            StreamEventType.DONE, {"summary": {}, "error": "Missing API key"}
+        )
+        return
+
+    system_prompt = "You are NAVI, an autonomous engineering assistant."
+    if context:
+        system_prompt += "\n\nContext:\n" + json.dumps(context, ensure_ascii=False)
+
+    messages: List[LLMMessage] = [LLMMessage(role="system", content=system_prompt)]
+    if conversation_history:
+        for msg in conversation_history:
+            role = msg.get("role") or msg.get("type") or "user"
+            content = str(msg.get("content") or "")
+            messages.append(LLMMessage(role=role, content=content))
+    messages.append(LLMMessage(role="user", content=message))
+
+    client = LLMClient(
+        provider="openai",
+        model=model,
+        api_key=api_key,
+        api_base=base_url,
+    )
+
+    async for chunk in client.stream(messages):
+        if chunk:
+            yield StreamEvent(StreamEventType.TEXT, chunk)
+
+    yield StreamEvent(StreamEventType.DONE, {"summary": {}})
+
+
+async def stream_with_tools_anthropic(
+    message: str,
+    workspace_path: str,
+    api_key: str,
+    model: str,
+    context: Optional[Dict[str, Any]] = None,
+    conversation_history: Optional[List[Dict[str, Any]]] = None,
+    conversation_id: Optional[str] = None,
+) -> AsyncGenerator["StreamEvent", None]:
+    """
+    Minimal streaming implementation for Anthropic.
+    Emits text chunks as StreamEventType.TEXT to keep the V2 endpoint functional.
+    """
+    from backend.services.llm_client import LLMClient, LLMMessage
+
+    if not api_key:
+        yield StreamEvent(
+            StreamEventType.DONE, {"summary": {}, "error": "Missing API key"}
+        )
+        return
+
+    system_prompt = "You are NAVI, an autonomous engineering assistant."
+    if context:
+        system_prompt += "\n\nContext:\n" + json.dumps(context, ensure_ascii=False)
+
+    messages: List[LLMMessage] = [LLMMessage(role="system", content=system_prompt)]
+    if conversation_history:
+        for msg in conversation_history:
+            role = msg.get("role") or msg.get("type") or "user"
+            content = str(msg.get("content") or "")
+            messages.append(LLMMessage(role=role, content=content))
+    messages.append(LLMMessage(role="user", content=message))
+
+    client = LLMClient(
+        provider="anthropic",
+        model=model,
+        api_key=api_key,
+    )
+
+    async for chunk in client.stream(messages):
+        if chunk:
+            yield StreamEvent(StreamEventType.TEXT, chunk)
+
+    yield StreamEvent(StreamEventType.DONE, {"summary": {}})
+
+
+async def detect_project_type_and_build_command(
+    workspace_path: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    Detect the project type and return the appropriate build command.
+    Returns None if no buildable project is detected.
+    """
+    workspace = Path(workspace_path)
+
+    # Check for Node.js/JavaScript projects
+    package_json = workspace / "package.json"
+    if package_json.exists():
+        try:
+            import json
+
+            with open(package_json) as f:
+                pkg = json.load(f)
+                scripts = pkg.get("scripts", {})
+
+                # Detect package manager
+                pkg_manager = "npm"
+                if (workspace / "pnpm-lock.yaml").exists():
+                    pkg_manager = "pnpm"
+                elif (workspace / "yarn.lock").exists():
+                    pkg_manager = "yarn"
+                elif (workspace / "bun.lockb").exists():
+                    pkg_manager = "bun"
+
+                # Priority: typecheck > build > tsc
+                if "typecheck" in scripts:
+                    return {
+                        "type": "node",
+                        "command": f"{pkg_manager} run typecheck",
+                        "name": "TypeScript type check",
+                    }
+                elif "build" in scripts:
+                    return {
+                        "type": "node",
+                        "command": f"{pkg_manager} run build",
+                        "name": "Build",
+                    }
+                elif "tsc" in scripts:
+                    return {
+                        "type": "node",
+                        "command": f"{pkg_manager} run tsc",
+                        "name": "TypeScript compile",
+                    }
+                # Check if TypeScript is installed - run tsc directly
+                elif (workspace / "tsconfig.json").exists():
+                    return {
+                        "type": "node",
+                        "command": f"{pkg_manager} exec tsc --noEmit",
+                        "name": "TypeScript check",
+                    }
+        except Exception as e:
+            logger.warning(f"Error reading package.json: {e}")
+
+    # Check for Python projects
+    pyproject = workspace / "pyproject.toml"
+    setup_py = workspace / "setup.py"
+    if pyproject.exists() or setup_py.exists():
+        # Check for mypy config
+        if (workspace / "mypy.ini").exists() or (workspace / ".mypy.ini").exists():
+            return {
+                "type": "python",
+                "command": "python -m mypy .",
+                "name": "MyPy type check",
+            }
+        elif pyproject.exists():
+            try:
+                with open(pyproject) as f:
+                    content = f.read()
+                    if "[tool.mypy]" in content:
+                        return {
+                            "type": "python",
+                            "command": "python -m mypy .",
+                            "name": "MyPy type check",
+                        }
+                    if "ruff" in content:
+                        return {
+                            "type": "python",
+                            "command": "python -m ruff check .",
+                            "name": "Ruff lint",
+                        }
+            except Exception:
+                pass
+        return {
+            "type": "python",
+            "command": "python -m py_compile",
+            "name": "Python syntax check",
+        }
+
+    # Check for Go projects
+    go_mod = workspace / "go.mod"
+    if go_mod.exists():
+        return {"type": "go", "command": "go build ./...", "name": "Go build"}
+
+    # Check for Rust projects
+    cargo_toml = workspace / "Cargo.toml"
+    if cargo_toml.exists():
+        return {"type": "rust", "command": "cargo check", "name": "Cargo check"}
+
+    return None
+
+
+async def run_build_verification(workspace_path: str) -> Dict[str, Any]:
+    """
+    Run build verification for the workspace.
+    Returns a dict with:
+    - success: bool
+    - project_type: str (node, python, go, rust, etc.)
+    - command: str (the command that was run)
+    - output: str (stdout/stderr from the build)
+    - errors: list of error messages if any
+    """
+    project_info = await detect_project_type_and_build_command(workspace_path)
+
+    if not project_info:
+        return {
+            "success": True,
+            "skipped": True,
+            "message": "No buildable project detected",
+        }
+
+    command = project_info["command"]
+    project_type = project_info["type"]
+    command_name = project_info["name"]
+
+    logger.info(f"[BuildVerification] Running {command_name}: {command}")
+
+    # Get environment with npm_config_prefix removed for nvm compatibility
+    env = _get_command_env()
+
+    # For Node.js projects, prepend nvm setup
+    full_command = command
+    if project_type == "node":
+        nvm_setup = _get_node_env_setup(workspace_path)
+        if nvm_setup:
+            full_command = f"{nvm_setup} && {command}"
+            logger.info("[BuildVerification] Added nvm setup to command")
+
+    try:
+        # Run the build command asynchronously
+        process = await asyncio.create_subprocess_shell(
+            full_command,
+            cwd=workspace_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+            executable="/bin/bash",
+        )
+
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(), timeout=120.0  # 2 minute timeout
+        )
+
+        stdout_text = stdout.decode("utf-8", errors="replace") if stdout else ""
+        stderr_text = stderr.decode("utf-8", errors="replace") if stderr else ""
+
+        success = process.returncode == 0
+
+        # Parse errors from output
+        errors = []
+        if not success:
+            # Extract error lines (usually start with "error:" or contain "Error:")
+            combined = stdout_text + "\n" + stderr_text
+            for line in combined.split("\n"):
+                line = line.strip()
+                if line and any(
+                    marker in line.lower()
+                    for marker in ["error:", "error[", "failed", "cannot find"]
+                ):
+                    errors.append(line)
+
+        return {
+            "success": success,
+            "skipped": False,
+            "project_type": project_type,
+            "command": command,
+            "command_name": command_name,
+            "output": (stdout_text + stderr_text)[:2000],  # Limit output size
+            "errors": errors[:10],  # Limit to 10 errors
+            "return_code": process.returncode,
+        }
+
+    except asyncio.TimeoutError:
+        return {
+            "success": False,
+            "skipped": False,
+            "project_type": project_type,
+            "command": command,
+            "command_name": command_name,
+            "output": "",
+            "errors": ["Build timed out after 2 minutes"],
+            "return_code": -1,
+        }
+    except Exception as e:
+        logger.error(f"[BuildVerification] Error running build: {e}")
+        return {
+            "success": False,
+            "skipped": False,
+            "project_type": project_type,
+            "command": command,
+            "command_name": command_name,
+            "output": "",
+            "errors": [str(e)],
+            "return_code": -1,
+        }
+
+
+class TaskState(Enum):
+    """Task lifecycle states for proper completion tracking."""
+
+    IDLE = "idle"  # No active task
+    PLANNING = "planning"  # LLM is creating a plan
+    EXECUTING = "executing"  # Executing tool calls
+    VERIFYING = "verifying"  # Running verification (tests, build, etc.)
+    COMPLETE = "complete"  # Task successfully completed
+    FAILED = "failed"  # Task failed
+    WAITING_INPUT = "waiting_input"  # Waiting for user input/approval
+
+
+@dataclass
+class TaskContext:
+    """
+    Tracks task state for proper completion detection.
+
+    This replaces heuristic-based completion detection (regex on response text)
+    with semantic state tracking based on actual execution.
+    """
+
+    state: TaskState = TaskState.IDLE
+    plan_id: Optional[str] = None
+    planned_steps: List[Dict[str, Any]] = None
+    completed_steps: List[int] = None
+    current_step: int = 0
+    pending_tool_calls: int = 0
+    files_modified: List[str] = None
+    files_created: List[str] = None
+    commands_executed: List[Dict[str, Any]] = None
+    verification_required: bool = False
+    verification_passed: Optional[bool] = None
+    error_message: Optional[str] = None
+
+    def __post_init__(self):
+        if self.planned_steps is None:
+            self.planned_steps = []
+        if self.completed_steps is None:
+            self.completed_steps = []
+        if self.files_modified is None:
+            self.files_modified = []
+        if self.files_created is None:
+            self.files_created = []
+        if self.commands_executed is None:
+            self.commands_executed = []
+
+    def start_planning(self):
+        """Transition to planning state."""
+        self.state = TaskState.PLANNING
+
+    def set_plan(self, plan_id: str, steps: List[Dict[str, Any]]):
+        """Set the execution plan."""
+        self.plan_id = plan_id
+        self.planned_steps = steps
+        self.state = TaskState.EXECUTING
+
+    def start_tool_call(self):
+        """Track that a tool call is starting."""
+        self.pending_tool_calls += 1
+        if self.state == TaskState.IDLE:
+            self.state = TaskState.EXECUTING
+
+    def complete_tool_call(self, tool_name: str, result: Dict[str, Any]):
+        """Track tool call completion."""
+        self.pending_tool_calls = max(0, self.pending_tool_calls - 1)
+
+        # Track file operations
+        if tool_name in ("write_file", "create_file"):
+            path = result.get("path", "")
+            if path and path not in self.files_created:
+                self.files_created.append(path)
+        elif tool_name == "edit_file":
+            path = result.get("path", "")
+            if path and path not in self.files_modified:
+                self.files_modified.append(path)
+        elif tool_name == "run_command":
+            self.commands_executed.append(
+                {
+                    "command": result.get("command", ""),
+                    "success": result.get("success", False),
+                    "exit_code": result.get("exit_code", -1),
+                }
+            )
+
+    def complete_step(self, step_index: int):
+        """Mark a step as completed."""
+        if step_index not in self.completed_steps:
+            self.completed_steps.append(step_index)
+        self.current_step = step_index + 1
+
+    def start_verification(self):
+        """Transition to verification state."""
+        self.state = TaskState.VERIFYING
+        self.verification_required = True
+
+    def complete_verification(self, passed: bool):
+        """Record verification result."""
+        self.verification_passed = passed
+        if passed:
+            self.state = TaskState.COMPLETE
+        else:
+            self.state = TaskState.FAILED
+
+    def is_complete(self) -> bool:
+        """
+        Determine if task is truly complete.
+
+        A task is complete when:
+        1. No pending tool calls
+        2. All planned steps executed (if there's a plan)
+        3. Verification passed (if verification was required)
+        4. State is explicitly COMPLETE
+        """
+        if self.state != TaskState.COMPLETE:
+            return False
+        if self.pending_tool_calls > 0:
+            return False
+        if self.planned_steps and len(self.completed_steps) < len(self.planned_steps):
+            return False
+        if self.verification_required and not self.verification_passed:
+            return False
+        return True
+
+    def mark_complete(self, success: bool = True, error: Optional[str] = None):
+        """Explicitly mark task as complete or failed."""
+        if success:
+            self.state = TaskState.COMPLETE
+        else:
+            self.state = TaskState.FAILED
+            self.error_message = error
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Get task completion summary."""
+        return {
+            "state": self.state.value,
+            "is_complete": self.is_complete(),
+            "files_modified": len(self.files_modified),
+            "files_created": len(self.files_created),
+            "commands_executed": len(self.commands_executed),
+            "steps_completed": len(self.completed_steps),
+            "steps_total": len(self.planned_steps),
+            "verification_passed": self.verification_passed,
+            "error": self.error_message,
+        }
+
+
 class StreamEventType(Enum):
     """Types of events in the streaming response."""
 
@@ -138,6 +630,13 @@ class StreamEventType(Enum):
     PLAN_START = "plan_start"  # Detected execution plan with steps
     STEP_UPDATE = "step_update"  # Step status changed (running/completed/error)
     PLAN_COMPLETE = "plan_complete"  # All steps completed
+    # Task State Events - for proper completion tracking
+    TASK_STATE = (
+        "task_state"  # Task state changed (planning, executing, complete, failed)
+    )
+    TASK_COMPLETE = "task_complete"  # Explicit task completion signal
+    # Build Verification Events
+    BUILD_VERIFICATION = "build_verification"  # Build/type-check verification results
 
 
 @dataclass
@@ -180,6 +679,19 @@ class StreamEvent:
             result["data"] = self.content  # {plan_id, step_index, status}
         elif self.type == StreamEventType.PLAN_COMPLETE:
             result["data"] = self.content  # {plan_id}
+        # Task State Events - for proper completion tracking
+        elif self.type == StreamEventType.TASK_STATE:
+            result["task_state"] = self.content  # {state, context}
+        elif self.type == StreamEventType.TASK_COMPLETE:
+            # Explicit task completion signal with full summary
+            result["task_complete"] = (
+                self.content
+            )  # {success, summary, files_modified, etc.}
+        elif self.type == StreamEventType.BUILD_VERIFICATION:
+            # Build/type-check verification results
+            result["build_verification"] = (
+                self.content
+            )  # {success, command, output, errors}
         return result
 
 
@@ -358,1482 +870,3227 @@ NAVI_TOOLS = [
             "required": ["port"],
         },
     },
+    {
+        "name": "fetch_url",
+        "description": "Fetch and read the content of a web page. Use this when the user provides a URL or wants you to analyze a website. Returns the page title and text content extracted from HTML.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL to fetch (e.g., 'https://example.com')",
+                },
+                "extract_text": {
+                    "type": "boolean",
+                    "description": "If true, extract readable text from HTML. If false, return raw content. Default: true",
+                },
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "web_search",
+        "description": "Search the web for information. Use when you need to find current information or research a topic. Requires TAVILY_API_KEY to be configured.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of results (default: 5, max: 10)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "run_dangerous_command",
+        "description": "Execute a dangerous command (rm, kill, chmod, etc.) AFTER getting user approval. Use this when a regular run_command returns requires_permission=True. You MUST show the user the warning and get their approval first.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "The dangerous command to execute",
+                },
+                "approved": {
+                    "type": "boolean",
+                    "description": "Must be true to execute. Only set to true AFTER user confirms.",
+                },
+                "skip_backup": {
+                    "type": "boolean",
+                    "description": "Skip automatic backup (not recommended). Default: false",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Working directory (optional)",
+                },
+            },
+            "required": ["command", "approved"],
+        },
+    },
+    {
+        "name": "list_backups",
+        "description": "List all NAVI backups created before dangerous operations. Use to show user what can be restored.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "restore_backup",
+        "description": "Restore a backup that was created before a dangerous operation.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "backup_name": {
+                    "type": "string",
+                    "description": "Name of the backup to restore (from list_backups)",
+                },
+                "target_path": {
+                    "type": "string",
+                    "description": "Where to restore to (optional, will try to detect from backup name)",
+                },
+            },
+            "required": ["backup_name"],
+        },
+    },
+    {
+        "name": "run_interactive_command",
+        "description": "Execute a command that might require interactive input (yes/no prompts). Automatically answers common prompts like 'Continue? [y/n]'. Use for npm install, apt-get, etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "The command to run"},
+                "auto_yes": {
+                    "type": "boolean",
+                    "description": "Auto-answer yes to prompts (default: true)",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Working directory (optional)",
+                },
+            },
+            "required": ["command"],
+        },
+    },
+    {
+        "name": "run_parallel_commands",
+        "description": "Execute multiple commands in parallel. Use for running independent tasks concurrently like building while testing.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "commands": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of commands to run in parallel",
+                },
+                "max_workers": {
+                    "type": "integer",
+                    "description": "Max parallel workers (default: 4)",
+                },
+                "stop_on_failure": {
+                    "type": "boolean",
+                    "description": "Stop all if one fails (default: false)",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Working directory (optional)",
+                },
+            },
+            "required": ["commands"],
+        },
+    },
+    {
+        "name": "run_command_with_retry",
+        "description": "Execute a command with automatic retry on failure. Use for flaky commands or network operations.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "The command to run"},
+                "max_retries": {
+                    "type": "integer",
+                    "description": "Max retry attempts (default: 3)",
+                },
+                "retry_delay": {
+                    "type": "number",
+                    "description": "Seconds between retries (default: 1.0)",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Working directory (optional)",
+                },
+            },
+            "required": ["command"],
+        },
+    },
+    {
+        "name": "create_jira_issue",
+        "description": "Create a new Jira issue. Requires user approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_key": {
+                    "type": "string",
+                    "description": "Jira project key (e.g., 'PROJ')",
+                },
+                "summary": {"type": "string", "description": "Issue title"},
+                "description": {"type": "string", "description": "Issue description"},
+                "issue_type": {
+                    "type": "string",
+                    "description": "Type (Task, Bug, Story, etc.)",
+                },
+                "priority": {
+                    "type": "string",
+                    "description": "Priority (Highest, High, Medium, Low)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
+            },
+            "required": ["project_key", "summary", "approve"],
+        },
+    },
+    {
+        "name": "search_jira_issues",
+        "description": "Search Jira issues using JQL or filters.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "jql": {"type": "string", "description": "Raw JQL query (optional)"},
+                "project": {"type": "string", "description": "Filter by project key"},
+                "status": {"type": "string", "description": "Filter by status"},
+                "text": {"type": "string", "description": "Full-text search"},
+                "max_results": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "add_jira_comment",
+        "description": "Add a comment to a Jira issue. Requires user approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "issue_key": {
+                    "type": "string",
+                    "description": "Jira issue key (e.g., 'PROJ-123')",
+                },
+                "comment": {"type": "string", "description": "Comment text"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
+            },
+            "required": ["issue_key", "comment", "approve"],
+        },
+    },
+    {
+        "name": "github_create_issue",
+        "description": "Create a new GitHub issue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "title": {"type": "string", "description": "Issue title"},
+                "body": {
+                    "type": "string",
+                    "description": "Issue description (markdown)",
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Labels to add",
+                },
+            },
+            "required": ["repo", "title"],
+        },
+    },
+    {
+        "name": "github_list_issues",
+        "description": "List GitHub issues in a repository.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "state": {
+                    "type": "string",
+                    "enum": ["open", "closed", "all"],
+                    "description": "Issue state",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max issues to return (default: 20)",
+                },
+            },
+            "required": ["repo"],
+        },
+    },
+    {
+        "name": "github_add_issue_comment",
+        "description": "Add a comment to a GitHub issue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "issue_number": {"type": "integer", "description": "Issue number"},
+                "body": {"type": "string", "description": "Comment text (markdown)"},
+            },
+            "required": ["repo", "issue_number", "body"],
+        },
+    },
+    {
+        "name": "github_add_pr_review",
+        "description": "Add a review to a GitHub pull request.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "pr_number": {"type": "integer", "description": "PR number"},
+                "body": {"type": "string", "description": "Review comment (markdown)"},
+                "event": {
+                    "type": "string",
+                    "enum": ["COMMENT", "APPROVE", "REQUEST_CHANGES"],
+                    "description": "Review type",
+                },
+            },
+            "required": ["repo", "pr_number", "body"],
+        },
+    },
+    {
+        "name": "github_list_prs",
+        "description": "List GitHub pull requests in a repository.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "state": {
+                    "type": "string",
+                    "enum": ["open", "closed", "all"],
+                    "description": "PR state",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max PRs to return (default: 20)",
+                },
+            },
+            "required": ["repo"],
+        },
+    },
+    {
+        "name": "github_merge_pr",
+        "description": "Merge a GitHub pull request.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "pr_number": {"type": "integer", "description": "PR number"},
+                "merge_method": {
+                    "type": "string",
+                    "enum": ["merge", "squash", "rebase"],
+                    "description": "Merge method",
+                },
+            },
+            "required": ["repo", "pr_number"],
+        },
+    },
+    # ============================================
+    # INFRASTRUCTURE TOOLS (Terraform, K8s, Docker)
+    # ============================================
+    {
+        "name": "infra_generate_terraform",
+        "description": "Generate Terraform configuration for infrastructure. Analyzes project needs and creates appropriate IaC.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure", "digitalocean"],
+                    "description": "Cloud provider",
+                },
+                "resources": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Resources to provision (e.g., 'ec2', 'rds', 's3')",
+                },
+                "environment": {
+                    "type": "string",
+                    "description": "Environment name (dev, staging, prod)",
+                },
+            },
+            "required": ["provider"],
+        },
+    },
+    {
+        "name": "infra_generate_k8s",
+        "description": "Generate Kubernetes YAML manifests for deploying the application.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "app_name": {"type": "string", "description": "Application name"},
+                "replicas": {
+                    "type": "integer",
+                    "description": "Number of replicas (default: 2)",
+                },
+                "port": {"type": "integer", "description": "Container port"},
+                "image": {
+                    "type": "string",
+                    "description": "Docker image (optional, will be inferred)",
+                },
+                "namespace": {"type": "string", "description": "Kubernetes namespace"},
+            },
+            "required": ["app_name"],
+        },
+    },
+    {
+        "name": "infra_generate_docker_compose",
+        "description": "Generate docker-compose.yml for local development. Auto-detects services from project structure.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "include_db": {
+                    "type": "boolean",
+                    "description": "Include database service",
+                },
+                "include_redis": {
+                    "type": "boolean",
+                    "description": "Include Redis cache",
+                },
+                "include_nginx": {
+                    "type": "boolean",
+                    "description": "Include Nginx reverse proxy",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "infra_generate_helm",
+        "description": "Generate a Helm chart for Kubernetes deployment with configurable values.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "chart_name": {
+                    "type": "string",
+                    "description": "Name for the Helm chart",
+                },
+                "app_version": {"type": "string", "description": "Application version"},
+            },
+            "required": ["chart_name"],
+        },
+    },
+    {
+        "name": "infra_terraform_plan",
+        "description": "Run 'terraform plan' to preview infrastructure changes. Requires user approval for apply.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "working_dir": {
+                    "type": "string",
+                    "description": "Directory containing Terraform files",
+                },
+                "var_file": {
+                    "type": "string",
+                    "description": "Path to tfvars file (optional)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "infra_kubectl_apply",
+        "description": "Apply Kubernetes manifests to a cluster. Requires user approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "manifest_path": {
+                    "type": "string",
+                    "description": "Path to YAML manifest or directory",
+                },
+                "namespace": {"type": "string", "description": "Target namespace"},
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Dry run mode (default: true for safety)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to actually apply",
+                },
+            },
+            "required": ["manifest_path", "approve"],
+        },
+    },
+    {
+        "name": "infra_generate_cloudformation",
+        "description": "Generate AWS CloudFormation templates for infrastructure provisioning.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "resources": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "AWS resources to provision (ec2, rds, lambda, etc.)",
+                },
+                "environment": {
+                    "type": "string",
+                    "description": "Environment name (dev, staging, prod)",
+                },
+                "region": {"type": "string", "description": "AWS region"},
+            },
+            "required": ["resources"],
+        },
+    },
+    {
+        "name": "infra_analyze_needs",
+        "description": "Analyze project requirements and recommend infrastructure setup.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "include_scaling": {
+                    "type": "boolean",
+                    "description": "Include auto-scaling recommendations",
+                },
+                "include_security": {
+                    "type": "boolean",
+                    "description": "Include security recommendations",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "infra_terraform_apply",
+        "description": "Run 'terraform apply' to provision infrastructure. Requires user approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "working_dir": {
+                    "type": "string",
+                    "description": "Directory containing Terraform files",
+                },
+                "var_file": {
+                    "type": "string",
+                    "description": "Path to tfvars file (optional)",
+                },
+                "auto_approve": {
+                    "type": "boolean",
+                    "description": "Skip interactive approval (not recommended)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
+            },
+            "required": ["approve"],
+        },
+    },
+    {
+        "name": "infra_terraform_destroy",
+        "description": "Run 'terraform destroy' to tear down infrastructure. DANGEROUS - requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "working_dir": {
+                    "type": "string",
+                    "description": "Directory containing Terraform files",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Specific resource to destroy (optional)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
+            },
+            "required": ["approve"],
+        },
+    },
+    {
+        "name": "infra_helm_install",
+        "description": "Install or upgrade a Helm chart in Kubernetes. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "release_name": {"type": "string", "description": "Helm release name"},
+                "chart": {"type": "string", "description": "Chart name or path"},
+                "namespace": {"type": "string", "description": "Kubernetes namespace"},
+                "values_file": {
+                    "type": "string",
+                    "description": "Path to values.yaml file",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to install",
+                },
+            },
+            "required": ["release_name", "chart", "approve"],
+        },
+    },
+    # ============================================
+    # DATABASE TOOLS (Schema, Migrations)
+    # ============================================
+    {
+        "name": "db_design_schema",
+        "description": "Design a database schema from natural language description. Generates ORM models or raw SQL.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Natural language description of the data model",
+                },
+                "orm": {
+                    "type": "string",
+                    "enum": ["prisma", "sqlalchemy", "drizzle", "typeorm", "raw_sql"],
+                    "description": "ORM/schema format",
+                },
+                "database": {
+                    "type": "string",
+                    "enum": ["postgresql", "mysql", "sqlite", "mongodb"],
+                    "description": "Database type",
+                },
+            },
+            "required": ["description"],
+        },
+    },
+    {
+        "name": "db_generate_migration",
+        "description": "Generate a database migration file for schema changes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Migration name (e.g., 'add_users_table')",
+                },
+                "changes": {
+                    "type": "string",
+                    "description": "Description of changes to make",
+                },
+            },
+            "required": ["name", "changes"],
+        },
+    },
+    {
+        "name": "db_run_migration",
+        "description": "Run pending database migrations. Shows command and requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "direction": {
+                    "type": "string",
+                    "enum": ["up", "down"],
+                    "description": "Migration direction",
+                },
+                "steps": {
+                    "type": "integer",
+                    "description": "Number of migrations to run (for rollback)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
+            },
+            "required": ["approve"],
+        },
+    },
+    {
+        "name": "db_generate_seed",
+        "description": "Generate seed data for database tables based on schema.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tables": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tables to seed",
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "Number of records per table (default: 10)",
+                },
+                "realistic": {
+                    "type": "boolean",
+                    "description": "Generate realistic fake data (default: true)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "db_analyze_schema",
+        "description": "Analyze existing database schema and suggest improvements.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "check_indexes": {
+                    "type": "boolean",
+                    "description": "Check for missing indexes",
+                },
+                "check_relations": {
+                    "type": "boolean",
+                    "description": "Validate foreign key relationships",
+                },
+                "check_naming": {
+                    "type": "boolean",
+                    "description": "Check naming conventions",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "db_generate_erd",
+        "description": "Generate an Entity Relationship Diagram from database schema.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "format": {
+                    "type": "string",
+                    "enum": ["mermaid", "plantuml", "dbml"],
+                    "description": "Output format",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "db_backup",
+        "description": "Create a database backup. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "database": {"type": "string", "description": "Database name"},
+                "format": {
+                    "type": "string",
+                    "enum": ["sql", "pg_dump", "custom"],
+                    "description": "Backup format",
+                },
+                "destination": {
+                    "type": "string",
+                    "description": "Backup destination path",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
+            },
+            "required": ["approve"],
+        },
+    },
+    {
+        "name": "db_restore",
+        "description": "Restore database from backup. DANGEROUS - requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "backup_file": {"type": "string", "description": "Path to backup file"},
+                "database": {"type": "string", "description": "Target database name"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to execute",
+                },
+            },
+            "required": ["backup_file", "approve"],
+        },
+    },
+    {
+        "name": "db_migration_status",
+        "description": "Get status of database migrations (pending, applied).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "verbose": {
+                    "type": "boolean",
+                    "description": "Show detailed migration info",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "db_execute_query",
+        "description": "Execute a raw SQL query. Requires approval for write operations.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "SQL query to execute"},
+                "database": {"type": "string", "description": "Database name"},
+                "params": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Query parameters",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true for write operations",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    # ============================================
+    # TEST GENERATION TOOLS
+    # ============================================
+    {
+        "name": "test_generate_for_file",
+        "description": "Generate comprehensive tests for all functions/classes in a file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the source file",
+                },
+                "framework": {
+                    "type": "string",
+                    "description": "Test framework (pytest, jest, vitest, etc.)",
+                },
+                "coverage_target": {
+                    "type": "number",
+                    "description": "Target coverage percentage (default: 80)",
+                },
+            },
+            "required": ["file_path"],
+        },
+    },
+    {
+        "name": "test_generate_for_function",
+        "description": "Generate tests for a specific function with edge cases.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the source file",
+                },
+                "function_name": {
+                    "type": "string",
+                    "description": "Name of the function to test",
+                },
+                "include_edge_cases": {
+                    "type": "boolean",
+                    "description": "Include edge case tests (default: true)",
+                },
+            },
+            "required": ["file_path", "function_name"],
+        },
+    },
+    {
+        "name": "test_generate_suite",
+        "description": "Generate a complete test suite for a module or directory.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to module or directory",
+                },
+                "include_integration": {
+                    "type": "boolean",
+                    "description": "Include integration tests",
+                },
+                "include_e2e": {
+                    "type": "boolean",
+                    "description": "Include end-to-end tests",
+                },
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "test_detect_framework",
+        "description": "Detect the test framework used in the project.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "test_suggest_improvements",
+        "description": "Analyze existing test file and suggest improvements for coverage, edge cases, and best practices.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "test_file_path": {
+                    "type": "string",
+                    "description": "Path to the test file to analyze",
+                },
+                "workspace_path": {
+                    "type": "string",
+                    "description": "Project root directory (optional)",
+                },
+            },
+            "required": ["test_file_path"],
+        },
+    },
+    # ============================================
+    # CI/CD TOOLS (GitLab CI, GitHub Actions)
+    # ============================================
+    {
+        "name": "gitlab_ci_generate",
+        "description": "Generate a .gitlab-ci.yml file with stages for lint, test, build, and deploy.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "include_docker": {
+                    "type": "boolean",
+                    "description": "Include Docker build stage",
+                },
+                "include_security": {
+                    "type": "boolean",
+                    "description": "Include security scanning",
+                },
+                "environments": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Deployment environments (staging, prod)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "github_actions_generate",
+        "description": "Generate GitHub Actions workflow files for CI/CD.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workflow_name": {"type": "string", "description": "Workflow name"},
+                "triggers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Trigger events (push, pull_request)",
+                },
+                "include_deploy": {
+                    "type": "boolean",
+                    "description": "Include deployment job",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "github_actions_list_workflows",
+        "description": "List GitHub Actions workflows in a repository.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+            },
+            "required": ["repo"],
+        },
+    },
+    {
+        "name": "github_actions_list_runs",
+        "description": "List recent GitHub Actions workflow runs.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "workflow_id": {
+                    "type": "string",
+                    "description": "Filter by workflow ID",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["queued", "in_progress", "completed"],
+                    "description": "Filter by status",
+                },
+            },
+            "required": ["repo"],
+        },
+    },
+    {
+        "name": "github_actions_get_run_status",
+        "description": "Get status of a specific GitHub Actions run.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "run_id": {"type": "string", "description": "Run ID"},
+            },
+            "required": ["repo", "run_id"],
+        },
+    },
+    {
+        "name": "github_actions_trigger_workflow",
+        "description": "Trigger a GitHub Actions workflow. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository (owner/repo format)",
+                },
+                "workflow_id": {
+                    "type": "string",
+                    "description": "Workflow ID or filename",
+                },
+                "ref": {"type": "string", "description": "Branch or tag to run on"},
+                "inputs": {
+                    "type": "object",
+                    "description": "Workflow input parameters",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to trigger",
+                },
+            },
+            "required": ["repo", "workflow_id", "approve"],
+        },
+    },
+    {
+        "name": "gitlab_ci_list_pipelines",
+        "description": "List GitLab CI pipelines for a project.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project path (group/project)",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["running", "pending", "success", "failed", "canceled"],
+                    "description": "Filter by status",
+                },
+            },
+            "required": ["project"],
+        },
+    },
+    {
+        "name": "gitlab_ci_get_pipeline_jobs",
+        "description": "Get jobs for a GitLab CI pipeline.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project path"},
+                "pipeline_id": {"type": "integer", "description": "Pipeline ID"},
+            },
+            "required": ["project", "pipeline_id"],
+        },
+    },
+    {
+        "name": "gitlab_ci_trigger_pipeline",
+        "description": "Trigger a GitLab CI pipeline. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project path"},
+                "ref": {"type": "string", "description": "Branch or tag"},
+                "variables": {"type": "object", "description": "Pipeline variables"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to trigger",
+                },
+            },
+            "required": ["project", "approve"],
+        },
+    },
+    {
+        "name": "gitlab_ci_retry_job",
+        "description": "Retry a failed GitLab CI job. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project path"},
+                "job_id": {"type": "integer", "description": "Job ID"},
+                "approve": {"type": "boolean", "description": "Must be true to retry"},
+            },
+            "required": ["project", "job_id", "approve"],
+        },
+    },
+    # ============================================
+    # DOCUMENTATION TOOLS
+    # ============================================
+    {
+        "name": "docs_generate_readme",
+        "description": "Generate a comprehensive README.md for the project with installation, usage, and API documentation.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "include_badges": {
+                    "type": "boolean",
+                    "description": "Include status badges (build, coverage, etc.)",
+                },
+                "include_toc": {
+                    "type": "boolean",
+                    "description": "Include table of contents",
+                },
+                "style": {
+                    "type": "string",
+                    "enum": ["standard", "minimal", "detailed"],
+                    "description": "Documentation style",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "docs_generate_api",
+        "description": "Generate API documentation from code. Supports OpenAPI/Swagger, Markdown, or JSDoc format.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "format": {
+                    "type": "string",
+                    "enum": ["openapi", "markdown", "jsdoc"],
+                    "description": "Output format",
+                },
+                "include_examples": {
+                    "type": "boolean",
+                    "description": "Include usage examples",
+                },
+                "group_by": {
+                    "type": "string",
+                    "enum": ["endpoint", "resource", "tag"],
+                    "description": "How to group endpoints",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "docs_generate_component",
+        "description": "Generate documentation for React/Vue components including props, usage examples, and styling.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "component_path": {
+                    "type": "string",
+                    "description": "Path to the component file",
+                },
+                "include_props_table": {
+                    "type": "boolean",
+                    "description": "Include props/types table",
+                },
+                "include_examples": {
+                    "type": "boolean",
+                    "description": "Include usage examples",
+                },
+            },
+            "required": ["component_path"],
+        },
+    },
+    {
+        "name": "docs_generate_architecture",
+        "description": "Generate architecture documentation with system overview, components, data flow, and diagrams.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "include_diagrams": {
+                    "type": "boolean",
+                    "description": "Include Mermaid diagrams",
+                },
+                "include_tech_stack": {
+                    "type": "boolean",
+                    "description": "Include technology stack details",
+                },
+                "include_security": {
+                    "type": "boolean",
+                    "description": "Include security considerations",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "docs_generate_comments",
+        "description": "Generate inline code comments and docstrings for functions/classes in a file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the source file",
+                },
+                "style": {
+                    "type": "string",
+                    "enum": ["jsdoc", "tsdoc", "google", "numpy", "sphinx"],
+                    "description": "Comment style",
+                },
+                "include_params": {
+                    "type": "boolean",
+                    "description": "Include parameter descriptions",
+                },
+                "include_returns": {
+                    "type": "boolean",
+                    "description": "Include return value descriptions",
+                },
+            },
+            "required": ["file_path"],
+        },
+    },
+    # ============================================
+    # SCAFFOLDING TOOLS (Project Templates)
+    # ============================================
+    {
+        "name": "scaffold_project",
+        "description": "Create a new project from a template. Supports React, Next.js, FastAPI, Express, and more.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_type": {
+                    "type": "string",
+                    "description": "Type of project (nextjs, react, fastapi, express, etc.)",
+                },
+                "name": {"type": "string", "description": "Project name"},
+                "features": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Features to include (auth, db, docker)",
+                },
+            },
+            "required": ["project_type", "name"],
+        },
+    },
+    {
+        "name": "scaffold_detect_requirements",
+        "description": "Analyze natural language requirements and suggest project structure and technologies.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Natural language description of the project",
+                },
+            },
+            "required": ["description"],
+        },
+    },
+    {
+        "name": "scaffold_add_feature",
+        "description": "Add a feature to an existing project (API route, component, model, etc.).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "feature_type": {
+                    "type": "string",
+                    "enum": [
+                        "api-route",
+                        "component",
+                        "model",
+                        "service",
+                        "middleware",
+                    ],
+                    "description": "Type of feature",
+                },
+                "name": {"type": "string", "description": "Feature name"},
+            },
+            "required": ["feature_type", "name"],
+        },
+    },
+    {
+        "name": "scaffold_list_templates",
+        "description": "List available project templates and their features.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "Filter by category (frontend, backend, fullstack)",
+                },
+            },
+            "required": [],
+        },
+    },
+    # ============================================
+    # MONITORING & OBSERVABILITY TOOLS
+    # ============================================
+    {
+        "name": "monitor_setup_errors",
+        "description": "Set up error tracking with Sentry, Rollbar, or similar services.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": ["sentry", "rollbar", "bugsnag"],
+                    "description": "Error tracking provider",
+                },
+                "framework": {
+                    "type": "string",
+                    "description": "Project framework (nextjs, fastapi, express)",
+                },
+            },
+            "required": ["provider"],
+        },
+    },
+    {
+        "name": "monitor_setup_apm",
+        "description": "Set up Application Performance Monitoring with Datadog, New Relic, etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": ["datadog", "newrelic", "dynatrace"],
+                    "description": "APM provider",
+                },
+                "enable_profiling": {
+                    "type": "boolean",
+                    "description": "Enable code profiling",
+                },
+                "enable_tracing": {
+                    "type": "boolean",
+                    "description": "Enable distributed tracing",
+                },
+            },
+            "required": ["provider"],
+        },
+    },
+    {
+        "name": "monitor_setup_logging",
+        "description": "Configure structured logging with proper formatters and transports.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "library": {
+                    "type": "string",
+                    "enum": ["pino", "winston", "structlog", "loguru"],
+                    "description": "Logging library",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["json", "pretty", "compact"],
+                    "description": "Output format",
+                },
+                "level": {
+                    "type": "string",
+                    "enum": ["debug", "info", "warn", "error"],
+                    "description": "Default log level",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "monitor_generate_health_checks",
+        "description": "Generate health check endpoints for liveness and readiness probes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "include_db": {
+                    "type": "boolean",
+                    "description": "Check database connectivity",
+                },
+                "include_redis": {
+                    "type": "boolean",
+                    "description": "Check Redis connectivity",
+                },
+                "include_external": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "External services to check",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "monitor_setup_alerting",
+        "description": "Configure alerting rules for monitoring services.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": ["pagerduty", "opsgenie", "slack", "email"],
+                    "description": "Alert destination",
+                },
+                "thresholds": {
+                    "type": "object",
+                    "description": "Alert thresholds (error_rate, latency_ms, etc.)",
+                },
+            },
+            "required": ["provider"],
+        },
+    },
+    # ============================================
+    # SECRETS MANAGEMENT TOOLS
+    # ============================================
+    {
+        "name": "secrets_generate_env",
+        "description": "Generate .env.example template by scanning code for environment variable usage.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "include_descriptions": {
+                    "type": "boolean",
+                    "description": "Include descriptions for each variable",
+                },
+                "group_by_service": {
+                    "type": "boolean",
+                    "description": "Group variables by service/feature",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "secrets_setup_provider",
+        "description": "Set up a secrets provider like HashiCorp Vault or AWS Secrets Manager.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": [
+                        "vault",
+                        "aws_secrets_manager",
+                        "gcp_secret_manager",
+                        "azure_keyvault",
+                    ],
+                    "description": "Secrets provider",
+                },
+                "generate_config": {
+                    "type": "boolean",
+                    "description": "Generate configuration files",
+                },
+            },
+            "required": ["provider"],
+        },
+    },
+    {
+        "name": "secrets_sync_to_platform",
+        "description": "Sync secrets to a deployment platform (Vercel, Railway, etc.).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "platform": {
+                    "type": "string",
+                    "enum": ["vercel", "railway", "fly", "netlify", "heroku"],
+                    "description": "Target platform",
+                },
+                "env_file": {"type": "string", "description": "Path to .env file"},
+                "environment": {
+                    "type": "string",
+                    "enum": ["development", "preview", "production"],
+                    "description": "Target environment",
+                },
+            },
+            "required": ["platform"],
+        },
+    },
+    {
+        "name": "secrets_audit",
+        "description": "Audit codebase for exposed secrets, API keys, or credentials.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scan_git_history": {
+                    "type": "boolean",
+                    "description": "Scan git history for secrets",
+                },
+                "exclude_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Patterns to exclude from scan",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "secrets_rotate",
+        "description": "Generate commands to rotate secrets for various providers.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "secret_type": {
+                    "type": "string",
+                    "description": "Type of secret (api_key, database, jwt, etc.)",
+                },
+                "provider": {
+                    "type": "string",
+                    "description": "Service provider (aws, stripe, github, etc.)",
+                },
+            },
+            "required": ["secret_type"],
+        },
+    },
+    # ============================================
+    # ARCHITECTURE PLANNING TOOLS
+    # ============================================
+    {
+        "name": "arch_recommend_stack",
+        "description": "Get technology stack recommendations based on project requirements.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_type": {
+                    "type": "string",
+                    "description": "Type of project (web app, API, mobile, etc.)",
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Key requirements (realtime, high-scale, etc.)",
+                },
+                "team_size": {
+                    "type": "string",
+                    "enum": ["solo", "small", "medium", "large"],
+                    "description": "Team size",
+                },
+                "budget": {
+                    "type": "string",
+                    "enum": ["minimal", "moderate", "enterprise"],
+                    "description": "Infrastructure budget",
+                },
+            },
+            "required": ["project_type"],
+        },
+    },
+    {
+        "name": "arch_design_system",
+        "description": "Design a system architecture with components, services, and data flows.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "System description and requirements",
+                },
+                "pattern": {
+                    "type": "string",
+                    "enum": [
+                        "monolith",
+                        "microservices",
+                        "serverless",
+                        "event_driven",
+                        "modular_monolith",
+                    ],
+                    "description": "Architecture pattern",
+                },
+            },
+            "required": ["description"],
+        },
+    },
+    {
+        "name": "arch_generate_diagram",
+        "description": "Generate architecture diagrams in Mermaid, PlantUML, or D2 format.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "diagram_type": {
+                    "type": "string",
+                    "enum": [
+                        "system",
+                        "sequence",
+                        "component",
+                        "deployment",
+                        "data_flow",
+                    ],
+                    "description": "Type of diagram",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["mermaid", "plantuml", "d2"],
+                    "description": "Output format",
+                },
+            },
+            "required": ["diagram_type"],
+        },
+    },
+    {
+        "name": "arch_decompose_microservices",
+        "description": "Analyze a monolith and suggest microservices decomposition boundaries.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "analyze_dependencies": {
+                    "type": "boolean",
+                    "description": "Analyze code dependencies",
+                },
+                "suggest_boundaries": {
+                    "type": "boolean",
+                    "description": "Suggest service boundaries",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "arch_generate_adr",
+        "description": "Generate an Architecture Decision Record (ADR) document.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Decision title"},
+                "context": {
+                    "type": "string",
+                    "description": "Context and problem statement",
+                },
+                "decision": {"type": "string", "description": "The decision made"},
+                "alternatives": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Alternatives considered",
+                },
+            },
+            "required": ["title", "decision"],
+        },
+    },
+    # ============================================
+    # DEPLOYMENT TOOLS
+    # ============================================
+    {
+        "name": "deploy_detect_project",
+        "description": "Detect project type and suggest optimal deployment platforms.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "deploy_check_cli",
+        "description": "Check if deployment CLI tools are installed and authenticated.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "platform": {
+                    "type": "string",
+                    "enum": [
+                        "vercel",
+                        "railway",
+                        "fly",
+                        "netlify",
+                        "heroku",
+                        "aws",
+                        "gcp",
+                    ],
+                    "description": "Deployment platform",
+                },
+            },
+            "required": ["platform"],
+        },
+    },
+    {
+        "name": "deploy_get_info",
+        "description": "Get current deployment status and information.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string", "description": "Deployment platform"},
+                "environment": {
+                    "type": "string",
+                    "description": "Environment (production, staging, preview)",
+                },
+            },
+            "required": ["platform"],
+        },
+    },
+    {
+        "name": "deploy_list_platforms",
+        "description": "List supported deployment platforms and their features.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_type": {
+                    "type": "string",
+                    "description": "Filter by project type (nextjs, fastapi, etc.)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "deploy_execute",
+        "description": "Execute deployment to a platform. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "platform": {
+                    "type": "string",
+                    "enum": [
+                        "vercel",
+                        "railway",
+                        "fly",
+                        "netlify",
+                        "heroku",
+                        "aws",
+                        "gcp",
+                    ],
+                    "description": "Target platform",
+                },
+                "environment": {
+                    "type": "string",
+                    "enum": ["development", "preview", "production"],
+                    "description": "Target environment",
+                },
+                "approve": {"type": "boolean", "description": "Must be true to deploy"},
+            },
+            "required": ["platform", "approve"],
+        },
+    },
+    {
+        "name": "deploy_rollback",
+        "description": "Rollback to a previous deployment. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string", "description": "Deployment platform"},
+                "deployment_id": {
+                    "type": "string",
+                    "description": "Deployment ID to rollback to",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to rollback",
+                },
+            },
+            "required": ["platform", "approve"],
+        },
+    },
+    {
+        "name": "deploy_status",
+        "description": "Get current deployment status and health.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string", "description": "Deployment platform"},
+                "environment": {
+                    "type": "string",
+                    "description": "Environment to check",
+                },
+            },
+            "required": ["platform"],
+        },
+    },
+    {
+        "name": "deploy_logs",
+        "description": "Get deployment logs from a platform.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string", "description": "Deployment platform"},
+                "deployment_id": {"type": "string", "description": "Deployment ID"},
+                "tail": {
+                    "type": "integer",
+                    "description": "Number of recent lines (default: 100)",
+                },
+            },
+            "required": ["platform"],
+        },
+    },
+    # ============================================
+    # SLACK INTEGRATION TOOLS
+    # ============================================
+    {
+        "name": "slack_search_messages",
+        "description": "Search Slack messages across channels.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "channel": {
+                    "type": "string",
+                    "description": "Filter by channel name or ID",
+                },
+                "from_user": {"type": "string", "description": "Filter by sender"},
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum results (default: 20)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "slack_list_channel_messages",
+        "description": "List recent messages in a Slack channel.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "channel": {"type": "string", "description": "Channel name or ID"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Number of messages (default: 50)",
+                },
+            },
+            "required": ["channel"],
+        },
+    },
+    {
+        "name": "slack_send_message",
+        "description": "Send a message to a Slack channel. Requires user approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "channel": {"type": "string", "description": "Channel name or ID"},
+                "message": {
+                    "type": "string",
+                    "description": "Message text (supports Slack markdown)",
+                },
+                "approve": {"type": "boolean", "description": "Must be true to send"},
+            },
+            "required": ["channel", "message", "approve"],
+        },
+    },
+    # ============================================
+    # GITLAB INTEGRATION TOOLS
+    # ============================================
+    {
+        "name": "gitlab_list_my_merge_requests",
+        "description": "List your open merge requests across GitLab projects.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "state": {
+                    "type": "string",
+                    "enum": ["opened", "closed", "merged", "all"],
+                    "description": "MR state filter",
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["created_by_me", "assigned_to_me", "all"],
+                    "description": "Scope filter",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "gitlab_list_my_issues",
+        "description": "List your assigned issues across GitLab projects.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "state": {
+                    "type": "string",
+                    "enum": ["opened", "closed", "all"],
+                    "description": "Issue state filter",
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by labels",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "gitlab_get_pipeline_status",
+        "description": "Get the status of a GitLab CI/CD pipeline.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project path (group/project)",
+                },
+                "pipeline_id": {
+                    "type": "integer",
+                    "description": "Pipeline ID (optional, defaults to latest)",
+                },
+            },
+            "required": ["project"],
+        },
+    },
+    {
+        "name": "gitlab_search",
+        "description": "Search GitLab for projects, issues, or merge requests.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "scope": {
+                    "type": "string",
+                    "enum": ["projects", "issues", "merge_requests", "blobs"],
+                    "description": "Search scope",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    # ============================================
+    # LINEAR INTEGRATION TOOLS
+    # ============================================
+    {
+        "name": "linear_list_my_issues",
+        "description": "List Linear issues assigned to you.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "description": "Filter by status (backlog, todo, in_progress, done)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max issues to return (default: 20)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "linear_search_issues",
+        "description": "Search Linear issues by text query.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "team": {"type": "string", "description": "Filter by team name"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "linear_create_issue",
+        "description": "Create a new Linear issue. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Issue title"},
+                "description": {
+                    "type": "string",
+                    "description": "Issue description (markdown)",
+                },
+                "team": {"type": "string", "description": "Team name or ID"},
+                "priority": {
+                    "type": "integer",
+                    "description": "Priority (0=None, 1=Urgent, 2=High, 3=Medium, 4=Low)",
+                },
+                "approve": {"type": "boolean", "description": "Must be true to create"},
+            },
+            "required": ["title", "team", "approve"],
+        },
+    },
+    {
+        "name": "linear_update_status",
+        "description": "Update status of a Linear issue. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "Issue ID or identifier"},
+                "status": {
+                    "type": "string",
+                    "description": "New status (backlog, todo, in_progress, done, canceled)",
+                },
+                "approve": {"type": "boolean", "description": "Must be true to update"},
+            },
+            "required": ["issue_id", "status", "approve"],
+        },
+    },
+    {
+        "name": "linear_list_teams",
+        "description": "List all Linear teams in your workspace.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    # ============================================
+    # NOTION INTEGRATION TOOLS
+    # ============================================
+    {
+        "name": "notion_search_pages",
+        "description": "Search Notion pages by query.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "filter_type": {
+                    "type": "string",
+                    "enum": ["page", "database"],
+                    "description": "Filter by type",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "notion_list_recent_pages",
+        "description": "List recently edited Notion pages.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Max pages to return (default: 20)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "notion_get_page_content",
+        "description": "Get the content of a Notion page.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "string", "description": "Notion page ID or URL"},
+            },
+            "required": ["page_id"],
+        },
+    },
+    {
+        "name": "notion_list_databases",
+        "description": "List Notion databases in workspace.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "notion_create_page",
+        "description": "Create a new Notion page. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Page title"},
+                "parent_id": {
+                    "type": "string",
+                    "description": "Parent page or database ID",
+                },
+                "content": {"type": "string", "description": "Page content (markdown)"},
+                "approve": {"type": "boolean", "description": "Must be true to create"},
+            },
+            "required": ["title", "approve"],
+        },
+    },
+    # ============================================
+    # CONFLUENCE INTEGRATION TOOLS
+    # ============================================
+    {
+        "name": "confluence_search_pages",
+        "description": "Search Confluence pages by query.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "space": {"type": "string", "description": "Filter by space key"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "confluence_get_page",
+        "description": "Get a Confluence page content.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "string", "description": "Page ID"},
+            },
+            "required": ["page_id"],
+        },
+    },
+    {
+        "name": "confluence_list_pages_in_space",
+        "description": "List pages in a Confluence space.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "space_key": {"type": "string", "description": "Space key"},
+                "limit": {"type": "integer", "description": "Max pages (default: 50)"},
+            },
+            "required": ["space_key"],
+        },
+    },
+    # ============================================
+    # MULTI-CLOUD TOOLS
+    # ============================================
+    {
+        "name": "cloud_compare_services",
+        "description": "Compare equivalent services across AWS, GCP, and Azure.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "service_type": {
+                    "type": "string",
+                    "description": "Service type (compute, storage, database, serverless, etc.)",
+                },
+                "providers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Providers to compare (aws, gcp, azure)",
+                },
+            },
+            "required": ["service_type"],
+        },
+    },
+    {
+        "name": "cloud_generate_multi_region",
+        "description": "Generate multi-region infrastructure configuration.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Cloud provider",
+                },
+                "regions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Regions to deploy",
+                },
+                "services": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Services to deploy",
+                },
+                "strategy": {
+                    "type": "string",
+                    "enum": ["active-active", "active-passive", "pilot-light"],
+                    "description": "HA strategy",
+                },
+            },
+            "required": ["provider", "regions"],
+        },
+    },
+    {
+        "name": "cloud_migrate_provider",
+        "description": "Generate migration plan between cloud providers.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Source cloud",
+                },
+                "target_provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Target cloud",
+                },
+                "services": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Services to migrate",
+                },
+            },
+            "required": ["source_provider", "target_provider"],
+        },
+    },
+    {
+        "name": "cloud_estimate_costs",
+        "description": "Estimate cloud costs for a service configuration.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Cloud provider",
+                },
+                "service_type": {"type": "string", "description": "Service type"},
+                "requirements": {
+                    "type": "object",
+                    "description": "Resource requirements (cpu, memory, storage)",
+                },
+            },
+            "required": ["provider", "service_type"],
+        },
+    },
+    {
+        "name": "cloud_generate_landing_zone",
+        "description": "Generate cloud landing zone configuration with best practices.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Cloud provider",
+                },
+                "environments": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Environments (dev, staging, prod)",
+                },
+                "include_security": {
+                    "type": "boolean",
+                    "description": "Include security controls",
+                },
+                "include_networking": {
+                    "type": "boolean",
+                    "description": "Include VPC/network config",
+                },
+            },
+            "required": ["provider"],
+        },
+    },
+    {
+        "name": "cloud_analyze_spend",
+        "description": "Analyze cloud spending and suggest optimizations.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": ["aws", "gcp", "azure"],
+                    "description": "Cloud provider",
+                },
+                "time_period": {
+                    "type": "string",
+                    "enum": ["7d", "30d", "90d"],
+                    "description": "Analysis period",
+                },
+            },
+            "required": ["provider"],
+        },
+    },
+    # ============================================
+    # ASANA PROJECT MANAGEMENT TOOLS
+    # ============================================
+    {
+        "name": "asana_list_my_tasks",
+        "description": "List Asana tasks assigned to you.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string", "description": "Workspace ID or name"},
+                "project": {"type": "string", "description": "Filter by project"},
+                "completed": {
+                    "type": "boolean",
+                    "description": "Include completed tasks",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "asana_search_tasks",
+        "description": "Search Asana tasks.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "workspace": {"type": "string", "description": "Workspace to search"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "asana_list_projects",
+        "description": "List Asana projects in workspace.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string", "description": "Workspace ID"},
+                "archived": {
+                    "type": "boolean",
+                    "description": "Include archived projects",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "asana_create_task",
+        "description": "Create a new Asana task. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Task name"},
+                "project": {"type": "string", "description": "Project ID"},
+                "notes": {"type": "string", "description": "Task description"},
+                "due_date": {"type": "string", "description": "Due date (YYYY-MM-DD)"},
+                "approve": {"type": "boolean", "description": "Must be true to create"},
+            },
+            "required": ["name", "approve"],
+        },
+    },
+    {
+        "name": "asana_complete_task",
+        "description": "Mark an Asana task as complete. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Task ID"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to complete",
+                },
+            },
+            "required": ["task_id", "approve"],
+        },
+    },
+    # ============================================
+    # TRELLO PROJECT MANAGEMENT TOOLS
+    # ============================================
+    {
+        "name": "trello_list_boards",
+        "description": "List your Trello boards.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "trello_list_my_cards",
+        "description": "List Trello cards assigned to you.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "board": {"type": "string", "description": "Filter by board ID"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "trello_create_card",
+        "description": "Create a new Trello card. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Card name"},
+                "list_id": {"type": "string", "description": "List ID to add card to"},
+                "description": {"type": "string", "description": "Card description"},
+                "approve": {"type": "boolean", "description": "Must be true to create"},
+            },
+            "required": ["name", "list_id", "approve"],
+        },
+    },
+    # ============================================
+    # CLICKUP PROJECT MANAGEMENT TOOLS
+    # ============================================
+    {
+        "name": "clickup_list_workspaces",
+        "description": "List ClickUp workspaces.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "clickup_list_spaces",
+        "description": "List spaces in a ClickUp workspace.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {"type": "string", "description": "Workspace ID"},
+            },
+            "required": ["workspace_id"],
+        },
+    },
+    {
+        "name": "clickup_list_my_tasks",
+        "description": "List ClickUp tasks assigned to you.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "list_id": {"type": "string", "description": "Filter by list"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "clickup_create_task",
+        "description": "Create a new ClickUp task. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Task name"},
+                "list_id": {"type": "string", "description": "List ID"},
+                "description": {"type": "string", "description": "Task description"},
+                "priority": {"type": "integer", "description": "Priority (1-4)"},
+                "approve": {"type": "boolean", "description": "Must be true to create"},
+            },
+            "required": ["name", "list_id", "approve"],
+        },
+    },
+    # ============================================
+    # MONDAY.COM PROJECT MANAGEMENT TOOLS
+    # ============================================
+    {
+        "name": "monday_list_boards",
+        "description": "List Monday.com boards.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Filter by workspace",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "monday_list_items",
+        "description": "List items in a Monday.com board.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "board_id": {"type": "string", "description": "Board ID"},
+                "limit": {"type": "integer", "description": "Max items (default: 50)"},
+            },
+            "required": ["board_id"],
+        },
+    },
+    {
+        "name": "monday_get_my_items",
+        "description": "Get Monday.com items assigned to you.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "monday_get_item",
+        "description": "Get details of a specific Monday.com item.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "item_id": {"type": "string", "description": "Item ID"},
+            },
+            "required": ["item_id"],
+        },
+    },
+    {
+        "name": "monday_create_item",
+        "description": "Create a new Monday.com item. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "board_id": {"type": "string", "description": "Board ID"},
+                "name": {"type": "string", "description": "Item name"},
+                "column_values": {
+                    "type": "object",
+                    "description": "Column values to set",
+                },
+                "approve": {"type": "boolean", "description": "Must be true to create"},
+            },
+            "required": ["board_id", "name", "approve"],
+        },
+    },
+    # ============================================
+    # BITBUCKET INTEGRATION TOOLS
+    # ============================================
+    {
+        "name": "bitbucket_list_my_prs",
+        "description": "List Bitbucket pull requests you're involved in.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "state": {
+                    "type": "string",
+                    "enum": ["OPEN", "MERGED", "DECLINED"],
+                    "description": "PR state",
+                },
+                "role": {
+                    "type": "string",
+                    "enum": ["author", "reviewer"],
+                    "description": "Your role",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "bitbucket_list_repos",
+        "description": "List Bitbucket repositories.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string", "description": "Workspace slug"},
+            },
+            "required": ["workspace"],
+        },
+    },
+    {
+        "name": "bitbucket_get_pipeline_status",
+        "description": "Get Bitbucket pipeline status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string", "description": "Workspace slug"},
+                "repo": {"type": "string", "description": "Repository slug"},
+                "pipeline_uuid": {
+                    "type": "string",
+                    "description": "Pipeline UUID (optional, latest if not specified)",
+                },
+            },
+            "required": ["workspace", "repo"],
+        },
+    },
+    {
+        "name": "bitbucket_add_pr_comment",
+        "description": "Add comment to a Bitbucket PR. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string", "description": "Workspace slug"},
+                "repo": {"type": "string", "description": "Repository slug"},
+                "pr_id": {"type": "integer", "description": "PR ID"},
+                "content": {"type": "string", "description": "Comment content"},
+                "approve": {"type": "boolean", "description": "Must be true to post"},
+            },
+            "required": ["workspace", "repo", "pr_id", "content", "approve"],
+        },
+    },
+    # ============================================
+    # SENTRY ERROR TRACKING TOOLS
+    # ============================================
+    {
+        "name": "sentry_list_issues",
+        "description": "List Sentry issues/errors.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project slug"},
+                "status": {
+                    "type": "string",
+                    "enum": ["unresolved", "resolved", "ignored"],
+                    "description": "Issue status",
+                },
+                "limit": {"type": "integer", "description": "Max issues (default: 25)"},
+            },
+            "required": ["project"],
+        },
+    },
+    {
+        "name": "sentry_get_issue",
+        "description": "Get details of a Sentry issue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "Issue ID"},
+            },
+            "required": ["issue_id"],
+        },
+    },
+    {
+        "name": "sentry_list_projects",
+        "description": "List Sentry projects in organization.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "sentry_resolve_issue",
+        "description": "Resolve a Sentry issue. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "Issue ID"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to resolve",
+                },
+            },
+            "required": ["issue_id", "approve"],
+        },
+    },
+    # ============================================
+    # DATADOG MONITORING TOOLS
+    # ============================================
+    {
+        "name": "datadog_list_monitors",
+        "description": "List Datadog monitors.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by tags",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "datadog_get_alerting_monitors",
+        "description": "Get Datadog monitors currently alerting.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "datadog_list_incidents",
+        "description": "List Datadog incidents.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "stable", "resolved"],
+                    "description": "Filter by status",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "datadog_list_dashboards",
+        "description": "List Datadog dashboards.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filter": {"type": "string", "description": "Filter by name"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "datadog_mute_monitor",
+        "description": "Mute a Datadog monitor. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "monitor_id": {"type": "string", "description": "Monitor ID"},
+                "end_time": {
+                    "type": "string",
+                    "description": "Mute end time (ISO format)",
+                },
+                "approve": {"type": "boolean", "description": "Must be true to mute"},
+            },
+            "required": ["monitor_id", "approve"],
+        },
+    },
+    # ============================================
+    # PAGERDUTY INCIDENT MANAGEMENT TOOLS
+    # ============================================
+    {
+        "name": "pagerduty_list_incidents",
+        "description": "List PagerDuty incidents.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["triggered", "acknowledged", "resolved"],
+                    "description": "Filter by status",
+                },
+                "urgency": {
+                    "type": "string",
+                    "enum": ["high", "low"],
+                    "description": "Filter by urgency",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "pagerduty_get_oncall",
+        "description": "Get current on-call schedule.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "schedule_id": {
+                    "type": "string",
+                    "description": "Schedule ID (optional)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "pagerduty_list_services",
+        "description": "List PagerDuty services.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "pagerduty_acknowledge_incident",
+        "description": "Acknowledge a PagerDuty incident. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "incident_id": {"type": "string", "description": "Incident ID"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to acknowledge",
+                },
+            },
+            "required": ["incident_id", "approve"],
+        },
+    },
+    {
+        "name": "pagerduty_resolve_incident",
+        "description": "Resolve a PagerDuty incident. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "incident_id": {"type": "string", "description": "Incident ID"},
+                "resolution_note": {"type": "string", "description": "Resolution note"},
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to resolve",
+                },
+            },
+            "required": ["incident_id", "approve"],
+        },
+    },
+    # ============================================
+    # SNYK SECURITY SCANNING TOOLS
+    # ============================================
+    {
+        "name": "snyk_list_vulnerabilities",
+        "description": "List Snyk vulnerabilities in projects.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "severity": {
+                    "type": "string",
+                    "enum": ["critical", "high", "medium", "low"],
+                    "description": "Filter by severity",
+                },
+                "project": {"type": "string", "description": "Filter by project"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "snyk_list_projects",
+        "description": "List Snyk projects.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "org": {"type": "string", "description": "Organization ID"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "snyk_get_security_summary",
+        "description": "Get security summary across all projects.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "snyk_get_project_issues",
+        "description": "Get security issues for a specific project.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "Project ID"},
+            },
+            "required": ["project_id"],
+        },
+    },
+    # ============================================
+    # SONARQUBE CODE QUALITY TOOLS
+    # ============================================
+    {
+        "name": "sonarqube_list_projects",
+        "description": "List SonarQube projects.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "sonarqube_list_issues",
+        "description": "List SonarQube code issues.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project key"},
+                "severity": {
+                    "type": "string",
+                    "enum": ["BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO"],
+                    "description": "Filter by severity",
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["BUG", "VULNERABILITY", "CODE_SMELL"],
+                    "description": "Filter by type",
+                },
+            },
+            "required": ["project"],
+        },
+    },
+    {
+        "name": "sonarqube_get_quality_gate",
+        "description": "Get quality gate status for a project.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project key"},
+            },
+            "required": ["project"],
+        },
+    },
+    # ============================================
+    # FIGMA DESIGN TOOLS
+    # ============================================
+    {
+        "name": "figma_list_files",
+        "description": "List Figma files in a project.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "Project ID"},
+            },
+            "required": ["project_id"],
+        },
+    },
+    {
+        "name": "figma_get_file",
+        "description": "Get Figma file details.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_key": {"type": "string", "description": "File key"},
+            },
+            "required": ["file_key"],
+        },
+    },
+    {
+        "name": "figma_get_comments",
+        "description": "Get comments on a Figma file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_key": {"type": "string", "description": "File key"},
+            },
+            "required": ["file_key"],
+        },
+    },
+    {
+        "name": "figma_list_projects",
+        "description": "List Figma projects in a team.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "team_id": {"type": "string", "description": "Team ID"},
+            },
+            "required": ["team_id"],
+        },
+    },
+    {
+        "name": "figma_add_comment",
+        "description": "Add comment to a Figma file. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_key": {"type": "string", "description": "File key"},
+                "message": {"type": "string", "description": "Comment message"},
+                "approve": {"type": "boolean", "description": "Must be true to post"},
+            },
+            "required": ["file_key", "message", "approve"],
+        },
+    },
+    # ============================================
+    # LOOM VIDEO TOOLS
+    # ============================================
+    {
+        "name": "loom_list_videos",
+        "description": "List Loom videos.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Max videos (default: 20)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "loom_get_transcript",
+        "description": "Get transcript of a Loom video.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "video_id": {"type": "string", "description": "Video ID"},
+            },
+            "required": ["video_id"],
+        },
+    },
+    {
+        "name": "loom_search_videos",
+        "description": "Search Loom videos by query.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+            },
+            "required": ["query"],
+        },
+    },
+    # ============================================
+    # DISCORD COMMUNICATION TOOLS
+    # ============================================
+    {
+        "name": "discord_list_servers",
+        "description": "List Discord servers the bot is in.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "discord_list_channels",
+        "description": "List channels in a Discord server.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "server_id": {"type": "string", "description": "Server ID"},
+            },
+            "required": ["server_id"],
+        },
+    },
+    {
+        "name": "discord_get_messages",
+        "description": "Get recent messages from a Discord channel.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "channel_id": {"type": "string", "description": "Channel ID"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max messages (default: 50)",
+                },
+            },
+            "required": ["channel_id"],
+        },
+    },
+    {
+        "name": "discord_send_message",
+        "description": "Send a message to a Discord channel. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "channel_id": {"type": "string", "description": "Channel ID"},
+                "content": {"type": "string", "description": "Message content"},
+                "approve": {"type": "boolean", "description": "Must be true to send"},
+            },
+            "required": ["channel_id", "content", "approve"],
+        },
+    },
+    # ============================================
+    # ZOOM MEETING TOOLS
+    # ============================================
+    {
+        "name": "zoom_list_recordings",
+        "description": "List Zoom cloud recordings.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "from_date": {
+                    "type": "string",
+                    "description": "Start date (YYYY-MM-DD)",
+                },
+                "to_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "zoom_get_transcript",
+        "description": "Get transcript of a Zoom recording.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "meeting_id": {"type": "string", "description": "Meeting ID"},
+            },
+            "required": ["meeting_id"],
+        },
+    },
+    {
+        "name": "zoom_search_recordings",
+        "description": "Search Zoom recordings by query.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+            },
+            "required": ["query"],
+        },
+    },
+    # ============================================
+    # GOOGLE CALENDAR TOOLS
+    # ============================================
+    {
+        "name": "gcalendar_list_upcoming_events",
+        "description": "List upcoming Google Calendar events.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "calendar_id": {
+                    "type": "string",
+                    "description": "Calendar ID (default: primary)",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Max events (default: 10)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "gcalendar_get_todays_events",
+        "description": "Get today's Google Calendar events.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "calendar_id": {
+                    "type": "string",
+                    "description": "Calendar ID (default: primary)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "gcalendar_get_event_details",
+        "description": "Get details of a specific calendar event.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "event_id": {"type": "string", "description": "Event ID"},
+                "calendar_id": {
+                    "type": "string",
+                    "description": "Calendar ID (default: primary)",
+                },
+            },
+            "required": ["event_id"],
+        },
+    },
+    # ============================================
+    # GOOGLE DRIVE TOOLS
+    # ============================================
+    {
+        "name": "gdrive_list_files",
+        "description": "List files in Google Drive.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "folder_id": {
+                    "type": "string",
+                    "description": "Folder ID (default: root)",
+                },
+                "limit": {"type": "integer", "description": "Max files (default: 20)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "gdrive_search",
+        "description": "Search Google Drive files.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "mime_type": {"type": "string", "description": "Filter by MIME type"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "gdrive_get_file_content",
+        "description": "Get content of a Google Drive file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_id": {"type": "string", "description": "File ID"},
+            },
+            "required": ["file_id"],
+        },
+    },
+    # ============================================
+    # VERCEL DEPLOYMENT TOOLS
+    # ============================================
+    {
+        "name": "vercel_list_projects",
+        "description": "List Vercel projects.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "vercel_list_deployments",
+        "description": "List Vercel deployments for a project.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project name or ID"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max deployments (default: 20)",
+                },
+            },
+            "required": ["project"],
+        },
+    },
+    {
+        "name": "vercel_get_deployment_status",
+        "description": "Get status of a Vercel deployment.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "deployment_id": {
+                    "type": "string",
+                    "description": "Deployment ID or URL",
+                },
+            },
+            "required": ["deployment_id"],
+        },
+    },
+    {
+        "name": "vercel_redeploy",
+        "description": "Trigger a Vercel redeployment. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "deployment_id": {
+                    "type": "string",
+                    "description": "Deployment ID to redeploy",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to redeploy",
+                },
+            },
+            "required": ["deployment_id", "approve"],
+        },
+    },
+    # ============================================
+    # CIRCLECI CI/CD TOOLS
+    # ============================================
+    {
+        "name": "circleci_list_pipelines",
+        "description": "List CircleCI pipelines.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_slug": {
+                    "type": "string",
+                    "description": "Project slug (gh/owner/repo or bb/owner/repo)",
+                },
+            },
+            "required": ["project_slug"],
+        },
+    },
+    {
+        "name": "circleci_get_pipeline_status",
+        "description": "Get CircleCI pipeline status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pipeline_id": {"type": "string", "description": "Pipeline ID"},
+            },
+            "required": ["pipeline_id"],
+        },
+    },
+    {
+        "name": "circleci_trigger_pipeline",
+        "description": "Trigger a CircleCI pipeline. Requires approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_slug": {"type": "string", "description": "Project slug"},
+                "branch": {
+                    "type": "string",
+                    "description": "Branch to build (default: main)",
+                },
+                "approve": {
+                    "type": "boolean",
+                    "description": "Must be true to trigger",
+                },
+            },
+            "required": ["project_slug", "approve"],
+        },
+    },
+    {
+        "name": "circleci_get_job_status",
+        "description": "Get CircleCI job status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_number": {"type": "string", "description": "Job number"},
+                "project_slug": {"type": "string", "description": "Project slug"},
+            },
+            "required": ["job_number", "project_slug"],
+        },
+    },
 ]
 
 
-# OpenAI-compatible function format
+# OpenAI-compatible function format for NAVI tools
+# Converts Anthropic's input_schema format to OpenAI's parameters format
+# Note: OpenAI has a maximum limit of 128 tools per API call
+# NAVI_TOOLS has 191 tools, so we limit to the first 128 which includes all core tools
+# (read_file, write_file, edit_file, run_command, search_files, etc.) and key integrations
+# Also sanitizes tool names: OpenAI only allows ^[a-zA-Z0-9_-]+$ (no dots)
+def _sanitize_openai_function_name(name: str) -> str:
+    """Convert tool name to OpenAI-compatible format (replace dots with underscores)."""
+    return name.replace(".", "_")
+
+
 NAVI_FUNCTIONS_OPENAI = [
     {
         "type": "function",
         "function": {
-            "name": tool["name"],
+            "name": _sanitize_openai_function_name(tool["name"]),
             "description": tool["description"],
             "parameters": tool["input_schema"],
         },
     }
-    for tool in NAVI_TOOLS
+    for tool in NAVI_TOOLS[:128]  # OpenAI API limit is 128 tools max
 ]
 
-
-STREAMING_SYSTEM_PROMPT = """You are NAVI, an INTELLIGENT and AUTONOMOUS AI coding assistant.
-
-🌍 **UNIVERSAL CAPABILITY**: You work with ANY programming language, framework, or technology.
-- Python, JavaScript, TypeScript, Go, Rust, Java, C#, Ruby, PHP, Swift, Kotlin
-- React, Vue, Angular, Svelte, Next.js, Django, FastAPI, Spring Boot, Rails, Laravel
-- Docker, Kubernetes, Terraform, AWS, GCP, Azure, GitHub Actions
-- SQL, NoSQL, Redis, Elasticsearch, GraphQL, REST APIs
-
-## Response Quality Standard (CRITICAL)
-
-Your responses MUST match GitHub Copilot's quality. Every response must be:
-
-1. **COMPREHENSIVE**: Cover ALL aspects, not just the surface
-2. **WELL-STRUCTURED**: Use markdown headers (##), bullet points, code blocks
-3. **SPECIFIC**: Reference actual file paths, function names, line numbers
-4. **DETAILED**: Explain the WHY, not just the WHAT
-5. **ACTIONABLE**: Provide concrete next steps
-
-### Response Structure Template
-
-1. **Direct Answer**: Start with a clear, direct answer
-2. **Details**: Provide supporting details with structure
-3. **Code References**: Include relevant file paths and code snippets
-4. **Context**: Explain how things connect and why they matter
-5. **Next Steps**: End with proactive offers to help
-
-### NUMBERED LIST FORMATTING (CRITICAL)
-
-When creating numbered lists, plans, or step-by-step guides:
-- Use CONTINUOUS numbering throughout: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10...
-- NEVER skip numbers or restart numbering mid-response
-- If you have sections like "Implementation Steps" then "Next Steps", continue the numbering (don't restart at 1 or jump to 9)
-- For sub-steps, use decimal notation: 1.1, 1.2, 2.1, 2.2
-- **WRONG**: "1. First... 2. Second... Next Steps: 9. Do this..."
-- **CORRECT**: "1. First... 2. Second... 3. Third... 4. Fourth..."
-
-### BAD vs GOOD Responses
-
-**BAD**: "This file handles routing."
-
-**GOOD**:
-"## llmRouter.ts - Intelligent Model Selection
-
-### Purpose
-This file implements smart LLM routing that automatically selects the optimal model based on task type...
-
-### Key Features
-- **Task Detection**: Uses regex patterns to classify 13 task types
-- **Model Recommendations**: Maps each task type to the best-suited model
-- **Fallback Handling**: Gracefully degrades to default model if detection fails
-
-### How It Works
-1. `detectTaskType()` analyzes the user message
-2. `getRecommendedModel()` returns the optimal model based on task
-3. The response streams back with appropriate model selected
-
-### Key Code Sections
-- Lines 45-89: Task type detection logic
-- Lines 120-150: Model recommendation mapping
-
-Would you like me to explain any specific function in more detail?"
-
-## Your Communication Style
-
-Talk to the user like a knowledgeable colleague who explains things thoroughly:
-- "Let me analyze the package.json to understand your project dependencies..."
-- "I can see this is a **Next.js 14** project using the **App Router**. The key configuration..."
-- "This file implements **[specific pattern]** which handles **[specific responsibility]**..."
-
-## How to Work
-
-1. **Understand First**: Read relevant files before responding
-2. **Explain Thoroughly**: Give comprehensive explanations with context
-3. **Be Specific**: Reference exact file paths, line numbers, function names
-4. **Structure Well**: Use headers, bullets, and code blocks for readability
-5. **Stay Helpful**: Always offer to dive deeper or take action
-
-## When Using Project Context (CRITICAL)
-
-If you see "=== PROJECT:" or "=== SOURCE FILE CONTENTS" in the context:
-- USE that information for accurate, project-specific responses
-- **USE THE ACTUAL PROJECT NAME** from package.json or README (NOT generic terms like "this project")
-- Reference actual scripts, dependencies, and configurations found
-- Mention specific version numbers and framework patterns
-- **Extract the purpose from README.md** - use the actual description, not assumptions
-- **List specific components by name** from the actual file structure
-- DO NOT give generic answers when you have specific context
-- If README mentions "Navra Labs", "Acme Corp", etc. - USE THAT NAME
-
-## DO NOT START RESPONSES WITH PROJECT DESCRIPTIONS (CRITICAL)
-
-NEVER start your response with phrases like:
-- "This is a Next.js/React/Python project..."
-- "This is a **Framework** with dependencies..."
-- "This project uses..."
-
-The user already knows what their project is. Start with the ACTUAL ANSWER to their question.
-
-**BAD**: "This is a **Next.js** with next, react, react-dom project. ## Project Overview..."
-**GOOD**: "## Project Overview: Navra Labs Marketing Website\n\n### Purpose\nThis marketing website showcases..."
-
-## For Questions About Code/Project
-
-When someone asks "what is this?", "explain...", "what does this do?":
-1. Provide a **clear summary** (2-3 sentences)
-2. List **key features/responsibilities** (bullet points)
-3. Explain **how it works** (numbered steps if complex)
-4. Reference **specific code locations** (file:line)
-5. Offer **related information** or next steps
-
-## For Action Requests (CRITICAL - BE AUTONOMOUS)
-
-When someone asks "run...", "start...", "create...", "fix...", "add...", "install...":
-
-**YOU MUST USE TOOLS TO ACTUALLY DO IT. DO NOT JUST EXPLAIN.**
-
-**IMPORTANT: Always provide narrative context around tool usage:**
-1. **BEFORE each tool call**: Explain WHAT you're about to do and WHY (1-2 sentences)
-   - Example: "Let me check if the server is running by testing the port..."
-   - Example: "I notice the curl command is timing out. Let me kill the process and retry..."
-2. **Execute the tool** using the appropriate tool (run_command, write_file, etc.)
-3. **AFTER each tool result**: Analyze and explain what happened (1-2 sentences)
-   - Example: "The command timed out after 120 seconds, which means the server isn't responding."
-   - Example: "The file was created successfully. Now let me verify the build..."
-4. If it fails, explain the error and what you'll try next
-
-### Examples of CORRECT behavior:
-
-User: "run the project" or "start the dev server"
-✅ CORRECT: Use `run_command` with `npm run dev` and report the result
-❌ WRONG: Explain "You can run `npm run dev` to start..."
-
-User: "install dependencies"
-✅ CORRECT: Use `run_command` with `npm install` and wait for completion
-❌ WRONG: Tell them "Run `npm install` in your terminal"
-
-User: "run the tests"
-✅ CORRECT: Use `run_command` with `npm test` and show results
-❌ WRONG: Explain how to run tests
-
-### Action Keywords That Require Tool Use:
-- "start server", "run dev", "start the project" → Use `start_server` (NOT run_command!)
-- "install", "add package", "run tests", "build" → Use `run_command` with npm/pip/etc
-- "create", "make", "generate" → Use `write_file`
-- "fix", "update", "change" → Use `edit_file` or `write_file`
-- "delete", "remove" → Use appropriate tool
-- "check if running", "verify server" → Use `check_endpoint`
-- "stop server", "kill server" → Use `stop_server`
-
-### CRITICAL: Use start_server for Dev Servers
-**NEVER use `run_command` for starting dev servers.** They run forever and will timeout!
-
-✅ CORRECT: `start_server` with command="npm run dev", port=3000
-❌ WRONG: `run_command` with command="npm run dev" (will timeout after 2 min!)
-
-The `start_server` tool:
-1. Kills any existing process on the port
-2. Removes lock files (e.g., .next/dev/lock)
-3. Starts the server in background
-4. Automatically verifies the server is responding
-5. Returns success only if the server is actually running and responding
-
-## PERSISTENCE - CRITICAL RULES (NEVER VIOLATE)
-
-When a task fails, you MUST try alternative approaches. You have 10+ tool calls available - USE THEM ALL.
-
-### NEVER DO:
-- Output a summary of what went wrong (that's giving up)
-- List manual steps for the user to try
-- Say "I was unable to...", "I couldn't...", "I encountered several issues..."
-- Say "you can try...", "you might want to...", "I suggest..."
-- Say "manual intervention needed" or "please check..."
-- Stop before the task is ACTUALLY COMPLETE (server running, tests passing, etc.)
-- Give up after one failure or even multiple failures
-
-### ALWAYS DO:
-- Try at least 5-10 DIFFERENT approaches before considering stopping
-- Each attempt must be GENUINELY DIFFERENT from previous attempts
-- Track what you've tried and explicitly avoid repeating it
-- Analyze errors and adapt your strategy based on what you learn
-- Keep going until you succeed or have truly exhausted all options
-
-## CRITICAL: Shell State Does NOT Persist Between Commands
-
-**IMPORTANT**: Each `run_command` starts a NEW shell. Environment variables, nvm sessions, virtualenvs do NOT persist.
-
-### WRONG (environment is lost):
-```
-run_command: source ~/.nvm/nvm.sh && nvm use 18   # Sets up nvm
-run_command: npm install                          # FAILS - nvm not sourced, npm not found!
-run_command: npm run dev                          # FAILS - same reason
-```
-
-### CORRECT (include setup in EVERY command):
-```
-run_command: export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use 18 && npm install
-run_command: export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use 18 && npm run dev
-```
-
-### Key Rules:
-1. **Include nvm/pyenv/etc sourcing in EVERY command that needs it**
-2. **Once you find a working Node version, STICK WITH IT** - don't keep switching versions
-3. **Chain all related commands together**: `source nvm && nvm use 18 && npm install && npm run dev`
-4. If a specific version isn't installed, install it ONCE then use it: `nvm install 18 && nvm use 18 && npm run dev`
-
-## Specific Fallback Strategies
-
-### For Node.js/npm Setup Failures:
-If nvm fails or node isn't found, try these IN ORDER (don't skip any):
-1. Check if node already exists: `which node && node --version && npm --version`
-2. Try full nvm with default: `export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use default && npm install && npm run dev`
-3. Try nvm with Node 18 (LTS): `export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm install 18 && nvm use 18 && npm install && npm run dev`
-4. Try nvm with Node 20 (LTS): `export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm install 20 && nvm use 20 && npm install && npm run dev`
-5. Try homebrew node: `/opt/homebrew/bin/npm install && /opt/homebrew/bin/npm run dev`
-6. Try /usr/local node: `/usr/local/bin/npm install && /usr/local/bin/npm run dev`
-7. Install via brew: `brew install node && npm install && npm run dev`
-8. Try volta: `volta install node && npm install && npm run dev`
-9. Try fnm: `eval "$(fnm env)" && fnm use && npm install && npm run dev`
-
-**IMPORTANT**: Once ONE of these works, use that SAME approach for all subsequent commands. Don't keep switching!
-
-### For Port-in-Use Errors:
-The `start_server` tool automatically handles this! It kills existing processes on the port before starting.
-If you still need manual control:
-1. Use `stop_server` tool with the port number
-2. Or try different port: `start_server` with command="PORT=3001 npm run dev", port=3001
-3. Check what's using it: `run_command` with `lsof -i :<port>`
-
-### For Dependency Errors:
-1. Install first: `npm install && npm run dev`
-2. Clear and reinstall: `rm -rf node_modules && npm install && npm run dev`
-3. Clear cache: `npm cache clean --force && rm -rf node_modules package-lock.json && npm install`
-4. Try yarn: `yarn install && yarn dev`
-5. Try pnpm: `pnpm install && pnpm dev`
-
-### For Python/pip Setup Failures:
-1. Check python: `which python3 && python3 --version`
-2. Create venv: `python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt`
-3. Try pip3: `pip3 install -r requirements.txt`
-4. Use poetry: `poetry install && poetry run python ...`
-
-## Environment & Project Setup Tasks
-
-For tasks like "start the project", "restart", "run dev server":
-1. First check package.json for available scripts
-2. Try the most common approach first
-3. When it fails, TRY THE NEXT ALTERNATIVE - do NOT repeat the same command
-4. KEEP TRYING different approaches until the server is actually running
-5. Verify success by checking output or hitting the endpoint
-
-## Important Guidelines
-
-- **ACTION WITH NARRATIVE**: When user wants something done, DO IT with tools AND explain what you're doing
-- **BEFORE each tool**: Brief explanation of intent (e.g., "Let me check...", "I'll create...", "Since that failed, let me try a different approach...")
-- **AFTER each tool result**: Explain what happened and what it means
-- If a command fails, analyze stderr, explain the error, and TRY A DIFFERENT APPROACH immediately
-- Only skip narrative for pure information requests ("what is...", "explain...")
-- Complete tasks end-to-end without asking permission
-- **NEVER mark a task complete until it's ACTUALLY done** - Running commands is not "complete", the actual result must be achieved
-
-Example of WRONG behavior:
-User: "start the project"
-❌ "I tried npm run dev but it failed. I encountered several issues with nvm. You can try: 1) Check nvm installation..."
-❌ Using `run_command` for `npm run dev` (will timeout!)
-
-Example of CORRECT behavior:
-User: "start the project"
-✅ "Let me start the development server. [start_server: command='npm run dev', port=3000] ... Server verified and responding at http://localhost:3000!"
-
-If start_server fails:
-✅ "Server didn't start. Let me check the logs... [The log shows missing dependencies]. Installing dependencies first... [run_command: npm install] Done. Now starting server... [start_server: command='npm run dev', port=3000] ... Server verified and responding!"
-
-## VERIFICATION BEFORE COMPLETION (CRITICAL)
-
-**ALWAYS verify your work BEFORE claiming success or asking the user to verify.**
-
-### Rules:
-1. **Server tasks**: Use `start_server` tool - it automatically verifies the server responds!
-   - ✅ CORRECT: `start_server` with port=3000 - it verifies automatically
-   - ✅ ALSO OK: After starting, use `check_endpoint` to verify: `check_endpoint` url="http://localhost:3000"
-   - ❌ WRONG: Start server, assume it worked, ask user to "check if it's working"
-
-2. **File changes**: ALWAYS re-read modified files or run tests to verify changes worked
-   - ✅ CORRECT: Edit file, run `npm run build` or `npm test` to verify, report result
-   - ❌ WRONG: Edit file, ask user to "try building and let me know if it works"
-
-3. **NEVER ask user to verify what you can verify yourself**:
-   - ❌ "Please check if the server is running"
-   - ❌ "Let me know if this fixed the issue"
-   - ❌ "Try building and see if it works"
-   - ✅ "Let me verify with check_endpoint... Confirmed working!"
-   - ✅ "Server started but check_endpoint failed. Let me investigate..."
-
-### Verification Tools:
-- `start_server`: Starts AND verifies server is responding (use for dev servers)
-- `check_endpoint`: Check if any URL is responding (use to verify APIs, services)
-- `run_command`: For tests/builds, check exit code and output for errors
-
-### NEVER make false claims about continuing work:
-**Your response ENDS when you stop responding. You do NOT continue working in the background.**
-
-NEVER say:
-- ❌ "I will continue attempting to resolve this..."
-- ❌ "In the meantime, I will keep working on..."
-- ❌ "I'll continue investigating..."
-- ❌ "Let me know and I'll continue..."
-
-These are LIES because you stop working when the response ends. Instead:
-- ✅ Be honest: "I was unable to resolve this. The issue appears to be X. Would you like me to try Y approach?"
-- ✅ Summarize what you tried and what failed
-- ✅ Suggest specific next steps the USER can take if you truly cannot solve it
-
-## DEPLOYMENT CAPABILITIES
-
-You can deploy projects to ANY cloud platform using their official CLIs.
-
-### Deployment Workflow
-1. **Detect Project Type**: Read package.json/requirements.txt/Dockerfile to determine type
-2. **Check CLI**: Verify if platform CLI is installed (`which vercel`)
-3. **Install CLI if needed**: Run the install command
-4. **Login**: Run login command - tell user "Please complete authentication in your browser. I'll wait..."
-5. **Deploy**: Run deploy command (may take 5-30 minutes)
-6. **Verify**: Check deployment status and report URL
-
-### Platform CLI Reference
-
-| Platform | Install | Login | Deploy | Verify |
-|----------|---------|-------|--------|--------|
-| Vercel | `npm i -g vercel` | `vercel login` | `vercel --prod` | `vercel ls` |
-| Railway | `npm i -g @railway/cli` | `railway login` | `railway up` | `railway status` |
-| Fly.io | `curl -L https://fly.io/install.sh \| sh` | `fly auth login` | `fly deploy` | `fly status` |
-| Netlify | `npm i -g netlify-cli` | `netlify login` | `netlify deploy --prod` | `netlify status` |
-| Render | `pip install render-cli` | `render login` | `render deploy` | `render services` |
-| Heroku | `curl https://cli-assets.heroku.com/install.sh \| sh` | `heroku login` | `git push heroku main` | `heroku ps` |
-| Cloudflare | `npm i -g wrangler` | `wrangler login` | `wrangler publish` | `wrangler whoami` |
-| AWS | Download from aws.amazon.com/cli | `aws configure` | `sam deploy` / `cdk deploy` | `aws sts get-caller-identity` |
-| GCP | `curl https://sdk.cloud.google.com \| bash` | `gcloud auth login` | `gcloud run deploy` | `gcloud auth list` |
-| Azure | `curl -sL https://aka.ms/InstallAzureCLIDeb \| sudo bash` | `az login` | `az webapp up` | `az account show` |
-
-### Project Type → Platform Recommendations
-- **Next.js/React**: Vercel (optimal), Netlify, Railway
-- **Python/FastAPI/Django**: Railway, Render, Fly.io, Heroku
-- **Node.js API**: Railway, Render, Fly.io, Heroku
-- **Static Site**: Netlify, Vercel, Cloudflare Pages
-- **Docker/Container**: Fly.io, Railway, Render, AWS ECS
-- **Full-Stack with DB**: Railway (includes Postgres), Render, Fly.io
-
-### Authentication Flow
-When a CLI requires OAuth login:
-1. Run the login command (e.g., `vercel login`)
-2. Tell user: "Please complete authentication in your browser. The CLI will open a browser window."
-3. The command will complete automatically once browser auth finishes
-4. Verify authentication worked with a status command
-
-### Deployment Commands are Long-Running
-- Deployments can take 5-30 minutes - this is normal
-- After starting deployment, report progress
-- Poll status periodically if needed
-- Report final deployment URL when complete
-
-### Example Deployment Workflow
-User: "Deploy this to Vercel"
-✅ "Let me deploy to Vercel. First, checking if CLI is installed... [run_command: which vercel] Found at /usr/local/bin/vercel. Checking auth... [run_command: vercel whoami] Authenticated as user@example.com. Deploying to production... [run_command: vercel --prod] Deployment complete! Your app is live at: https://my-app.vercel.app"
-
-Remember: You are an AUTONOMOUS agent that COMMUNICATES clearly AND PERSISTS until success. Use tools to take action, explain what you're doing, and NEVER give up until the task is truly complete."""
-
-
-class StreamingToolExecutor:
-    """Executes tools and returns results. Tracks files accessed for summary."""
-
-    def __init__(self, workspace_path: str):
-        self.workspace_path = workspace_path
-        # Track files for task summary
-        self.files_read: set = set()
-        self.files_modified: set = set()
-        self.files_created: set = set()
-        self.commands_run: list = []
-        self.failed_commands: list = []  # Track failed commands to prevent repetition
-
-    def get_summary(self) -> dict:
-        """Get summary of all operations performed."""
-        return {
-            "files_read": len(self.files_read),
-            "files_modified": len(self.files_modified),
-            "files_created": len(self.files_created),
-            "commands_run": len(self.commands_run),
-            "files_read_list": list(self.files_read),
-            "files_modified_list": list(self.files_modified),
-            "files_created_list": list(self.files_created),
-            "failed_commands": len(self.failed_commands),
-        }
-
-    def get_failed_commands_context(self) -> str:
-        """Get context about failed commands to inject into LLM messages."""
-        if not self.failed_commands:
-            return ""
-
-        context = "\n\n**FAILED COMMANDS (DO NOT REPEAT THESE):**\n"
-        for fc in self.failed_commands[-5:]:  # Last 5 failures
-            cmd = fc.get("command", "Unknown")[:80]
-            error = fc.get("error", "Unknown error")[:100]
-            context += f"- `{cmd}`: {error}\n"
-        context += "\nTry a COMPLETELY DIFFERENT approach.\n"
-        return context
-
-    async def execute(
-        self, tool_name: str, arguments: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Execute a tool and return the result."""
-        import os
-        import subprocess
-        import glob as glob_module
-
-        try:
-            if tool_name == "read_file":
-                path = os.path.join(self.workspace_path, arguments["path"])
-                if not os.path.exists(path):
-                    return {
-                        "success": False,
-                        "error": f"File not found: {arguments['path']}",
-                    }
-
-                with open(path, "r") as f:
-                    lines = f.readlines()
-
-                start = arguments.get("start_line", 1) - 1
-                end = arguments.get("end_line", len(lines))
-                content = "".join(lines[start:end])
-
-                # Track file read
-                self.files_read.add(arguments["path"])
-
-                return {
-                    "success": True,
-                    "content": content,
-                    "total_lines": len(lines),
-                    "path": arguments["path"],
-                }
-
-            elif tool_name == "write_file":
-                path = os.path.join(self.workspace_path, arguments["path"])
-                file_exists = os.path.exists(path)
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-
-                with open(path, "w") as f:
-                    f.write(arguments["content"])
-
-                # Track file created/modified
-                if file_exists:
-                    self.files_modified.add(arguments["path"])
-                else:
-                    self.files_created.add(arguments["path"])
-
-                return {
-                    "success": True,
-                    "path": arguments["path"],
-                    "bytes_written": len(arguments["content"]),
-                }
-
-            elif tool_name == "edit_file":
-                path = os.path.join(self.workspace_path, arguments["path"])
-                if not os.path.exists(path):
-                    return {
-                        "success": False,
-                        "error": f"File not found: {arguments['path']}",
-                    }
-
-                with open(path, "r") as f:
-                    content = f.read()
-
-                if arguments["old_text"] not in content:
-                    return {
-                        "success": False,
-                        "error": "Could not find the text to replace",
-                        "path": arguments["path"],
-                    }
-
-                new_content = content.replace(
-                    arguments["old_text"], arguments["new_text"], 1
-                )
-
-                with open(path, "w") as f:
-                    f.write(new_content)
-
-                # Track file modified
-                self.files_modified.add(arguments["path"])
-
-                return {
-                    "success": True,
-                    "path": arguments["path"],
-                    "changes_made": True,
-                }
-
-            elif tool_name == "run_command":
-                cwd = self.workspace_path
-                if arguments.get("cwd"):
-                    cwd = os.path.join(self.workspace_path, arguments["cwd"])
-
-                command = arguments["command"]
-
-                # Extended timeout for deployment commands (30 minutes)
-                deployment_indicators = [
-                    "vercel",
-                    "railway",
-                    "fly deploy",
-                    "fly launch",
-                    "netlify deploy",
-                    "render deploy",
-                    "heroku",
-                    "gcloud run deploy",
-                    "gcloud app deploy",
-                    "aws deploy",
-                    "sam deploy",
-                    "cdk deploy",
-                    "az webapp",
-                    "docker push",
-                    "docker build",
-                    "wrangler publish",
-                    "wrangler deploy",
-                ]
-                is_deployment = any(
-                    ind in command.lower() for ind in deployment_indicators
-                )
-                timeout = (
-                    1800 if is_deployment else 120
-                )  # 30 min for deployments, 2 min default
-
-                result = subprocess.run(
-                    command,
-                    shell=True,
-                    cwd=cwd,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                )
-
-                # Track command run
-                self.commands_run.append(arguments["command"])
-
-                # Track failed commands for context injection
-                if result.returncode != 0:
-                    error_msg = (
-                        result.stderr[:200]
-                        if result.stderr
-                        else result.stdout[:200]
-                        if result.stdout
-                        else "Command failed"
-                    )
-                    self.failed_commands.append(
-                        {
-                            "command": arguments["command"],
-                            "error": error_msg,
-                            "exit_code": result.returncode,
-                        }
-                    )
-
-                return {
-                    "success": result.returncode == 0,
-                    "exit_code": result.returncode,
-                    "stdout": result.stdout[:2000] if result.stdout else "",
-                    "stderr": result.stderr[:2000] if result.stderr else "",
-                    "command": arguments["command"],
-                }
-
-            elif tool_name == "search_files":
-                pattern = arguments["pattern"]
-                search_type = arguments["search_type"]
-                results = []
-
-                if search_type == "filename":
-                    matches = glob_module.glob(
-                        os.path.join(self.workspace_path, pattern), recursive=True
-                    )
-                    results = [
-                        os.path.relpath(m, self.workspace_path) for m in matches[:20]
-                    ]
-                else:
-                    # Content search using grep
-                    try:
-                        result = subprocess.run(
-                            ["grep", "-r", "-l", pattern, "."],
-                            cwd=self.workspace_path,
-                            capture_output=True,
-                            text=True,
-                            timeout=30,
-                        )
-                        if result.stdout:
-                            results = result.stdout.strip().split("\n")[:20]
-                    except Exception:
-                        pass
-
-                return {"success": True, "matches": results, "count": len(results)}
-
-            elif tool_name == "list_directory":
-                path = os.path.join(self.workspace_path, arguments.get("path", ""))
-                if not os.path.exists(path):
-                    return {
-                        "success": False,
-                        "error": f"Directory not found: {arguments.get('path', '.')}",
-                    }
-
-                entries = []
-                for entry in os.listdir(path)[:50]:
-                    full_path = os.path.join(path, entry)
-                    entries.append(
-                        {
-                            "name": entry,
-                            "type": "directory" if os.path.isdir(full_path) else "file",
-                        }
-                    )
-
-                return {
-                    "success": True,
-                    "entries": entries,
-                    "path": arguments.get("path", "."),
-                }
-
-            elif tool_name == "start_server":
-                import time
-                import urllib.request
-                import urllib.error
-
-                command = arguments["command"]
-                port = arguments["port"]
-                health_path = arguments.get("health_path", "/")
-                startup_time = arguments.get("startup_time", 10)
-
-                # First, kill any existing process on the port
-                try:
-                    subprocess.run(
-                        f"lsof -ti :{port} | xargs kill -9 2>/dev/null || true",
-                        shell=True,
-                        capture_output=True,
-                        timeout=10,
-                    )
-                except Exception:
-                    pass
-
-                # Also remove any lock files for Next.js
-                try:
-                    lock_path = os.path.join(
-                        self.workspace_path, ".next", "dev", "lock"
-                    )
-                    if os.path.exists(lock_path):
-                        os.remove(lock_path)
-                except Exception:
-                    pass
-
-                # Start the server in background using nohup
-                # Redirect output to a log file so we can check it
-                log_file = os.path.join(self.workspace_path, ".navi-server.log")
-                bg_command = (
-                    f"cd {self.workspace_path} && nohup {command} > {log_file} 2>&1 &"
-                )
-
-                try:
-                    subprocess.run(bg_command, shell=True, timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass  # Expected - we're running in background
-
-                # Wait for server to start, checking periodically
-                url = f"http://localhost:{port}{health_path}"
-                server_started = False
-                last_error = ""
-
-                for i in range(startup_time * 2):  # Check every 0.5 seconds
-                    time.sleep(0.5)
-                    try:
-                        req = urllib.request.Request(url, method="HEAD")
-                        with urllib.request.urlopen(req, timeout=2) as response:
-                            if response.status < 500:
-                                server_started = True
-                                break
-                    except urllib.error.HTTPError as e:
-                        # Even a 404 means server is running
-                        if e.code < 500:
-                            server_started = True
-                            break
-                        last_error = f"HTTP {e.code}"
-                    except urllib.error.URLError as e:
-                        last_error = str(e.reason)
-                    except Exception as e:
-                        last_error = str(e)
-
-                # Get any log output
-                log_content = ""
-                try:
-                    with open(log_file, "r") as f:
-                        log_content = f.read()[-1000:]  # Last 1000 chars
-                except Exception:
-                    pass
-
-                if server_started:
-                    return {
-                        "success": True,
-                        "message": f"Server started successfully on port {port}",
-                        "url": url,
-                        "verified": True,
-                        "log_preview": log_content[:500] if log_content else None,
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"Server did not respond after {startup_time} seconds",
-                        "last_error": last_error,
-                        "url": url,
-                        "log_preview": (
-                            log_content if log_content else "No log output captured"
-                        ),
-                        "suggestion": "Check the log output for errors. Common issues: port already in use, missing dependencies, build errors.",
-                    }
-
-            elif tool_name == "check_endpoint":
-                import urllib.request
-                import urllib.error
-
-                url = arguments["url"]
-                method = arguments.get("method", "GET")
-                expected_status = arguments.get("expected_status", 200)
-
-                try:
-                    req = urllib.request.Request(url, method=method)
-                    with urllib.request.urlopen(req, timeout=10) as response:
-                        body_preview = response.read(500).decode(
-                            "utf-8", errors="ignore"
-                        )
-                        return {
-                            "success": response.status == expected_status,
-                            "status": response.status,
-                            "responding": True,
-                            "body_preview": body_preview,
-                            "headers": dict(response.headers),
-                        }
-                except urllib.error.HTTPError as e:
-                    return {
-                        "success": e.code == expected_status,
-                        "status": e.code,
-                        "responding": True,
-                        "error": f"HTTP {e.code}: {e.reason}",
-                    }
-                except urllib.error.URLError as e:
-                    return {
-                        "success": False,
-                        "responding": False,
-                        "error": f"Connection failed: {e.reason}",
-                    }
-                except Exception as e:
-                    return {"success": False, "responding": False, "error": str(e)}
-
-            elif tool_name == "stop_server":
-                port = arguments["port"]
-
-                try:
-                    # Find and kill processes on the port
-                    result = subprocess.run(
-                        f"lsof -ti :{port} | xargs kill -9 2>/dev/null",
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                    )
-
-                    # Verify the port is free
-                    check = subprocess.run(
-                        f"lsof -ti :{port}",
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                    )
-
-                    port_is_free = not check.stdout.strip()
-
-                    return {
-                        "success": port_is_free,
-                        "message": (
-                            f"Port {port} is now free"
-                            if port_is_free
-                            else f"Processes still running on port {port}"
-                        ),
-                        "port": port,
-                    }
-                except Exception as e:
-                    return {"success": False, "error": str(e)}
-
-            else:
-                return {"success": False, "error": f"Unknown tool: {tool_name}"}
-
-        except Exception as e:
-            logger.error(f"Tool execution error: {tool_name} - {e}")
-            return {"success": False, "error": str(e)}
-
-
-async def stream_with_tools_anthropic(
-    message: str,
-    workspace_path: str,
-    api_key: str,
-    model: str = "claude-sonnet-4-20250514",
-    context: Optional[Dict[str, Any]] = None,
-    conversation_history: Optional[List[Dict[str, str]]] = None,
-) -> AsyncGenerator[StreamEvent, None]:
-    """
-    Stream a response from Anthropic Claude with tool use.
-
-    Yields StreamEvents for:
-    - TEXT: narrative text chunks
-    - TOOL_CALL: when the model wants to call a tool
-    - TOOL_RESULT: result of tool execution
-    - DONE: when complete
-    """
-    import aiohttp
-
-    executor = StreamingToolExecutor(workspace_path)
-    messages: List[Dict[str, Any]] = []
-
-    # CRITICAL: Include conversation history for context-aware responses
-    # This allows NAVI to understand follow-up questions like "yes, can you check that?"
-    if conversation_history:
-        for hist_msg in conversation_history:
-            # Support both "role" and "type" fields (frontend sends "type")
-            role = hist_msg.get("role") or hist_msg.get("type", "user")
-            content = hist_msg.get("content", "")
-            if role in ["user", "assistant"] and content:
-                messages.append({"role": role, "content": content})
-        logger.info(
-            f"[Streaming Agent] Added {len(conversation_history)} messages from conversation history"
-        )
-
-    # Build initial user message with rich context from project analysis
-    user_content = message
-    if context:
-        context_parts = []
-
-        # Project identification
-        if context.get("project_type"):
-            framework = context.get("framework", "")
-            if framework:
-                context_parts.append(
-                    f"=== PROJECT: {framework} ({context['project_type']}) ==="
-                )
-            else:
-                context_parts.append(f"=== PROJECT TYPE: {context['project_type']} ===")
-
-        if context.get("current_file"):
-            context_parts.append(f"Current file: {context['current_file']}")
-
-        # Include analyzed files list
-        if context.get("files_analyzed"):
-            files_list = context["files_analyzed"][:20]  # Max 20 files
-            context_parts.append(
-                f"\n=== FILES IN PROJECT ({len(files_list)} analyzed) ==="
-            )
-            context_parts.append("\n".join(f"- {f}" for f in files_list))
-
-        # CRITICAL: Include actual file contents for detailed analysis
-        if context.get("source_files_preview"):
-            context_parts.append(
-                "\n=== SOURCE FILE CONTENTS (for detailed analysis) ==="
-            )
-            context_parts.append(context["source_files_preview"])
-
-        if context_parts:
-            user_content = (
-                "\n".join(context_parts) + "\n\n=== USER REQUEST ===\n" + message
-            )
-
-    messages.append({"role": "user", "content": user_content})
-
-    # Track give-up retry count to prevent infinite loops
-    give_up_retry_count = 0
-    max_give_up_retries = 3
-    accumulated_text = ""  # Track full response text for give-up detection
-
-    # Execution plan tracking for visual step-by-step UI
-    current_plan: Optional[Dict[str, Any]] = None
-    plan_emitted = False
-    current_step_index = 0
-
-    async with aiohttp.ClientSession() as session:
-        while True:  # Loop for tool use continuation
-            # Enable extended thinking for supported models (Claude 3.5 Sonnet, Claude 3 Opus)
-            # Extended thinking requires higher max_tokens (budget_tokens + response tokens)
-            use_extended_thinking = "claude-3" in model.lower() and (
-                "sonnet" in model.lower() or "opus" in model.lower()
-            )
-
-            payload = {
-                "model": model,
-                "max_tokens": 16000 if use_extended_thinking else 4096,
-                "system": STREAMING_SYSTEM_PROMPT,
-                "messages": messages,
-                "tools": NAVI_TOOLS,
-                "stream": True,
-            }
-
-            # Add extended thinking configuration if supported
-            if use_extended_thinking:
-                payload["thinking"] = {"type": "enabled", "budget_tokens": 10000}
-
-            headers = {
-                "x-api-key": api_key,
-                "content-type": "application/json",
-                "anthropic-version": "2023-06-01",
-                "anthropic-beta": "interleaved-thinking-2025-05-14",
-            }
-
-            async with session.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=120),
-            ) as response:
-                if response.status != 200:
-                    error = await response.text()
-                    logger.error(f"Anthropic API error: {error}")
-                    yield StreamEvent(StreamEventType.DONE, f"Error: {error}")
-                    return
-
-                text_buffer = ""
-                thinking_buffer = ""  # Buffer for extended thinking content
-                tool_calls = []
-                current_tool_input = ""
-                current_tool_id = None
-                current_tool_name = None
-                in_tool_input = False
-                in_thinking_block = False  # Track if we're in a thinking block
-                stop_reason = None
-
-                async for line in response.content:
-                    line = line.decode("utf-8").strip()
-                    if not line or not line.startswith("data: "):
-                        continue
-
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-
-                    try:
-                        data = json.loads(data_str)
-                        event_type = data.get("type", "")
-
-                        if event_type == "content_block_start":
-                            block = data.get("content_block", {})
-                            block_type = block.get("type")
-
-                            if block_type == "thinking":
-                                # Starting a thinking block
-                                in_thinking_block = True
-                                # Flush any pending text before thinking
-                                if text_buffer:
-                                    yield StreamEvent(StreamEventType.TEXT, text_buffer)
-                                    text_buffer = ""
-
-                            elif block_type == "tool_use":
-                                # Starting a tool call
-                                current_tool_id = block.get("id")
-                                current_tool_name = block.get("name")
-                                current_tool_input = ""
-                                in_tool_input = True
-                                in_thinking_block = False
-
-                                # Flush any pending text and thinking
-                                if text_buffer:
-                                    yield StreamEvent(StreamEventType.TEXT, text_buffer)
-                                    text_buffer = ""
-                                if thinking_buffer:
-                                    yield StreamEvent(
-                                        StreamEventType.THINKING, thinking_buffer
-                                    )
-                                    thinking_buffer = ""
-
-                            elif block_type == "text":
-                                # Starting a text block - flush thinking if pending
-                                in_thinking_block = False
-                                if thinking_buffer:
-                                    yield StreamEvent(
-                                        StreamEventType.THINKING, thinking_buffer
-                                    )
-                                    thinking_buffer = ""
-
-                        elif event_type == "content_block_delta":
-                            delta = data.get("delta", {})
-                            delta_type = delta.get("type")
-
-                            if delta_type == "thinking_delta":
-                                # Extended thinking content
-                                thinking_text = delta.get("thinking", "")
-                                if thinking_text:
-                                    thinking_buffer += thinking_text
-                                    # Yield thinking in chunks for smoother streaming
-                                    if len(
-                                        thinking_buffer
-                                    ) >= 100 or thinking_text.endswith(
-                                        (".", "!", "?", "\n")
-                                    ):
-                                        yield StreamEvent(
-                                            StreamEventType.THINKING, thinking_buffer
-                                        )
-                                        thinking_buffer = ""
-
-                            elif delta_type == "text_delta":
-                                text = delta.get("text", "")
-                                if text:
-                                    text_buffer += text
-                                    accumulated_text += text  # Track for plan detection
-                                    # Yield text in chunks for smoother streaming
-                                    if len(text_buffer) >= 20 or text.endswith(
-                                        (".", "!", "?", "\n")
-                                    ):
-                                        yield StreamEvent(
-                                            StreamEventType.TEXT, text_buffer
-                                        )
-                                        text_buffer = ""
-
-                                        # Check for execution plan in accumulated text (only once)
-                                        if (
-                                            not plan_emitted
-                                            and len(accumulated_text) > 50
-                                        ):
-                                            detected_plan = parse_execution_plan(
-                                                accumulated_text
-                                            )
-                                            if detected_plan:
-                                                current_plan = detected_plan
-                                                plan_emitted = True
-                                                current_step_index = 0
-                                                yield StreamEvent(
-                                                    StreamEventType.PLAN_START,
-                                                    detected_plan,
-                                                )
-                                                logger.info(
-                                                    f"[StreamingAgent] Detected execution plan with {len(detected_plan['steps'])} steps"
-                                                )
-
-                            elif delta_type == "input_json_delta":
-                                # Building tool input
-                                current_tool_input += delta.get("partial_json", "")
-
-                        elif event_type == "content_block_stop":
-                            # Flush thinking buffer when thinking block ends
-                            if in_thinking_block and thinking_buffer:
-                                yield StreamEvent(
-                                    StreamEventType.THINKING, thinking_buffer
-                                )
-                                thinking_buffer = ""
-                            in_thinking_block = False
-
-                            if in_tool_input and current_tool_name:
-                                # Tool call complete - execute it
-                                try:
-                                    args = (
-                                        json.loads(current_tool_input)
-                                        if current_tool_input
-                                        else {}
-                                    )
-                                except json.JSONDecodeError:
-                                    args = {}
-
-                                # Yield tool call event
-                                yield StreamEvent(
-                                    StreamEventType.TOOL_CALL,
-                                    args,
-                                    tool_id=current_tool_id,
-                                    tool_name=current_tool_name,
-                                )
-
-                                # Emit step_update for execution plan (running)
-                                if current_plan and current_step_index < len(
-                                    current_plan.get("steps", [])
-                                ):
-                                    yield StreamEvent(
-                                        StreamEventType.STEP_UPDATE,
-                                        {
-                                            "plan_id": current_plan["plan_id"],
-                                            "step_index": current_step_index,
-                                            "status": "running",
-                                        },
-                                    )
-
-                                # Execute the tool
-                                result = await executor.execute(current_tool_name, args)
-
-                                # Yield tool result event
-                                yield StreamEvent(
-                                    StreamEventType.TOOL_RESULT,
-                                    result,
-                                    tool_id=current_tool_id,
-                                )
-
-                                # Emit step_update for execution plan (completed)
-                                if current_plan and current_step_index < len(
-                                    current_plan.get("steps", [])
-                                ):
-                                    # Determine if step succeeded or failed
-                                    step_status = "completed"
-                                    if isinstance(result, dict) and result.get("error"):
-                                        step_status = "error"
-                                    elif (
-                                        isinstance(result, str)
-                                        and "error" in result.lower()
-                                    ):
-                                        step_status = "error"
-
-                                    yield StreamEvent(
-                                        StreamEventType.STEP_UPDATE,
-                                        {
-                                            "plan_id": current_plan["plan_id"],
-                                            "step_index": current_step_index,
-                                            "status": step_status,
-                                        },
-                                    )
-                                    current_step_index += 1
-
-                                    # Check if plan is complete
-                                    if current_step_index >= len(
-                                        current_plan.get("steps", [])
-                                    ):
-                                        yield StreamEvent(
-                                            StreamEventType.PLAN_COMPLETE,
-                                            {"plan_id": current_plan["plan_id"]},
-                                        )
-
-                                tool_calls.append(
-                                    {
-                                        "id": current_tool_id,
-                                        "name": current_tool_name,
-                                        "input": args,
-                                        "result": result,
-                                    }
-                                )
-
-                                in_tool_input = False
-                                current_tool_id = None
-                                current_tool_name = None
-                                current_tool_input = ""
-
-                        elif event_type == "message_delta":
-                            stop_reason = data.get("delta", {}).get("stop_reason")
-
-                        elif event_type == "message_stop":
-                            break
-
-                    except json.JSONDecodeError:
-                        continue
-
-                # Flush remaining thinking and text
-                if thinking_buffer:
-                    yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
-                if text_buffer:
-                    accumulated_text += text_buffer
-                    yield StreamEvent(StreamEventType.TEXT, text_buffer)
-
-                # Check if we need to continue (tool use)
-                if stop_reason == "tool_use" and tool_calls:
-                    # Add assistant message with tool calls
-                    assistant_content = []
-                    for tc in tool_calls:
-                        assistant_content.append(
-                            {
-                                "type": "tool_use",
-                                "id": tc["id"],
-                                "name": tc["name"],
-                                "input": tc["input"],
-                            }
-                        )
-                    messages.append({"role": "assistant", "content": assistant_content})
-
-                    # Add tool results with failed commands context
-                    tool_results = []
-                    for tc in tool_calls:
-                        tool_results.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": tc["id"],
-                                "content": json.dumps(tc["result"]),
-                            }
-                        )
-
-                    # Inject failed commands context if any
-                    failed_context = executor.get_failed_commands_context()
-                    if failed_context:
-                        tool_results.append({"type": "text", "text": failed_context})
-
-                    messages.append({"role": "user", "content": tool_results})
-
-                    # Reset for next iteration
-                    tool_calls = []
-                    accumulated_text = ""  # Reset for next response
-                    continue
-                else:
-                    # No more tool calls - check if LLM is giving up prematurely
-                    if is_giving_up(
-                        accumulated_text, max_give_up_retries, give_up_retry_count
-                    ):
-                        give_up_retry_count += 1
-                        logger.info(
-                            f"[StreamingAgent] Give-up detected, forcing retry {give_up_retry_count}/{max_give_up_retries}"
-                        )
-
-                        # Add assistant's response to messages
-                        messages.append(
-                            {"role": "assistant", "content": accumulated_text}
-                        )
-
-                        # Add force-continue message with failed commands context
-                        retry_message = FORCE_CONTINUE_MESSAGE
-                        failed_context = executor.get_failed_commands_context()
-                        if failed_context:
-                            retry_message += failed_context
-
-                        messages.append({"role": "user", "content": retry_message})
-
-                        # Reset and continue the loop
-                        accumulated_text = ""
-                        tool_calls = []
-                        continue
-
-                    # Truly done - emit summary
-                    summary = executor.get_summary()
-                    yield StreamEvent(
-                        StreamEventType.DONE,
-                        {
-                            "status": "complete",
-                            "summary": summary,
-                        },
-                    )
-                    return
-
-
-async def stream_with_tools_openai(
-    message: str,
-    workspace_path: str,
-    api_key: str,
-    model: str = "gpt-4o",
-    base_url: str = "https://api.openai.com/v1",
-    context: Optional[Dict[str, Any]] = None,
-    conversation_history: Optional[List[Dict[str, str]]] = None,
-) -> AsyncGenerator[StreamEvent, None]:
-    """
-    Stream a response from OpenAI with function calling.
-    """
-    import aiohttp
-
-    executor = StreamingToolExecutor(workspace_path)
-    messages: List[Dict[str, Any]] = [
-        {"role": "system", "content": STREAMING_SYSTEM_PROMPT}
-    ]
-
-    # CRITICAL: Include conversation history for context-aware responses
-    # This allows NAVI to understand follow-up questions like "yes, can you check that?"
-    if conversation_history:
-        for hist_msg in conversation_history:
-            # Support both "role" and "type" fields (frontend sends "type")
-            role = hist_msg.get("role") or hist_msg.get("type", "user")
-            content = hist_msg.get("content", "")
-            if role in ["user", "assistant"] and content:
-                messages.append({"role": role, "content": content})
-        logger.info(
-            f"[Streaming Agent OpenAI] Added {len(conversation_history)} messages from conversation history"
-        )
-
-    # Build initial user message with rich context from project analysis
-    user_content = message
-    if context:
-        context_parts = []
-
-        # Project identification
-        if context.get("project_type"):
-            framework = context.get("framework", "")
-            if framework:
-                context_parts.append(
-                    f"=== PROJECT: {framework} ({context['project_type']}) ==="
-                )
-            else:
-                context_parts.append(f"=== PROJECT TYPE: {context['project_type']} ===")
-
-        if context.get("current_file"):
-            context_parts.append(f"Current file: {context['current_file']}")
-
-        # Include analyzed files list
-        if context.get("files_analyzed"):
-            files_list = context["files_analyzed"][:20]  # Max 20 files
-            context_parts.append(
-                f"\n=== FILES IN PROJECT ({len(files_list)} analyzed) ==="
-            )
-            context_parts.append("\n".join(f"- {f}" for f in files_list))
-
-        # CRITICAL: Include actual file contents for detailed analysis
-        if context.get("source_files_preview"):
-            context_parts.append(
-                "\n=== SOURCE FILE CONTENTS (for detailed analysis) ==="
-            )
-            context_parts.append(context["source_files_preview"])
-
-        if context_parts:
-            user_content = (
-                "\n".join(context_parts) + "\n\n=== USER REQUEST ===\n" + message
-            )
-
-    messages.append({"role": "user", "content": user_content})
-
-    async with aiohttp.ClientSession() as session:
-        while True:  # Loop for function calling continuation
-            payload = {
-                "model": model,
-                "messages": messages,
-                "tools": NAVI_FUNCTIONS_OPENAI,
-                "stream": True,
-            }
-
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
-
-            async with session.post(
-                f"{base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=120),
-            ) as response:
-                if response.status != 200:
-                    error = await response.text()
-                    logger.error(f"OpenAI API error: {error}")
-                    yield StreamEvent(StreamEventType.DONE, f"Error: {error}")
-                    return
-
-                text_buffer = ""
-                tool_calls: Dict[int, Dict[str, Any]] = {}  # index -> tool call data
-                finish_reason = None
-                has_seen_tool_call = False  # Track if we've started tool calls
-
-                async for line in response.content:
-                    line = line.decode("utf-8").strip()
-                    if not line or not line.startswith("data: "):
-                        continue
-
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-
-                    try:
-                        data = json.loads(data_str)
-                        choice = data.get("choices", [{}])[0]
-                        delta = choice.get("delta", {})
-                        finish_reason = choice.get("finish_reason")
-
-                        # Handle text content
-                        if delta.get("content"):
-                            text = delta["content"]
-                            text_buffer += text
-
-                            # NOTE: We no longer capture OpenAI text as "thinking" because:
-                            # 1. OpenAI doesn't have extended thinking like Anthropic
-                            # 2. Capturing text as thinking causes duplicate display
-                            # The frontend shows a "Thinking..." animation during streaming anyway
-
-                            if len(text_buffer) >= 20 or text.endswith(
-                                (".", "!", "?", "\n")
-                            ):
-                                yield StreamEvent(StreamEventType.TEXT, text_buffer)
-                                text_buffer = ""
-
-                        # Handle tool calls
-                        if delta.get("tool_calls"):
-                            # Mark that we've seen tool calls
-                            if not has_seen_tool_call:
-                                has_seen_tool_call = True
-                            for tc in delta["tool_calls"]:
-                                idx = tc.get("index", 0)
-                                if idx not in tool_calls:
-                                    tool_calls[idx] = {
-                                        "id": tc.get("id", ""),
-                                        "name": tc.get("function", {}).get("name", ""),
-                                        "arguments": "",
-                                    }
-                                if tc.get("id"):
-                                    tool_calls[idx]["id"] = tc["id"]
-                                if tc.get("function", {}).get("name"):
-                                    tool_calls[idx]["name"] = tc["function"]["name"]
-                                if tc.get("function", {}).get("arguments"):
-                                    tool_calls[idx]["arguments"] += tc["function"][
-                                        "arguments"
-                                    ]
-
-                    except json.JSONDecodeError:
-                        continue
-
-                # Flush remaining text
-                if text_buffer:
-                    yield StreamEvent(StreamEventType.TEXT, text_buffer)
-
-                # Execute tool calls if any
-                if finish_reason == "tool_calls" and tool_calls:
-                    # Build assistant message
-                    assistant_tool_calls = []
-                    for idx in sorted(tool_calls.keys()):
-                        tc = tool_calls[idx]
-                        assistant_tool_calls.append(
-                            {
-                                "id": tc["id"],
-                                "type": "function",
-                                "function": {
-                                    "name": tc["name"],
-                                    "arguments": tc["arguments"],
-                                },
-                            }
-                        )
-
-                    messages.append(
-                        {"role": "assistant", "tool_calls": assistant_tool_calls}
-                    )
-
-                    # Execute tools and add results
-                    for idx in sorted(tool_calls.keys()):
-                        tc = tool_calls[idx]
-                        try:
-                            args = (
-                                json.loads(tc["arguments"]) if tc["arguments"] else {}
-                            )
-                        except json.JSONDecodeError:
-                            args = {}
-
-                        # Yield tool call event
-                        yield StreamEvent(
-                            StreamEventType.TOOL_CALL,
-                            args,
-                            tool_id=tc["id"],
-                            tool_name=tc["name"],
-                        )
-
-                        # Execute
-                        result = await executor.execute(tc["name"], args)
-
-                        # Yield result
-                        yield StreamEvent(
-                            StreamEventType.TOOL_RESULT, result, tool_id=tc["id"]
-                        )
-
-                        # Add to messages
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tc["id"],
-                                "content": json.dumps(result),
-                            }
-                        )
-
-                    # Reset and continue
-                    tool_calls = {}
-                    continue
-                else:
-                    # No more tool calls, we're done - emit summary
-                    summary = executor.get_summary()
-                    yield StreamEvent(
-                        StreamEventType.DONE,
-                        {
-                            "status": "complete",
-                            "summary": summary,
-                        },
-                    )
-                    return
+# Reverse mapping: OpenAI function name -> original NAVI tool name
+OPENAI_TO_NAVI_TOOL_NAME = {
+    _sanitize_openai_function_name(tool["name"]): tool["name"]
+    for tool in NAVI_TOOLS[:128]
+}

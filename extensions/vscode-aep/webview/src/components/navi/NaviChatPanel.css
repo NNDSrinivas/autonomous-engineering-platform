@@ -1282,6 +1282,38 @@ html.light .navi-status-text--done {
   flex-shrink: 0;
 }
 
+/* Video attachment chip */
+.navi-attachment-chip--video {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.navi-attachment-chip--video .navi-attachment-chip-icon {
+  color: #ef4444;
+}
+
+/* Processed video chip (has transcription + frames) */
+.navi-attachment-chip--processed {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(59, 130, 246, 0.15));
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.navi-attachment-chip--processed .navi-attachment-chip-icon {
+  color: #22c55e;
+}
+
+.navi-attachment-chip-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  background: rgba(34, 197, 94, 0.3);
+  border-radius: 50%;
+  color: #22c55e;
+  margin-left: 2px;
+}
+
 /* Message attachments (images/files shown in chat bubbles) */
 .navi-message-attachments {
   display: flex;
@@ -1699,6 +1731,85 @@ html.light .navi-status-text--done {
   font-weight: 500;
   color: hsl(var(--foreground));
   max-width: 300px;
+}
+
+.navi-auth-required {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 16px 16px 0;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--primary) / 0.35);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.12), hsl(var(--background) / 0.6));
+  box-shadow: 0 12px 28px hsl(0 0% 0% / 0.3);
+}
+
+.navi-auth-required-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: hsl(var(--primary) / 0.2);
+  color: hsl(var(--primary));
+}
+
+.navi-auth-required-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.navi-auth-required-title {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  font-size: 0.92rem;
+}
+
+.navi-auth-required-detail {
+  color: hsl(var(--foreground) / 0.7);
+  font-size: 0.78rem;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.navi-auth-required-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navi-auth-required-btn {
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.95), hsl(var(--primary) / 0.7));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.navi-auth-required-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px hsl(var(--primary) / 0.25);
+}
+
+.navi-auth-required-dismiss {
+  background: transparent;
+  color: hsl(var(--foreground) / 0.7);
+  border: 1px solid hsl(var(--foreground) / 0.2);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.navi-auth-required-dismiss:hover {
+  border-color: hsl(var(--foreground) / 0.45);
+  color: hsl(var(--foreground));
 }
 
 @keyframes textFadeIn {
@@ -3176,6 +3287,7 @@ html.light .navi-status-text--done {
   border-top: 1px solid hsl(var(--border));
   background: linear-gradient(to bottom, hsl(var(--background)), hsl(var(--card) / 0.5));
   backdrop-filter: blur(8px);
+  flex-shrink: 0; /* Prevent footer from growing/shrinking */
 }
 
 .navi-quick-actions {
@@ -3243,17 +3355,20 @@ html.light .navi-status-text--done {
 
 .navi-chat-input-row {
   display: flex;
-  align-items: flex-end; /* Align to bottom so textarea expands upward */
-  gap: 10px;
-  margin: 12px 16px 0;
-  padding: 10px 12px;
+  align-items: center; /* Center vertically */
+  gap: 8px;
+  margin: 8px 16px 0;
+  padding: 8px 12px;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
-  border-radius: 14px;
+  border-radius: 12px;
   transition: all 0.2s ease;
   box-shadow: 0 2px 8px hsl(var(--background) / 0.5);
   min-width: 0; /* Allow flex shrinking */
-  max-height: 250px; /* Allow expansion but cap at reasonable height */
+  min-height: 40px; /* Minimum compact height */
+  max-height: 140px; /* Cap at reasonable height */
+  flex-shrink: 0; /* Don't shrink */
+  flex-grow: 0; /* Don't grow beyond content */
 }
 
 .navi-chat-input-row:focus-within {
@@ -3330,6 +3445,7 @@ html.light .navi-status-text--done {
   bottom: calc(100% + 12px);
   left: 0;
   width: 320px;
+  max-width: none !important; /* Override global max-width: 100% rule */
   max-height: 400px;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
@@ -3357,12 +3473,15 @@ html.light .navi-status-text--done {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-width: none !important;
 }
 
 .navi-attachment-menu-title {
   font-size: 13px;
   font-weight: 600;
   color: hsl(var(--foreground));
+  white-space: nowrap;
+  max-width: none !important;
 }
 
 .navi-attachment-menu-hint {
@@ -3486,15 +3605,19 @@ html.light .navi-status-text--done {
 /* NEW: Compact menu layout - simpler list style */
 .navi-attachment-menu--compact {
   width: 220px;
+  max-width: none !important; /* Override global max-width: 100% rule */
   max-height: 340px;
 }
 
 .navi-attachment-menu--compact .navi-attachment-menu-header {
   padding: 10px 12px 8px;
+  max-width: none !important;
 }
 
 .navi-attachment-menu--compact .navi-attachment-menu-title {
   font-size: 12px;
+  white-space: nowrap;
+  max-width: none !important;
 }
 
 .navi-attachment-menu-list {
@@ -3502,6 +3625,7 @@ html.light .navi-status-text--done {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-width: none !important;
 }
 
 .navi-attachment-menu-item {
@@ -3517,7 +3641,9 @@ html.light .navi-status-text--done {
   cursor: pointer;
   transition: background 0.15s ease;
   width: 100%;
+  max-width: none !important;
   text-align: left;
+  white-space: nowrap;
 }
 
 .navi-attachment-menu-item:hover {
@@ -3537,6 +3663,8 @@ html.light .navi-status-text--done {
 .navi-attachment-menu-item-label {
   flex: 1;
   font-weight: 500;
+  white-space: nowrap;
+  max-width: none !important;
 }
 
 .navi-attachment-menu-item-shortcut {
@@ -3550,28 +3678,27 @@ html.light .navi-status-text--done {
 }
 
 .navi-chat-input {
-  flex: 1;
+  flex: 1 1 auto;
   border: none;
   background: transparent;
   color: hsl(var(--foreground));
   font-size: 14px;
   outline: none;
-  line-height: 1.6;
-  min-height: 24px;
-  max-height: 180px; /* Allow up to ~8 lines */
+  line-height: 1.5;
+  min-height: 22px;
+  max-height: 120px;
   resize: none;
-  overflow-y: auto;
+  overflow-y: hidden;
   overflow-x: hidden;
   font-family: inherit;
-  padding: 4px 8px; /* Add horizontal padding for text */
-  min-width: 0; /* Allow textarea to shrink properly in flex container */
+  padding: 2px 8px;
+  min-width: 0;
   width: 100%;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  text-align: left; /* Ensure left alignment */
-  white-space: pre-wrap; /* Preserve whitespace and wrap */
-  /* Smooth height transition */
-  transition: height 0.1s ease;
+  text-align: left;
+  white-space: pre-wrap;
+  align-self: center;
 }
 
 .navi-chat-input::placeholder {
@@ -6643,7 +6770,8 @@ html.light .navi-inline-activity-detail--clickable:hover {
   text-decoration: none;
   border-bottom: 1px solid rgba(96, 165, 250, 0.3);
   transition: all 0.15s ease;
-  word-break: break-all;
+  word-break: break-word; /* Don't break mid-word, only at word boundaries */
+  overflow-wrap: anywhere; /* Allow breaking at any point only if necessary */
 }
 
 .navi-link:hover {
@@ -6750,7 +6878,8 @@ html.light .navi-file-link:hover {
 .navi-message-content code,
 .navi-chat-bubble code {
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: break-word; /* Don't break mid-word */
+  overflow-wrap: anywhere; /* Allow breaking only if necessary */
   max-width: 100%;
   display: inline;
 }
@@ -6916,6 +7045,8 @@ h4.navi-heading {
   border-radius: 4px;
   font-family: "SFMono-Regular", "Menlo", "Monaco", "Consolas", monospace;
   font-size: 0.9em;
+  white-space: nowrap; /* Prevent code/file names from wrapping */
+  word-break: keep-all; /* Keep words together */
 }
 
 /* Clickable file link styling */
@@ -6943,6 +7074,8 @@ h4.navi-heading {
 
 .navi-link--url {
   color: #60a5fa;
+  white-space: nowrap; /* Prevent URLs from breaking across lines */
+  word-break: keep-all;
 }
 
 .navi-link--url:hover {
@@ -6956,6 +7089,7 @@ h4.navi-heading {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap; /* Prevent file names from wrapping */
 }
 
 .navi-file-icon {
@@ -8480,6 +8614,105 @@ html.light .navi-branch-dropdown-empty {
   0% { transform: scale(0.8); opacity: 0; }
   50% { transform: scale(1.1); }
   100% { transform: scale(1); opacity: 1; }
+}
+
+/* Checkpoint indicator for interrupted tasks */
+.navi-history-checkpoint-indicator {
+  color: #f59e0b;
+  flex-shrink: 0;
+  animation: checkpointPulse 2s ease-in-out infinite;
+}
+
+.navi-history-checkpoint-indicator svg {
+  width: 14px;
+  height: 14px;
+}
+
+@keyframes checkpointPulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Session item with checkpoint highlight */
+.navi-history-item.has-checkpoint {
+  border-left: 3px solid #f59e0b;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.08) 0%, transparent 20%);
+}
+
+.navi-history-item.has-checkpoint:hover {
+  border-left-color: #fbbf24;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.15) 0%, rgba(30, 41, 59, 0.8) 30%);
+}
+
+/* Resume button styling */
+.navi-action-resume {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(251, 191, 36, 0.1) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.navi-action-resume:hover {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(251, 191, 36, 0.2) 100%);
+  border-color: rgba(251, 191, 36, 0.5);
+  transform: translateY(-1px);
+}
+
+.navi-action-resume svg {
+  animation: resumeSpin 2s linear infinite;
+}
+
+@keyframes resumeSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.navi-action-resume:hover svg {
+  animation-duration: 0.5s;
+}
+
+.navi-action-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Discard checkpoint button */
+.navi-action-discard {
+  color: rgba(248, 113, 113, 0.7);
+  transition: all 0.2s;
+}
+
+.navi-action-discard:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+
+/* Interrupted filter tab */
+.navi-filter-interrupted {
+  color: #f59e0b;
+}
+
+.navi-filter-interrupted.is-active {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(251, 191, 36, 0.1) 100%);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+.navi-filter-interrupted svg {
+  animation: interruptedPulse 2s ease-in-out infinite;
+}
+
+@keyframes interruptedPulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
 }
 
 /* Meta Row with Count, Repo, Time */
@@ -10691,6 +10924,8 @@ html.light .navi-activity-item-detail--file {
   text-decoration-style: dotted;
   text-underline-offset: 2px;
   cursor: pointer !important;
+  white-space: nowrap; /* Prevent URLs from breaking across lines */
+  word-break: keep-all;
 }
 
 .navi-inline-link:hover {
@@ -10809,6 +11044,89 @@ html.light .navi-activity-item-detail--file {
   word-break: break-all;
   max-height: 100px;
   overflow-y: auto;
+}
+
+/* Command context: Purpose (why running this) */
+.navi-command-purpose {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #93c5fd;
+}
+
+.navi-command-purpose-icon {
+  flex-shrink: 0;
+}
+
+.navi-command-purpose-text {
+  line-height: 1.4;
+}
+
+/* Command context: Explanation (what result means) */
+.navi-command-explanation {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-top: 8px;
+  background: rgba(34, 197, 94, 0.1);
+  border-left: 3px solid #22c55e;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #86efac;
+}
+
+.navi-command-explanation-icon {
+  flex-shrink: 0;
+}
+
+.navi-command-explanation-text {
+  line-height: 1.4;
+}
+
+/* Command context: Next action (what happens next) */
+.navi-command-next {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #a78bfa;
+  font-style: italic;
+}
+
+.navi-command-next-icon {
+  color: #8b5cf6;
+  font-weight: bold;
+}
+
+.navi-command-next-text {
+  line-height: 1.4;
+}
+
+/* Light theme for command context */
+.light .navi-command-purpose,
+:root.light .navi-command-purpose {
+  background: rgba(59, 130, 246, 0.08);
+  color: #2563eb;
+}
+
+.light .navi-command-explanation,
+:root.light .navi-command-explanation {
+  background: rgba(34, 197, 94, 0.08);
+  color: #16a34a;
+}
+
+.light .navi-command-next,
+:root.light .navi-command-next {
+  color: #7c3aed;
 }
 
 /* Light theme */
@@ -11957,6 +12275,46 @@ html.light .navi-progress-chevron {
   color: #f87171;
 }
 
+/* Floating Execution Plan Stepper - positioned above input bar */
+.navi-plan-stepper-floating {
+  margin: 12px 18px;
+  animation: slideUpFade 0.3s ease-out;
+}
+
+.navi-plan-stepper-floating .navi-plan-stepper {
+  margin: 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Step completion animation */
+.navi-plan-step--completing {
+  animation: stepComplete 0.5s ease;
+}
+
+@keyframes stepComplete {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+    background: rgba(74, 222, 128, 0.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 /* Light theme for execution plan stepper */
 .light .navi-plan-stepper,
 :root.light .navi-plan-stepper,
@@ -12473,6 +12831,73 @@ html.light .navi-persistent-status {
   animation: fadeInUp 0.3s ease-out;
 }
 
+/* Error state styling for task stopped/failed */
+.navi-task-complete-panel--error {
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.08) 0%, rgba(251, 146, 60, 0.03) 100%);
+  border-color: rgba(251, 146, 60, 0.3);
+}
+
+.navi-task-complete-panel--error .navi-task-complete-title {
+  color: #fb923c;
+}
+
+/* Error banner inside the task complete panel */
+.navi-task-error-banner {
+  margin-bottom: 12px;
+  padding: 12px;
+  background: rgba(251, 146, 60, 0.1);
+  border: 1px solid rgba(251, 146, 60, 0.2);
+  border-radius: 8px;
+}
+
+.navi-task-error-reason {
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(251, 191, 136, 0.95);
+}
+
+.navi-task-error-reason strong {
+  color: #fb923c;
+}
+
+.navi-task-error-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(251, 146, 60, 0.15);
+}
+
+.navi-task-error-details-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(251, 146, 60, 0.8);
+  margin-bottom: 6px;
+}
+
+.navi-task-error-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.navi-task-error-item {
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(226, 232, 240, 0.8);
+  padding: 4px 0 4px 16px;
+  position: relative;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  word-break: break-word;
+}
+
+.navi-task-error-item::before {
+  content: '•';
+  position: absolute;
+  left: 4px;
+  color: rgba(251, 146, 60, 0.6);
+}
+
 .navi-task-complete-header {
   display: flex;
   align-items: center;
@@ -12720,6 +13145,55 @@ html.light .navi-files-del {
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+/* Build errors display */
+.navi-build-errors {
+  margin-top: 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.navi-build-errors-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.navi-build-errors-list {
+  padding: 8px 12px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.navi-build-error-item {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.navi-build-error-item:last-child {
+  border-bottom: none;
+}
+
+.navi-build-error-item code {
+  font-family: "SF Mono", "Menlo", "Monaco", monospace;
+  font-size: 11px;
+  color: #fca5a5;
+  word-break: break-all;
+}
+
+.navi-build-error-more {
+  padding: 6px 0 2px;
+  font-size: 11px;
+  color: rgba(248, 113, 113, 0.7);
+  font-style: italic;
+}
+
 /* 3-button action bar: Accept / Review / Undo */
 .navi-task-complete-actions {
   display: grid;
@@ -12863,4 +13337,47 @@ html.light .navi-task-complete-files-header {
 :root.light .navi-task-complete-file-path,
 html.light .navi-task-complete-file-path {
   color: rgba(30, 41, 59, 0.8);
+}
+
+/* ========================================
+   Collapsible User Message Styles
+   ======================================== */
+
+.navi-user-message-collapsible {
+  width: 100%;
+}
+
+.navi-user-message-content {
+  line-height: 1.5;
+}
+
+.navi-user-message-content--truncated {
+  /* Subtle fade effect at bottom when truncated */
+  position: relative;
+}
+
+.navi-user-message-toggle {
+  background: none;
+  border: none;
+  color: hsl(var(--primary));
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 4px;
+  display: block;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+}
+
+.navi-user-message-toggle:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* Light mode toggle button */
+.light .navi-user-message-toggle,
+:root.light .navi-user-message-toggle,
+html.light .navi-user-message-toggle {
+  color: #2563eb;
 }

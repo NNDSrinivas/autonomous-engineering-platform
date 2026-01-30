@@ -7,8 +7,7 @@
 
 import type { PlanRequest, PlanResult, Plan } from '../types/plan';
 import { IntentKind } from '../types/plan';
-
-const BACKEND_BASE_URL = 'http://127.0.0.1:8787';
+import { resolveBackendBase, buildHeaders } from '../api/navi/client';
 
 export class PlanningService {
   private static instance: PlanningService;
@@ -31,11 +30,9 @@ export class PlanningService {
       // Map IntentKind to backend format
       const backendIntent = this.mapIntentKindToBackend(request.intentKind, request.intent);
       
-      const response = await fetch(`${BACKEND_BASE_URL}/api/agent/plan`, {
+      const response = await fetch(`${resolveBackendBase()}/api/agent/plan`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({
           intent: backendIntent,
           context: request.context,

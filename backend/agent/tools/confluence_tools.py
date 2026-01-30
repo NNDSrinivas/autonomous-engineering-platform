@@ -209,7 +209,7 @@ async def list_confluence_pages_in_space(
 
 
 CONFLUENCE_TOOLS = {
-    "confluence.search_pages": search_confluence_pages,
-    "confluence.get_page": get_confluence_page,
-    "confluence.list_pages_in_space": list_confluence_pages_in_space,
+    "confluence_search_pages": search_confluence_pages,
+    "confluence_get_page": get_confluence_page,
+    "confluence_list_pages_in_space": list_confluence_pages_in_space,
 }

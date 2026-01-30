@@ -344,9 +344,9 @@ class ComplianceReportGenerator:
         framework_scores = {}
         if frameworks:
             for framework in frameworks:
-                framework_scores[
-                    framework.value
-                ] = await self._calculate_compliance_score(ai_actions, [framework])
+                framework_scores[framework.value] = (
+                    await self._calculate_compliance_score(ai_actions, [framework])
+                )
 
         # Identify trends
         trends = await self._calculate_trends(ai_actions, period_start, period_end)
@@ -487,9 +487,7 @@ class ComplianceReportGenerator:
                     "status": (
                         "compliant"
                         if score > 0.8
-                        else "needs_attention"
-                        if score > 0.6
-                        else "non_compliant"
+                        else "needs_attention" if score > 0.6 else "non_compliant"
                     ),
                 }
             )
@@ -534,9 +532,9 @@ class ComplianceReportGenerator:
 
         # Compliance Framework Analysis
         for framework in request.compliance_frameworks:
-            sections[
-                f"compliance_{framework.value}"
-            ] = await self._analyze_framework_compliance(ai_actions, framework)
+            sections[f"compliance_{framework.value}"] = (
+                await self._analyze_framework_compliance(ai_actions, framework)
+            )
 
         return sections
 

@@ -34,6 +34,15 @@ async def create_file(user_id: str, path: str, content: str) -> Dict[str, Any]:
     )
 
     try:
+        # Handle escaped newlines that might come from JSON serialization.
+        # Only convert when content appears to be fully escaped (no actual control characters yet),
+        # to avoid corrupting legitimate literals like the text "\n" in source code or docs.
+        has_escaped_sequences = any(seq in content for seq in ("\\n", "\\t", "\\r"))
+        has_real_control_chars = any(ch in content for ch in ("\n", "\t", "\r"))
+        if has_escaped_sequences and not has_real_control_chars:
+            content = content.replace("\\n", "\n")
+            content = content.replace("\\t", "\t")
+            content = content.replace("\\r", "\r")
         # Check if file already exists
         if os.path.exists(path):
             return {

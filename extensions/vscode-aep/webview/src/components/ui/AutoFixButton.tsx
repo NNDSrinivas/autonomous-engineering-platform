@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { resolveBackendBase, buildHeaders } from '../../api/navi/client';
 
 // Simple icon components to replace lucide-react
 const Loader2 = ({ className }: { className?: string }) => (
@@ -68,11 +69,9 @@ export function AutoFixButton({
     setFixStatus('idle');
 
     try {
-      const response = await fetch('/api/navi/auto-fix', {
+      const response = await fetch(`${resolveBackendBase()}/api/navi/auto-fix`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({
           path: filePath,
           fixes: [fixId],
@@ -213,11 +212,9 @@ export function BulkAutoFixButton({
         const { filePath, fixId } = fixes[i];
         setProgress(Math.round((i / fixes.length) * 100));
 
-        const response = await fetch('/api/navi/auto-fix', {
+        const response = await fetch(`${resolveBackendBase()}/api/navi/auto-fix`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: buildHeaders(),
           body: JSON.stringify({
             path: filePath,
             fixes: [fixId],

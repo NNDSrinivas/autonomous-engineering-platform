@@ -56,6 +56,7 @@ let globalGitService: GitService | undefined;
 let globalTaskService: TaskService | undefined;
 let globalActionRegistry: ActionRegistry | undefined;
 let globalAuthService: DeviceAuthService | undefined;
+let cachedAuthToken: string | undefined;
 
 // Phase 1.4: Collect VS Code diagnostics for a set of files
 function collectDiagnosticsForFiles(workspaceRoot: string, relativePaths: string[]) {
@@ -803,17 +804,24 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize Auth Service for device code flow
   globalAuthService = new DeviceAuthService(context);
   console.log('[AEP] DeviceAuthService initialized');
+  globalAuthService.getToken().then((token) => {
+    if (token) {
+      cachedAuthToken = token;
+    }
+  });
 
   // Register auth commands
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.signIn', async () => {
       await globalAuthService?.startLogin();
+      cachedAuthToken = await globalAuthService?.getToken();
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.signOut', async () => {
       await globalAuthService?.logout();
+      cachedAuthToken = undefined;
     })
   );
 
@@ -836,9 +844,21 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('aep.notifyAuthStateChange', (isAuthenticated: boolean) => {
+    vscode.commands.registerCommand('aep.notifyAuthStateChange', async (isAuthenticated: boolean) => {
+      const authToken = await globalAuthService?.getToken();
+      if (authToken) {
+        cachedAuthToken = authToken;
+      }
+      const user = await globalAuthService?.getUserInfo();
       // This command is called internally to notify the webview of auth changes
-      provider.postToWebview({ type: 'auth.stateChange', isAuthenticated });
+      provider.postToWebview({
+        type: 'auth.stateChange',
+        isAuthenticated,
+        authToken,
+        user,
+        orgId: user?.org,
+        userId: user?.sub
+      });
     })
   );
 
@@ -2292,6 +2312,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     if (envToken && envToken.trim()) {
       return envToken.trim();
     }
+    if (cachedAuthToken && cachedAuthToken.trim()) {
+      return cachedAuthToken.trim();
+    }
     return undefined;
   }
 
@@ -2816,6 +2839,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             break;
           }
 
+          case 'enterprise.openDashboard': {
+            // Open enterprise projects dashboard in web app
+            const webAppUrl = vscode.workspace.getConfiguration('aep').get<string>('webAppUrl') || 'http://localhost:3000';
+            const dashboardUrl = `${webAppUrl}/enterprise/projects`;
+            await vscode.env.openExternal(vscode.Uri.parse(dashboardUrl));
+            break;
+          }
+
           case 'git.getBranches': {
             // Get list of git branches for branch dropdown
             const workspaceRoot = this.getActiveWorkspaceRoot();
@@ -2979,8 +3010,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           case 'undoFileChange': {
             const filePath = String(msg.filePath || '').trim();
             const originalContent = msg.originalContent;
-            if (!filePath || typeof originalContent !== 'string') {
-              console.error('[NAVI] Invalid undo request:', { filePath, hasOriginalContent: !!originalContent });
+            const wasCreated = msg.wasCreated === true;
+
+            // For newly created files, we need to delete them
+            // For edited files, we need originalContent to restore
+            if (!filePath || (!wasCreated && typeof originalContent !== 'string')) {
+              console.error('[NAVI] Invalid undo request:', { filePath, hasOriginalContent: !!originalContent, wasCreated });
               return;
             }
             try {
@@ -2991,19 +3026,27 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   ? path.join(workspaceRoot, filePath)
                   : filePath;
               const uri = vscode.Uri.file(absolutePath);
-              const doc = await vscode.workspace.openTextDocument(uri);
-              const edit = new vscode.WorkspaceEdit();
-              const fullRange = new vscode.Range(
-                doc.positionAt(0),
-                doc.positionAt(doc.getText().length)
-              );
-              edit.replace(uri, fullRange, originalContent);
-              const success = await vscode.workspace.applyEdit(edit);
-              if (success) {
-                await doc.save();
-                vscode.window.setStatusBarMessage(`↩️ Undone changes to ${path.basename(filePath)}`, 3000);
+
+              if (wasCreated) {
+                // File was newly created - delete it to undo
+                await vscode.workspace.fs.delete(uri);
+                vscode.window.setStatusBarMessage(`🗑️ Deleted newly created file: ${path.basename(filePath)}`, 3000);
               } else {
-                vscode.window.showErrorMessage(`Failed to undo changes to ${path.basename(filePath)}`);
+                // File was edited - restore original content
+                const doc = await vscode.workspace.openTextDocument(uri);
+                const edit = new vscode.WorkspaceEdit();
+                const fullRange = new vscode.Range(
+                  doc.positionAt(0),
+                  doc.positionAt(doc.getText().length)
+                );
+                edit.replace(uri, fullRange, originalContent);
+                const success = await vscode.workspace.applyEdit(edit);
+                if (success) {
+                  await doc.save();
+                  vscode.window.setStatusBarMessage(`↩️ Undone changes to ${path.basename(filePath)}`, 3000);
+                } else {
+                  vscode.window.showErrorMessage(`Failed to undo changes to ${path.basename(filePath)}`);
+                }
               }
             } catch (err: any) {
               console.error('[NAVI] Undo failed:', err);
@@ -4004,14 +4047,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
           case 'attachMedia': {
             // Open file picker for images and videos
+            // Using a single "Media" filter that includes both images and videos
+            // so users don't have to switch filter dropdown to select videos
             const picked = await vscode.window.showOpenDialog({
               canSelectFiles: true,
               canSelectFolders: false,
               canSelectMany: true,
               openLabel: 'Attach media to NAVI',
               filters: {
-                'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'],
-                'Videos': ['mp4', 'webm', 'mov', 'avi'],
+                'Media (Images & Videos)': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'],
                 'All Files': ['*'],
               },
             });
@@ -4020,7 +4064,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             for (const uri of picked) {
               const ext = uri.fsPath.split('.').pop()?.toLowerCase() || '';
               const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext);
-              const isVideo = ['mp4', 'webm', 'mov', 'avi'].includes(ext);
+              const isVideo = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'].includes(ext);
 
               if (isImage) {
                 // Read image as base64
@@ -4037,16 +4081,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   },
                 });
               } else if (isVideo) {
-                // Just attach video reference (too large for base64)
-                this.postToWebview({
-                  type: 'addAttachment',
-                  attachment: {
-                    kind: 'video',
-                    path: uri.fsPath,
-                    language: 'video',
-                    content: `[Video: ${uri.fsPath}]`,
-                  },
-                });
+                // Process video through backend API for frame extraction + transcription
+                await this.processVideoAttachment(uri);
               }
             }
             break;
@@ -5132,6 +5168,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             // Import NaviService
             const { NaviService } = await import('./services/NaviService');
             const naviService = NaviService.getInstance();
+            const endpoints = this.resolveBackendEndpoints();
+            naviService.setBaseUrl(endpoints.baseUrl);
 
             try {
               // Show progress notification
@@ -5142,8 +5180,62 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   cancellable: false,
                 },
                 async (progress) => {
-                  // Approve and execute plan
-                  const executionId = await naviService.approvePlan(planId, approvedActionIndices);
+                  // Approve and execute plan with streaming updates
+                  let executionId = `${planId}-exec`;
+                  let completed = false;
+                  await naviService.approvePlanStream(planId, approvedActionIndices, (update) => {
+                    if (!update || !update.type) return;
+                    if (update.type === 'action_start') {
+                      const action = update.action || {};
+                      const normalizedAction = {
+                        ...action,
+                        filePath: (action as any).filePath || (action as any).path,
+                      };
+                      this.postToWebview({
+                        type: 'action.start',
+                        actionIndex: update.index,
+                        action: normalizedAction,
+                        planId,
+                      });
+                      return;
+                    }
+                    if (update.type === 'action_complete') {
+                      const action = update.action || {};
+                      const normalizedAction = {
+                        ...action,
+                        filePath: (action as any).filePath || (action as any).path,
+                      };
+                      this.postToWebview({
+                        type: 'action.complete',
+                        actionIndex: update.index,
+                        action: normalizedAction,
+                        success: update.success,
+                        data: {
+                          output: update.output,
+                          exitCode: update.exitCode,
+                        },
+                        planId,
+                      });
+                      return;
+                    }
+                    if (update.type === 'plan_complete') {
+                      completed = true;
+                      this.postToWebview({
+                        type: 'navi.execution.complete',
+                        planId,
+                        executionId,
+                        approvedActionIndices,
+                      });
+                      return;
+                    }
+                    if (update.type === 'error') {
+                      this.postToWebview({
+                        type: 'navi.execution.error',
+                        planId,
+                        error: update.error || 'Execution failed',
+                      });
+                    }
+                  });
 
                   progress.report({ increment: 100 });
 
@@ -5153,12 +5245,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   );
 
                   // Notify webview of completion
-                  this.postToWebview({
-                    type: 'navi.execution.complete',
-                    planId,
-                    executionId,
-                    approvedActionIndices,
-                  });
+                  if (!completed) {
+                    this.postToWebview({
+                      type: 'navi.execution.complete',
+                      planId,
+                      executionId,
+                      approvedActionIndices,
+                    });
+                  }
                 }
               );
             } catch (error: any) {
@@ -5195,6 +5289,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               // Import NaviService
               const { NaviService } = await import('./services/NaviService');
               const naviService = NaviService.getInstance();
+              const endpoints = this.resolveBackendEndpoints();
+              naviService.setBaseUrl(endpoints.baseUrl);
 
               // Get plan
               const plan = await naviService.getPlan(planId);
@@ -7432,6 +7528,79 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Detect if a message describes an enterprise-level project that requires
+   * unlimited iterations, task decomposition, and human checkpoint gates.
+   *
+   * Enterprise projects are large-scale applications like:
+   * - Full e-commerce platforms
+   * - Microservices architectures
+   * - Complete SaaS applications
+   */
+  private shouldUseEnterpriseAgent(message: string): boolean {
+    const lowerMessage = message.toLowerCase().trim();
+
+    // Enterprise patterns - full application development
+    const enterprisePatterns = [
+      // Full application keywords
+      /\b(build|create|develop|implement)\s+(a\s+)?(full|complete|entire|end.?to.?end|e2e)\b/i,
+      /\b(build|create)\s+(an?\s+)?(e-?commerce|ecommerce|shop|marketplace|store)\b/i,
+      /\b(build|create)\s+(an?\s+)?(saas|platform|application|app|system)\b/i,
+      /\b(build|create)\s+(microservices?|distributed\s+system)\b/i,
+
+      // Scale indicators
+      /\b(million|10m|100k|\d+k)\s+(users?|requests?|transactions?)\b/i,
+      /\b(scale|scaling|scalable)\s+(to|for)?\s*(\d+|millions?)\b/i,
+      /\bproduction.?ready|enterprise.?grade|production\s+deployment\b/i,
+
+      // Multiple major features together
+      /\bwith\s+(authentication|auth|login).*(database|db).*(deployment|deploy|ci\/?cd)\b/i,
+      /\bwith\s+(database|db).*(authentication|auth).*(deployment|deploy)\b/i,
+
+      // Explicit enterprise project types
+      /\b(multi-?service|multi-?module|multi-?component|multi-?tier)\b/i,
+      /\b(frontend|backend|api|database|infra)\s+(and|,)\s+(frontend|backend|api|database|infra)\b/i,
+
+      // Payment/commerce specific
+      /\b(payment|checkout|billing)\s+(system|integration|flow|processing)\b/i,
+      /\b(cart|shopping\s+cart|order\s+management|inventory\s+system)\b/i,
+    ];
+
+    for (const pattern of enterprisePatterns) {
+      if (pattern.test(lowerMessage)) {
+        console.log(`[AEP] 🏢 Enterprise pattern detected: ${pattern}`);
+        return true;
+      }
+    }
+
+    // Count major feature mentions (need 3+ for enterprise)
+    let featureCount = 0;
+    const majorFeatures = [
+      /\b(authentication|auth|login|signup|user\s+management)\b/i,
+      /\b(database|db|data\s+persistence|storage|postgres|mysql|mongodb)\b/i,
+      /\b(deployment|deploy|ci\/?cd|pipeline|kubernetes|docker)\b/i,
+      /\b(payment|checkout|billing|stripe|paypal)\b/i,
+      /\b(admin|dashboard|management\s+panel)\b/i,
+      /\b(api|rest|graphql|endpoint)\b/i,
+      /\b(frontend|ui|interface|react|vue|angular)\b/i,
+      /\b(testing|tests?|coverage)\b/i,
+      /\b(monitoring|logging|observability|metrics)\b/i,
+    ];
+
+    for (const feature of majorFeatures) {
+      if (feature.test(lowerMessage)) {
+        featureCount++;
+      }
+    }
+
+    if (featureCount >= 3) {
+      console.log(`[AEP] 🏢 Multiple enterprise features detected (${featureCount}) - using enterprise mode`);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Calculate similarity between two strings using Levenshtein distance.
    * Returns a value between 0 and 1, where 1 is an exact match.
    */
@@ -7603,21 +7772,34 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // Use streaming endpoint for smooth response display
       // V2 endpoint uses tool-use based streaming (Claude Code style)
       // V3/Autonomous endpoint adds verification and self-healing
+      // V4/Enterprise endpoint adds unlimited iterations, task decomposition, and human gates
       const naviConfig = vscode.workspace.getConfiguration('aep.navi');
       const useV2Streaming = naviConfig.get<boolean>('useToolStreaming', false);
       const forceAutonomous = naviConfig.get<boolean>('useAutonomousMode', false);
+      const forceEnterprise = naviConfig.get<boolean>('useEnterpriseMode', false);
+
+      // 🏢 AUTO-DETECT: Use enterprise agent for large-scale project requests
+      // Enterprise projects need unlimited iterations, task decomposition, and human checkpoint gates
+      const isEnterpriseRequest = this.shouldUseEnterpriseAgent(text);
+      const useEnterprise = forceEnterprise || isEnterpriseRequest;
 
       // 🎯 AUTO-DETECT: Use autonomous agent for action requests
       // This enables NAVI to act like Cline/Copilot/Claude Code - automatically executing and fixing
       const isActionRequest = this.shouldUseAutonomousAgent(text);
-      const useAutonomous = forceAutonomous || isActionRequest;
+      const useAutonomous = !useEnterprise && (forceAutonomous || isActionRequest);
 
-      if (isActionRequest && !forceAutonomous) {
+      if (isEnterpriseRequest && !forceEnterprise) {
+        console.log('[AEP] 🏢 Auto-detected enterprise project - using Enterprise mode for long-running execution');
+      }
+      if (isActionRequest && !forceAutonomous && !useEnterprise) {
         console.log('[AEP] 🤖 Auto-detected action request - using Autonomous mode for end-to-end execution');
       }
 
       let streamUrl: string;
-      if (useAutonomous) {
+      if (useEnterprise) {
+        streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/enterprise`;
+        console.log('[AEP] 🏢 Using Enterprise mode (unlimited iterations, task decomposition, human gates)');
+      } else if (useAutonomous) {
         streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/autonomous`;
         console.log('[AEP] 🤖 Using Autonomous mode (end-to-end with verification)');
       } else if (useV2Streaming) {
@@ -7628,8 +7810,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       }
       // Debug logging for endpoint selection
       console.log(`[AEP] 📡 Streaming URL: ${streamUrl}`);
+      console.log(`[AEP] 🏢 Is enterprise request: ${isEnterpriseRequest}`);
       console.log(`[AEP] 🎯 Is action request: ${isActionRequest}`);
       console.log(`[AEP] 🤖 Using autonomous: ${useAutonomous}`);
+      console.log(`[AEP] 🏢 Using enterprise: ${useEnterprise}`);
       console.log(`[AEP] 📝 Message: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
       const nonStreamUrl = targetUrl;
 
@@ -7639,6 +7823,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const messageId = `msg-${Date.now()}`;
       // Track if we've seen tool calls - if so, we need to emit narratives for interleaved display
       let hasSeenToolCalls = false;
+      // Collect actions during streaming (declared outside try for access in catch)
+      let streamedActions: any[] = [];
+      const toolCommandMap = new Map<string, { command: string; cwd?: string }>();
 
       try {
         // AUTO-RECOVERY: Include last action error if recent (within 5 minutes)
@@ -7711,7 +7898,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         const reader = streamResponse.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let streamedActions: any[] = [];  // Collect actions during streaming
+        // streamedActions is declared outside the try block for access in catch
 
         while (true) {
           const { done, value } = await reader.read();
@@ -7902,6 +8089,20 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                       }
                     }
                   });
+
+                  if (tc.name === 'run_command') {
+                    const commandId = String(tc.id || `cmd-${Date.now()}`);
+                    const command = String(tc.arguments?.command || '');
+                    const cwd = typeof tc.arguments?.cwd === 'string' ? tc.arguments.cwd : undefined;
+                    toolCommandMap.set(commandId, { command, cwd });
+                    this.postToWebview({
+                      type: 'command.start',
+                      commandId,
+                      command,
+                      cwd,
+                      meta: { actionIndex: tc.arguments?.actionIndex },
+                    });
+                  }
                 }
 
                 if (parsed.type === 'tool_result' && parsed.tool_result) {
@@ -7915,6 +8116,38 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     command: tr.result?.command,
                     kind: tr.result?.kind || tr.name,
                   };
+
+                  const mappedCommand = toolCommandMap.get(tr.id);
+                  if (mappedCommand) {
+                    const stdout = tr.result?.stdout ? String(tr.result.stdout) : '';
+                    const stderr = tr.result?.stderr ? String(tr.result.stderr) : '';
+                    if (stdout) {
+                      this.postToWebview({
+                        type: 'command.output',
+                        commandId: tr.id,
+                        text: stdout,
+                        stream: 'stdout',
+                      });
+                    }
+                    if (stderr) {
+                      this.postToWebview({
+                        type: 'command.output',
+                        commandId: tr.id,
+                        text: stderr,
+                        stream: 'stderr',
+                      });
+                    }
+                    this.postToWebview({
+                      type: 'command.done',
+                      commandId: tr.id,
+                      exitCode: typeof tr.result?.exit_code === 'number'
+                        ? tr.result.exit_code
+                        : (tr.result?.success === false ? 1 : 0),
+                      stdout,
+                      stderr,
+                    });
+                    toolCommandMap.delete(tr.id);
+                  }
 
                   this.postToWebview({
                     type: 'navi.agent.event',
@@ -8083,6 +8316,140 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   });
                 }
 
+                // ============================================================
+                // ENTERPRISE PROJECT EVENTS
+                // ============================================================
+
+                // Handle enterprise project creation
+                if (parsed.type === 'project_created') {
+                  console.log('[AEP] 🏢 Enterprise project created:', parsed.project_id);
+                  this.postToWebview({
+                    type: 'navi.enterprise.project_created',
+                    project_id: parsed.project_id,
+                    name: parsed.name,
+                    estimated_tasks: parsed.estimated_tasks,
+                    goals: parsed.goals,
+                    project_type: parsed.project_type,
+                  });
+                  // Also emit as activity
+                  this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                      kind: 'enterprise_project',
+                      data: {
+                        label: `Enterprise Project: ${parsed.name}`,
+                        detail: `${parsed.estimated_tasks} estimated tasks`,
+                        status: 'created',
+                        project_id: parsed.project_id,
+                      }
+                    }
+                  });
+                }
+
+                // Handle human checkpoint gate triggered
+                if (parsed.type === 'gate_triggered') {
+                  console.log('[AEP] 🚦 Human checkpoint gate triggered:', parsed.gate?.id);
+                  this.postToWebview({
+                    type: 'navi.enterprise.gate_triggered',
+                    gate: parsed.gate,
+                    project_id: parsed.project_id,
+                  });
+                  // Emit activity to alert user
+                  this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                      kind: 'human_gate',
+                      data: {
+                        label: `Decision Required: ${parsed.gate?.title || 'Checkpoint'}`,
+                        detail: parsed.gate?.description,
+                        status: 'pending',
+                        gate_id: parsed.gate?.id,
+                        gate_type: parsed.gate?.gate_type,
+                        priority: parsed.gate?.priority,
+                      }
+                    }
+                  });
+                }
+
+                // Handle awaiting human decision
+                if (parsed.type === 'awaiting_decision') {
+                  console.log('[AEP] ⏸️ Awaiting human decision for gate:', parsed.gate_id);
+                  this.postToWebview({
+                    type: 'navi.enterprise.awaiting_decision',
+                    gate_id: parsed.gate_id,
+                    message: parsed.message,
+                  });
+                }
+
+                // Handle task started (enterprise execution)
+                if (parsed.type === 'task_started') {
+                  console.log('[AEP] 🏢 Enterprise task started:', parsed.task_id);
+                  this.postToWebview({
+                    type: 'navi.enterprise.task_started',
+                    task_id: parsed.task_id,
+                    task_title: parsed.task_title,
+                    project_id: parsed.project_id,
+                  });
+                }
+
+                // Handle task completed (enterprise execution)
+                if (parsed.type === 'task_completed') {
+                  console.log('[AEP] 🏢 Enterprise task completed:', parsed.task_id);
+                  this.postToWebview({
+                    type: 'navi.enterprise.task_completed',
+                    task_id: parsed.task_id,
+                    project_id: parsed.project_id,
+                    result: parsed.result,
+                  });
+                }
+
+                // Handle checkpoint created
+                if (parsed.type === 'checkpoint_created') {
+                  console.log('[AEP] 💾 Enterprise checkpoint created:', parsed.checkpoint_id);
+                  this.postToWebview({
+                    type: 'navi.enterprise.checkpoint_created',
+                    checkpoint_id: parsed.checkpoint_id,
+                    project_id: parsed.project_id,
+                    iteration: parsed.iteration,
+                    tasks_completed: parsed.tasks_completed,
+                  });
+                }
+
+                // Handle project status update
+                if (parsed.type === 'project_status') {
+                  console.log('[AEP] 🏢 Enterprise project status:', parsed.status);
+                  this.postToWebview({
+                    type: 'navi.enterprise.project_status',
+                    project_id: parsed.project_id,
+                    status: parsed.status,
+                    progress: parsed.progress,
+                    current_task: parsed.current_task,
+                    pending_gates: parsed.pending_gates,
+                  });
+                }
+
+                // Handle project completion
+                if (parsed.type === 'project_completed') {
+                  console.log('[AEP] 🎉 Enterprise project completed:', parsed.project_id);
+                  this.postToWebview({
+                    type: 'navi.enterprise.project_completed',
+                    project_id: parsed.project_id,
+                    summary: parsed.summary,
+                  });
+                  this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                      kind: 'enterprise_project',
+                      data: {
+                        label: 'Enterprise Project Completed',
+                        detail: `All tasks finished successfully`,
+                        status: 'completed',
+                        project_id: parsed.project_id,
+                      }
+                    }
+                  });
+                }
+
                 // Handle router info
                 if (parsed.router_info) {
                   this.postToWebview({
@@ -8120,8 +8487,34 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           actions: streamedActions.length > 0 ? streamedActions : undefined,
         });
 
-      } catch (streamErr) {
+      } catch (streamErr: any) {
         console.error('[AEP] ❌ Streaming failed:', streamErr);
+        const errorMsg = streamErr?.message || String(streamErr) || 'Connection lost';
+
+        // Emit stream error event to webview for graceful error handling UI
+        this.postToWebview({
+          type: 'navi.stream.error',
+          error: errorMsg,
+          timestamp: new Date().toISOString(),
+          canRetry: true,
+        });
+
+        // Check if we should fall back to non-streaming or show error
+        // If we have partial content from tool calls, don't fall back - show the error
+        if (hasSeenToolCalls || streamedContent) {
+          console.log('[AEP] Streaming failed but had partial content - showing error to user');
+          // Send partial content as a message so user doesn't lose everything
+          if (streamedContent) {
+            this.postToWebview({
+              type: 'botMessageEnd',
+              messageId,
+              text: streamedContent + '\n\n---\n*Connection was interrupted. Your progress has been saved.*',
+              actions: streamedActions.length > 0 ? streamedActions : undefined,
+            });
+          }
+          throw streamErr; // Re-throw to prevent fallback
+        }
+
         console.warn('[AEP] Streaming failed, falling back to non-streaming:', streamErr);
         useStreaming = false;
       }
@@ -12496,6 +12889,205 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     </p>
   </body>
 </html>`;
+  }
+
+  // --- Video Processing ---
+
+  /**
+   * Process a video file through the backend API for frame extraction and transcription.
+   * This enables NAVI to understand video content.
+   */
+  private async processVideoAttachment(uri: vscode.Uri): Promise<void> {
+    const videoPath = uri.fsPath;
+    const fileName = uri.fsPath.split('/').pop() || 'video';
+
+    try {
+      // Show progress notification
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Processing video: ${fileName}`,
+          cancellable: false,
+        },
+        async (progress) => {
+          progress.report({ message: 'Checking backend availability...' });
+
+          // Check if backend is available
+          const backendUrl = 'http://127.0.0.1:8787';
+
+          try {
+            // First check if video processing is available
+            const capResponse = await fetch(`${backendUrl}/api/media/video/capabilities`);
+
+            if (!capResponse.ok) {
+              throw new Error('Video processing not available on backend');
+            }
+
+            const capabilities = await capResponse.json() as { available: boolean; message: string };
+            if (!capabilities.available) {
+              // Backend doesn't have ffmpeg - show helpful options
+              const action = await vscode.window.showWarningMessage(
+                `Video analysis requires ffmpeg. Would you like to install it or attach video as reference?`,
+                'Install ffmpeg',
+                'Attach Reference Only',
+                'Learn More'
+              );
+
+              if (action === 'Install ffmpeg') {
+                // Open terminal with install command based on platform
+                const platform = process.platform;
+                let installCmd = '';
+                if (platform === 'darwin') {
+                  installCmd = 'brew install ffmpeg';
+                } else if (platform === 'linux') {
+                  installCmd = 'sudo apt install ffmpeg -y';
+                } else {
+                  // Windows - show download page
+                  vscode.env.openExternal(vscode.Uri.parse('https://ffmpeg.org/download.html'));
+                  vscode.window.showInformationMessage(
+                    'Download ffmpeg from the opened page and add it to your PATH.'
+                  );
+                  return;
+                }
+
+                // Create terminal and run install
+                const terminal = vscode.window.createTerminal('Install ffmpeg');
+                terminal.show();
+                terminal.sendText(installCmd);
+                vscode.window.showInformationMessage(
+                  'Installing ffmpeg... After installation completes, try attaching the video again.'
+                );
+                return;
+              } else if (action === 'Learn More') {
+                vscode.env.openExternal(vscode.Uri.parse('https://ffmpeg.org/download.html'));
+                return;
+              }
+
+              // Attach as reference only
+              this.postToWebview({
+                type: 'addAttachment',
+                attachment: {
+                  kind: 'video',
+                  path: videoPath,
+                  language: 'video',
+                  content: `[Video attached: ${fileName}]\n\nNote: Full video analysis (transcription + frame extraction) requires ffmpeg to be installed. NAVI can see the video file path but cannot analyze its contents.`,
+                },
+              });
+              vscode.window.showInformationMessage('Video attached as reference. Install ffmpeg to enable full video analysis.');
+              return;
+            }
+
+            progress.report({ message: 'Extracting frames and transcribing audio...' });
+
+            // Call the video processing API
+            const processResponse = await fetch(`${backendUrl}/api/media/video/process-for-chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                video_path: videoPath,
+                frame_interval: 10, // Every 10 seconds for chat
+                max_frames: 10,
+              }),
+            });
+
+            if (!processResponse.ok) {
+              throw new Error(`Video processing failed: ${processResponse.statusText}`);
+            }
+
+            const result = await processResponse.json() as {
+              success: boolean;
+              context: string;
+              frame_images?: string[];
+              error?: string;
+            };
+
+            if (!result.success) {
+              throw new Error(result.error || 'Video processing failed');
+            }
+
+            progress.report({ message: 'Adding video context to chat...' });
+
+            // Add the video context as a text attachment
+            this.postToWebview({
+              type: 'addAttachment',
+              attachment: {
+                kind: 'video',
+                path: videoPath,
+                language: 'video',
+                content: result.context, // Contains transcription + frame descriptions
+              },
+            });
+
+            // If we have frame images, add the first few as image attachments
+            // so the vision model can see them
+            if (result.frame_images && result.frame_images.length > 0) {
+              // Add first 3 frames as images for vision context
+              for (let i = 0; i < Math.min(3, result.frame_images.length); i++) {
+                const frameBase64 = result.frame_images[i];
+                this.postToWebview({
+                  type: 'addAttachment',
+                  attachment: {
+                    kind: 'image',
+                    path: `${videoPath}#frame${i}`,
+                    language: 'image',
+                    content: `data:image/jpeg;base64,${frameBase64}`,
+                  },
+                });
+              }
+            }
+
+            vscode.window.showInformationMessage(
+              `Video processed: ${fileName} - Transcription and ${result.frame_images?.length || 0} frames extracted`
+            );
+
+          } catch (fetchError) {
+            // Backend not available or error - offer options
+            console.warn('[AEP] Video processing failed, falling back to reference:', fetchError);
+
+            const action = await vscode.window.showWarningMessage(
+              'Backend server is not running. Video analysis requires the NAVI backend.',
+              'Start Backend',
+              'Attach Reference Only'
+            );
+
+            if (action === 'Start Backend') {
+              // Open terminal with start command
+              const terminal = vscode.window.createTerminal('NAVI Backend');
+              terminal.show();
+              terminal.sendText('cd ' + (vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '.'));
+              terminal.sendText('./start_backend_dev.sh');
+              vscode.window.showInformationMessage(
+                'Starting backend... After it starts, try attaching the video again.'
+              );
+              return;
+            }
+
+            // Attach as reference only
+            this.postToWebview({
+              type: 'addAttachment',
+              attachment: {
+                kind: 'video',
+                path: videoPath,
+                language: 'video',
+                content: `[Video attached: ${fileName}]\n\nNote: Video analysis is unavailable (backend not running). NAVI can see the video file path but cannot analyze its contents. Start the backend server to enable transcription and frame extraction.`,
+              },
+            });
+          }
+        }
+      );
+    } catch (error) {
+      console.error('[AEP] Video attachment error:', error);
+      // Final fallback - just attach reference
+      this.postToWebview({
+        type: 'addAttachment',
+        attachment: {
+          kind: 'video',
+          path: videoPath,
+          language: 'video',
+          content: `[Video: ${videoPath}]`,
+        },
+      });
+    }
   }
 
   // --- Command Methods ---

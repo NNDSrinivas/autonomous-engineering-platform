@@ -23,6 +23,8 @@ import tempfile
 BASE_URL = os.getenv("NAVI_TEST_URL", "http://localhost:8002")
 TIMEOUT = 120  # seconds
 
+pytestmark = pytest.mark.integration
+
 
 def get_api_key():
     """Get API key from environment."""

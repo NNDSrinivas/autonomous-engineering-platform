@@ -61,6 +61,11 @@ kubectl wait --for=condition=complete job/navi-migrate --timeout=300s
 # 5) Verify
 kubectl get pods -n navi-prod
 kubectl logs deploy/navi-backend -n navi-prod --tail=100
+
+## Automated Scripts (Recommended)
+- Local: `./scripts/infra/deploy_local.sh`, `./scripts/infra/verify_local.sh`, `./scripts/infra/rollback_local.sh`
+- Kubernetes: `./scripts/infra/deploy_k8s.sh`, `./scripts/infra/verify_k8s.sh`, `./scripts/infra/rollback_k8s.sh`
+- AWS (Terraform): `./scripts/infra/deploy_aws_terraform.sh`, `./scripts/infra/verify_aws.sh`, `./scripts/infra/rollback_aws_terraform.sh`
 ```
 
 ## Migration Runbook

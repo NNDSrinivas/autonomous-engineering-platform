@@ -1,0 +1,836 @@
+/* =============================================================================
+   NAVI NEURAL PATHWAYS PANEL
+   =============================================================================
+   Brain neural network theme - Commands are neurons with synaptic connections
+   Color Palette:
+   - Neural Dark: #0D0A1A (deep brain matter)
+   - Synapse Purple: #7B2CBF
+   - Firing Pink: #FF6B9D
+   - Resting Blue: #4CC9F0
+   - Inhibited Gray: #6C757D
+   - Axon Green: #6BFFB8
+   - Membrane Glow: #E040FB
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   CSS Variables
+   ----------------------------------------------------------------------------- */
+.neural-panel {
+  --neural-bg-dark: #0D0A1A;
+  --neural-bg-medium: #1A1429;
+  --neural-bg-light: #251D38;
+  --neural-purple: #7B2CBF;
+  --neural-purple-light: #9D4EDD;
+  --neural-pink: #FF6B9D;
+  --neural-pink-glow: rgba(255, 107, 157, 0.4);
+  --neural-blue: #4CC9F0;
+  --neural-blue-dim: #3A9BBF;
+  --neural-gray: #6C757D;
+  --neural-green: #6BFFB8;
+  --neural-green-dim: #4AB88A;
+  --neural-membrane: #E040FB;
+  --neural-membrane-glow: rgba(224, 64, 251, 0.3);
+  --neural-border: #3D2A5C;
+  --neural-text: #E8E1F5;
+  --neural-text-dim: #9D8EC2;
+}
+
+/* -----------------------------------------------------------------------------
+   Panel Container
+   ----------------------------------------------------------------------------- */
+.neural-panel {
+  background: var(--neural-bg-dark);
+  border: 2px solid var(--neural-purple);
+  border-radius: 12px;
+  font-family: 'Segoe UI', 'SF Pro Display', -apple-system, sans-serif;
+  overflow: hidden;
+  margin: 8px 0;
+  position: relative;
+}
+
+.neural-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(ellipse at 50% 0%, var(--neural-membrane-glow) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.neural-panel.collapsed {
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.neural-panel.collapsed:hover {
+  border-color: var(--neural-pink);
+  box-shadow: 0 0 20px var(--neural-pink-glow);
+}
+
+/* -----------------------------------------------------------------------------
+   Collapsed State
+   ----------------------------------------------------------------------------- */
+.collapsed-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  color: var(--neural-text);
+}
+
+.brain-icon {
+  font-size: 18px;
+}
+
+.collapsed-title {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--neural-purple-light);
+}
+
+.collapsed-stats {
+  flex: 1;
+  text-align: right;
+  font-size: 11px;
+  color: var(--neural-text-dim);
+}
+
+.collapsed-expand {
+  font-size: 12px;
+  color: var(--neural-purple-light);
+}
+
+/* -----------------------------------------------------------------------------
+   Brain Header
+   ----------------------------------------------------------------------------- */
+.brain-header {
+  background: linear-gradient(180deg, var(--neural-bg-medium) 0%, var(--neural-bg-dark) 100%);
+  border-bottom: 1px solid var(--neural-border);
+  padding: 14px 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.header-title:hover .title-text {
+  color: var(--neural-pink);
+  text-shadow: 0 0 10px var(--neural-pink-glow);
+}
+
+.title-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--neural-purple-light);
+  letter-spacing: 2px;
+  transition: all 0.3s;
+}
+
+.collapse-btn {
+  font-size: 12px;
+  color: var(--neural-text-dim);
+}
+
+/* Activity Monitor */
+.activity-monitor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--neural-bg-dark);
+  border: 1px solid var(--neural-border);
+  border-radius: 8px;
+}
+
+.activity-label {
+  font-size: 9px;
+  color: var(--neural-text-dim);
+  letter-spacing: 1px;
+  min-width: 90px;
+}
+
+.activity-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 24px;
+  flex: 1;
+}
+
+.wave-bar {
+  width: 6px;
+  background: linear-gradient(180deg, var(--neural-pink) 0%, var(--neural-purple) 100%);
+  border-radius: 2px;
+  transition: height 0.2s ease;
+  animation: wave-pulse 1s ease-in-out infinite;
+}
+
+.wave-bar:nth-child(2) { animation-delay: 0.1s; }
+.wave-bar:nth-child(3) { animation-delay: 0.2s; }
+.wave-bar:nth-child(4) { animation-delay: 0.3s; }
+.wave-bar:nth-child(5) { animation-delay: 0.4s; }
+
+.activity-value {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--neural-pink);
+  min-width: 40px;
+  text-align: right;
+}
+
+.clear-btn {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  background: transparent;
+  border: 1px solid var(--neural-gray);
+  color: var(--neural-gray);
+  padding: 5px 10px;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+
+.clear-btn:hover {
+  border-color: var(--neural-pink);
+  color: var(--neural-pink);
+  box-shadow: 0 0 10px var(--neural-pink-glow);
+}
+
+/* -----------------------------------------------------------------------------
+   Neural Stats
+   ----------------------------------------------------------------------------- */
+.neural-stats {
+  display: flex;
+  justify-content: space-around;
+  padding: 12px 18px;
+  background: var(--neural-bg-medium);
+  border-bottom: 1px solid var(--neural-border);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-symbol {
+  font-size: 14px;
+}
+
+.stat.firing .stat-symbol {
+  color: var(--neural-pink);
+  animation: fire-pulse 0.8s ease-in-out infinite;
+}
+
+.stat.resting .stat-symbol {
+  color: var(--neural-blue);
+}
+
+.stat.inhibited .stat-symbol {
+  color: var(--neural-gray);
+}
+
+.stat.total .stat-symbol {
+  color: var(--neural-purple-light);
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--neural-text);
+}
+
+.stat-label {
+  font-size: 8px;
+  color: var(--neural-text-dim);
+  letter-spacing: 1px;
+}
+
+/* -----------------------------------------------------------------------------
+   Network Area
+   ----------------------------------------------------------------------------- */
+.network-area {
+  max-height: 500px;
+  overflow-y: auto;
+  background: var(--neural-bg-dark);
+  position: relative;
+}
+
+.network-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.network-area::-webkit-scrollbar-track {
+  background: var(--neural-bg-dark);
+}
+
+.network-area::-webkit-scrollbar-thumb {
+  background: var(--neural-purple);
+  border-radius: 4px;
+}
+
+.network-area::-webkit-scrollbar-thumb:hover {
+  background: var(--neural-purple-light);
+}
+
+/* No Neurons State */
+.no-neurons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: var(--neural-text-dim);
+}
+
+.empty-brain {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+  filter: grayscale(50%);
+}
+
+.empty-message {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.empty-hint {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+/* Neuron Chain */
+.neuron-chain {
+  position: relative;
+  padding: 16px;
+}
+
+/* Synapse Overlay */
+.synapse-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  opacity: 0.3;
+}
+
+.synapse-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.synapse-path {
+  fill: none;
+  stroke: var(--neural-purple);
+  stroke-width: 0.5;
+  stroke-dasharray: 5, 5;
+  animation: synapse-flow 3s linear infinite;
+}
+
+/* Input/Output Signals */
+.input-signal,
+.output-signal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  color: var(--neural-text-dim);
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.signal-arrow {
+  color: var(--neural-green);
+  animation: signal-bounce 1s ease-in-out infinite;
+}
+
+.output-signal .signal-arrow {
+  animation-delay: 0.5s;
+}
+
+/* -----------------------------------------------------------------------------
+   Neuron Component
+   ----------------------------------------------------------------------------- */
+.neuron {
+  position: relative;
+  margin: 16px 0;
+  padding: 0 12px;
+}
+
+/* Dendrites */
+.dendrites {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  color: var(--neural-purple);
+  font-size: 14px;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+
+.neuron-firing .dendrites {
+  color: var(--neural-pink);
+  opacity: 1;
+  animation: dendrite-pulse 0.5s ease-in-out infinite;
+}
+
+/* Soma (Cell Body) */
+.soma {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--neural-bg-light);
+  border: 2px solid var(--neural-border);
+  border-radius: 24px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.soma:hover {
+  border-color: var(--neural-purple-light);
+  box-shadow: 0 0 15px var(--neural-membrane-glow);
+}
+
+.neuron-firing .soma {
+  border-color: var(--neural-pink);
+  box-shadow: 0 0 20px var(--neural-pink-glow);
+  animation: soma-fire 0.8s ease-in-out infinite;
+}
+
+.neuron-resting .soma {
+  border-color: var(--neural-blue-dim);
+}
+
+.neuron-inhibited .soma {
+  border-color: var(--neural-gray);
+  opacity: 0.8;
+}
+
+/* Nucleus */
+.nucleus {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--neural-bg-dark);
+  border: 2px solid var(--neural-purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.neuron-firing .nucleus {
+  border-color: var(--neural-pink);
+  background: radial-gradient(circle, var(--neural-pink-glow) 0%, var(--neural-bg-dark) 70%);
+}
+
+.neuron-resting .nucleus {
+  border-color: var(--neural-blue);
+}
+
+.neuron-inhibited .nucleus {
+  border-color: var(--neural-gray);
+}
+
+.neuron-symbol {
+  font-size: 16px;
+  color: var(--neural-purple-light);
+}
+
+.neuron-firing .neuron-symbol {
+  color: var(--neural-pink);
+  animation: fire-pulse 0.4s ease-in-out infinite;
+}
+
+.neuron-resting .neuron-symbol {
+  color: var(--neural-blue);
+}
+
+.neuron-inhibited .neuron-symbol {
+  color: var(--neural-gray);
+}
+
+/* Soma Info */
+.soma-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.neuron-id {
+  font-size: 9px;
+  color: var(--neural-text-dim);
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+
+.neuron-command {
+  font-size: 12px;
+  color: var(--neural-text);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* State Badge */
+.soma-state {
+  flex-shrink: 0;
+}
+
+.state-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.state-badge.firing {
+  background: var(--neural-pink-glow);
+  color: var(--neural-pink);
+  border: 1px solid var(--neural-pink);
+  animation: badge-pulse 1s ease-in-out infinite;
+}
+
+.state-badge.resting {
+  background: rgba(76, 201, 240, 0.2);
+  color: var(--neural-blue);
+  border: 1px solid var(--neural-blue-dim);
+}
+
+.state-badge.inhibited {
+  background: rgba(108, 117, 125, 0.2);
+  color: var(--neural-gray);
+  border: 1px solid var(--neural-gray);
+}
+
+.expand-indicator {
+  font-size: 12px;
+  color: var(--neural-text-dim);
+}
+
+/* Transmitter Badge */
+.transmitter-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 8px 48px;
+  padding: 4px 10px;
+  background: var(--neural-bg-dark);
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: 9px;
+  color: var(--neural-text-dim);
+  width: fit-content;
+}
+
+.transmitter-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.transmitter-type {
+  letter-spacing: 1px;
+}
+
+/* Signal Meter */
+.signal-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 8px 48px;
+  padding: 8px 12px;
+  background: var(--neural-bg-dark);
+  border: 1px solid var(--neural-border);
+  border-radius: 6px;
+}
+
+.signal-label {
+  font-size: 8px;
+  color: var(--neural-text-dim);
+  letter-spacing: 1px;
+  min-width: 100px;
+}
+
+.signal-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--neural-bg-medium);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.signal-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neural-purple) 0%, var(--neural-pink) 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.signal-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--neural-pink) 50%, transparent 100%);
+  animation: signal-travel 1s ease-out;
+}
+
+.signal-value {
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--neural-pink);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Axon Terminal (Output) */
+.axon-terminal {
+  margin: 8px 0 8px 48px;
+  background: var(--neural-bg-dark);
+  border: 1px solid var(--neural-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--neural-bg-medium);
+  border-bottom: 1px solid var(--neural-border);
+  font-size: 9px;
+  color: var(--neural-text-dim);
+  letter-spacing: 2px;
+}
+
+.terminal-icon {
+  color: var(--neural-purple-light);
+}
+
+.synaptic-output {
+  padding: 10px 14px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.signal-line {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--neural-text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.6;
+}
+
+.signal-prefix {
+  color: var(--neural-green);
+}
+
+.inhibition-notice {
+  padding: 8px 14px;
+  font-size: 10px;
+  color: var(--neural-pink);
+  background: rgba(255, 107, 157, 0.1);
+  border-top: 1px solid var(--neural-pink);
+}
+
+.transmission-time {
+  padding: 8px 14px;
+  font-size: 10px;
+  color: var(--neural-green);
+  border-top: 1px solid var(--neural-border);
+}
+
+/* Neuron Actions */
+.neuron-actions {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 8px 48px;
+}
+
+.neuron-action {
+  background: transparent;
+  border: 1px solid var(--neural-purple);
+  color: var(--neural-purple-light);
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+
+.neuron-action:hover {
+  background: var(--neural-purple);
+  color: var(--neural-text);
+  box-shadow: 0 0 15px var(--neural-membrane-glow);
+}
+
+/* Axon */
+.axon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--neural-purple);
+  margin-top: 8px;
+}
+
+.neuron-firing .axon {
+  color: var(--neural-pink);
+  animation: axon-fire 0.5s ease-in-out infinite;
+}
+
+.axon-line {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.axon-hillock {
+  font-size: 10px;
+}
+
+/* -----------------------------------------------------------------------------
+   Animations
+   ----------------------------------------------------------------------------- */
+@keyframes wave-pulse {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes fire-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes soma-fire {
+  0%, 100% {
+    box-shadow: 0 0 20px var(--neural-pink-glow);
+  }
+  50% {
+    box-shadow: 0 0 30px var(--neural-pink-glow), 0 0 50px var(--neural-pink-glow);
+  }
+}
+
+@keyframes badge-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes signal-travel {
+  0% {
+    transform: translateX(-100%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes synapse-flow {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -20;
+  }
+}
+
+@keyframes signal-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+@keyframes dendrite-pulse {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes axon-fire {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Responsive Design
+   ----------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .activity-monitor {
+    flex-wrap: wrap;
+  }
+
+  .activity-label {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .soma {
+    flex-wrap: wrap;
+  }
+
+  .neuron-command {
+    max-width: 180px;
+  }
+
+  .transmitter-badge,
+  .signal-meter,
+  .axon-terminal,
+  .neuron-actions {
+    margin-left: 0;
+  }
+}

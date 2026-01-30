@@ -41,6 +41,8 @@ except ImportError:
     from backend.agents.base_agent import BaseAgent
     from backend.core.config import get_settings
 
+logger = logging.getLogger(__name__)
+
 
 class AgentRole(Enum):
     """Roles that agents can play in the distributed system."""
@@ -798,37 +800,467 @@ class DistributedAgentFleet:
     # Conflict Resolution Methods
 
     async def _resolve_by_majority_vote(self, conflict: ConflictCase) -> Dict[str, Any]:
-        """Resolve conflict by majority vote."""
-        # Implementation would collect votes and determine majority
-        return {"strategy": "majority_vote", "resolution": "solution_1"}
+        """
+        Resolve conflict by majority vote.
+
+        Each agent in the conflict votes on proposed solutions.
+        The solution with the most votes wins.
+        """
+        if not conflict.proposed_solutions:
+            return {
+                "strategy": "majority_vote",
+                "resolution": None,
+                "error": "No proposed solutions",
+            }
+
+        # Collect votes from conflicting agents
+        votes: Dict[int, List[str]] = defaultdict(list)  # solution_index -> voters
+
+        for agent_id in conflict.conflicting_agents:
+            agent = self.agents.get(agent_id)
+            if not agent:
+                continue
+
+            # Each agent votes for the solution they proposed or find best
+            # In practice, agents would evaluate solutions - here we use their first proposal
+            for i, solution in enumerate(conflict.proposed_solutions):
+                if solution.get("proposed_by") == agent_id:
+                    votes[i].append(agent_id)
+                    break
+            else:
+                # If agent didn't propose a solution, vote for first one (default)
+                votes[0].append(agent_id)
+
+        # Find solution with most votes
+        max_votes = 0
+        winning_index = 0
+        for i, voters in votes.items():
+            if len(voters) > max_votes:
+                max_votes = len(voters)
+                winning_index = i
+
+        winning_solution = (
+            conflict.proposed_solutions[winning_index]
+            if conflict.proposed_solutions
+            else {}
+        )
+
+        return {
+            "strategy": "majority_vote",
+            "resolution": winning_solution,
+            "votes": {str(k): v for k, v in votes.items()},
+            "winning_votes": max_votes,
+            "total_voters": len(conflict.conflicting_agents),
+        }
 
     async def _resolve_by_weighted_vote(self, conflict: ConflictCase) -> Dict[str, Any]:
-        """Resolve conflict by weighted vote based on agent trust scores."""
-        return {"strategy": "weighted_vote", "resolution": "solution_1"}
+        """
+        Resolve conflict by weighted vote based on agent trust scores.
+
+        Agents with higher trust scores have more influence in the vote.
+        """
+        if not conflict.proposed_solutions:
+            return {
+                "strategy": "weighted_vote",
+                "resolution": None,
+                "error": "No proposed solutions",
+            }
+
+        # Calculate weighted votes
+        weighted_scores: Dict[int, float] = defaultdict(float)
+
+        for agent_id in conflict.conflicting_agents:
+            agent = self.agents.get(agent_id)
+            if not agent:
+                continue
+
+            # Get agent's trust score as weight
+            weight = agent.trust_score
+
+            # Find which solution this agent proposed/supports
+            for i, solution in enumerate(conflict.proposed_solutions):
+                if solution.get("proposed_by") == agent_id:
+                    weighted_scores[i] += weight
+                    break
+            else:
+                # Vote for most aligned solution based on skills match
+                best_match_idx = self._find_best_skill_match(
+                    agent, conflict.proposed_solutions
+                )
+                weighted_scores[best_match_idx] += weight
+
+        # Find solution with highest weighted score
+        max_score = 0
+        winning_index = 0
+        for i, score in weighted_scores.items():
+            if score > max_score:
+                max_score = score
+                winning_index = i
+
+        winning_solution = (
+            conflict.proposed_solutions[winning_index]
+            if conflict.proposed_solutions
+            else {}
+        )
+
+        return {
+            "strategy": "weighted_vote",
+            "resolution": winning_solution,
+            "weighted_scores": {str(k): v for k, v in weighted_scores.items()},
+            "winning_score": max_score,
+        }
+
+    def _find_best_skill_match(
+        self, agent: AgentCapability, solutions: List[Dict[str, Any]]
+    ) -> int:
+        """Find which solution best matches the agent's skills."""
+        best_idx = 0
+        best_match = 0
+
+        for i, solution in enumerate(solutions):
+            solution_skills = set(solution.get("required_skills", []))
+            agent_skills = set(agent.skills)
+            match_score = len(solution_skills & agent_skills)
+            if match_score > best_match:
+                best_match = match_score
+                best_idx = i
+
+        return best_idx
 
     async def _resolve_hierarchically(self, conflict: ConflictCase) -> Dict[str, Any]:
-        """Resolve conflict using hierarchical decision making."""
-        return {"strategy": "hierarchical", "resolution": "solution_1"}
+        """
+        Resolve conflict using hierarchical decision making.
+
+        The highest-ranking agent (coordinator > planner > executor) decides.
+        """
+        # Define role hierarchy
+        role_hierarchy = {
+            AgentRole.COORDINATOR: 10,
+            AgentRole.PLANNER: 8,
+            AgentRole.REVIEWER: 7,
+            AgentRole.VALIDATOR: 6,
+            AgentRole.SPECIALIST: 5,
+            AgentRole.EXECUTOR: 4,
+            AgentRole.MONITOR: 3,
+            AgentRole.OPTIMIZER: 2,
+        }
+
+        # Find highest-ranking agent in the conflict
+        highest_rank = -1
+        deciding_agent = None
+
+        for agent_id in conflict.conflicting_agents:
+            agent = self.agents.get(agent_id)
+            if not agent:
+                continue
+
+            rank = role_hierarchy.get(agent.role, 0)
+            if rank > highest_rank:
+                highest_rank = rank
+                deciding_agent = agent
+
+        if not deciding_agent:
+            return {
+                "strategy": "hierarchical",
+                "resolution": (
+                    conflict.proposed_solutions[0]
+                    if conflict.proposed_solutions
+                    else None
+                ),
+                "deciding_agent": None,
+            }
+
+        # The deciding agent's proposed solution wins, or the first one they support
+        for solution in conflict.proposed_solutions:
+            if solution.get("proposed_by") == deciding_agent.agent_id:
+                return {
+                    "strategy": "hierarchical",
+                    "resolution": solution,
+                    "deciding_agent": deciding_agent.agent_id,
+                    "deciding_role": deciding_agent.role.value,
+                }
+
+        # Fall back to first solution
+        return {
+            "strategy": "hierarchical",
+            "resolution": (
+                conflict.proposed_solutions[0] if conflict.proposed_solutions else None
+            ),
+            "deciding_agent": deciding_agent.agent_id,
+            "deciding_role": deciding_agent.role.value,
+        }
 
     async def _resolve_by_consensus(self, conflict: ConflictCase) -> Dict[str, Any]:
-        """Resolve conflict by reaching consensus."""
-        return {"strategy": "consensus", "resolution": "solution_1"}
+        """
+        Resolve conflict by reaching consensus.
+
+        Iteratively refine solutions until all agents agree or max iterations reached.
+        """
+        max_iterations = 5
+        solutions = list(conflict.proposed_solutions)
+
+        for iteration in range(max_iterations):
+            # Score each solution by how many agents support it
+            solution_support: Dict[int, int] = defaultdict(int)
+
+            for agent_id in conflict.conflicting_agents:
+                agent = self.agents.get(agent_id)
+                if not agent:
+                    continue
+
+                # Simulate agent evaluating solutions
+                best_idx = self._find_best_skill_match(agent, solutions)
+                solution_support[best_idx] += 1
+
+            # Check for consensus (all agents agree)
+            total_agents = len(
+                [a for a in conflict.conflicting_agents if a in self.agents]
+            )
+            for idx, support_count in solution_support.items():
+                if support_count == total_agents:
+                    return {
+                        "strategy": "consensus",
+                        "resolution": solutions[idx],
+                        "iterations": iteration + 1,
+                        "unanimous": True,
+                    }
+
+            # Find most supported solution for next iteration
+            if solution_support:
+                best_idx = max(
+                    solution_support.keys(), key=lambda k: solution_support[k]
+                )
+                # Merge best solution with aspects of others
+                merged_solution = dict(solutions[best_idx])
+                for i, sol in enumerate(solutions):
+                    if i != best_idx:
+                        # Take any unique keys from other solutions
+                        for key, value in sol.items():
+                            if key not in merged_solution:
+                                merged_solution[key] = value
+                solutions = [merged_solution]
+
+        # Return best solution after max iterations
+        return {
+            "strategy": "consensus",
+            "resolution": solutions[0] if solutions else None,
+            "iterations": max_iterations,
+            "unanimous": False,
+        }
 
     async def _resolve_by_expert_decision(
         self, conflict: ConflictCase
     ) -> Dict[str, Any]:
-        """Resolve conflict by expert agent decision."""
-        return {"strategy": "expert_decision", "resolution": "solution_1"}
+        """
+        Resolve conflict by expert agent decision.
+
+        The agent with the most relevant skills/specializations decides.
+        """
+        # Determine required skills for this conflict type
+        conflict_skills: Dict[str, List[str]] = {
+            "resource": ["resource_management", "infrastructure", "scaling"],
+            "decision": ["architecture", "planning", "strategy"],
+            "approach": ["implementation", "design", "patterns"],
+            "priority": ["project_management", "scheduling", "prioritization"],
+        }
+
+        relevant_skills = conflict_skills.get(conflict.conflict_type, ["general"])
+
+        # Find agent with most relevant skills
+        best_expert = None
+        best_score = 0
+
+        for agent_id in conflict.conflicting_agents:
+            agent = self.agents.get(agent_id)
+            if not agent:
+                continue
+
+            # Score based on skill match and specialization
+            skill_score = len(set(agent.skills) & set(relevant_skills))
+            spec_score = len(set(agent.specializations) & set(relevant_skills))
+            total_score = (
+                skill_score * 2 + spec_score * 3
+            )  # Weight specializations higher
+
+            if total_score > best_score:
+                best_score = total_score
+                best_expert = agent
+
+        if not best_expert:
+            return {
+                "strategy": "expert_decision",
+                "resolution": (
+                    conflict.proposed_solutions[0]
+                    if conflict.proposed_solutions
+                    else None
+                ),
+                "expert_agent": None,
+            }
+
+        # Find the expert's proposed solution
+        for solution in conflict.proposed_solutions:
+            if solution.get("proposed_by") == best_expert.agent_id:
+                return {
+                    "strategy": "expert_decision",
+                    "resolution": solution,
+                    "expert_agent": best_expert.agent_id,
+                    "expert_skills": best_expert.skills,
+                    "relevance_score": best_score,
+                }
+
+        return {
+            "strategy": "expert_decision",
+            "resolution": (
+                conflict.proposed_solutions[0] if conflict.proposed_solutions else None
+            ),
+            "expert_agent": best_expert.agent_id,
+            "expert_skills": best_expert.skills,
+            "relevance_score": best_score,
+        }
 
     async def _resolve_by_performance(self, conflict: ConflictCase) -> Dict[str, Any]:
-        """Resolve conflict based on historical performance."""
-        return {"strategy": "performance_based", "resolution": "solution_1"}
+        """
+        Resolve conflict based on historical performance.
+
+        The agent with the best track record for similar tasks decides.
+        """
+        # Find agent with best performance metrics
+        best_performer = None
+        best_score = 0
+
+        for agent_id in conflict.conflicting_agents:
+            agent = self.agents.get(agent_id)
+            if not agent:
+                continue
+
+            # Calculate performance score from metrics
+            metrics = agent.performance_metrics
+            success_rate = metrics.get("success_rate", 0.5)
+            avg_completion_time = metrics.get("avg_completion_time", 60)
+            quality_score = metrics.get("quality_score", 0.5)
+
+            # Combined performance score (higher is better)
+            # Normalize completion time (lower is better, so invert)
+            time_score = 1 / (avg_completion_time / 60 + 1)  # Normalize to hours
+            perf_score = (
+                success_rate * 0.4 + quality_score * 0.4 + time_score * 0.2
+            ) * agent.trust_score
+
+            if perf_score > best_score:
+                best_score = perf_score
+                best_performer = agent
+
+        if not best_performer:
+            return {
+                "strategy": "performance_based",
+                "resolution": (
+                    conflict.proposed_solutions[0]
+                    if conflict.proposed_solutions
+                    else None
+                ),
+                "top_performer": None,
+            }
+
+        # Find the top performer's proposed solution
+        for solution in conflict.proposed_solutions:
+            if solution.get("proposed_by") == best_performer.agent_id:
+                return {
+                    "strategy": "performance_based",
+                    "resolution": solution,
+                    "top_performer": best_performer.agent_id,
+                    "performance_score": best_score,
+                    "metrics": best_performer.performance_metrics,
+                }
+
+        return {
+            "strategy": "performance_based",
+            "resolution": (
+                conflict.proposed_solutions[0] if conflict.proposed_solutions else None
+            ),
+            "top_performer": best_performer.agent_id,
+            "performance_score": best_score,
+        }
 
     async def _resolve_conflicts(
         self, conflicts: List[Dict[str, Any]], agents: List[str]
     ) -> Dict[str, Any]:
-        """Resolve conflicts that arose during task execution."""
-        return {"conflicts_resolved": len(conflicts)}
+        """
+        Resolve all conflicts that arose during task execution.
+
+        This is the main orchestrator for conflict resolution. It:
+        1. Categorizes conflicts by type
+        2. Applies appropriate resolution strategies
+        3. Returns all resolutions
+        """
+        resolutions = []
+        conflicts_by_type: Dict[str, List[Dict]] = defaultdict(list)
+
+        # Categorize conflicts
+        for conflict_dict in conflicts:
+            conflict_type = conflict_dict.get("type", "decision")
+            conflicts_by_type[conflict_type].append(conflict_dict)
+
+        # Strategy selection based on conflict type
+        strategy_for_type = {
+            "resource": ConflictResolutionStrategy.HIERARCHICAL,
+            "decision": ConflictResolutionStrategy.EXPERT_DECISION,
+            "approach": ConflictResolutionStrategy.CONSENSUS,
+            "priority": ConflictResolutionStrategy.WEIGHTED_VOTE,
+            "implementation": ConflictResolutionStrategy.PERFORMANCE_BASED,
+        }
+
+        for conflict_type, type_conflicts in conflicts_by_type.items():
+            strategy = strategy_for_type.get(
+                conflict_type, ConflictResolutionStrategy.MAJORITY_VOTE
+            )
+
+            for conflict_dict in type_conflicts:
+                # Convert dict to ConflictCase
+                conflict = ConflictCase(
+                    conflict_id=conflict_dict.get("id", str(uuid.uuid4())),
+                    conflicting_agents=conflict_dict.get("agents", agents),
+                    conflict_type=conflict_type,
+                    description=conflict_dict.get("description", ""),
+                    proposed_solutions=conflict_dict.get("solutions", []),
+                    resolution_strategy=strategy,
+                    resolved=False,
+                    resolution=None,
+                    created_at=datetime.now(),
+                    resolved_at=None,
+                )
+
+                # Apply resolution strategy
+                try:
+                    resolution = await self.resolve_conflict(conflict, strategy)
+                    resolutions.append(
+                        {
+                            "conflict_id": conflict.conflict_id,
+                            "type": conflict_type,
+                            "strategy": strategy.value,
+                            "resolution": resolution,
+                            "success": True,
+                        }
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to resolve conflict {conflict.conflict_id}: {e}"
+                    )
+                    resolutions.append(
+                        {
+                            "conflict_id": conflict.conflict_id,
+                            "type": conflict_type,
+                            "strategy": strategy.value,
+                            "resolution": None,
+                            "success": False,
+                            "error": str(e),
+                        }
+                    )
+
+        return {
+            "conflicts_resolved": len([r for r in resolutions if r["success"]]),
+            "conflicts_failed": len([r for r in resolutions if not r["success"]]),
+            "resolutions": resolutions,
+        }
 
     async def _update_fleet_metrics(self):
         """Update fleet performance metrics."""

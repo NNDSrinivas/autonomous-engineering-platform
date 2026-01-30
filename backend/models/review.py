@@ -20,6 +20,16 @@ class ReviewIssue(BaseModel):
         default=False, description="Whether this issue can be auto-fixed"
     )
 
+    @property
+    def type(self) -> str:
+        """Compatibility alias for legacy tests."""
+        return self.title
+
+    @property
+    def description(self) -> str:
+        """Compatibility alias for legacy tests."""
+        return self.message
+
 
 class ReviewEntry(BaseModel):
     """Review result for a single file"""
@@ -35,6 +45,11 @@ class ReviewEntry(BaseModel):
         json_encoders = {
             # Ensure proper JSON serialization
         }
+
+    @property
+    def path(self) -> str:
+        """Compatibility alias for legacy tests."""
+        return self.file
 
 
 class ReviewSummary(BaseModel):

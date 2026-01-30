@@ -191,10 +191,39 @@ def _convert_timestamp_to_iso(timestamp: datetime | str | None) -> str | None:
 
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
 
+dev_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:3003",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3002",
+    "http://127.0.0.1:3003",
+]
+
+cors_origins = settings.cors_origins_list
+cors_regex = None
+allow_creds = True
+
+if settings.allow_dev_cors:
+    cors_origins = sorted(set(cors_origins + dev_origins))
+    if settings.allow_vscode_webview:
+        cors_regex = (
+            r"^(https?://(localhost|127\.0\.0\.1):\d+"
+            r"|vscode-webview://.*|https://.*\.vscode-cdn\.net)$"
+        )
+    else:
+        cors_regex = r"^(https?://(localhost|127\.0\.0\.1):\d+)$"
+    allow_creds = False
+elif settings.allow_vscode_webview:
+    cors_regex = r"^(https://.*\.vscode-cdn\.net|vscode-webview://.*)$"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_origin_regex=cors_regex,
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )

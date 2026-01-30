@@ -11,12 +11,13 @@ ENV PYTHONUNBUFFERED=1 \
 # Set workdir
 WORKDIR /app
 
-# Install system deps you might need (build wheels, git, etc.)
+# Install system deps you might need (build wheels, git, ffmpeg for video processing, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     ca-certificates \
     git \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

@@ -51,6 +51,11 @@ export class NaviService {
     return NaviService.instance;
   }
 
+  setBaseUrl(baseUrl: string): void {
+    const normalized = baseUrl.replace(/\/+$/, '');
+    this.baseUrl = normalized || this.baseUrl;
+  }
+
   /**
    * Create a plan (doesn't execute)
    */
@@ -59,7 +64,7 @@ export class NaviService {
     workspace: string,
     context?: any
   ): Promise<NaviPlan> {
-    const response = await axios.post(`${this.baseUrl}/api/navi/plan`, {
+    const response = await axios.post(`${this.baseUrl}/api/navi/v2/plan`, {
       message,
       workspace,
       llm_provider: 'anthropic',
@@ -87,7 +92,7 @@ export class NaviService {
    * Get plan by ID
    */
   async getPlan(planId: string): Promise<NaviPlan> {
-    const response = await axios.get(`${this.baseUrl}/api/navi/plan/${planId}`);
+    const response = await axios.get(`${this.baseUrl}/api/navi/v2/plan/${planId}`);
     const data: any = response.data;
     return {
       planId: data.id,
@@ -109,11 +114,61 @@ export class NaviService {
     approvedActionIndices: number[]
   ): Promise<string> {
     const response = await axios.post(
-      `${this.baseUrl}/api/navi/plan/${planId}/approve`,
+      `${this.baseUrl}/api/navi/v2/plan/${planId}/approve`,
       { approved_action_indices: approvedActionIndices }
     );
 
     return response.data.execution_id;
+  }
+
+  async approvePlanStream(
+    planId: string,
+    approvedActionIndices: number[],
+    onUpdate: (update: ExecutionUpdate) => void
+  ): Promise<void> {
+    const response = await fetch(
+      `${this.baseUrl}/api/navi/v2/plan/${planId}/approve/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify({ approved_action_indices: approvedActionIndices }),
+      }
+    );
+
+    if (!response.ok || !response.body) {
+      const text = response.body ? await response.text() : '';
+      throw new Error(`Plan stream failed: ${response.status} ${text}`.trim());
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newlineIndex: number;
+      while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line.startsWith('data:')) continue;
+
+        const payload = line.slice('data:'.length).trim();
+        if (!payload) continue;
+
+        try {
+          const parsed = JSON.parse(payload);
+          onUpdate(parsed);
+        } catch {
+          onUpdate({ type: 'error', error: payload } as ExecutionUpdate);
+        }
+      }
+    }
   }
 
   /**

@@ -740,12 +740,23 @@ class BackupManager:
         """List Docker resources before pruning."""
         try:
             resources = {}
-            for cmd, key in [
-                ("docker ps -a --format '{{.ID}} {{.Names}}'", "containers"),
-                ("docker images --format '{{.ID}} {{.Repository}}:{{.Tag}}'", "images"),
-                ("docker volume ls --format '{{.Name}}'", "volumes"),
+            for cmd_args, key in [
+                (
+                    ["docker", "ps", "-a", "--format", "{{.ID}} {{.Names}}"],
+                    "containers",
+                ),
+                (
+                    [
+                        "docker",
+                        "images",
+                        "--format",
+                        "{{.ID}} {{.Repository}}:{{.Tag}}",
+                    ],
+                    "images",
+                ),
+                (["docker", "volume", "ls", "--format", "{{.Name}}"], "volumes"),
             ]:
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                result = subprocess.run(cmd_args, capture_output=True, text=True)
                 resources[key] = (
                     result.stdout.strip().split("\n") if result.stdout.strip() else []
                 )

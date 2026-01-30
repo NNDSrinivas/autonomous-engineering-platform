@@ -151,6 +151,9 @@ jobs:
           shard = int(os.environ.get("SHARD", "1"))
           total = int(os.environ.get("SHARDS", "3"))
 
+          # Compile regex once outside the loop for efficiency
+          integration_pattern = re.compile(r'pytest\.mark\.integration')
+
           # Only include files that actually have integration-marked tests
           all_files = sorted(glob.glob("tests/test_*.py"))
           integration_files = []
@@ -159,7 +162,7 @@ jobs:
                   with open(f, encoding="utf-8") as fh:
                       content = fh.read()
                   # Check for @pytest.mark.integration or pytestmark = pytest.mark.integration
-                  if re.search(r'pytest\.mark\.integration', content):
+                  if integration_pattern.search(content):
                       integration_files.append(f)
               except (OSError, UnicodeDecodeError) as e:
                   print(f"Warning: could not read {f}: {e}", file=sys.stderr)

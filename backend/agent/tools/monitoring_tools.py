@@ -885,7 +885,7 @@ def _detect_project_type(workspace_path: str) -> str:
     if os.path.exists(os.path.join(workspace_path, "manage.py")):
         return "django"
 
-    return "node"
+    return "unknown"
 
 
 # Export tools for the agent dispatcher

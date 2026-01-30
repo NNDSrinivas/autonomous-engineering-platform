@@ -41,15 +41,25 @@ def upgrade():
     pgvector_enabled = False
     if is_postgres:
         try:
-            # Try to enable pgvector extension
-            op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-            # Check if it's now enabled
+            # First check if pgvector is already installed
             result = conn.execute(
                 sa.text("SELECT * FROM pg_extension WHERE extname = 'vector'")
             )
-            pgvector_enabled = result.fetchone() is not None
+            if result.fetchone() is not None:
+                pgvector_enabled = True
+            else:
+                # Check if extension is available to install
+                result = conn.execute(
+                    sa.text(
+                        "SELECT * FROM pg_available_extensions WHERE name = 'vector'"
+                    )
+                )
+                if result.fetchone() is not None:
+                    # Extension is available, try to enable it
+                    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                    pgvector_enabled = True
         except Exception:
-            # Extension not available
+            # Extension not available - continue without pgvector
             pass
 
     # Use Vector type for PostgreSQL with pgvector, TEXT for SQLite/others

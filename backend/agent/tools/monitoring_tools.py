@@ -888,9 +888,9 @@ def _detect_project_type(workspace_path: str) -> str:
 
 # Export tools for the agent dispatcher
 MONITORING_TOOLS = {
-    "monitor_setup_errors": setup_error_tracking,
-    "monitor_setup_apm": setup_apm,
-    "monitor_setup_logging": setup_logging,
-    "monitor_generate_health_checks": generate_health_checks,
-    "monitor_setup_alerting": setup_alerting,
+    "monitoring_setup_errors": setup_error_tracking,
+    "monitoring_setup_apm": setup_apm,
+    "monitoring_setup_logging": setup_logging,
+    "monitoring_generate_health_checks": generate_health_checks,
+    "monitoring_setup_alerting": setup_alerting,
 }

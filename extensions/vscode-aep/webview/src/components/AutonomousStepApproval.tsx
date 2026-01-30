@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { resolveBackendBase } from '../api/navi/client';
+import { resolveBackendBase, buildHeaders } from '../api/navi/client';
 
 interface Step {
   id: string;
@@ -62,7 +62,7 @@ export function AutonomousStepApproval({
         `${resolveBackendBase()}/api/autonomous/execute-step`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: buildHeaders(),
           body: JSON.stringify({
             task_id: taskId,
             step_id: currentStep.id,
@@ -101,7 +101,7 @@ export function AutonomousStepApproval({
         `${resolveBackendBase()}/api/autonomous/execute-step`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: buildHeaders(),
           body: JSON.stringify({
             task_id: taskId,
             step_id: currentStep.id,

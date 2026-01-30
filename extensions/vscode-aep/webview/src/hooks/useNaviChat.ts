@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import type { ChatMessage, JiraTask } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { getRecommendedModel, type TaskType } from '@/lib/llmRouter';
-import { resolveBackendBase } from '@/api/navi/client';
+import { resolveBackendBase, buildHeaders } from '@/api/navi/client';
 
 // Use local backend API endpoints
 const BACKEND_BASE = resolveBackendBase();
@@ -205,9 +205,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
 
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: buildHeaders(),
         body: JSON.stringify(requestBody),
       });
 

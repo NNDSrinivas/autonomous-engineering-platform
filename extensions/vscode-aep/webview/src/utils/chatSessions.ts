@@ -1,3 +1,5 @@
+import { buildHeaders } from '../api/navi/client';
+
 export type ChatSessionTag = {
   label: string;
   color?: string; // CSS color or preset name like 'blue', 'green', 'purple', 'orange', 'red'
@@ -664,7 +666,7 @@ export const syncCheckpointToBackend = async (
       `${syncConfig.apiBaseUrl}/api/navi/checkpoint/sync?user_id=${syncConfig.userId}&session_id=${checkpoint.sessionId}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildHeaders(),
         body: JSON.stringify({
           messageId: checkpoint.messageId,
           userMessage: checkpoint.userMessage,
@@ -701,7 +703,8 @@ export const loadCheckpointFromBackend = async (
 
   try {
     const response = await fetch(
-      `${syncConfig.apiBaseUrl}/api/navi/checkpoint?user_id=${syncConfig.userId}&session_id=${sessionId}`
+      `${syncConfig.apiBaseUrl}/api/navi/checkpoint?user_id=${syncConfig.userId}&session_id=${sessionId}`,
+      { headers: buildHeaders() }
     );
 
     if (!response.ok) return null;
@@ -751,7 +754,7 @@ export const markInterruptedOnBackend = async (
       `${syncConfig.apiBaseUrl}/api/navi/checkpoint/interrupt?user_id=${syncConfig.userId}&session_id=${sessionId}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildHeaders(),
         body: JSON.stringify({ reason }),
       }
     );
@@ -776,7 +779,7 @@ export const markCompletedOnBackend = async (
   try {
     const response = await fetch(
       `${syncConfig.apiBaseUrl}/api/navi/checkpoint/complete?user_id=${syncConfig.userId}&session_id=${sessionId}`,
-      { method: 'POST' }
+      { method: 'POST', headers: buildHeaders() }
     );
 
     return response.ok;
@@ -796,7 +799,8 @@ export const getInterruptedCheckpointsFromBackend = async (): Promise<TaskCheckp
 
   try {
     const response = await fetch(
-      `${syncConfig.apiBaseUrl}/api/navi/checkpoint/interrupted/list?user_id=${syncConfig.userId}`
+      `${syncConfig.apiBaseUrl}/api/navi/checkpoint/interrupted/list?user_id=${syncConfig.userId}`,
+      { headers: buildHeaders() }
     );
 
     if (!response.ok) return [];
@@ -842,7 +846,7 @@ export const deleteCheckpointFromBackend = async (
   try {
     const response = await fetch(
       `${syncConfig.apiBaseUrl}/api/navi/checkpoint?user_id=${syncConfig.userId}&session_id=${sessionId}`,
-      { method: 'DELETE' }
+      { method: 'DELETE', headers: buildHeaders() }
     );
 
     return response.ok;

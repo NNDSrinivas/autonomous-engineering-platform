@@ -4918,10 +4918,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Org-Id": ORG,
-      },
+      headers: buildHeaders(),
       body: JSON.stringify(body),
     });
     const rawText = await res.text();
@@ -6321,7 +6318,8 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
   const fetchAutonomousSteps = async (taskId: string) => {
     try {
       const response = await fetch(
-        `${resolveBackendBase()}/api/autonomous/tasks/${taskId}/steps`
+        `${resolveBackendBase()}/api/autonomous/tasks/${taskId}/steps`,
+        { headers: buildHeaders() }
       );
       if (response.ok) {
         const steps = await response.json();

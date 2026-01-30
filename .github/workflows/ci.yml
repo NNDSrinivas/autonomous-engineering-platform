@@ -144,7 +144,10 @@ jobs:
           done
 
           python - <<'PY'
-          import glob, os, sys, re
+          import glob
+          import os
+          import sys
+          import re
           shard = int(os.environ.get("SHARD", "1"))
           total = int(os.environ.get("SHARDS", "3"))
 

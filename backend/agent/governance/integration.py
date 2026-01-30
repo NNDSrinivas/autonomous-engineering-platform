@@ -67,7 +67,7 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
         self.audit_logger = AuditLogger(db_session)
 
         # Governance state
-        self.pending_approvals: Dict[str, str] = {}  # action_id -> approval_id
+        self.pending_approvals: Dict[str, str] = {}  # approval_id -> action_id
         self.governance_enabled = True
 
         logger.info(f"Initialized governed orchestrator for user {self.user_id}")
@@ -121,7 +121,7 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
                 # Store pending approval
                 action_id = generate_action_id(action)
                 if approval_id:  # Only store if approval_id is not None
-                    # Track by approval_id for lookup consistency
+                    # Track by approval_id -> action_id for lookup in execute_approved_action
                     self.pending_approvals[approval_id] = action_id
 
                 message = f"Action requires approval: {', '.join(reasons)}"

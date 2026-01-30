@@ -324,7 +324,14 @@ class GovernedExecutionController(ExecutionController):
             )
 
             if isinstance(rollback_result, tuple):
-                success, message, details = rollback_result
+                # Handle tuple with 2 or 3 elements for backwards compatibility
+                if len(rollback_result) >= 3:
+                    success, message, details = rollback_result[:3]
+                elif len(rollback_result) == 2:
+                    success, message = rollback_result
+                    details = {}
+                else:
+                    success, message, details = False, "Invalid rollback result", {}
                 rollback_result = {
                     "success": success,
                     "message": message,

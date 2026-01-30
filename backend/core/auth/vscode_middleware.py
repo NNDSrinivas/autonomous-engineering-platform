@@ -52,13 +52,19 @@ class VscodeAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
+        token = ""
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+        else:
+            # EventSource/SSE cannot set headers; allow token via query param for GET streams only.
+            if request.method == "GET":
+                token = request.query_params.get("access_token", "").strip()
+
+        if not token:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Missing or invalid authorization header"},
             )
-
-        token = auth_header.split(" ", 1)[1].strip()
         if not token:
             return JSONResponse(status_code=401, content={"detail": "Invalid token"})
 

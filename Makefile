@@ -57,17 +57,10 @@ test:
 	pytest -q
 
 e2e-smoke:
-<<<<<<< HEAD
 	python3 scripts/smoke_navi_v2_e2e.py --runs 1
 
 e2e-gate:
 	python3 scripts/smoke_navi_v2_e2e.py --runs 20
-=======
-	python scripts/e2e_smoke.py
-
-e2e-gate:
-	E2E_GATE_RUNS=20 python scripts/e2e_gate.py
->>>>>>> 9adf3267 (Add prod readiness hardening and e2e harness)
 
 # Memory graph utilities
 CORE ?= http://localhost:8000

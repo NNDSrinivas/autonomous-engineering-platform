@@ -40,7 +40,7 @@ async def edit_file(user_id: str, path: str, new_content: str) -> Dict[str, Any]
     try:
         # Handle escaped newlines that might come from JSON serialization
         # This fixes the issue where content has literal '\n' instead of actual newlines
-        if "\\n" in new_content and "\n" not in new_content:
+        if any(seq in new_content for seq in ("\\n", "\\t", "\\r")):
             new_content = new_content.replace("\\n", "\n")
             new_content = new_content.replace("\\t", "\t")
             new_content = new_content.replace("\\r", "\r")

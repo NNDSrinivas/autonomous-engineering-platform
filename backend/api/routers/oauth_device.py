@@ -15,7 +15,8 @@ import string
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -265,6 +266,114 @@ class DeviceCodeErrorResponse(BaseModel):
     )
 
 
+@router.get("/device/verify", response_class=HTMLResponse)
+async def device_verify_page(user_code: Optional[str] = None) -> str:
+    """Simple device verification page for local/dev sign-in."""
+    prefill = user_code or ""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>NAVI Device Sign-In</title>
+  <style>
+    body {{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0b0f1a;
+      color: #e8edf5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }}
+    .card {{
+      background: #12182a;
+      border: 1px solid #1d2740;
+      border-radius: 16px;
+      padding: 28px 32px;
+      width: min(480px, 92vw);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    }}
+    h1 {{ font-size: 20px; margin: 0 0 12px; }}
+    p {{ color: #b7c2d9; margin: 0 0 16px; }}
+    input {{
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #2a3653;
+      background: #0f1424;
+      color: #e8edf5;
+      font-size: 16px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      box-sizing: border-box;
+    }}
+    button {{
+      margin-top: 14px;
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: none;
+      background: #2d6cdf;
+      color: #fff;
+      font-size: 16px;
+      cursor: pointer;
+    }}
+    .status {{ margin-top: 12px; font-size: 14px; }}
+    .success {{ color: #58d890; }}
+    .error {{ color: #ff8a8a; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Finish signing in to NAVI</h1>
+    <p>Enter the device code shown in VS Code to authorize this device.</p>
+    <input id="code" value="{prefill}" placeholder="XXXX-XXXX"/>
+    <button id="submit">Authorize</button>
+    <div id="status" class="status"></div>
+  </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    const input = document.getElementById('code');
+    const button = document.getElementById('submit');
+    const submit = async () => {{
+      const user_code = (input.value || '').trim();
+      if (!user_code) {{
+        statusEl.textContent = 'Please enter the code.';
+        statusEl.className = 'status error';
+        return;
+      }}
+      statusEl.textContent = 'Authorizing...';
+      statusEl.className = 'status';
+      try {{
+        const res = await fetch('/oauth/device/authorize', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{ user_code, action: 'approve' }})
+        }});
+        if (!res.ok) {{
+          const text = await res.text();
+          statusEl.textContent = 'Authorization failed: ' + text;
+          statusEl.className = 'status error';
+          return;
+        }}
+        statusEl.textContent = 'Authorized! You can return to VS Code.';
+        statusEl.className = 'status success';
+      }} catch (err) {{
+        statusEl.textContent = 'Authorization failed. Please try again.';
+        statusEl.className = 'status error';
+      }}
+    }};
+    button.addEventListener('click', submit);
+    input.addEventListener('keydown', (e) => {{
+      if (e.key === 'Enter') submit();
+    }});
+  </script>
+</body>
+</html>"""
+
+
 @router.post("/device/rotate", response_model=DeviceCodeTokenResponse)
 async def rotate_access_token(
     authorization: Optional[str] = Header(None),
@@ -315,6 +424,7 @@ async def rotate_access_token(
 @router.post("/device/start", response_model=DeviceCodeStartResponse)
 async def start_device_code_flow(
     request: DeviceCodeStartRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
 ):
     """
@@ -341,16 +451,15 @@ async def start_device_code_flow(
                 "expires_at": int(expires_at.timestamp()),
                 "status": "pending",  # pending, authorized, denied
                 "created_at": _utc_ts(),
+                "org_id": http_request.headers.get("X-Org-Id"),
+                "user_id": http_request.headers.get("X-User-Id"),
             },
         )
 
-        # Base verification URI (for development, use localhost)
-        base_uri = (
-            "http://localhost:8787/docs#/OAuth%20Device%20Code/"
-            "authorize_device_code_oauth_device_authorize_post"
-        )
-        verification_uri = base_uri
-        verification_uri_complete = f"{base_uri}&user_code={user_code}"
+        # Base verification URI (defaults to local backend when not configured)
+        base_root = settings.public_base_url or "http://localhost:8787"
+        verification_uri = f"{base_root}/oauth/device/verify"
+        verification_uri_complete = f"{verification_uri}?user_code={user_code}"
 
         _audit_event(
             db,
@@ -480,6 +589,7 @@ async def poll_device_code(
                     "scope": device_info["scope"],
                     "expires_at": int(token_expires_at.timestamp()),
                     "user_id": device_info.get("user_id") or "demo-user",
+                    "org_id": device_info.get("org_id"),
                     "created_at": _utc_ts(),
                 },
             )
@@ -573,6 +683,10 @@ async def authorize_device_code(
         if request.action.lower() == "approve":
             device_info["status"] = "authorized"
             device_info["authorized_at"] = _utc_ts()
+            if request.user_id:
+                device_info["user_id"] = request.user_id
+            if request.org_id:
+                device_info["org_id"] = request.org_id
             message = f"Device with user code {request.user_code} has been authorized"
             _audit_event(
                 db,

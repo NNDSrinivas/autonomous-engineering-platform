@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.api.routers.oauth_device import validate_access_token
+from backend.core.auth.jwt import JWTVerificationError, verify_token
+from backend.core.jwt_session import SessionJWT
 
 
 class VscodeAuthMiddleware(BaseHTTPMiddleware):
@@ -68,12 +70,31 @@ class VscodeAuthMiddleware(BaseHTTPMiddleware):
         if not token:
             return JSONResponse(status_code=401, content={"detail": "Invalid token"})
 
+        token_info = None
         try:
             token_info = await validate_access_token(token)
-        except HTTPException as exc:
-            return JSONResponse(
-                status_code=exc.status_code, content={"detail": exc.detail}
-            )
+        except HTTPException:
+            token_info = None
+
+        if token_info is None and token.count(".") == 2:
+            try:
+                token_info = verify_token(token)
+            except JWTVerificationError:
+                try:
+                    claims = SessionJWT.decode(token)
+                    token_info = {
+                        "user_id": claims.get("sub"),
+                        "email": claims.get("email"),
+                        "display_name": claims.get("name"),
+                        "org_id": claims.get("org") or claims.get("org_id"),
+                        "role": claims.get("role")
+                        or (claims.get("roles") or ["viewer"])[0],
+                    }
+                except Exception:
+                    token_info = None
+
+        if token_info is None:
+            return JSONResponse(status_code=401, content={"detail": "Invalid token"})
 
         # Make token info available downstream
         request.state.user = token_info

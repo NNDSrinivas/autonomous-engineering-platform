@@ -133,3 +133,122 @@ The production UI must not expose debug or placeholder logs. Only user-facing, p
 - 2026-01-29: JWT rotation supported via `JWT_SECRET_PREVIOUS` (comma-separated).
 - 2026-01-29: Audit payload encryption + admin decrypt endpoint (`POST /api/audit/{id}/decrypt`) added.
 - 2026-01-29: Added deterministic E2E harness runners (`scripts/e2e_smoke.py`, `scripts/e2e_gate.py`) and Makefile targets.
+- 2026-01-29: Added strategic analysis sections (competitor comparison, enterprise capabilities, startup viability).
+
+---
+
+## Strategic Analysis (Added 2026-01-29)
+
+### Competitor Comparison
+
+| Feature | NAVI | Codex (OpenAI) | Claude Code | GitHub Copilot | Cline/KiloCode |
+|---------|------|----------------|-------------|----------------|----------------|
+| **Autonomous multi-step** | ✅ Unlimited | ✅ Limited | ❌ Assistant | ❌ Suggestions | ✅ Task-based |
+| **Human checkpoint gates** | ✅ Built-in | ❌ | ❌ | ❌ | ⚠️ Manual |
+| **Multi-agent parallel** | ✅ Yes | ⚠️ Limited | ❌ | ❌ | ⚠️ Basic |
+| **CI/CD execution** | ✅ Real execution | ⚠️ Config gen | ❌ | ⚠️ Actions only | ⚠️ Config gen |
+| **Enterprise tools** | ✅ 50+ tools | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic |
+| **Compliance scanning** | ✅ PCI/HIPAA/SOC2 | ❌ | ❌ | ❌ | ❌ |
+| **Memory persistence** | ✅ Graph-based | ⚠️ Session | ⚠️ Session | ❌ | ⚠️ File-based |
+| **Self-hosted option** | ✅ Yes | ❌ Cloud only | ❌ Cloud only | ❌ Cloud only | ✅ Yes |
+
+### NAVI Unique Differentiators
+1. **Human-in-the-loop gates** - Architecture/security/cost approval workflows
+2. **True multi-agent** - Parallel task execution with conflict resolution
+3. **Enterprise compliance** - PCI-DSS, HIPAA, SOC2 scanning built-in
+4. **Self-hosted** - Full data sovereignty for regulated industries
+
+### Where Competitors Excel
+- **Codex**: Deeper integration with OpenAI reasoning models
+- **Claude Code**: Superior code understanding and explanation
+- **GitHub Copilot**: IDE integration, massive training data, brand recognition
+- **Cline**: Simpler UX, faster iteration
+
+---
+
+### Enterprise Capabilities Inventory
+
+| Category | Tools | Status |
+|----------|-------|--------|
+| **Core Agent** | 46+ tool modules | ✅ Operational |
+| **Enterprise Projects** | Unlimited iterations, checkpointing, task decomposition | ✅ Complete |
+| **Human Gates** | Architecture/security/cost/deployment gates | ✅ Complete |
+| **Multi-Agent** | DistributedAgentFleet, parallel execution | ✅ Complete |
+| **CI/CD** | GitHub Actions, GitLab CI, CircleCI, Jenkins | ✅ Complete |
+| **Compliance** | PCI-DSS, HIPAA, SOC2 scanning | ✅ Complete |
+| **Load Testing** | k6, Locust generation and execution | ✅ Complete |
+| **Kubernetes** | EKS/GKE/AKS cluster lifecycle | ✅ Complete |
+| **Database** | Migrations, replication, sharding | ✅ Complete |
+| **Memory** | Graph-based, semantic search, consolidation | ✅ Complete |
+
+**Note:** "Complete" means code exists and passes tests. It does NOT mean production-validated.
+
+---
+
+### E-Commerce Scale Assessment (10M users/minute example)
+
+**Can NAVI orchestrate building such a system?**
+
+| Capability | Available | Production-Validated |
+|------------|-----------|---------------------|
+| Task decomposition (200+ tasks) | ✅ Yes | ❌ Not validated |
+| Architecture gates (DB choice, caching) | ✅ Yes | ❌ Not validated |
+| K8s cluster creation (EKS/GKE) | ✅ Yes | ❌ Not validated |
+| Database replication/sharding | ✅ Yes | ❌ Not validated |
+| Load testing (k6 scripts) | ✅ Yes | ❌ Not validated |
+| CI/CD to production | ✅ Yes | ❌ Not validated |
+| PCI-DSS compliance scanning | ✅ Yes | ❌ Not validated |
+
+**Honest Assessment:**
+- NAVI has the **tooling** to orchestrate complex builds
+- The **generated system** could scale to 10M users/minute
+- NAVI **itself** has not been validated at enterprise scale
+- Requires human oversight at critical checkpoints
+
+---
+
+### Startup Viability Assessment
+
+| Factor | Assessment |
+|--------|------------|
+| **Technical foundation** | Strong - extensible architecture, 50+ tools |
+| **Market positioning** | Differentiated - human gates, compliance, self-hosted |
+| **Funding readiness** | Pre-seed feasible with demos + roadmap |
+| **Enterprise sales** | Not ready - needs SOC2 certification, SLAs |
+| **Competition** | Crowded market, but enterprise niche available |
+
+### Recommended Go-to-Market Path
+
+| Phase | Timeline | Milestones |
+|-------|----------|------------|
+| **Pilot Program** | 0-6 months | 3-5 design partners, real projects, feedback loop |
+| **Product-Market Fit** | 6-12 months | Case studies, SOC2 Type I, basic support |
+| **Scale** | 12-18 months | Enterprise sales, SOC2 Type II, multi-region |
+
+### Enterprise Adoption Readiness
+
+| Use Case | Ready? |
+|----------|--------|
+| Internal developer tools | ⚠️ Partial (needs reliability) |
+| Greenfield projects with oversight | ⚠️ Partial (needs reliability) |
+| CI/CD automation | ⚠️ Partial (needs reliability) |
+| Fully autonomous production deploys | ❌ Not ready |
+| Regulated industries (healthcare, finance) | ❌ Not ready (needs SOC2) |
+| Mission-critical systems | ❌ Not ready (needs formal verification)
+
+---
+
+### Summary
+
+**What NAVI Is Today:** A technically sophisticated prototype with enterprise-grade architecture. The 9-phase enterprise upgrade added significant capabilities that competitors lack.
+
+**What NAVI Needs:**
+1. **Battle testing** - Real projects, real failures, real learning
+2. **Operational maturity** - Monitoring, alerting, incident response
+3. **Security audit** - Third-party penetration testing
+4. **Documentation** - User guides, API docs, runbooks
+
+**Bottom Line:**
+- Production deployment: ❌ **Not ready**
+- Pilot with oversight: ⚠️ **Partial** (after reliability fixes)
+- Startup foundation: ✅ **Viable** (with 4-8 weeks minimum work)

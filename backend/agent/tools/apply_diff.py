@@ -46,7 +46,7 @@ async def apply_diff(
     try:
         # Handle escaped newlines that might come from JSON serialization
         # This fixes the issue where diff has literal '\n' instead of actual newlines
-        if "\\n" in diff and "\n" not in diff:
+        if any(seq in diff for seq in ("\\n", "\\t", "\\r")):
             diff = diff.replace("\\n", "\n")
             diff = diff.replace("\\t", "\t")
             diff = diff.replace("\\r", "\r")

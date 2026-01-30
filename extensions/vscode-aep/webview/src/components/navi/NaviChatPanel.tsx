@@ -2324,6 +2324,15 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
       if (msg.type === "auth.stateChange") {
         if (msg.isAuthenticated) {
+          const currentConfig = (window as any).__AEP_CONFIG__ || {};
+          if (msg.authToken) {
+            (window as any).__AEP_CONFIG__ = {
+              ...currentConfig,
+              authToken: msg.authToken,
+              orgId: msg.orgId ?? currentConfig.orgId,
+              userId: msg.userId ?? currentConfig.userId,
+            };
+          }
           setAuthRequired(false);
           setAuthRequiredDetail("");
           if (pendingAuthRetryRef.current && lastSentRef.current && !sending) {
@@ -2339,6 +2348,12 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
               }
             }, 300);
           }
+        } else {
+          const currentConfig = (window as any).__AEP_CONFIG__ || {};
+          (window as any).__AEP_CONFIG__ = {
+            ...currentConfig,
+            authToken: undefined,
+          };
         }
         return;
       }

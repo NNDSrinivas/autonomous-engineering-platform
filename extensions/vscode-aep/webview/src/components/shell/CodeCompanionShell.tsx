@@ -560,6 +560,20 @@ export function CodeCompanionShell() {
     const unsubscribe = onMessage((message: any) => {
       if (message.type === "auth.stateChange") {
         setIsAuthenticated(message.isAuthenticated);
+        const currentConfig = (window as any).__AEP_CONFIG__ || {};
+        if (message.isAuthenticated && message.authToken) {
+          (window as any).__AEP_CONFIG__ = {
+            ...currentConfig,
+            authToken: message.authToken,
+            orgId: message.orgId ?? currentConfig.orgId,
+            userId: message.userId ?? currentConfig.userId,
+          };
+        } else if (!message.isAuthenticated) {
+          (window as any).__AEP_CONFIG__ = {
+            ...currentConfig,
+            authToken: undefined,
+          };
+        }
         if (message.user) {
           setUser(message.user);
         } else {

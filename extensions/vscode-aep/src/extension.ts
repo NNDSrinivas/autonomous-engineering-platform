@@ -844,9 +844,21 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('aep.notifyAuthStateChange', (isAuthenticated: boolean) => {
+    vscode.commands.registerCommand('aep.notifyAuthStateChange', async (isAuthenticated: boolean) => {
+      const authToken = await globalAuthService?.getToken();
+      if (authToken) {
+        cachedAuthToken = authToken;
+      }
+      const user = await globalAuthService?.getUserInfo();
       // This command is called internally to notify the webview of auth changes
-      provider.postToWebview({ type: 'auth.stateChange', isAuthenticated });
+      provider.postToWebview({
+        type: 'auth.stateChange',
+        isAuthenticated,
+        authToken,
+        user,
+        orgId: user?.org,
+        userId: user?.sub
+      });
     })
   );
 

@@ -415,7 +415,7 @@ async def check_cache():
 
 
 async def setup_error_tracking(
-    context: Dict[str, Any],
+    _context: Dict[str, Any],
     workspace_path: str,
     provider: str = "sentry",
     dsn: Optional[str] = None,
@@ -523,7 +523,7 @@ async def setup_error_tracking(
 
 
 async def setup_apm(
-    context: Dict[str, Any],
+    _context: Dict[str, Any],
     workspace_path: str,
     provider: str = "datadog",
 ) -> ToolResult:
@@ -610,7 +610,7 @@ async def setup_apm(
 
 
 async def setup_logging(
-    context: Dict[str, Any],
+    _context: Dict[str, Any],
     workspace_path: str,
     library: Optional[str] = None,
 ) -> ToolResult:
@@ -697,7 +697,7 @@ async def setup_logging(
 
 
 async def generate_health_checks(
-    context: Dict[str, Any],
+    _context: Dict[str, Any],
     workspace_path: str,
 ) -> ToolResult:
     """
@@ -765,7 +765,7 @@ async def generate_health_checks(
 
 
 async def setup_alerting(
-    context: Dict[str, Any],
+    _context: Dict[str, Any],
     workspace_path: str,
     provider: str = "pagerduty",
 ) -> ToolResult:

@@ -18,7 +18,25 @@ from sqlalchemy.orm import sessionmaker, Session
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from backend.core.config import settings  # noqa: E402
+from backend.core.settings import settings as core_settings  # noqa: E402
 from backend.database.models.memory_graph import MemoryNode, MemoryEdge  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def reset_jwt_settings(monkeypatch):
+    """
+    Reset JWT settings for each test to ensure test isolation.
+
+    This prevents JWT_JWKS_URL from leaking between tests and causing
+    unexpected authentication behavior.
+    """
+    # Reset to default test values (JWT disabled)
+    # Note: monkeypatch automatically restores original values after test
+    monkeypatch.setattr(core_settings, "JWT_ENABLED", False)
+    monkeypatch.setattr(core_settings, "JWT_JWKS_URL", None)
+
+    yield
+
 
 # Test configuration
 TEST_ORG_ID = "default"

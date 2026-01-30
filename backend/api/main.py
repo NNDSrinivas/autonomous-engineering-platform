@@ -141,6 +141,7 @@ from ..ci_api import router as ci_api_router  # CI Failure Analysis API
 
 # VS Code Extension API endpoints
 from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
+from backend.core.auth0 import AUTH0_CLIENT_ID
 
 # Conditionally import in-memory OAuth device router for development mode
 # This router requires OAUTH_DEVICE_USE_IN_MEMORY_STORE=true to be set
@@ -159,7 +160,6 @@ from .routers.ai_feedback import router as ai_feedback_router
 from .events.router import router as events_router  # Universal event ingestion
 from .internal.router import router as internal_router  # System info and diagnostics
 from ..core.realtime_engine import presence as presence_lifecycle
-from ..core.obs.obs_logging import logger
 
 from .routers.jira_webhook import router as jira_webhook_router
 from .routers.slack_webhook import router as slack_webhook_router
@@ -318,6 +318,13 @@ elif settings.allow_vscode_webview:
 if settings.cors_origins == "*" and not settings.allow_dev_cors:
     cors_origins = []
     cors_regex = None
+
+logger.info("🌐 CORS Configuration:")
+logger.info(f"  allow_dev_cors: {settings.allow_dev_cors}")
+logger.info(f"  allow_vscode_webview: {settings.allow_vscode_webview}")
+logger.info(f"  allow_origins: {cors_origins}")
+logger.info(f"  allow_origin_regex: {cors_regex}")
+logger.info(f"  allow_credentials: {allow_creds}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -564,7 +571,13 @@ app.include_router(
     enterprise_project_router
 )  # Enterprise project management for long-running projects
 
-app.include_router(oauth_device_auth0_router)
+# Register Auth0 device flow router only when configured and not in dev in-memory mode
+if AUTH0_CLIENT_ID and not settings.oauth_device_use_in_memory_store:
+    app.include_router(oauth_device_auth0_router)
+else:
+    logger.warning(
+        "Auth0 device flow router disabled (missing AUTH0_CLIENT_ID or dev in-memory mode enabled)."
+    )
 
 # Register in-memory OAuth device router for development mode
 # This provides a simple device code flow without Auth0 for local development

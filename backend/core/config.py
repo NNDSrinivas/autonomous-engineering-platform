@@ -144,6 +144,7 @@ class Settings(BaseSettings):
 
     # OAuth Device Code Configuration
     oauth_device_use_in_memory_store: bool = False
+    oauth_device_auto_approve: bool = False
     oauth_device_code_ttl_seconds: int = 600
     oauth_device_access_token_ttl_seconds: int = 86400
     redis_max_connections: int = (
@@ -175,6 +176,13 @@ class Settings(BaseSettings):
     # Security keys: Override via environment variables in production
     secret_key: str = "dev-secret-change-in-production"
     jwt_secret: str = "dev-jwt-secret-change-in-production"
+    jwt_enabled: bool = False
+    jwt_secret_previous: Optional[str] = None
+    jwt_algorithm: str = "HS256"
+    jwt_audience: Optional[str] = None
+    jwt_issuer: Optional[str] = None
+    jwt_jwks_url: Optional[str] = None
+    jwt_jwks_cache_ttl: int = 300
 
     # API Configuration
     api_v1_prefix: str = "/api"

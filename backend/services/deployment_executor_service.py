@@ -1740,7 +1740,7 @@ class DeploymentExecutorService:
                         try:
                             body = await response.text()
                             health_result["response_body"] = body[:500]  # Limit size
-                        except:
+                        except Exception:
                             pass
 
                         if response.status == expected_status:
@@ -1843,15 +1843,15 @@ class DeploymentExecutorService:
                                     if expected_body in body:
                                         test_result["passed"] = True
                                     else:
-                                        test_result["error"] = (
-                                            f"Expected body to contain: {expected_body}"
-                                        )
+                                        test_result[
+                                            "error"
+                                        ] = f"Expected body to contain: {expected_body}"
                                 else:
                                     test_result["passed"] = True
                             else:
-                                test_result["error"] = (
-                                    f"Expected status {expected_status}, got {response.status}"
-                                )
+                                test_result[
+                                    "error"
+                                ] = f"Expected status {expected_status}, got {response.status}"
 
                     elif method == "POST":
                         async with session.post(
@@ -1988,9 +1988,9 @@ class DeploymentExecutorService:
                 result["smoke_tests"] = smoke_result
 
                 if not smoke_result["all_passed"]:
-                    result["error"] = (
-                        f"Smoke tests failed: {smoke_result['failed']}/{smoke_result['total']} tests failed"
-                    )
+                    result[
+                        "error"
+                    ] = f"Smoke tests failed: {smoke_result['failed']}/{smoke_result['total']} tests failed"
                     return result
 
         result["success"] = True

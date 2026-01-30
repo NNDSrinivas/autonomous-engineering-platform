@@ -19,11 +19,11 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from sqlalchemy import text
-from backend.core.db import get_engine
+from sqlalchemy import text  # noqa: E402
+from backend.core.db import get_engine  # noqa: E402
 
 # Import models to register them with Base.metadata
-from backend.database.models.session_facts import (
+from backend.database.models.session_facts import (  # noqa: E402
     WorkspaceSession,
     SessionFact,
     ErrorResolution,

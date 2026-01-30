@@ -1137,6 +1137,9 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
   const [, setHistoryRefreshTrigger] = useState(0);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [inlineCommandHighlightId, setInlineCommandHighlightId] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [authRequiredDetail, setAuthRequiredDetail] = useState<string>("");
+  const pendingAuthRetryRef = useRef(false);
 
   // Settings panel state
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -2319,6 +2322,27 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
           ? (nextModeId as ChatMode)
           : "agent";
         setChatMode(normalizedMode);
+        return;
+      }
+
+      if (msg.type === "auth.stateChange") {
+        if (msg.isAuthenticated) {
+          setAuthRequired(false);
+          setAuthRequiredDetail("");
+          if (pendingAuthRetryRef.current && lastSentRef.current && !sending) {
+            pendingAuthRetryRef.current = false;
+            showToast("Signed in. Retrying your last request…", "info");
+            void handleSend(lastSentRef.current);
+          } else if (pendingAuthRetryRef.current && lastSentRef.current && sending) {
+            setTimeout(() => {
+              if (!sending && pendingAuthRetryRef.current && lastSentRef.current) {
+                pendingAuthRetryRef.current = false;
+                showToast("Signed in. Retrying your last request…", "info");
+                void handleSend(lastSentRef.current);
+              }
+            }, 300);
+          }
+        }
         return;
       }
 
@@ -4069,6 +4093,19 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
           const isInternalError = message.includes('retry') || message.includes('fallback');
           if (!isInternalError) {
             showToast(`Error: ${message}`, 'error');
+          }
+
+          const normalizedMessage = String(message).toLowerCase();
+          if (
+            normalizedMessage.includes("http 401") ||
+            normalizedMessage.includes("unauthorized") ||
+            normalizedMessage.includes("authorization header") ||
+            normalizedMessage.includes("missing or invalid authorization")
+          ) {
+            setAuthRequired(true);
+            setAuthRequiredDetail(String(message));
+            pendingAuthRetryRef.current = true;
+            showToast("Sign in required to continue.", "warning");
           }
 
           // Add error activity with full detail
@@ -7258,6 +7295,44 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
           </span>
           {/* Animated thinking bar */}
           <span className="navi-thinking-bar" />
+        </div>
+      )}
+
+      {authRequired && (
+        <div className="navi-auth-required">
+          <div className="navi-auth-required-icon">
+            <Shield className="h-4 w-4" />
+          </div>
+          <div className="navi-auth-required-content">
+            <div className="navi-auth-required-title">Sign in required</div>
+            <div className="navi-auth-required-detail">
+              {authRequiredDetail || "Your session is missing a valid token. Please sign in to continue."}
+            </div>
+          </div>
+          <div className="navi-auth-required-actions">
+            <button
+              type="button"
+              className="navi-auth-required-btn"
+              onClick={() => {
+                setAuthRequired(false);
+                setAuthRequiredDetail("");
+                vscodeApi.postMessage({ type: "auth.signIn" });
+              }}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              className="navi-auth-required-dismiss"
+              onClick={() => {
+                setAuthRequired(false);
+                setAuthRequiredDetail("");
+                pendingAuthRetryRef.current = false;
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 

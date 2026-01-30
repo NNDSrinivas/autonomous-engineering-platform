@@ -26,12 +26,9 @@ logger = structlog.get_logger(__name__)
 try:
     from backend.services.execution_confirmation_service import (
         execution_confirmation_service,
-        RiskLevel,
     )
     from backend.services.infrastructure_executor_service import (
         infrastructure_executor_service,
-        InfrastructureProvider,
-        InfrastructureAction,
     )
 
     EXECUTION_SERVICES_AVAILABLE = True

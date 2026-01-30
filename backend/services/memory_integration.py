@@ -461,7 +461,7 @@ def save_conversation_exchange_sync(
         logger.warning(f"Error saving conversation exchange: {e}")
         try:
             db.rollback()
-        except:
+        except Exception:
             pass
         return False
 

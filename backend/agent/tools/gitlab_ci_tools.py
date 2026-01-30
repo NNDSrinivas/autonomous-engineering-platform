@@ -527,7 +527,7 @@ async def _detect_project_type(workspace_path: str) -> Dict[str, Any]:
                     project_info["type"] = "react"
                 elif "vue" in deps:
                     project_info["type"] = "vue"
-        except:
+        except Exception:
             pass
 
     # Check for Python

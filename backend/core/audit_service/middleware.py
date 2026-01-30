@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+from sqlalchemy import inspect
 from backend.core.db import get_db
 from backend.core.settings import settings
 from backend.core.eventstore.models import AuditLog
@@ -98,7 +99,7 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
                         AuditLog.__table__.create(bind=session.bind, checkfirst=True)
                 if settings.AUDIT_ENCRYPTION_KEY:
                     try:
-                        encrypt_payload(
+                        encrypt_audit_payload(
                             payload,
                             settings.AUDIT_ENCRYPTION_KEY,
                             settings.AUDIT_ENCRYPTION_KEY_ID,

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import time
+import urllib.request
 
 from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
@@ -12,6 +15,54 @@ from backend.core.auth.utils import parse_comma_separated
 from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
+
+_JWKS_CACHE: dict[str, object] = {
+    "expires_at": 0,
+    "keys": None,
+}
+
+
+def _fetch_jwks(jwks_url: str) -> list[dict]:
+    """Fetch JWKS from a remote URL with basic caching."""
+    now = int(time.time())
+    expires_at = int(_JWKS_CACHE.get("expires_at") or 0)
+    cached_keys = _JWKS_CACHE.get("keys")
+    if cached_keys and now < expires_at:
+        return cached_keys  # type: ignore[return-value]
+
+    try:
+        with urllib.request.urlopen(jwks_url, timeout=5) as response:  # nosec B310
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        logger.error("jwks.fetch.failed", error=str(exc))
+        raise JWTVerificationError("Failed to fetch JWKS") from exc
+
+    keys = payload.get("keys", [])
+    if not isinstance(keys, list) or not keys:
+        raise JWTVerificationError("JWKS endpoint returned no keys")
+
+    _JWKS_CACHE["keys"] = keys
+    _JWKS_CACHE["expires_at"] = now + max(30, settings.JWT_JWKS_CACHE_TTL)
+    return keys
+
+
+def _get_jwks_key(token: str, jwks_url: str) -> dict:
+    """Select the correct JWK for a token by kid."""
+    try:
+        headers = jwt.get_unverified_header(token)
+    except JWTError as exc:
+        raise JWTVerificationError("Invalid token header") from exc
+
+    kid = headers.get("kid")
+    keys = _fetch_jwks(jwks_url)
+    if kid:
+        for key in keys:
+            if key.get("kid") == kid:
+                return key
+
+    # Fallback: if no kid match, try the first key
+    return keys[0]
+
 
 # Valid role values from Role enum - computed once at module load for performance
 # Note: If Role enum is modified, the module must be reloaded for changes to take effect
@@ -38,8 +89,28 @@ def decode_jwt(token: str) -> dict:
     if not settings.JWT_ENABLED:
         raise JWTVerificationError("JWT authentication is not enabled")
 
+    if settings.JWT_JWKS_URL:
+        try:
+            jwk_key = _get_jwks_key(token, settings.JWT_JWKS_URL)
+            payload = jwt.decode(
+                token,
+                jwk_key,
+                algorithms=["RS256"],
+                audience=settings.JWT_AUDIENCE,
+                issuer=settings.JWT_ISSUER,
+            )
+            return payload
+        except ExpiredSignatureError as e:
+            raise JWTVerificationError("Token has expired") from e
+        except JWTClaimsError as e:
+            raise JWTVerificationError("Invalid token claims") from e
+        except JWTError as e:
+            raise JWTVerificationError("Token verification failed") from e
+
     if not settings.JWT_SECRET:
-        raise JWTVerificationError("JWT_SECRET is required when JWT_ENABLED=true")
+        raise JWTVerificationError(
+            "JWT_SECRET is required when JWT_ENABLED=true and JWT_JWKS_URL is not set"
+        )
 
     secrets = [settings.JWT_SECRET]
     secrets.extend(parse_comma_separated(settings.JWT_SECRET_PREVIOUS))

@@ -35,8 +35,6 @@ def _get_command_env() -> dict:
 try:
     from backend.services.execution_confirmation_service import (
         execution_confirmation_service,
-        RiskLevel,
-        OperationCategory,
     )
     from backend.services.deployment_executor_service import (
         deployment_executor_service,
@@ -600,7 +598,9 @@ async def detect_project_type(
                             detected["framework"] = (
                                 "Express"
                                 if "express" in deps
-                                else "Fastify" if "fastify" in deps else "Koa"
+                                else "Fastify"
+                                if "fastify" in deps
+                                else "Koa"
                             )
                             detected["type"] = "backend"
                             detected["recommended_platforms"] = [

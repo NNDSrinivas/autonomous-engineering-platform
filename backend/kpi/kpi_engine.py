@@ -216,7 +216,9 @@ class KpiEngine:
             "trend": (
                 "improving"
                 if current_velocity > previous_velocity
-                else "declining" if current_velocity < previous_velocity else "stable"
+                else "declining"
+                if current_velocity < previous_velocity
+                else "stable"
             ),
             "sprints_analyzed": len(velocities),
             "target_velocity": self.velocity_target,
@@ -297,7 +299,9 @@ class KpiEngine:
             "trend": (
                 "improving"
                 if current_mttr < previous_mttr
-                else "declining" if current_mttr > previous_mttr else "stable"
+                else "declining"
+                if current_mttr > previous_mttr
+                else "stable"
             ),
             "incidents_analyzed": len(incident_data),
             "target_mttr": self.mttr_target_hours,
@@ -600,14 +604,18 @@ class KpiEngine:
             trend = (
                 "improving"
                 if change_pct < 0
-                else "declining" if change_pct > 0 else "stable"
+                else "declining"
+                if change_pct > 0
+                else "stable"
             )
         else:
             # Higher is better for these metrics
             trend = (
                 "improving"
                 if change_pct > 0
-                else "declining" if change_pct < 0 else "stable"
+                else "declining"
+                if change_pct < 0
+                else "stable"
             )
 
         return KPITrend(
@@ -724,7 +732,9 @@ class KpiEngine:
             trend_direction=(
                 "improving"
                 if change_pct > 0
-                else "declining" if change_pct < 0 else "stable"
+                else "declining"
+                if change_pct < 0
+                else "stable"
             ),
             data_points=values,
             analysis=f"Trend analysis based on {len(values)} data points",

@@ -9,9 +9,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     APP_NAME: str = "Autonomous Engineering Platform"  # Human-readable application name
-    APP_SLUG: str = (
-        "autonomous-engineering-platform"  # Machine-friendly identifier (e.g., for URLs, config)
-    )
+    APP_SLUG: str = "autonomous-engineering-platform"  # Machine-friendly identifier (e.g., for URLs, config)
 
     # Redis configuration
     REDIS_URL: str | None = None
@@ -38,6 +36,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"  # Algorithm for JWT signature verification
     JWT_AUDIENCE: str | None = None  # Expected 'aud' claim (optional)
     JWT_ISSUER: str | None = None  # Expected 'iss' claim (optional)
+    JWT_JWKS_URL: str | None = None  # Optional JWKS URL for RS256 validation
+    JWT_JWKS_CACHE_TTL: int = 300  # JWKS cache TTL in seconds
 
     # Rate limiting configuration
     RATE_LIMITING_ENABLED: bool = True
@@ -124,8 +124,10 @@ if settings.HEARTBEAT_SEC * 2 >= settings.PRESENCE_TTL_SEC:
     )
 
 # Validate JWT configuration: at least one secret is required when JWT_ENABLED=true
-if settings.JWT_ENABLED and not (settings.JWT_SECRET or settings.JWT_SECRET_PREVIOUS):
+if settings.JWT_ENABLED and not (
+    settings.JWT_SECRET or settings.JWT_SECRET_PREVIOUS or settings.JWT_JWKS_URL
+):
     raise ValueError(
-        "JWT_SECRET (or JWT_SECRET_PREVIOUS) must be set when JWT_ENABLED=true. "
-        "Set the JWT_SECRET environment variable or disable JWT authentication."
+        "JWT_SECRET (or JWT_SECRET_PREVIOUS) or JWT_JWKS_URL must be set when JWT_ENABLED=true. "
+        "Set JWT_SECRET/JWT_SECRET_PREVIOUS for HS256 or JWT_JWKS_URL for RS256."
     )

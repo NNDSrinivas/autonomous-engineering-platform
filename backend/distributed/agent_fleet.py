@@ -41,6 +41,8 @@ except ImportError:
     from backend.agents.base_agent import BaseAgent
     from backend.core.config import get_settings
 
+logger = logging.getLogger(__name__)
+
 
 class AgentRole(Enum):
     """Roles that agents can play in the distributed system."""

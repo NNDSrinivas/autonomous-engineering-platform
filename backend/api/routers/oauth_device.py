@@ -51,6 +51,32 @@ _redis = None
 _redis_init_attempted = False
 
 
+def _audit_event(
+    _db: Session,
+    *,
+    event_type: str,
+    payload: Dict[str, Any],
+    status_code: int,
+    actor_sub: Optional[str] = None,
+    org_key: Optional[str] = None,
+) -> None:
+    """Best-effort audit logging; never break auth flow if audit fails."""
+    try:
+        logger.info(
+            "oauth.device.audit",
+            extra={
+                "event_type": event_type,
+                "status_code": status_code,
+                "actor_sub": actor_sub,
+                "org_key": org_key,
+                "payload": payload,
+            },
+        )
+    except Exception:
+        # Avoid blocking auth flow on logging failures
+        pass
+
+
 def _use_memory_store() -> bool:
     return bool(settings.oauth_device_use_in_memory_store)
 
@@ -267,7 +293,7 @@ async def rotate_access_token(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "rotated_from": old_token,
     }
-    await _save_access_token(new_token, new_info)
+    await _store_access_token(new_token, new_info)
 
     _audit_event(
         db,
@@ -320,7 +346,7 @@ async def start_device_code_flow(
 
         # Base verification URI (for development, use localhost)
         base_uri = (
-            "http://localhost:8000/docs#/OAuth%20Device%20Code/"
+            "http://localhost:8787/docs#/OAuth%20Device%20Code/"
             "authorize_device_code_oauth_device_authorize_post"
         )
         verification_uri = base_uri
@@ -416,10 +442,11 @@ async def poll_device_code(
                     db,
                     event_type="oauth.device.poll.pending",
                     payload={"device_code": device_code},
-                    status_code=400,
+                    status_code=428,
                 )
+                # Use 428 to signal client to keep polling (matches DeviceAuthService)
                 raise HTTPException(
-                    status_code=400,
+                    status_code=428,
                     detail="authorization_pending",
                     headers={"Content-Type": "application/json"},
                 )
@@ -465,7 +492,7 @@ async def poll_device_code(
                 event_type="oauth.device.poll.authorized",
                 payload={"device_code": device_code, "token": access_token},
                 status_code=200,
-                actor_sub=token_info.get("user_id"),
+                actor_sub=device_info.get("user_id"),
             )
             return DeviceCodeTokenResponse(
                 access_token=access_token,

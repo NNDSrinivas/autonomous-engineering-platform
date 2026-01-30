@@ -17,7 +17,8 @@ Use the committed templates as references only:
 - `OPENAI_API_KEY`
 - `BACKEND_PUBLIC_URL`
 - `REDIS_URL` (required for OAuth device flow + distributed rate limiting)
-- `JWT_SECRET` (required when JWT auth is enabled)
+- `JWT_SECRET` (required when JWT auth is enabled, HS256 mode)
+- `JWT_JWKS_URL` (alternative to JWT_SECRET for RS256/JWKS mode)
 
 **Required when enabling OAuth connectors:**
 - `<PROVIDER>_CLIENT_ID` and `<PROVIDER>_CLIENT_SECRET` (per provider)
@@ -27,6 +28,7 @@ Use the committed templates as references only:
 - `AUDIT_ENCRYPTION_KEY` (Fernet key for audit payload encryption at rest)
 - `AUDIT_ENCRYPTION_KEY_ID` (optional key identifier for rotation tracking)
 - `JWT_SECRET_PREVIOUS` (comma-separated previous secrets for rotation)
+- `JWT_JWKS_CACHE_TTL` (optional JWKS cache TTL in seconds; default 300)
 
 **Runtime safety flags (prod defaults):**
 - `OAUTH_DEVICE_USE_IN_MEMORY_STORE=false`

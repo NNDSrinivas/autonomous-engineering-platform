@@ -270,7 +270,7 @@ async def github_list_issues(
                 "title": issue["title"],
                 "state": issue["state"],
                 "url": issue["html_url"],
-                "labels": [l["name"] for l in issue.get("labels", [])],
+                "labels": [label["name"] for label in issue.get("labels", [])],
                 "assignees": [a["login"] for a in issue.get("assignees", [])],
             }
             for issue in issues_list[:limit]

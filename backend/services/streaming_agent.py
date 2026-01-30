@@ -15,13 +15,16 @@ This matches Claude Code's conversational style where the AI talks through
 what it's doing while actually doing it.
 """
 
+import asyncio
 import json
 import logging
+import os
 import re
 import uuid
-from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import AsyncGenerator, Dict, Any, List, Optional
 
 # Session memory for conversation context
 
@@ -130,11 +133,6 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
 
 # ========== BUILD VERIFICATION ==========
 # Automatically verify builds after task completion to ensure code quality
-
-import asyncio
-import os
-from pathlib import Path
-from typing import AsyncGenerator
 
 
 def _get_command_env() -> dict:
@@ -686,14 +684,14 @@ class StreamEvent:
             result["task_state"] = self.content  # {state, context}
         elif self.type == StreamEventType.TASK_COMPLETE:
             # Explicit task completion signal with full summary
-            result["task_complete"] = (
-                self.content
-            )  # {success, summary, files_modified, etc.}
+            result[
+                "task_complete"
+            ] = self.content  # {success, summary, files_modified, etc.}
         elif self.type == StreamEventType.BUILD_VERIFICATION:
             # Build/type-check verification results
-            result["build_verification"] = (
-                self.content
-            )  # {success, command, output, errors}
+            result[
+                "build_verification"
+            ] = self.content  # {success, command, output, errors}
         return result
 
 

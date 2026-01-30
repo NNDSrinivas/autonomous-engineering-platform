@@ -929,6 +929,10 @@ export function CodeCompanionShell() {
                     <span className="navi-user-name">
                       {user?.name || user?.email?.split('@')[0] || 'User'}
                     </span>
+                    <span className="navi-auth-status">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Signed in
+                    </span>
                     <ChevronRight className={`h-3 w-3 navi-user-chevron ${userMenuOpen ? 'rotate-90' : ''}`} />
                   </button>
 
@@ -2367,6 +2371,20 @@ export function CodeCompanionShell() {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .navi-auth-status {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 6px;
+          border-radius: 999px;
+          background: hsl(var(--primary) / 0.15);
+          color: hsl(var(--primary));
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
         .navi-user-chevron {

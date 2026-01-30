@@ -851,7 +851,11 @@ async def analyze_dependencies(
             with open(requirements_path, "r") as f:
                 lines_content = f.readlines()
                 analysis["direct_deps"] = len(
-                    [l for l in lines_content if l.strip() and not l.startswith("#")]
+                    [
+                        line
+                        for line in lines_content
+                        if line.strip() and not line.startswith("#")
+                    ]
                 )
         except IOError:
             pass

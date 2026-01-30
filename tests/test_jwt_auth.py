@@ -32,6 +32,7 @@ def enable_jwt(jwt_secret, monkeypatch):
     monkeypatch.setattr(settings, "JWT_ALGORITHM", "HS256")
     monkeypatch.setattr(settings, "JWT_AUDIENCE", None)
     monkeypatch.setattr(settings, "JWT_ISSUER", None)
+    monkeypatch.setattr(settings, "JWT_JWKS_URL", None)
 
 
 @pytest.fixture
@@ -55,6 +56,7 @@ def configure_jwt(jwt_secret, monkeypatch):
         monkeypatch.setattr(settings, "JWT_ALGORITHM", "HS256")
         monkeypatch.setattr(settings, "JWT_AUDIENCE", audience)
         monkeypatch.setattr(settings, "JWT_ISSUER", issuer)
+        monkeypatch.setattr(settings, "JWT_JWKS_URL", None)
 
     return _configure
 
@@ -161,15 +163,18 @@ class TestDecodeJWT:
         """Test that decoding fails if JWT_SECRET is not configured."""
         monkeypatch.setattr(settings, "JWT_ENABLED", True)
         monkeypatch.setattr(settings, "JWT_SECRET", None)
+        monkeypatch.setattr(settings, "JWT_JWKS_URL", None)
 
         with pytest.raises(
             JWTVerificationError,
-            match="JWT_SECRET \\(or JWT_SECRET_PREVIOUS\\) is required",
+            match="JWT_SECRET is required",
         ):
             decode_jwt("any-token")
 
-    def test_decode_jwt_disabled(self):
+    def test_decode_jwt_disabled(self, monkeypatch):
         """Test that decoding fails if JWT is disabled."""
+        monkeypatch.setattr(settings, "JWT_ENABLED", False)
+        monkeypatch.setattr(settings, "JWT_JWKS_URL", None)
         with pytest.raises(JWTVerificationError, match="not enabled"):
             decode_jwt("any-token")
 

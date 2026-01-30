@@ -424,8 +424,8 @@ class CredentialsService:
         result = {}
         all_fields = spec.required_fields + spec.optional_fields
 
-        for field in all_fields:
-            result[field] = self.get_credential(provider, field)
+        for field_name in all_fields:
+            result[field_name] = self.get_credential(provider, field_name)
 
         return result
 
@@ -449,8 +449,8 @@ class CredentialsService:
         if not spec:
             return False
 
-        for field in spec.required_fields:
-            if not self.get_credential(provider, field):
+        for field_name in spec.required_fields:
+            if not self.get_credential(provider, field_name):
                 return False
 
         return True

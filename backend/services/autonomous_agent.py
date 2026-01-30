@@ -191,19 +191,19 @@ class TaskContext:
         default_factory=dict
     )  # Track which step updates have been emitted
     # Enterprise mode fields
-    enterprise_project_id: Optional[str] = (
-        None  # Link to EnterpriseProject if running in enterprise mode
-    )
-    enterprise_controller: Optional[EnhancedIterationController] = (
-        None  # Enterprise iteration controller
-    )
+    enterprise_project_id: Optional[
+        str
+    ] = None  # Link to EnterpriseProject if running in enterprise mode
+    enterprise_controller: Optional[
+        EnhancedIterationController
+    ] = None  # Enterprise iteration controller
     checkpoint_interval: int = (
         10  # Create checkpoint every N iterations in enterprise mode
     )
     last_checkpoint_iteration: int = 0  # Track when last checkpoint was created
-    gate_detector: Optional[CheckpointGateDetector] = (
-        None  # Human checkpoint gate detector
-    )
+    gate_detector: Optional[
+        CheckpointGateDetector
+    ] = None  # Human checkpoint gate detector
     pending_gate: Optional[GateTrigger] = None  # Gate waiting for human decision
 
     @classmethod
@@ -2974,14 +2974,14 @@ Return ONLY the JSON, no markdown or explanations."""
                 base_url = "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
-                    )
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
                 elif self.provider == "groq":
                     base_url = "https://api.groq.com/openai/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
-                    )
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
 
                 logger.info(f"[AutonomousAgent] 📡 Sending request to {base_url}...")
 
@@ -3063,10 +3063,10 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if tc.get("function", {}).get("name"):
                                         # Convert OpenAI-sanitized name back to original NAVI name
                                         openai_name = tc["function"]["name"]
-                                        tool_calls[idx]["name"] = (
-                                            OPENAI_TO_NAVI_TOOL_NAME.get(
-                                                openai_name, openai_name
-                                            )
+                                        tool_calls[idx][
+                                            "name"
+                                        ] = OPENAI_TO_NAVI_TOOL_NAME.get(
+                                            openai_name, openai_name
                                         )
                                     if tc.get("function", {}).get("arguments"):
                                         tool_calls[idx]["arguments"] += tc["function"][
@@ -3277,9 +3277,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
         # Update first step to in_progress (running)
         if plan_steps and context.plan_id:
-            context.step_progress_emitted[0] = (
-                "running"  # Track that we've emitted step 0 as running
-            )
+            context.step_progress_emitted[
+                0
+            ] = "running"  # Track that we've emitted step 0 as running
             yield {
                 "type": "step_update",
                 "data": {

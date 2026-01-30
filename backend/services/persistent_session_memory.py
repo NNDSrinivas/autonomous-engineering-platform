@@ -14,7 +14,7 @@ Key Features:
 
 import re
 import hashlib
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict
@@ -22,6 +22,9 @@ import structlog
 
 from sqlalchemy import select, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from backend.database.models.session_facts import WorkspaceSession
 
 logger = structlog.get_logger(__name__)
 

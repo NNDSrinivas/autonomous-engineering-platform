@@ -87,12 +87,12 @@ class Policy:
     last_triggered: Optional[datetime] = None
     trigger_count: int = 0
     effectiveness_score: float = 0.5  # How effective this policy has been
-    team_scope: Optional[str] = (
-        None  # Team this policy applies to, or None for org-wide
-    )
-    repo_scope: Optional[str] = (
-        None  # Repo this policy applies to, or None for org-wide
-    )
+    team_scope: Optional[
+        str
+    ] = None  # Team this policy applies to, or None for org-wide
+    repo_scope: Optional[
+        str
+    ] = None  # Repo this policy applies to, or None for org-wide
     severity_threshold: str = "MEDIUM"  # Minimum severity to trigger
     impact_threshold: str = "TEAM"  # Minimum impact to trigger
     active: bool = True

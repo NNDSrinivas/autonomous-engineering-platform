@@ -5,10 +5,13 @@ Pure LLM intelligence with safety features
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 import logging
 import os
 import time
+
+if TYPE_CHECKING:
+    from backend.services.navi_brain import NaviBrain
 
 logger = logging.getLogger(__name__)
 

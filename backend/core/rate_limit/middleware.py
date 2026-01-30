@@ -19,9 +19,11 @@ from backend.core.auth.models import User
 from backend.core.rate_limit.config import (
     RateLimitCategory,
     DEFAULT_RATE_LIMITS,
+    PREMIUM_RATE_LIMITS,
     RateLimitRule,
 )
 from backend.core.rate_limit.service import rate_limit_service
+from backend.core.settings import settings
 from backend.core.rate_limit.metrics import (
     rate_limit_metrics,
     log_rate_limit_decision,
@@ -412,6 +414,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         except Exception as e:
             log_rate_limit_middleware_error(str(e), path, method)
+            # If fallback is enabled (dev/ci), keep the system available.
+            if settings.RATE_LIMITING_FALLBACK_ENABLED or settings.APP_ENV in {
+                "development",
+                "dev",
+                "test",
+                "ci",
+            }:
+                return await call_next(request)
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 content={
@@ -421,8 +431,3 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "category": category.value,
                 },
             )
-        except Exception as e:
-            log_rate_limit_middleware_error(str(e), path, method)
-            # On rate limiting errors, allow the request through
-            # This ensures the system remains available even if rate limiting fails
-            return await call_next(request)

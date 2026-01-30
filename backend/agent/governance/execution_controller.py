@@ -63,9 +63,9 @@ class GovernedExecutionController(ExecutionController):
         self.rollback_controller = RollbackController(db_session)
 
         # Execution state
-        self.pending_executions: Dict[str, Dict] = (
-            {}
-        )  # approval_id -> execution context
+        self.pending_executions: Dict[
+            str, Dict
+        ] = {}  # approval_id -> execution context
         self.governance_enabled = True
         self.safety_mode = True
 

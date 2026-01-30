@@ -97,6 +97,9 @@ NAVI is not yet production-ready for enterprise adoption or a formal "prod relea
 The production UI must not expose debug or placeholder logs. Only user-facing, purposeful UI is allowed.
 
 ## Update Log
+- 2026-01-29: Added JWKS (RS256) JWT validation support with cache TTL settings.
+- 2026-01-29: Ops dashboards wiring documented (`/metrics` + Prometheus/Grafana hookup).
+- 2026-01-29: Infra README local verify example aligned to backend port 8787.
 - 2026-01-29: Added infra automation scripts (local/k8s/aws) and AWS Terraform templates for deploy/verify/rollback parity.
 - 2026-01-29: Added admin security console (JWT rotation, SSO, encryption-at-rest, retention status) at `/admin/security`.
 - 2026-01-29: Added `/api/admin/security/status` for security posture snapshot (admin-only).

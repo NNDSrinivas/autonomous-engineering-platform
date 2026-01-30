@@ -1503,10 +1503,9 @@ async def run_command_with_retry(
         if result.get("success"):
             result["attempts"] = attempt
             if attempt > 1:
-                result[
-                    "message"
-                ] = f"✅ Succeeded on attempt {attempt}/{max_retries}\n\n" + result.get(
-                    "message", ""
+                result["message"] = (
+                    f"✅ Succeeded on attempt {attempt}/{max_retries}\n\n"
+                    + result.get("message", "")
                 )
             return result
 
@@ -1525,10 +1524,9 @@ async def run_command_with_retry(
 
     # All attempts failed
     last_result["attempts"] = max_retries
-    last_result[
-        "message"
-    ] = f"❌ **Failed after {max_retries} attempts**\n\n" + last_result.get(
-        "message", ""
+    last_result["message"] = (
+        f"❌ **Failed after {max_retries} attempts**\n\n"
+        + last_result.get("message", "")
     )
 
     return last_result

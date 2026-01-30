@@ -740,9 +740,9 @@ class ClosedLoopOrchestrator:
             ]:
                 component = getattr(self, component_name, None)
                 if component and hasattr(component, "get_health_status"):
-                    component_health[
-                        component_name
-                    ] = await component.get_health_status()
+                    component_health[component_name] = (
+                        await component.get_health_status()
+                    )
                 else:
                     component_health[component_name] = "available"
 

@@ -337,9 +337,7 @@ class ContextPredictor:
                             "matching_content": (
                                 best_message.content[:100] + "..."
                                 if best_message and len(best_message.content) > 100
-                                else best_message.content
-                                if best_message
-                                else None
+                                else best_message.content if best_message else None
                             ),
                         }
                     )

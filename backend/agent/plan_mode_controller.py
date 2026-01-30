@@ -466,7 +466,9 @@ def create_approval_request_message(step: PlanStep) -> str:
     Returns:
         Formatted approval request message
     """
-    risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(step.estimated_risk, "⚪")
+    risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(
+        step.estimated_risk, "⚪"
+    )
 
     message = f"""## Approval Required {risk_emoji}
 

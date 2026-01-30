@@ -64,22 +64,34 @@ def upgrade():
         )
         return
 
-    # Enable pgvector extension (PostgreSQL only)
+    # Check if pgvector extension is available before attempting to use it
+    pgvector_available = False
     try:
-        op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-    except Exception as e:
-        # Log for debugging in case of unexpected PostgreSQL issues (permissions, version)
-        logger.warning(f"Could not enable pgvector extension: {e}")
-
-    # Add vector column for ANN search
-    # Keep existing JSON embedding column for backwards compatibility
-    try:
-        op.execute(
-            f"ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS embedding_vec vector({EMBED_DIM});"
+        # Check if the extension is available in the database
+        result = bind.execute(
+            sa.text("SELECT * FROM pg_available_extensions WHERE name = 'vector'")
         )
+        pgvector_available = result.fetchone() is not None
     except Exception as e:
-        # Log but continue - pgvector may not be available
-        logger.warning(f"Could not add embedding_vec column: {e}")
+        logger.info(
+            f"[alembic/0012_pgvector_bm25] Could not check pgvector availability: {e}"
+        )
+
+    if pgvector_available:
+        # Enable pgvector extension (PostgreSQL only)
+        try:
+            op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            # Add vector column for ANN search
+            op.execute(
+                f"ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS embedding_vec vector({EMBED_DIM});"
+            )
+        except Exception as e:
+            # Log for debugging in case of unexpected PostgreSQL issues (permissions, version)
+            logger.warning(f"Could not enable pgvector or add vector column: {e}")
+    else:
+        logger.info(
+            "[alembic/0012_pgvector_bm25] pgvector extension not available - skipping vector column"
+        )
 
     # Add tsvector column and GIN index for BM25/FTS (PostgreSQL only)
     # Add text_tsv column for precomputed tsvector using raw SQL

@@ -12,6 +12,7 @@ This test validates:
 5. Emergency bypass mechanisms work
 """
 
+import os
 import pytest
 import asyncio
 from unittest.mock import Mock, patch
@@ -507,6 +508,10 @@ class TestGovernancePerformance:
     """Test governance system performance and reliability"""
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not os.getenv("OPENAI_API_KEY"),
+        reason="OPENAI_API_KEY not set - skipping test that requires OpenAI client",
+    )
     async def test_concurrent_governance_decisions(self, mock_db_session):
         """Test governance handles concurrent action evaluation"""
 

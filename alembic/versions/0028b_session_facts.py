@@ -14,7 +14,7 @@ Create Date: 2026-01-26
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import JSON
 
 # revision identifiers, used by Alembic.
 revision = "0028b_session_facts"
@@ -24,13 +24,31 @@ depends_on = None
 
 
 def upgrade():
+    # Get the current dialect to handle PostgreSQL vs SQLite differences
+    bind = op.get_bind()
+    dialect = bind.dialect.name
+
+    # Use UUID for PostgreSQL, String(36) for SQLite
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import UUID, JSONB
+        uuid_type = UUID(as_uuid=True)
+        json_type = JSONB
+        uuid_default = sa.text("gen_random_uuid()")
+        now_default = sa.text("now()")
+    else:
+        # SQLite compatibility
+        uuid_type = sa.String(36)
+        json_type = JSON
+        uuid_default = None  # Will be handled by app logic
+        now_default = sa.text("CURRENT_TIMESTAMP")
+
     # Create navi_workspace_sessions table
     op.create_table(
         "navi_workspace_sessions",
         sa.Column(
             "id",
-            UUID(as_uuid=True),
-            server_default=sa.text("gen_random_uuid()"),
+            uuid_type,
+            server_default=uuid_default,
             nullable=False,
         ),
         sa.Column(
@@ -53,13 +71,13 @@ def upgrade():
         ),
         sa.Column(
             "current_session_id",
-            UUID(as_uuid=True),
+            uuid_type,
             nullable=True,
             comment="Active conversation session ID",
         ),
         sa.Column(
             "last_known_state",
-            JSONB,
+            json_type,
             nullable=True,
             server_default="{}",
             comment="Last known project state (servers, ports, etc.)",
@@ -67,13 +85,13 @@ def upgrade():
         sa.Column(
             "first_seen",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_default,
             nullable=False,
         ),
         sa.Column(
             "last_active",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_default,
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
@@ -95,13 +113,13 @@ def upgrade():
         "navi_session_facts",
         sa.Column(
             "id",
-            UUID(as_uuid=True),
-            server_default=sa.text("gen_random_uuid()"),
+            uuid_type,
+            server_default=uuid_default,
             nullable=False,
         ),
         sa.Column(
             "workspace_session_id",
-            UUID(as_uuid=True),
+            uuid_type,
             sa.ForeignKey("navi_workspace_sessions.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -125,7 +143,7 @@ def upgrade():
         ),
         sa.Column(
             "source_message_id",
-            UUID(as_uuid=True),
+            uuid_type,
             nullable=True,
             comment="Message ID where fact was extracted",
         ),
@@ -145,7 +163,7 @@ def upgrade():
         ),
         sa.Column(
             "superseded_by_id",
-            UUID(as_uuid=True),
+            uuid_type,
             sa.ForeignKey("navi_session_facts.id", ondelete="SET NULL"),
             nullable=True,
             comment="Newer fact that supersedes this one",
@@ -153,13 +171,13 @@ def upgrade():
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_default,
             nullable=False,
         ),
         sa.Column(
             "last_verified",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_default,
             nullable=False,
             comment="When this fact was last confirmed true",
         ),
@@ -181,13 +199,13 @@ def upgrade():
         "navi_error_resolutions",
         sa.Column(
             "id",
-            UUID(as_uuid=True),
-            server_default=sa.text("gen_random_uuid()"),
+            uuid_type,
+            server_default=uuid_default,
             nullable=False,
         ),
         sa.Column(
             "workspace_session_id",
-            UUID(as_uuid=True),
+            uuid_type,
             sa.ForeignKey("navi_workspace_sessions.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -211,7 +229,7 @@ def upgrade():
         ),
         sa.Column(
             "resolution_steps",
-            JSONB,
+            json_type,
             nullable=False,
             comment="Steps taken to resolve the error",
         ),
@@ -237,7 +255,7 @@ def upgrade():
         ),
         sa.Column(
             "context_data",
-            JSONB,
+            json_type,
             nullable=True,
             server_default="{}",
             comment="Additional context (file paths, versions, etc.)",
@@ -245,13 +263,13 @@ def upgrade():
         sa.Column(
             "first_seen",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_default,
             nullable=False,
         ),
         sa.Column(
             "last_applied",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_default,
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
@@ -272,13 +290,13 @@ def upgrade():
         "navi_installed_dependencies",
         sa.Column(
             "id",
-            UUID(as_uuid=True),
-            server_default=sa.text("gen_random_uuid()"),
+            uuid_type,
+            server_default=uuid_default,
             nullable=False,
         ),
         sa.Column(
             "workspace_session_id",
-            UUID(as_uuid=True),
+            uuid_type,
             sa.ForeignKey("navi_workspace_sessions.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -314,13 +332,13 @@ def upgrade():
         sa.Column(
             "installed_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_default,
             nullable=False,
         ),
         sa.Column(
             "last_verified",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=now_default,
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),

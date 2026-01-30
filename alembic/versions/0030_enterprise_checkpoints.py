@@ -18,6 +18,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Skip for SQLite (CI uses SQLite for unit tests, this is PostgreSQL-specific)
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
+        return
+
     # Create enterprise_checkpoints table
     op.create_table(
         "enterprise_checkpoints",
@@ -194,6 +199,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Skip for SQLite
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
+        return
+
     # Drop indexes
     op.drop_index("idx_checkpoint_created", table_name="enterprise_checkpoints")
     op.drop_index("idx_checkpoint_project_valid", table_name="enterprise_checkpoints")

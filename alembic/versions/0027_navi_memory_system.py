@@ -547,6 +547,17 @@ def downgrade():
     conn = op.get_bind()
     is_postgres = conn.dialect.name == "postgresql"
 
+    # Check if pgvector extension is enabled (same check as upgrade)
+    pgvector_enabled = False
+    if is_postgres:
+        try:
+            result = conn.execute(
+                sa.text("SELECT * FROM pg_extension WHERE extname = 'vector'")
+            )
+            pgvector_enabled = result.fetchone() is not None
+        except Exception:
+            pass
+
     # Drop in reverse order due to foreign keys
 
     # Code Patterns

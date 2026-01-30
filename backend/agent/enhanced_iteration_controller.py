@@ -17,7 +17,7 @@ microservices architectures, and large-scale systems.
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Callable, Awaitable
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import hashlib
 
@@ -615,7 +615,7 @@ class EnhancedIterationController:
         checkpoint = CheckpointData(
             checkpoint_id=checkpoint_id,
             iteration_number=self.state.iteration_count,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             iteration_state=self.state.to_dict(),
             context_summary=context_summary,
             key_decisions=key_decisions or [],

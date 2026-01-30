@@ -636,9 +636,10 @@ class BackupManager:
     def _git_stash(self, timestamp: str) -> Dict[str, Any]:
         """Stash git changes before destructive operation."""
         try:
+            # Sanitize timestamp to prevent command injection
+            safe_timestamp = "".join(c for c in timestamp if c.isalnum() or c in "-_:")
             result = subprocess.run(
-                f"git stash push -m 'NAVI backup {timestamp}'",
-                shell=True,
+                ["git", "stash", "push", "-m", f"NAVI backup {safe_timestamp}"],
                 cwd=self.workspace_path,
                 capture_output=True,
                 text=True,
@@ -662,8 +663,7 @@ class BackupManager:
         """Backup untracked files before git clean."""
         try:
             result = subprocess.run(
-                "git ls-files --others --exclude-standard",
-                shell=True,
+                ["git", "ls-files", "--others", "--exclude-standard"],
                 cwd=self.workspace_path,
                 capture_output=True,
                 text=True,
@@ -701,10 +701,11 @@ class BackupManager:
     def _git_backup_branch(self, timestamp: str) -> Dict[str, Any]:
         """Create backup branch before force push."""
         try:
-            branch_name = f"navi-backup-{timestamp}"
+            # Sanitize timestamp to prevent command injection
+            safe_timestamp = "".join(c for c in timestamp if c.isalnum() or c in "-_:")
+            branch_name = f"navi-backup-{safe_timestamp}"
             result = subprocess.run(
-                f"git branch {branch_name}",
-                shell=True,
+                ["git", "branch", branch_name],
                 cwd=self.workspace_path,
                 capture_output=True,
                 text=True,

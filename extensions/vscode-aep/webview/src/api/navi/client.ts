@@ -4,6 +4,9 @@ const FALLBACK_BACKEND_BASE_URL = "http://127.0.0.1:8787";
 
 type RuntimeConfig = {
   backendBaseUrl?: string;
+  authToken?: string;
+  orgId?: string;
+  userId?: string;
 };
 
 // Type-safe interfaces for API requests/responses
@@ -98,7 +101,30 @@ function getRuntimeConfig(): RuntimeConfig {
   const config = (window as any).__AEP_CONFIG__ || {};
   return {
     backendBaseUrl: config.backendBaseUrl,
+    authToken: config.authToken,
+    orgId: config.orgId,
+    userId: config.userId,
   };
+}
+
+/**
+ * Build headers for API requests including auth token if available
+ * Exported for use in other modules that need to make authenticated requests
+ */
+export function buildHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const { orgId, userId, authToken } = getRuntimeConfig();
+
+  if (orgId) {
+    headers["X-Org-Id"] = orgId;
+  }
+  if (userId) {
+    headers["X-User-Id"] = userId;
+  }
+  if (authToken) {
+    headers.Authorization = authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`;
+  }
+  return headers;
 }
 
 /**
@@ -133,7 +159,7 @@ export class NaviAPIClient {
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...buildHeaders(),
         ...options.headers,
       },
     });

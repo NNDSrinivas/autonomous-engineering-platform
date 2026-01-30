@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { resolveBackendBase, buildHeaders } from '../../api/navi/client';
 
 interface UserProfile {
   email?: string;
@@ -147,7 +148,9 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
     if (!isAuthenticated) return;
 
     try {
-      const response = await fetch('/api/memory/preferences');
+      const response = await fetch(`${resolveBackendBase()}/api/memory/preferences`, {
+        headers: buildHeaders(),
+      });
       if (response.ok) {
         const data = await response.json();
         setPreferences(prev => ({ ...prev, ...data }));
@@ -168,9 +171,9 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
     // Save to backend
     setSaving(true);
     try {
-      await fetch('/api/memory/preferences', {
+      await fetch(`${resolveBackendBase()}/api/memory/preferences`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildHeaders(),
         body: JSON.stringify(newPrefs),
       });
     } catch {

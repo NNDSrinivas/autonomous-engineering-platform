@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { MarketplaceExtension, ExtensionCategory, TrustLevel, InstallationProgress } from "./types";
 import { ExtensionCard } from "./ExtensionCard";
+import { resolveBackendBase, buildHeaders } from "../../api/navi/client";
 
 interface MarketplacePageProps {
     onInstall: (extensionId: string) => void;
@@ -54,7 +55,9 @@ export function MarketplacePage({
     const loadExtensions = async () => {
         try {
             setLoading(true);
-            const response = await fetch("/api/marketplace/extensions");
+            const response = await fetch(`${resolveBackendBase()}/api/marketplace/extensions`, {
+                headers: buildHeaders(),
+            });
             if (!response.ok) throw new Error("Failed to load extensions");
 
             const data = await response.json();

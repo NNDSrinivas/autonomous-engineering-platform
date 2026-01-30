@@ -72,7 +72,7 @@ import {
 } from "lucide-react";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { NaviInlineCommand } from "../command";
-import { resolveBackendBase } from "../../api/navi/client";
+import { resolveBackendBase, buildHeaders } from "../../api/navi/client";
 import { ORG, USER_ID } from "../../api/client";
 import { getRecommendedModel, getProgressMessages, detectTaskType, type TaskType } from "../../lib/llmRouter";
 import {
@@ -1991,10 +1991,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
         console.log('[NAVI] Backend health check - URL:', `${backendBase}/api/navi/chat`);
         const res = await fetch(`${backendBase}/api/navi/chat`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Org-Id": ORG,
-          },
+          headers: buildHeaders(),
           body: JSON.stringify({
             message: "health_check",
             attachments: [],
@@ -6902,10 +6899,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
       const backendBase = resolveBackendBase();
       const response = await fetch(`${backendBase}/api/navi/analyze-changes`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Org-Id': ORG,
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({
           workspace_root: effectiveRoot
         }),

@@ -12,7 +12,7 @@ git checkout main
 git pull origin main
 
 echo ">>> [2/4] Building Docker image..."
-docker build -f Dockerfile.minimal -t "$IMAGE_NAME" .
+docker build -f Dockerfile -t "$IMAGE_NAME" .
 
 echo ">>> [3/4] Stopping existing container (if any)..."
 docker stop "$APP_NAME" 2>/dev/null || true

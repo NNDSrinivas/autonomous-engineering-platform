@@ -637,7 +637,7 @@ class BackupManager:
         """Stash git changes before destructive operation."""
         try:
             # Sanitize timestamp to prevent command injection
-            safe_timestamp = "".join(c for c in timestamp if c.isalnum() or c in "-_:")
+            safe_timestamp = "".join(c for c in timestamp if c.isalnum() or c in "-_")
             result = subprocess.run(
                 ["git", "stash", "push", "-m", f"NAVI backup {safe_timestamp}"],
                 cwd=self.workspace_path,
@@ -702,7 +702,7 @@ class BackupManager:
         """Create backup branch before force push."""
         try:
             # Sanitize timestamp to prevent command injection
-            safe_timestamp = "".join(c for c in timestamp if c.isalnum() or c in "-_:")
+            safe_timestamp = "".join(c for c in timestamp if c.isalnum() or c in "-_")
             branch_name = f"navi-backup-{safe_timestamp}"
             result = subprocess.run(
                 ["git", "branch", branch_name],

@@ -50,15 +50,15 @@ def upgrade():
             if result.fetchone() is not None:
                 pgvector_enabled = True
             else:
-                # Try to enable the extension; if not available this will raise and be caught
-                op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-                # Re-check if pgvector is now installed
+                # Check if extension is available to install (avoids transaction abort)
                 result = conn.execute(
                     sa.text(
-                        "SELECT 1 FROM pg_extension WHERE extname = :extname LIMIT 1"
+                        "SELECT 1 FROM pg_available_extensions WHERE name = :extname LIMIT 1"
                     ).bindparams(extname="vector")
                 )
                 if result.fetchone() is not None:
+                    # Extension is available, safe to create
+                    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
                     pgvector_enabled = True
         except Exception:
             # Extension not available or could not be enabled - continue without pgvector

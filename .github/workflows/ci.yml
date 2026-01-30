@@ -156,12 +156,13 @@ jobs:
           integration_files = []
           for f in all_files:
               try:
-                  content = open(f).read()
+                  with open(f, encoding="utf-8") as fh:
+                      content = fh.read()
                   # Check for @pytest.mark.integration or pytestmark = pytest.mark.integration
                   if re.search(r'pytest\.mark\.integration', content):
                       integration_files.append(f)
-              except Exception:
-                  pass
+              except (OSError, UnicodeDecodeError) as e:
+                  print(f"Warning: could not read {f}: {e}", file=sys.stderr)
 
           # Shard only the integration test files
           selected = [f for i, f in enumerate(integration_files) if i % total == (shard - 1)]

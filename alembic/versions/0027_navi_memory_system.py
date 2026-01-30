@@ -37,12 +37,23 @@ def upgrade():
     conn = op.get_bind()
     is_postgres = conn.dialect.name == "postgresql"
 
-    # Ensure pgvector extension is enabled
+    # Check if pgvector extension is actually available/enabled in the database
+    pgvector_enabled = False
     if is_postgres:
-        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        try:
+            # Try to enable pgvector extension
+            op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            # Check if it's now enabled
+            result = conn.execute(
+                sa.text("SELECT * FROM pg_extension WHERE extname = 'vector'")
+            )
+            pgvector_enabled = result.fetchone() is not None
+        except Exception:
+            # Extension not available
+            pass
 
-    # Use Vector type for PostgreSQL, TEXT for SQLite/others
-    if is_postgres and HAS_PGVECTOR and Vector is not None:
+    # Use Vector type for PostgreSQL with pgvector, TEXT for SQLite/others
+    if is_postgres and HAS_PGVECTOR and Vector is not None and pgvector_enabled:
         embedding_type: Any = Vector(1536)
     else:
         embedding_type = sa.Text()
@@ -240,7 +251,7 @@ def upgrade():
     )
     op.create_index("idx_org_knowledge_org", "org_knowledge", ["org_id"])
     op.create_index("idx_org_knowledge_type", "org_knowledge", ["knowledge_type"])
-    if is_postgres and HAS_PGVECTOR:
+    if is_postgres and HAS_PGVECTOR and pgvector_enabled:
         op.execute(
             """
             CREATE INDEX idx_org_knowledge_embedding
@@ -378,7 +389,7 @@ def upgrade():
         "navi_messages",
         ["conversation_id", "created_at"],
     )
-    if is_postgres and HAS_PGVECTOR:
+    if is_postgres and HAS_PGVECTOR and pgvector_enabled:
         op.execute(
             """
             CREATE INDEX idx_navi_messages_embedding
@@ -490,7 +501,7 @@ def upgrade():
     op.create_index("idx_code_symbols_codebase", "code_symbols", ["codebase_id"])
     op.create_index("idx_code_symbols_name", "code_symbols", ["symbol_name"])
     op.create_index("idx_code_symbols_type", "code_symbols", ["symbol_type"])
-    if is_postgres and HAS_PGVECTOR:
+    if is_postgres and HAS_PGVECTOR and pgvector_enabled:
         op.execute(
             """
             CREATE INDEX idx_code_symbols_embedding
@@ -534,7 +545,7 @@ def downgrade():
     op.drop_table("code_patterns")
 
     # Code Symbols
-    if is_postgres and HAS_PGVECTOR:
+    if is_postgres and HAS_PGVECTOR and pgvector_enabled:
         op.execute("DROP INDEX IF EXISTS idx_code_symbols_embedding")
     op.drop_index("idx_code_symbols_type", "code_symbols")
     op.drop_index("idx_code_symbols_name", "code_symbols")
@@ -554,7 +565,7 @@ def downgrade():
     op.drop_table("navi_conversation_summaries")
 
     # Messages
-    if is_postgres and HAS_PGVECTOR:
+    if is_postgres and HAS_PGVECTOR and pgvector_enabled:
         op.execute("DROP INDEX IF EXISTS idx_navi_messages_embedding")
     op.drop_index("idx_navi_messages_conversation", "navi_messages")
     op.drop_table("navi_messages")
@@ -575,7 +586,7 @@ def downgrade():
     op.drop_table("org_standards")
 
     # Org Knowledge
-    if is_postgres and HAS_PGVECTOR:
+    if is_postgres and HAS_PGVECTOR and pgvector_enabled:
         op.execute("DROP INDEX IF EXISTS idx_org_knowledge_embedding")
     op.drop_index("idx_org_knowledge_type", "org_knowledge")
     op.drop_index("idx_org_knowledge_org", "org_knowledge")

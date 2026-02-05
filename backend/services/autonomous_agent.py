@@ -2462,13 +2462,13 @@ Return ONLY the JSON, no markdown or explanations."""
                             "cwd": cwd,
                             "cmd_info": cmd_info,
                             "permission_request": permission_request,
-                            "timestamp": time.time()
+                            "timestamp": int(__import__("time").time())
                         }
                         self.pending_consents[consent_id] = consent_data
                         _consent_approvals[consent_id] = {
                             "approved": False,
                             "command": command,
-                            "timestamp": time.time(),
+                            "timestamp": int(__import__("time").time()),
                             "pending": True
                         }
 
@@ -3762,14 +3762,14 @@ Return ONLY the JSON, no markdown or explanations."""
         yield {
             "type": "thinking_progress",
             "message": "Analyzing your request...",
-            "timestamp": time.time() * 1000,
+            "timestamp": int(__import__("time").time()) * 1000,
         }
 
         # Gather environment info ONCE at the start to avoid blind guessing
         yield {
             "type": "thinking_progress",
             "message": "Checking project configuration...",
-            "timestamp": time.time() * 1000,
+            "timestamp": int(__import__("time").time()) * 1000,
         }
         env_info = await self._diagnose_environment()
 
@@ -3777,7 +3777,7 @@ Return ONLY the JSON, no markdown or explanations."""
         yield {
             "type": "thinking_progress",
             "message": "Planning actions...",
-            "timestamp": time.time() * 1000,
+            "timestamp": int(__import__("time").time()) * 1000,
         }
         plan_steps = []
         async for plan_event in self._generate_plan(request, env_info, context):

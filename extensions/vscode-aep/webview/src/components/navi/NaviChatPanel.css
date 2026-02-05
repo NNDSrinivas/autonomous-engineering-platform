@@ -6784,7 +6784,7 @@ html.light .navi-stat-deletions {
   word-wrap: break-word;
   /* Don't break words aggressively - only break at natural points */
   word-break: normal;
-  overflow-x: hidden;
+  overflow-x: visible; /* Changed from hidden to allow URLs to display fully */
 }
 
 /* Collapsible long message styles */
@@ -7205,10 +7205,13 @@ h4.navi-heading {
 
 .navi-link--url {
   color: #60a5fa;
-  white-space: nowrap; /* Prevent URLs from breaking across lines */
-  word-break: keep-all;
+  white-space: normal; /* Allow URLs to wrap if needed */
+  word-break: break-all; /* Break long URLs to prevent overflow */
+  overflow-wrap: break-word;
   letter-spacing: 0;
   word-spacing: 0;
+  display: inline;
+  max-width: 100%;
 }
 
 .navi-link--url:hover {

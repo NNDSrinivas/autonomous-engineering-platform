@@ -433,8 +433,31 @@ NAVI is capable of:
 
 ---
 
+## Integration Auth (Dev)
+
+Some integration tests hit NAVI endpoints protected by `Authorization: Bearer <token>`.
+For local/dev runs, use the device flow + helper script:
+
+```bash
+export OAUTH_DEVICE_USE_IN_MEMORY_STORE=true
+export PUBLIC_BASE_URL=http://127.0.0.1:8787
+source scripts/get_dev_token.sh
+
+TEST_BASE_URL=http://127.0.0.1:8787 \
+NAVI_TEST_URL=http://127.0.0.1:8787 \
+NAVI_TEST_TOKEN="$NAVI_TEST_TOKEN" \
+RUN_INTEGRATION_TESTS=1 \
+pytest -q tests -m integration
+```
+
+Notes:
+- `scripts/get_dev_token.sh` prints an `export NAVI_TEST_TOKEN=...` line and auto-exports when sourced.
+- Tokens are stored in-memory in dev mode; restarting backend invalidates them.
+
+---
+
 **Testing Complete** 🎉
-**Status: Production Ready** 🚀
+**Status: Core tests green; see `docs/NAVI_PROD_READINESS.md` for enterprise readiness**
 
 ---
 

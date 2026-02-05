@@ -67,6 +67,36 @@ export function useActivityPanel() {
     ));
   }, []);
 
+  // Mark a step as in progress and set it as current
+  const updateStep = useCallback((stepIndex: number) => {
+    setSteps(prev => prev.map((step, idx) => {
+      if (idx !== stepIndex) return step;
+      return {
+        ...step,
+        status: 'in_progress',
+        startTime: step.startTime ?? Date.now(),
+      };
+    }));
+    setCurrentStep(stepIndex);
+  }, []);
+
+  // Mark a step as completed and advance current step if possible
+  const completeStep = useCallback((stepIndex: number) => {
+    setSteps(prev => prev.map((step, idx) => {
+      if (idx !== stepIndex) return step;
+      return {
+        ...step,
+        status: 'completed',
+        endTime: Date.now(),
+      };
+    }));
+    setCurrentStep(prev => {
+      const nextIndex = stepIndex + 1;
+      if (nextIndex < steps.length) return nextIndex;
+      return prev === stepIndex ? undefined : prev;
+    });
+  }, [steps.length]);
+
   // Update file change
   const updateFileChange = useCallback((
     stepIndex: number,
@@ -275,6 +305,8 @@ export function useActivityPanel() {
     currentStep,
     isVisible,
     initializeSteps,
+    updateStep,
+    completeStep,
     updateStepStatus,
     updateFileChange,
     addFileChange,

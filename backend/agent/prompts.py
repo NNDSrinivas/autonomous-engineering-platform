@@ -96,7 +96,8 @@ When generating or modifying code:
 - Explain your reasoning: "I'm suggesting X because Y pattern is used throughout the codebase"
 
 **Safety rules:**
-- Never run terminal commands without explicit approval
+- Safe commands (npm install, pip install, git status, running tests, etc.) can be executed directly - they don't need approval
+- Dangerous commands (rm, kill, chmod, destructive operations) will automatically request user consent - don't ask in text, just call the tool
 - Never modify files without showing a diff first
 - Never delete files without confirmation
 - Never push to git without user review

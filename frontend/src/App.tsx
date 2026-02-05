@@ -11,7 +11,7 @@ import GateApprovalsPage from './pages/GateApprovalsPage'
 import AdminAuditPage from './pages/AdminAuditPage'
 import AdminSecurityPage from './pages/AdminSecurityPage'
 import { isAdminUser } from './utils/auth'
-// import NaviRoot from './components/navi/NaviRoot'
+import NaviRoot from './components/navi/NaviRoot'
 import { WorkspaceProvider } from './context/WorkspaceContext'
 
 function HomePage() {
@@ -181,7 +181,7 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          {/* <Route path="/navi" element={<NaviRoot />} /> */}
+          <Route path="/navi" element={<NaviRoot />} />
           <Route path="/concierge" element={<ConciergePage />} />
           <Route path="/memory/graph" element={<MemoryGraphPage />} />
           <Route path="/plans" element={<PlansListPage />} />

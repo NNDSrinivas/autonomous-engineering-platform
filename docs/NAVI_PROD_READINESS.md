@@ -76,6 +76,34 @@ NAVI is not yet production-ready for enterprise adoption or a formal "prod relea
    - Confirm only new key validates.
 
 ## Validation Runs (Latest)
+- 2026-02-03: `make e2e-smoke` **passed** (NAVI V2 plan → approve → apply → rollback).
+  - Note: E2E smoke uses mocked LLM (`scripts/smoke_navi_v2_e2e.py`) and does not validate real model latency or tool execution.
+  - Note: Smoke runs set `APP_ENV=test` to avoid prod-only middleware and audit DB requirements.
+- 2026-02-03: `make e2e-gate` **passed** (20/20 runs).
+- 2026-02-03: `pytest -q backend/tests/test_navi_comprehensive.py backend/tests/test_navi_api_integration.py` **passed** (52 passed; warnings only).
+- 2026-02-03: `pytest -q tests` **passed** (306 passed, 126 skipped; warnings only).
+- 2026-02-03: `TEST_BASE_URL=http://127.0.0.1:8787 RUN_INTEGRATION_TESTS=1 pytest -q tests -m integration -x` **failed** (connect error).
+  - Cause: httpx could not connect to `127.0.0.1:8787` from this test runner (operation not permitted).
+
+## Integration Auth (Dev)
+Some integration tests hit NAVI endpoints protected by `Authorization: Bearer <token>`.
+For local/dev runs, use the device flow + helper script:
+
+```bash
+export OAUTH_DEVICE_USE_IN_MEMORY_STORE=true
+export PUBLIC_BASE_URL=http://127.0.0.1:8787
+source scripts/get_dev_token.sh
+
+TEST_BASE_URL=http://127.0.0.1:8787 \
+NAVI_TEST_URL=http://127.0.0.1:8787 \
+NAVI_TEST_TOKEN="$NAVI_TEST_TOKEN" \
+RUN_INTEGRATION_TESTS=1 \
+pytest -q tests -m integration
+```
+
+Notes:
+- `scripts/get_dev_token.sh` prints an `export NAVI_TEST_TOKEN=...` line and auto-exports when sourced.
+- Tokens are stored in-memory in dev mode; restarting backend invalidates them.
 - 2026-01-29: `RUN_INTEGRATION_TESTS=1 NAVI_TEST_URL=http://127.0.0.1:8000 pytest -q tests -m integration` **passed** (97 passed, 335 deselected; warnings only).
   - Backend started with `APP_ENV=test` to enable test auth bypass.
 - 2026-01-29: CI integration job updated with 3 test shards, per-shard retry, and a 20-minute timeout guard.
@@ -97,6 +125,12 @@ NAVI is not yet production-ready for enterprise adoption or a formal "prod relea
 The production UI must not expose debug or placeholder logs. Only user-facing, purposeful UI is allowed.
 
 ## Update Log
+- 2026-02-03: Added tokenizer fallback for offline/test runs to avoid tiktoken network fetches.
+- 2026-02-03: Redis cache now degrades cleanly to in-memory on connection failures.
+- 2026-02-03: Settings validator now allows env aliases during strict extra-field checks.
+- 2026-02-03: Rate limiting now uses presence-based active user count when available; falls back to estimated count with a single warning.
+- 2026-02-03: Audit middleware now applies a backoff after DB failures (best-effort mode) to avoid noisy logs; configurable via `AUDIT_DB_REQUIRED` and `AUDIT_DB_RETRY_SECONDS`.
+- 2026-02-03: E2E smoke now runs in `APP_ENV=test` to avoid prod-only middleware and audit DB dependency during local/CI runs.
 - 2026-01-29: Added JWKS (RS256) JWT validation support with cache TTL settings.
 - 2026-01-29: Ops dashboards wiring documented (`/metrics` + Prometheus/Grafana hookup).
 - 2026-01-29: Infra README local verify example aligned to backend port 8787.

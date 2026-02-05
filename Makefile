@@ -56,6 +56,9 @@ config: frontend-config
 test:
 	pytest -q
 
+redis-test:
+	REDIS_URL=redis://localhost:6379/0 pytest -q tests/test_broadcast_redis.py
+
 e2e-smoke:
 	python3 scripts/smoke_navi_v2_e2e.py --runs 1
 

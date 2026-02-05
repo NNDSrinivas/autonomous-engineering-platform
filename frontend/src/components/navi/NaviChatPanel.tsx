@@ -35,6 +35,7 @@ import * as vscodeApi from "../../utils/vscodeApi";
 import "./NaviChatPanel.css";
 import Prism from 'prismjs';
 import { NaviApprovalPanel, ActionWithRisk } from './NaviApprovalPanel';
+import { EnhancedNaviMarkdown } from './EnhancedNaviMarkdown';
 // import * as Diff from 'diff';
 // Temporarily commenting out components with missing dependencies
 // import { LiveProgressDiagnostics } from '../ui/LiveProgressDiagnostics';
@@ -152,6 +153,7 @@ interface NaviChatResponse {
   };
   status?: string;
   progress_steps?: string[];
+  thinking_steps?: string[];  // Detailed reasoning steps (collapsible)
   state?: {
     repo_fast_path?: boolean;
     kind?: string;
@@ -1011,15 +1013,75 @@ export default function NaviChatPanel() {
         return;
       }
 
+      // Handle incremental text chunks during streaming
+      if (msg.type === "botMessageChunk" && (msg.chunk || msg.fullContent)) {
+        const textToAdd = msg.fullContent || msg.chunk;
+
+        setMessages((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          const isRecentAssistant =
+            lastMsg &&
+            lastMsg.role === "assistant" &&
+            (Date.now() - new Date(lastMsg.createdAt).getTime() < 5000);
+
+          if (isRecentAssistant) {
+            // Update existing message with new content
+            return prev.map((m, idx) =>
+              idx === prev.length - 1
+                ? { ...m, content: textToAdd }
+                : m
+            );
+          } else {
+            // Create new assistant message with the chunk
+            const assistantMessage: ChatMessage = {
+              id: makeMessageId("assistant"),
+              role: "assistant",
+              content: textToAdd,
+              createdAt: nowIso(),
+              actions: [],
+            };
+            return [...prev, assistantMessage];
+          }
+        });
+        return;
+      }
+
       if (msg.type === "botMessage" && msg.text) {
-        const assistantMessage: ChatMessage = {
-          id: makeMessageId("assistant"),
-          role: "assistant",
-          content: msg.text,
-          createdAt: nowIso(),
-          actions: Array.isArray(msg.actions) ? msg.actions : undefined,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => {
+          // Check if the last message is an assistant message from the last 5 seconds
+          // If so, merge with it instead of creating a new one
+          const lastMsg = prev[prev.length - 1];
+          const isRecentAssistant =
+            lastMsg &&
+            lastMsg.role === "assistant" &&
+            (Date.now() - new Date(lastMsg.createdAt).getTime() < 5000);
+
+          if (isRecentAssistant) {
+            // Merge with existing message - update content and append new actions chronologically
+            return prev.map((m, idx) =>
+              idx === prev.length - 1
+                ? {
+                    ...m,
+                    content: msg.text, // Replace with new content (it's cumulative from backend)
+                    // Append new actions to preserve chronological order
+                    actions: Array.isArray(msg.actions) && msg.actions.length > 0
+                      ? [...(m.actions || []), ...msg.actions]
+                      : m.actions,
+                  }
+                : m
+            );
+          } else {
+            // Create new assistant message
+            const assistantMessage: ChatMessage = {
+              id: makeMessageId("assistant"),
+              role: "assistant",
+              content: msg.text,
+              createdAt: nowIso(),
+              actions: Array.isArray(msg.actions) ? msg.actions : undefined,
+            };
+            return [...prev, assistantMessage];
+          }
+        });
         setSending(false);
         clearSendTimeout();
       }
@@ -1281,6 +1343,37 @@ export default function NaviChatPanel() {
           //   skipped_files: listed ? Math.max(0, total - listed) : 0,
           //   highlights: summaryHighlights,
           // });
+          return;
+        }
+
+        // Handle tool call activity events (edit, create, read, command, etc.) chronologically
+        if (['edit', 'create', 'read', 'command', 'search', 'rag', 'context', 'info'].includes(kind)) {
+          const action: AgentAction = {
+            type: kind === 'edit' ? 'editFile' :
+                  kind === 'create' ? 'createFile' :
+                  kind === 'read' ? 'readFile' :
+                  kind === 'command' ? 'runCommand' :
+                  kind,
+            filePath: data.filePath || data.detail,
+            command: kind === 'command' ? data.detail : undefined,
+            description: data.label || kind,
+          };
+
+          // Append action to the most recent assistant message (chronological order)
+          setMessages((prev) => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              return prev.map((m, idx) =>
+                idx === prev.length - 1
+                  ? {
+                      ...m,
+                      actions: [...(m.actions || []), action],
+                    }
+                  : m
+              );
+            }
+            return prev;
+          });
           return;
         }
 
@@ -1993,14 +2086,36 @@ export default function NaviChatPanel() {
     const description = action.description?.trim();
     if (description) return description;
     if (action.type === "runCommand") return "Run command";
-    if (action.type === "editFile") return "Apply edit";
-    if (action.type === "createFile") return "Create file";
+    if (action.type === "editFile") return `Edit ${action.filePath || 'file'}`;
+    if (action.type === "createFile") return `Create ${action.filePath || 'file'}`;
     return "Apply action";
   };
 
   const formatActionDetail = (action: AgentAction) => {
-    if (action.type === "runCommand") return action.command || "";
-    if (action.filePath) return action.filePath;
+    if (action.type === "runCommand") {
+      return action.command || "";
+    }
+
+    // For file actions, show diff stats if available
+    if (action.type === "editFile" || action.type === "createFile") {
+      // Extract diff stats from the diff if available
+      const diff = action.diff || "";
+      const additions = (diff.match(/^\+/gm) || []).length;
+      const deletions = (diff.match(/^-/gm) || []).length;
+
+      if (additions > 0 || deletions > 0) {
+        return (
+          <span className="navi-diff-stats">
+            {additions > 0 && <span className="navi-diff-additions">+{additions}</span>}
+            {additions > 0 && deletions > 0 && <span className="navi-diff-separator"> </span>}
+            {deletions > 0 && <span className="navi-diff-deletions">-{deletions}</span>}
+          </span>
+        );
+      }
+
+      return action.filePath || "";
+    }
+
     return action.description || "";
   };
 
@@ -2105,9 +2220,16 @@ export default function NaviChatPanel() {
         <pre className="navi-chat-command-output">{msg.content}</pre>
       );
     }
-    return msg.content.split("\n").map((line, idx) => (
-      <p key={idx}>{line}</p>
-    ));
+
+    // Extract thinking steps from response data if available
+    const thinkingSteps = msg.responseData?.thinking_steps || [];
+
+    return (
+      <EnhancedNaviMarkdown
+        content={msg.content}
+        thinking={thinkingSteps}
+      />
+    );
   };
 
   const resetConversationState = () => {
@@ -2443,9 +2565,26 @@ export default function NaviChatPanel() {
 
         {messages.map((m) => {
           const actionSource = Array.isArray(m.actions) ? m.actions : [];
+
+          // Deduplicate actions based on type and filePath/command
+          const seenActions = new Set<string>();
           const actionItems = actionSource
             .map((action, index) => ({ action, index }))
-            .filter(({ action }) => action && typeof action.type === "string");
+            .filter(({ action }) => {
+              if (!action || typeof action.type !== "string") return false;
+
+              // Create a unique key for deduplication
+              const key = action.type === "runCommand"
+                ? `${action.type}:${action.command}`
+                : `${action.type}:${action.filePath}`;
+
+              if (seenActions.has(key)) {
+                return false; // Skip duplicate
+              }
+
+              seenActions.add(key);
+              return true;
+            });
 
           return (
             <div

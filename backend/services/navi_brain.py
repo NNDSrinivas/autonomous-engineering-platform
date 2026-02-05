@@ -5230,6 +5230,9 @@ class SelfHealingEngine:
     4. Learns from failures to prevent recurrence
     """
 
+    # Port memory: workspace_path -> last_used_port
+    _port_memory: Dict[str, int] = {}
+
     # Common error patterns and their fixes
     ERROR_PATTERNS = {
         # Dependency errors
@@ -5372,6 +5375,159 @@ class SelfHealingEngine:
         )
 
     @classmethod
+    def _get_configured_port(cls, workspace_path: str) -> Optional[int]:
+        """
+        Read project config files to find the configured port.
+        Checks: vite.config.ts, vite.config.js, next.config.js, package.json, .env
+        """
+        import json
+        import re
+
+        workspace = Path(workspace_path)
+
+        # Check Vite config (TypeScript)
+        vite_config_ts = workspace / "vite.config.ts"
+        if vite_config_ts.exists():
+            try:
+                content = vite_config_ts.read_text()
+                match = re.search(r'port:\s*(\d+)', content)
+                if match:
+                    return int(match.group(1))
+            except Exception:
+                pass
+
+        # Check Vite config (JavaScript)
+        vite_config_js = workspace / "vite.config.js"
+        if vite_config_js.exists():
+            try:
+                content = vite_config_js.read_text()
+                match = re.search(r'port:\s*(\d+)', content)
+                if match:
+                    return int(match.group(1))
+            except Exception:
+                pass
+
+        # Check Next.js config
+        next_config = workspace / "next.config.js"
+        if next_config.exists():
+            try:
+                content = next_config.read_text()
+                match = re.search(r'port:\s*(\d+)', content)
+                if match:
+                    return int(match.group(1))
+            except Exception:
+                pass
+
+        # Check package.json scripts
+        package_json = workspace / "package.json"
+        if package_json.exists():
+            try:
+                data = json.loads(package_json.read_text())
+                scripts = data.get("scripts", {})
+                dev_script = scripts.get("dev", "") + scripts.get("start", "")
+                # Look for port flags in scripts
+                match = re.search(r'--port[=\s]+(\d+)|PORT=(\d+)', dev_script)
+                if match:
+                    return int(match.group(1) or match.group(2))
+            except Exception:
+                pass
+
+        # Check .env files
+        for env_file in [".env.local", ".env.development", ".env"]:
+            env_path = workspace / env_file
+            if env_path.exists():
+                try:
+                    content = env_path.read_text()
+                    match = re.search(r'PORT=(\d+)', content)
+                    if match:
+                        return int(match.group(1))
+                except Exception:
+                    pass
+
+        return None
+
+    @classmethod
+    async def _identify_process_owner(
+        cls, port: int, workspace_path: str
+    ) -> Dict[str, Any]:
+        """
+        Identify if the process on a port belongs to this workspace or another project.
+        Returns: {
+            "is_same_project": bool,
+            "is_related": bool,  # e.g., different port of same server
+            "workspace": str,  # path to the owning workspace
+            "reason": str
+        }
+        """
+        import subprocess
+
+        # Get process info
+        port_status = await PortManager.check_port(port)
+        if port_status.is_available or not port_status.process_pid:
+            return {"is_same_project": False, "is_related": False, "workspace": "", "reason": "No process found"}
+
+        try:
+            # Get process command and working directory
+            if platform.system() == "Darwin":
+                # macOS: use lsof to get process cwd
+                result = subprocess.run(
+                    ["lsof", "-a", "-p", str(port_status.process_pid), "-d", "cwd"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                cwd_line = [line for line in result.stdout.split("\n") if "cwd" in line.lower()]
+                if cwd_line:
+                    # Extract directory path from lsof output
+                    parts = cwd_line[0].split()
+                    if len(parts) >= 9:
+                        process_cwd = parts[-1]
+                        workspace_path_resolved = str(Path(workspace_path).resolve())
+                        process_cwd_resolved = str(Path(process_cwd).resolve())
+
+                        if process_cwd_resolved == workspace_path_resolved:
+                            return {
+                                "is_same_project": True,
+                                "is_related": True,
+                                "workspace": process_cwd,
+                                "reason": "Same workspace - server already running"
+                            }
+                        elif workspace_path_resolved in process_cwd_resolved or process_cwd_resolved in workspace_path_resolved:
+                            return {
+                                "is_same_project": False,
+                                "is_related": True,
+                                "workspace": process_cwd,
+                                "reason": "Related workspace (parent/child directory)"
+                            }
+                        else:
+                            return {
+                                "is_same_project": False,
+                                "is_related": False,
+                                "workspace": process_cwd,
+                                "reason": "Different project entirely"
+                            }
+
+            # Fallback: just check command
+            cmd = port_status.process_command or ""
+            if workspace_path in cmd:
+                return {
+                    "is_same_project": True,
+                    "is_related": True,
+                    "workspace": workspace_path,
+                    "reason": "Workspace path in command"
+                }
+
+        except Exception as e:
+            logger.debug(f"Could not identify process owner: {e}")
+
+        return {
+            "is_same_project": False,
+            "is_related": False,
+            "workspace": "",
+            "reason": "Unknown - could not determine"
+        }
+
+    @classmethod
     def _generate_recovery_actions(
         cls,
         error_type: str,
@@ -5394,25 +5550,20 @@ class SelfHealingEngine:
             )
 
         elif error_type == "port":
-            port = captured_groups[0] if captured_groups else "3000"
-            actions.extend(
-                [
-                    {
-                        "type": "checkPort",
-                        "port": port,
-                        "description": f"Check what's using port {port}",
-                    },
-                    {
-                        "type": "killPort",
-                        "port": port,
-                        "description": f"Stop process on port {port}",
-                    },
-                    {
-                        "type": "findPort",
-                        "port": port,
-                        "description": "Find an available alternative port",
-                    },
-                ]
+            # Intelligent port conflict handling
+            port = int(captured_groups[0]) if captured_groups else 3000
+            workspace_path = context.get("workspace_path") if context else None
+
+            # This will be replaced with actual async logic during execution
+            # For now, just provide the smart recovery actions
+            actions.append(
+                {
+                    "type": "intelligentPortRecovery",
+                    "port": port,
+                    "workspace_path": workspace_path,
+                    "description": f"Intelligently resolve port {port} conflict",
+                    "auto_execute": True,  # Can auto-execute after checking
+                }
             )
 
         elif error_type == "lint":

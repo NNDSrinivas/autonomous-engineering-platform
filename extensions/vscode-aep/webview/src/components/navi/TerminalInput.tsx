@@ -55,10 +55,14 @@ export const TerminalInput: React.FC<TerminalInputProps> = ({
     'pip install -r requirements.txt',
   ];
 
-  // Auto-scroll to bottom when new entries arrive
+  // Auto-scroll to bottom when new entries arrive (only if user is near bottom)
   useEffect(() => {
     if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+      const el = outputRef.current;
+      const isNearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 100;
+      if (isNearBottom) {
+        el.scrollTop = el.scrollHeight;
+      }
     }
   }, [entries]);
 

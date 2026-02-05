@@ -43,12 +43,74 @@ import { DeviceAuthService } from './auth/deviceAuth';
 const exec = util.promisify(child_process.exec);
 
 // Configuration constants
-const DEFAULT_REQUEST_TIMEOUT_MS = 1800000; // 30 minutes for complex autonomous operations
-const DEFAULT_SSE_TIMEOUT_MS = 1800000; // 30 minutes for SSE connections (matches autonomous ops)
+const DEFAULT_REQUEST_TIMEOUT_MS = 600000; // 10 minutes for standard chat requests (allows for tool use and complex responses)
+const DEFAULT_AUTONOMOUS_REQUEST_TIMEOUT_MINUTES = 90;
+const DEFAULT_AUTONOMOUS_REQUEST_TIMEOUT_MS = DEFAULT_AUTONOMOUS_REQUEST_TIMEOUT_MINUTES * 60 * 1000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000; // 15 seconds heartbeat (more frequent to keep connection alive)
 const MAX_CONVERSATION_HISTORY = 25;
 const MAX_GIT_FALLBACK_LINES = 60;
 const MAX_GIT_FALLBACK_CHARS = 8000;
+
+const getAutonomousTimeoutMs = () => {
+  const config = vscode.workspace.getConfiguration('aep.navi');
+  const minutes = config.get<number>('autonomousRequestTimeoutMinutes');
+  if (typeof minutes === 'number' && minutes > 0) {
+    return Math.floor(minutes * 60 * 1000);
+  }
+  return DEFAULT_AUTONOMOUS_REQUEST_TIMEOUT_MS;
+};
+
+const extractJsonMap = (text: string): Record<string, string> | null => {
+  if (!text) return null;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]);
+    if (Array.isArray(parsed)) {
+      const map: Record<string, string> = {};
+      for (const entry of parsed) {
+        if (!entry || typeof entry !== 'object') continue;
+        const path = String((entry as any).path || (entry as any).file || '').trim();
+        const summary = String((entry as any).summary || '').trim();
+        if (path && summary) {
+          map[path] = summary;
+        }
+      }
+      return Object.keys(map).length ? map : null;
+    }
+    if (parsed && typeof parsed === 'object') {
+      const map: Record<string, string> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === 'string' && key.trim()) {
+          map[key.trim()] = value.trim();
+        }
+      }
+      return Object.keys(map).length ? map : null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+const summarizeRunPayload = (summary: any): string => {
+  if (!summary || typeof summary !== 'object') return '';
+  const lines: string[] = [];
+  if (summary.summary_text || summary.message) {
+    lines.push(String(summary.summary_text || summary.message).trim());
+  }
+  const files = Array.isArray(summary.files) ? summary.files : Array.isArray(summary.files_modified) ? summary.files_modified : null;
+  if (files && files.length > 0) {
+    lines.push(`Files touched: ${files.slice(0, 8).join(', ')}${files.length > 8 ? '…' : ''}`);
+  }
+  if (Array.isArray(summary.next_steps) && summary.next_steps.length > 0) {
+    lines.push(`Next steps: ${summary.next_steps.slice(0, 5).join(' | ')}`);
+  }
+  if (summary.verification_passed === false && summary.verification_details) {
+    lines.push('Verification failed; details available in last run.');
+  }
+  return lines.filter(Boolean).join('\n');
+};
 
 // Global service instances for workspace operations
 let globalContextService: ContextService | undefined;
@@ -119,6 +181,45 @@ async function isFileUntracked(workspaceRoot: string, relativePath: string): Pro
     return false; // File exists in git
   } catch {
     return true; // File is untracked
+  }
+}
+
+// Best-effort per-file diff info (used for live change summaries)
+async function getGitDiffInfo(
+  workspaceRoot: string,
+  relativePath: string
+): Promise<{ diff: string | undefined; additions: number; deletions: number }> {
+  try {
+    const isGit = await runGit(workspaceRoot, ['rev-parse', '--is-inside-work-tree']).catch(() => null);
+    if (!isGit || isGit.stdout.trim() !== 'true') {
+      return { diff: undefined, additions: 0, deletions: 0 };
+    }
+
+    const isNew = await isFileUntracked(workspaceRoot, relativePath);
+    const diffArgs = isNew
+      ? ['diff', '--no-index', '--unified=3', '--', '/dev/null', relativePath]
+      : ['diff', '--unified=3', '--', relativePath];
+    const numstatArgs = isNew
+      ? ['diff', '--no-index', '--numstat', '--', '/dev/null', relativePath]
+      : ['diff', '--numstat', '--', relativePath];
+
+    const diffRes = await runGit(workspaceRoot, diffArgs, [0, 1]).catch(() => ({ stdout: '', stderr: '', code: 1 }));
+    const numstatRes = await runGit(workspaceRoot, numstatArgs, [0, 1]).catch(() => ({ stdout: '', stderr: '', code: 1 }));
+
+    let additions = 0;
+    let deletions = 0;
+    const line = (numstatRes.stdout || '').split('\n').find(l => l.trim());
+    if (line) {
+      const [add, del] = line.split('\t');
+      additions = add === '-' ? 0 : Number(add) || 0;
+      deletions = del === '-' ? 0 : Number(del) || 0;
+    }
+
+    const diff = diffRes.stdout?.trim() || undefined;
+    return { diff, additions, deletions };
+  } catch (err) {
+    console.warn('[AEP][Git] getGitDiffInfo failed:', err);
+    return { diff: undefined, additions: 0, deletions: 0 };
   }
 }
 
@@ -1494,6 +1595,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     exitCode?: number;
     timestamp: number
   } | null = null;
+  private _lastRunSummary: { content: string; timestamp: number } | null = null;
+  private _lastRunAbortedAt: number | null = null;
 
   // Command output tracking for focusTerminal and showOutput functionality
   private _commandOutputs = new Map<string, { command: string; cwd?: string; stdout: string; stderr: string; exitCode?: number; durationMs?: number }>();
@@ -1523,17 +1626,18 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   public _gitWarningShown: boolean = false;
 
   // SSE client for streaming
-  private sse = new SSEClient({
-    maxRetries: 3,
-    retryDelay: 1000,
-    heartbeatInterval: DEFAULT_HEARTBEAT_INTERVAL_MS,
-    timeout: DEFAULT_SSE_TIMEOUT_MS
-  });
+  private sse: SSEClient;
 
   constructor(extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
     this._extensionUri = extensionUri;
     this._context = context;
     this._conversationId = generateConversationId();
+    this.sse = new SSEClient({
+      maxRetries: 3,
+      retryDelay: 1000,
+      heartbeatInterval: DEFAULT_HEARTBEAT_INTERVAL_MS,
+      timeout: getAutonomousTimeoutMs(),
+    });
 
     // PR-4: Load persisted model/mode from storage
     this._currentModelId = context.globalState.get<string>(STORAGE_KEYS.modelId) ?? DEFAULT_MODEL.id;
@@ -2959,9 +3063,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   this.postToWebview({
                     type: 'panel.openOverlay',
                     panel: selection === 'MCP Tools' ? 'mcp'
-                         : selection === 'Integrations' ? 'connectors'
-                         : selection === 'NAVI Rules' ? 'rules'
-                         : null
+                      : selection === 'Integrations' ? 'connectors'
+                        : selection === 'NAVI Rules' ? 'rules'
+                          : null
                   });
                 }
               }
@@ -4437,11 +4541,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             this._messages.push({ role: 'user', content: text });
             recordUserMessage();
 
-            // If we auto-attached something, show a tiny status line in the chat
+            // If we auto-attached something, surface it as a narrative line
+            // (avoids creating a standalone chat bubble that can outlive the stream on errors)
             if (autoAttachmentSummary) {
               this.postToWebview({
-                type: 'botMessage',
-                text: `> ${autoAttachmentSummary}`,
+                type: 'navi.narrative',
+                text: autoAttachmentSummary,
               });
             }
 
@@ -4842,6 +4947,68 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             } catch (err: any) {
               console.error('[AEP] generateActionFollowUp error:', err);
               // Don't show error to user - this is a non-critical enhancement
+            }
+            break;
+          }
+
+          case 'generatePerFileSummaries': {
+            console.log('[AEP] generatePerFileSummaries request:', msg);
+            try {
+              const files = Array.isArray(msg.files) ? msg.files : [];
+              if (files.length === 0) return;
+
+              const baseUrl = this.getBackendBaseUrl();
+              const orgId = this.getOrgId(msg?.orgId);
+              const userId = this.getUserId(msg?.userId);
+
+              const diffsText = files
+                .map((entry: { path?: string; diff?: string }) => {
+                  const filePath = String(entry.path || '').trim();
+                  const diff = String(entry.diff || '').trim();
+                  if (!filePath || !diff) return '';
+                  return `### ${filePath}\n${diff}`;
+                })
+                .filter(Boolean)
+                .join('\n\n');
+
+              if (!diffsText) return;
+
+              const summaryPrompt = [
+                'Summarize each file diff in 1 short sentence (max 12 words).',
+                'Return ONLY a JSON object mapping file paths to summaries.',
+                'No markdown, no bullet points, no extra keys.',
+                '',
+                'Diffs:',
+                diffsText,
+              ].join('\n');
+
+              const response = await fetch(`${baseUrl}/api/navi/chat`, {
+                method: 'POST',
+                headers: this.buildAuthHeaders(orgId, userId, 'application/json'),
+                body: JSON.stringify({
+                  message: summaryPrompt,
+                  model: 'gpt-4o-mini',
+                  mode: 'chat-only',
+                }),
+              });
+
+              if (!response.ok) {
+                console.error('[AEP] generatePerFileSummaries request failed:', response.status);
+                return;
+              }
+
+              const data = await response.json() as { response?: string; message?: string; content?: string };
+              const rawText = data.response || data.message || data.content || '';
+              const summaries = extractJsonMap(rawText);
+              if (summaries && Object.keys(summaries).length > 0) {
+                this.postToWebview({
+                  type: 'perFileSummaries',
+                  summaries,
+                  requestId: msg.requestId,
+                });
+              }
+            } catch (err) {
+              console.error('[AEP] generatePerFileSummaries error:', err);
             }
             break;
           }
@@ -6240,6 +6407,63 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               // No proposal - fall back to basic agent response
               console.log(`[AEP] No proposal generated, using basic agent flow`);
               this.callBackendAPI(content, mode, model);
+            }
+
+            break;
+          }
+
+          // Handle command consent responses
+          case 'command.consent.response': {
+            const consentId = msg.consentId;
+            const approved = msg.approved;
+            const command = msg.command;
+
+            if (!consentId) {
+              console.error('[AEP] Consent response missing consent ID');
+              return;
+            }
+
+            console.log(`[AEP] 🔐 Consent response: ${approved ? 'APPROVED' : 'DENIED'} for command: ${command}`);
+
+            try {
+              // Send consent response to backend API
+              const backendUrl = vscode.workspace.getConfiguration('aep').get<string>('backendUrl') || 'http://localhost:8000';
+              const response = await fetch(`${backendUrl}/api/navi/consent/${consentId}`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  approved,
+                  command,
+                }),
+              });
+
+              if (!response.ok) {
+                throw new Error(`Consent API returned ${response.status}`);
+              }
+
+              const result = await response.json();
+              console.log(`[AEP] ✅ Consent response sent to backend:`, result);
+
+              // Notify webview that consent was processed
+              this.postToWebview({
+                type: 'consent.acknowledged',
+                consentId,
+                approved
+              });
+
+              // If approved, the agent will automatically re-execute the command
+              // on its next tool call with the consent_id parameter
+              if (approved) {
+                console.log(`[AEP] Consent approved - agent will re-execute command with consent_id`);
+              }
+            } catch (error) {
+              console.error('[AEP] Failed to send consent response to backend:', error);
+              this.postToWebview({
+                type: 'error',
+                message: 'Failed to process consent response'
+              });
             }
 
             break;
@@ -7674,6 +7898,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       progressFinalized = true;
     };
 
+    // Declare streaming variables outside try for catch block access
+    let useStreaming = true;
+    let streamedContent = '';
+    let messageId = `msg-${Date.now()}`;
+    let hasSeenToolCalls = false;
+
     try {
       console.log('🎯 Smart routing (CHAT-ONLY) called with text:', text);
       // Don't emit "Planning response..." - backend streams real activities
@@ -7701,7 +7931,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // Autonomous operations can involve many tool calls, iterations, error fixing, builds, and verification cycles
       const naviConfigEarly = vscode.workspace.getConfiguration('aep.navi');
       const forceAutonomousEarly = naviConfigEarly.get<boolean>('useAutonomousMode', false);
-      const timeoutMs = (forceAutonomousEarly || isActionRequestEarly) ? Math.max(baseTimeoutMs, 1800000) : baseTimeoutMs;
+      const autonomousTimeoutMs = getAutonomousTimeoutMs();
+      const timeoutMs = (forceAutonomousEarly || isActionRequestEarly)
+        ? Math.max(baseTimeoutMs, autonomousTimeoutMs)
+        : baseTimeoutMs;
       timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       // Get the last bot message state for autonomous coding continuity
@@ -7725,7 +7958,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         : undefined;
 
       // Get diagnostics (errors) from VS Code
-      const errors: Array<{file: string; message: string; line?: number; severity?: string}> = [];
+      const errors: Array<{ file: string; message: string; line?: number; severity?: string }> = [];
       const diagnostics = vscode.languages.getDiagnostics();
       for (const [uri, fileDiagnostics] of diagnostics) {
         for (const diag of fileDiagnostics) {
@@ -7752,6 +7985,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         if (role === 'assistant' || role === 'system' || role === 'user') return role;
         return 'user';
       };
+      const shouldInjectResume = (message: string) => {
+        const resumeHints = /(resume|pick up|continue|left off|disconnected|reconnect|carry on|previous run|last run)/i;
+        if (resumeHints.test(message)) return true;
+        if (this._lastRunAbortedAt && Date.now() - this._lastRunAbortedAt < 2 * 60 * 60 * 1000) {
+          return true;
+        }
+        return false;
+      };
       const historyPayload =
         Array.isArray(conversationHistoryOverride) && conversationHistoryOverride.length > 0
           ? conversationHistoryOverride.slice(-MAX_CONVERSATION_HISTORY).map((msg, index) => ({
@@ -7766,6 +8007,18 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             content: msg.content,
             timestamp: new Date().toISOString(),
           }));
+
+      if (this._lastRunSummary?.content && shouldInjectResume(text)) {
+        historyPayload.unshift({
+          id: `resume-${Date.now()}`,
+          type: 'system',
+          content: `Resume context from the last run:\n${this._lastRunSummary.content}`,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const resolvedOrgId = this.getOrgId(orgId);
+      const resolvedUserId = this.getUserId(userId);
 
       this.emitLiveProgress("Contacting model...", 35);
 
@@ -7797,8 +8050,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       let streamUrl: string;
       if (useEnterprise) {
-        streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/enterprise`;
-        console.log('[AEP] 🏢 Using Enterprise mode (unlimited iterations, task decomposition, human gates)');
+        // Backend currently does not expose /api/navi/chat/enterprise.
+        // Route enterprise requests through autonomous endpoint to avoid 404s.
+        streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/autonomous`;
+        console.log('[AEP] 🏢 Enterprise mode requested, routing via autonomous endpoint');
       } else if (useAutonomous) {
         streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/autonomous`;
         console.log('[AEP] 🤖 Using Autonomous mode (end-to-end with verification)');
@@ -7817,15 +8072,27 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       console.log(`[AEP] 📝 Message: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
       const nonStreamUrl = targetUrl;
 
-      // Try streaming first, fall back to non-streaming if it fails
-      let useStreaming = true;
-      let streamedContent = '';
-      const messageId = `msg-${Date.now()}`;
-      // Track if we've seen tool calls - if so, we need to emit narratives for interleaved display
-      let hasSeenToolCalls = false;
+      // Reset streaming state for this request (variables declared outside outer try)
+      useStreaming = true;
+      streamedContent = '';
+      messageId = `msg-${Date.now()}`;
+      hasSeenToolCalls = false;
+      let lastTextChunk = '';
+      let lastTextChunkAt = 0;
+      const shouldSkipChunk = (chunk: string) => {
+        if (!chunk) return true;
+        const now = Date.now();
+        if (chunk === lastTextChunk && now - lastTextChunkAt < 1500) {
+          return true;
+        }
+        lastTextChunk = chunk;
+        lastTextChunkAt = now;
+        return false;
+      };
       // Collect actions during streaming (declared outside try for access in catch)
       let streamedActions: any[] = [];
       const toolCommandMap = new Map<string, { command: string; cwd?: string }>();
+      const toolFileMap = new Map<string, { path: string; actionType: 'editFile' | 'createFile'; summary?: string }>();
 
       try {
         // AUTO-RECOVERY: Include last action error if recent (within 5 minutes)
@@ -7837,20 +8104,25 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         console.log('[AEP] 📡 About to fetch streaming URL:', streamUrl);
+        const liveAuthToken = await globalAuthService?.getToken();
+        if (liveAuthToken) {
+          cachedAuthToken = liveAuthToken;
+        }
+        const streamHeaders = this.buildAuthHeaders(resolvedOrgId, resolvedUserId, 'application/json');
+        streamHeaders.Accept = 'text/event-stream';
+        if (!streamHeaders.Authorization) {
+          console.warn('[AEP] ⚠️ No auth token available for streaming request');
+        }
         const streamResponse = await fetch(streamUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Org-Id': this.getOrgId(orgId),
-            'Accept': 'text/event-stream',
-          },
+          headers: streamHeaders,
           body: JSON.stringify({
             message: text,
             conversation_history: historyPayload,  // Snake case to match backend
             conversation_id: this._conversationId,  // Session ID for conversation tracking
             model: modelId,
             mode: modeId,
-            user_id: this.getUserId(userId),
+            user_id: resolvedUserId,
             attachments: (attachments ?? []).map((att) => ({
               kind: att.kind,
               content: att.content,
@@ -7943,16 +8215,18 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   continue; // Skip further processing for heartbeat events
                 }
 
-                // Handle content chunks for streaming text
-                if (parsed.content) {
-                  streamedContent += parsed.content;
-                  // Send chunk to webview for live display
-                  this.postToWebview({
-                    type: 'botMessageChunk',
-                    messageId,
-                    chunk: parsed.content,
-                    fullContent: streamedContent,
-                  });
+                // Handle content chunks for streaming text (legacy format)
+                if (parsed.content && !parsed.type) {
+                  if (!shouldSkipChunk(parsed.content)) {
+                    streamedContent += parsed.content;
+                    // Send chunk to webview for live display
+                    this.postToWebview({
+                      type: 'botMessageChunk',
+                      messageId,
+                      chunk: parsed.content,
+                      fullContent: streamedContent,
+                    });
+                  }
                 }
 
                 // Handle activity events (file reads, edits, etc.)
@@ -8025,22 +8299,26 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 if (parsed.type === 'text' && parsed.text) {
                   // Stream narrative text - this is the LLM explaining what it's doing
                   console.log('[AEP] 📝 V2 Text chunk:', parsed.text.substring(0, 50) + '...');
-                  streamedContent += parsed.text;
-                  console.log('[AEP] 📝 Sending botMessageChunk, total length:', streamedContent.length);
-                  this.postToWebview({
-                    type: 'botMessageChunk',
-                    messageId,
-                    chunk: parsed.text,
-                    fullContent: streamedContent,
-                  });
-                  // ALSO send as narrative event for interleaved display with activities
-                  // This allows narrative text to be timestamp-sorted with tool activities
-                  // The webview will use narrativeLines for interleaved display, falling back to
-                  // m.content only if no narratives exist (prevents duplication)
-                  this.postToWebview({
-                    type: 'navi.narrative',
-                    text: parsed.text,
-                  });
+                  if (!shouldSkipChunk(parsed.text)) {
+                    streamedContent += parsed.text;
+                    console.log('[AEP] 📝 Sending botMessageChunk, total length:', streamedContent.length);
+                    this.postToWebview({
+                      type: 'botMessageChunk',
+                      messageId,
+                      chunk: parsed.text,
+                      fullContent: streamedContent,
+                    });
+                    // ALSO send as narrative event for interleaved display with activities
+                    // This allows narrative text to be timestamp-sorted with tool activities
+                    // The webview will use narrativeLines for interleaved display, falling back to
+                    // m.content only if no narratives exist (prevents duplication)
+                    this.postToWebview({
+                      type: 'navi.narrative',
+                      text: parsed.text,
+                      // Use backend timestamp if available for accurate chronological ordering
+                      timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
+                    });
+                  }
                   // Track that we've seen text content (helps with tool call interleaving)
                   if (!hasSeenToolCalls) {
                     hasSeenToolCalls = true;
@@ -8087,7 +8365,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                         status: 'running',
                         toolId: tc.id,
                       }
-                    }
+                    },
+                    // Use backend timestamp if available for accurate chronological ordering
+                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
                   });
 
                   if (tc.name === 'run_command') {
@@ -8102,6 +8382,56 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                       cwd,
                       meta: { actionIndex: tc.arguments?.actionIndex },
                     });
+                  }
+
+                  if (tc.name === 'write_file' || tc.name === 'edit_file') {
+                    const relPath = String(tc.arguments?.path || '');
+                    if (relPath && workspaceRoot) {
+                      const absPath = path.join(workspaceRoot, relPath);
+                      const exists = fs.existsSync(absPath);
+                      const actionType: 'editFile' | 'createFile' =
+                        tc.name === 'write_file' && !exists ? 'createFile' : 'editFile';
+                      const summary =
+                        tc.arguments?.summary ||
+                        tc.arguments?.description ||
+                        tc.arguments?.purpose ||
+                        tc.arguments?.reason ||
+                        tc.arguments?.changes ||
+                        '';
+                      toolFileMap.set(String(tc.id), { path: relPath, actionType, summary });
+                      this.postToWebview({
+                        type: 'action.start',
+                        action: {
+                          type: actionType,
+                          filePath: relPath,
+                        },
+                        actionIndex: tc.arguments?.actionIndex,
+                      });
+                    }
+                  }
+
+                  if (tc.name === 'read_file' || tc.name === 'write_file' || tc.name === 'edit_file') {
+                    const relPath = String(tc.arguments?.path || '');
+                    if (relPath) {
+                      const reason =
+                        tc.arguments?.reason ||
+                        tc.arguments?.description ||
+                        tc.arguments?.purpose ||
+                        tc.arguments?.summary ||
+                        tc.arguments?.changes ||
+                        '';
+                      const verb =
+                        tc.name === 'read_file'
+                          ? 'Reading'
+                          : tc.name === 'write_file'
+                            ? 'Writing'
+                            : 'Editing';
+                      const suffix = reason ? ` — ${reason}` : '';
+                      this.postToWebview({
+                        type: 'navi.narrative',
+                        text: `${verb} ${relPath}${suffix}`,
+                      });
+                    }
                   }
                 }
 
@@ -8149,13 +8479,61 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     toolCommandMap.delete(tr.id);
                   }
 
+                  const fileAction = toolFileMap.get(String(tr.id));
+                  if (fileAction) {
+                    const success = tr.result?.success !== false;
+                    let diffInfo: { diff: string | undefined; additions: number; deletions: number } = {
+                      diff: undefined,
+                      additions: 0,
+                      deletions: 0,
+                    };
+                    if (success && workspaceRoot) {
+                      diffInfo = await getGitDiffInfo(workspaceRoot, fileAction.path);
+                    }
+                    if (!success) {
+                      const errText = tr.result?.error || 'Unknown error';
+                      this.postToWebview({
+                        type: 'navi.narrative',
+                        text: `⚠️ ${fileAction.actionType === 'editFile' ? 'Edit' : 'Write'} failed for ${fileAction.path}: ${errText}`,
+                      });
+                    } else if (fileAction.summary) {
+                      const verb = fileAction.actionType === 'editFile' ? 'Edited' : 'Wrote';
+                      this.postToWebview({
+                        type: 'navi.narrative',
+                        text: `${verb} ${fileAction.path} — ${fileAction.summary}`,
+                      });
+                    }
+                    this.postToWebview({
+                      type: 'action.complete',
+                      action: {
+                        type: fileAction.actionType,
+                        filePath: fileAction.path,
+                        diff: diffInfo.diff,
+                        diffUnified: diffInfo.diff,
+                      },
+                      success,
+                      data: {
+                        diffStats: {
+                          additions: diffInfo.additions,
+                          deletions: diffInfo.deletions,
+                        },
+                        diffUnified: diffInfo.diff,
+                      },
+                    });
+                    toolFileMap.delete(String(tr.id));
+                  }
+
+                  const toolResultDetailBase = tr.result?.success ? 'Success' : (tr.result?.error || 'Failed');
+                  const toolResultDetail = resultDetails.path
+                    ? `${resultDetails.path}: ${toolResultDetailBase}`
+                    : toolResultDetailBase;
                   this.postToWebview({
                     type: 'navi.agent.event',
                     event: {
                       kind: 'tool_result',
                       data: {
                         label: 'Complete',
-                        detail: tr.result?.success ? 'Success' : (tr.result?.error || 'Failed'),
+                        detail: toolResultDetail,
                         status: 'done',
                         toolId: tr.id,
                         result: {
@@ -8167,6 +8545,37 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   });
                 }
 
+                // Handle command consent requests
+                if (parsed.type === 'command.consent_required' && parsed.data) {
+                  console.log('[AEP] 🔐 Command consent required:', parsed.data.command);
+                  this.postToWebview({
+                    type: 'command.consent_required',
+                    data: {
+                      consent_id: parsed.data.consent_id,
+                      command: parsed.data.command,
+                      shell: parsed.data.shell || 'bash',
+                      cwd: parsed.data.cwd,
+                      danger_level: parsed.data.danger_level,
+                      warning: parsed.data.warning,
+                      consequences: parsed.data.consequences || [],
+                      alternatives: parsed.data.alternatives || [],
+                      rollback_possible: parsed.data.rollback_possible || false,
+                    },
+                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
+                  });
+                }
+
+                // Handle real-time command output streaming
+                if (parsed.type === 'command_output') {
+                  this.postToWebview({
+                    type: 'command.output',
+                    stream: parsed.stream,
+                    line: parsed.line,
+                    command: parsed.command,
+                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
+                  });
+                }
+
                 if (parsed.type === 'done') {
                   console.log('[AEP] ✅ V2 Stream complete');
                 }
@@ -8174,6 +8583,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 // Handle backend 'done' event with summary (different format: {done: true, summary: {...}})
                 if (parsed.done === true && parsed.summary) {
                   console.log('[AEP] 🏁 Task done with summary:', parsed.summary);
+                  const summaryText = summarizeRunPayload(parsed.summary);
+                  if (summaryText) {
+                    this._lastRunSummary = { content: summaryText, timestamp: Date.now() };
+                  }
                   this.postToWebview({
                     type: 'navi.task.complete',
                     summary: parsed.summary,
@@ -8243,6 +8656,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 // Task completion summary
                 if (parsed.type === 'complete' && parsed.summary) {
                   console.log('[AEP] 🏁 Task complete:', parsed.summary);
+                  const summaryText = summarizeRunPayload(parsed.summary);
+                  if (summaryText) {
+                    this._lastRunSummary = { content: summaryText, timestamp: Date.now() };
+                  }
                   this.postToWebview({
                     type: 'navi.task.complete',
                     summary: parsed.summary,
@@ -8395,6 +8812,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 // Handle task completed (enterprise execution)
                 if (parsed.type === 'task_completed') {
                   console.log('[AEP] 🏢 Enterprise task completed:', parsed.task_id);
+                  const summaryText = summarizeRunPayload(parsed.result);
+                  if (summaryText) {
+                    this._lastRunSummary = { content: summaryText, timestamp: Date.now() };
+                  }
                   this.postToWebview({
                     type: 'navi.enterprise.task_completed',
                     task_id: parsed.task_id,
@@ -8525,17 +8946,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       if (!streamingSucceeded) {
         const response = await fetch(nonStreamUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Org-Id': this.getOrgId(orgId),
-          },
+          headers: this.buildAuthHeaders(resolvedOrgId, resolvedUserId, 'application/json'),
           body: JSON.stringify({
             message: text,
             conversation_history: historyPayload,  // Snake case to match backend
             conversation_id: this._conversationId,  // Session ID for conversation tracking
             model: modelId,
             mode: modeId,
-            user_id: this.getUserId(userId),
+            user_id: resolvedUserId,
             attachments: (attachments ?? []).map((att) => ({
               kind: att.kind,
               content: att.content,
@@ -8659,6 +9077,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       if (isAbortError) {
         errorMessage = 'Request timed out. The operation took too long to complete. You can try again with a simpler request or check the backend logs.';
         console.warn('[AEP] ⏱️ Request aborted due to timeout');
+        this._lastRunAbortedAt = Date.now();
       } else {
         errorMessage = error instanceof Error ? error.message : 'Chat failed';
         console.error('[AEP] ❌ Chat routing error:', error);
@@ -8666,13 +9085,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       finalizeProgressError(errorMessage);
       this.postToWebview({ type: 'botThinking', value: false });
-      // Send botMessageEnd to properly close any streaming message
-      this.postToWebview({
-        type: 'botMessageEnd',
-        messageId: `msg-${Date.now()}`,
-        text: `⚠️ ${errorMessage}`,
-        actions: undefined,
-      });
+      // Send botMessageEnd only when we don't already have streamed content.
+      // This avoids overwriting partial streamed output after a disconnect.
+      const shouldSendErrorMessage = !useStreaming || (!streamedContent && !hasSeenToolCalls);
+      if (shouldSendErrorMessage) {
+        this.postToWebview({
+          type: 'botMessageEnd',
+          messageId: messageId || `msg-${Date.now()}`,
+          text: `⚠️ ${errorMessage}`,
+          actions: undefined,
+        });
+      }
     } finally {
       if (timeout) {
         clearTimeout(timeout);
@@ -10415,7 +10838,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private emitActivityEvent(event: { type: string; runId?: string; id?: string; [key: string]: any }) {
+  private emitActivityEvent(event: { type: string; runId?: string; id?: string;[key: string]: any }) {
     const runId = event.runId ?? this.ensureActivityRun("Working", "Working on it...");
     const id = event.id ?? `evt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const activityEvent = {

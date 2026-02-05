@@ -406,8 +406,8 @@ export function ActivityPanel({
         })}
       </div>
 
-      {/* Footer actions */}
-      {completedSteps === steps.length && completedSteps > 0 && (
+      {/* Footer actions - only show if there are actual file changes */}
+      {completedSteps === steps.length && completedSteps > 0 && totalChanges > 0 && (
         <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex gap-2">
           <button
             onClick={onAcceptAll}

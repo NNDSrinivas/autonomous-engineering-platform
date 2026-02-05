@@ -19,8 +19,10 @@ import json
 import os
 import tempfile
 
+from tests.conftest import TEST_BASE_URL, get_auth_headers, TEST_ORG_ID
+
 # Test configuration
-BASE_URL = os.getenv("NAVI_TEST_URL", "http://localhost:8002")
+BASE_URL = os.getenv("NAVI_TEST_URL", TEST_BASE_URL or "http://localhost:8002")
 TIMEOUT = 120  # seconds
 
 pytestmark = pytest.mark.integration
@@ -42,6 +44,10 @@ class TestNaviUniversalCapabilities:
     async def make_navi_request(self, session, message: str, workspace: str = None):
         """Make a request to NAVI and return the result."""
         workspace = workspace or tempfile.mkdtemp()
+        headers = get_auth_headers()
+        if not headers:
+            pytest.skip("NAVI_TEST_TOKEN not set; set it to run SaaS integration tests")
+        headers.setdefault("X-Org-Id", TEST_ORG_ID)
 
         payload = {
             "message": message,
@@ -58,6 +64,7 @@ class TestNaviUniversalCapabilities:
             async with session.post(
                 f"{BASE_URL}/api/navi/chat",
                 json=payload,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 if response.status != 200:

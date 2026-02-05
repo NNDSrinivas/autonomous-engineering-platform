@@ -19,6 +19,7 @@ import subprocess
 import asyncio
 import uuid
 import re
+import time
 from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
@@ -34,7 +35,18 @@ from backend.services.checkpoint_gate_detector import (
     GateTrigger,
 )
 
+# Command safety checks
+from backend.agent.tools.dangerous_commands import (
+    get_command_info,
+    format_permission_request,
+)
+
 logger = logging.getLogger(__name__)
+
+# ========== CONSENT STORAGE ==========
+# Module-level storage for command consent approvals
+# Key: consent_id, Value: {"approved": bool, "timestamp": float, "command": str}
+_consent_approvals: Dict[str, Dict[str, Any]] = {}
 
 # ========== PLAN DETECTION ==========
 # Patterns to detect execution plans in LLM output
@@ -484,9 +496,26 @@ class VerificationRunner:
         return bool(cmd_parts and cmd_parts[0] in node_commands)
 
     async def run_command(
-        self, command: str, timeout: int = 120
+        self, command: str, timeout: int = 300
     ) -> Tuple[bool, str, int]:
         """Run a command and return (success, output, exit_code)."""
+        # Auto-extend timeout for known long-running commands
+        long_running_patterns = [
+            'npm install', 'npm ci', 'yarn install', 'pnpm install', 'bun install',
+            'pip install', 'poetry install', 'pipenv install',
+            'bundle install', 'gem install',
+            'composer install', 'composer update',
+            'cargo build', 'cargo install',
+            'mvn install', 'mvn package', 'mvn compile', 'gradle build', 'gradle assemble',
+            'docker build', 'docker-compose build',
+            'npm run build', 'yarn build', 'pnpm build',
+            'npm test', 'yarn test', 'pytest', 'jest --',
+        ]
+
+        if any(pattern in command for pattern in long_running_patterns):
+            timeout = max(timeout, 1200)  # 20 minutes for complex operations
+            logger.info(f"[AutonomousAgent] Extended timeout to {timeout}s for long-running command")
+
         try:
             # Set up environment with npm_config_prefix removed (conflicts with nvm)
             env = os.environ.copy()
@@ -955,6 +984,26 @@ When something fails:
 2. **UNDERSTAND WHY** - Is it missing tool? Wrong version? Permission?
 3. **FIX THE ROOT CAUSE** - Don't just try random alternatives
 
+**🚨 CRITICAL: When run_command fails, check for error_analysis in the result**
+- The tool result includes an `error_analysis` field with specific suggestions
+- **DO NOT retry the exact same command** - it will fail again
+- **FOLLOW the error_analysis suggestions** - they're tailored to your specific error
+- Try the suggested alternatives in order
+
+**EXAMPLE OF GOOD PROBLEM SOLVING:**
+```
+npm install failed
+→ Check error_analysis: "Dependency conflict. Try: npm install --legacy-peer-deps"
+→ Try: run_command("npm install --legacy-peer-deps")
+→ Success!
+```
+
+**EXAMPLE OF BAD PROBLEM SOLVING (DON'T DO THIS):**
+```
+npm install failed
+→ Try: run_command("npm install") again (❌ Same command will fail again!)
+```
+
 **EXAMPLE OF GOOD PROBLEM SOLVING:**
 ```
 Error: "nvm: command not found"
@@ -1094,6 +1143,144 @@ You are a SOFTWARE ENGINEER who explains their work. Brief narration + immediate
 """
 
 
+def get_event_timestamp() -> float:
+    """
+    Get current timestamp in milliseconds for event ordering.
+
+    This ensures all events have consistent timestamps that reflect
+    their true chronological order, allowing proper sorting in the frontend.
+    """
+    return time.time() * 1000
+
+
+def analyze_command_error(command: str, stderr: str, stdout: str, exit_code: int) -> str:
+    """
+    Analyze command errors and suggest better alternatives.
+
+    This prevents the agent from retrying the exact same command.
+    Instead, it analyzes the error and suggests specific fixes.
+    """
+    error_output = (stderr + "\n" + stdout).lower()
+    suggestions = []
+
+    # npm/yarn/pnpm install errors
+    if any(cmd in command for cmd in ['npm install', 'yarn install', 'pnpm install', 'npm ci']):
+        if 'enoent' in error_output or 'no such file' in error_output:
+            suggestions.append("The error indicates missing files. Try:")
+            suggestions.append("1. Check if package.json exists in the correct directory")
+            suggestions.append("2. Verify you're in the right working directory")
+            suggestions.append("3. Check if node_modules was accidentally deleted")
+
+        elif 'eacces' in error_output or 'permission denied' in error_output:
+            suggestions.append("Permission error detected. Instead of retrying, try:")
+            suggestions.append("1. Clear npm cache: npm cache clean --force")
+            suggestions.append("2. Check ownership of node_modules: ls -la node_modules")
+            suggestions.append("3. Delete node_modules and package-lock.json, then retry")
+
+        elif 'etimedout' in error_output or 'network' in error_output:
+            suggestions.append("Network timeout detected. Try a different approach:")
+            suggestions.append("1. Use a different registry: npm install --registry=https://registry.npmjs.org/")
+            suggestions.append("2. Increase timeout: npm install --fetch-timeout=60000")
+            suggestions.append("3. Try yarn or pnpm instead if npm continues failing")
+
+        elif 'eresolve' in error_output or 'dependency conflict' in error_output:
+            suggestions.append("Dependency conflict detected. Don't retry the same command. Instead:")
+            suggestions.append("1. Try: npm install --legacy-peer-deps")
+            suggestions.append("2. Or: npm install --force (use carefully)")
+            suggestions.append("3. Check package.json for conflicting version requirements")
+
+        elif 'engine' in error_output or 'node version' in error_output:
+            suggestions.append("Node version mismatch. Don't retry. Instead:")
+            suggestions.append("1. Check required Node version in package.json")
+            suggestions.append("2. Install correct version: nvm install <version>")
+            suggestions.append("3. Or remove engine requirement if not critical")
+
+        elif 'checksum' in error_output or 'integrity' in error_output:
+            suggestions.append("Integrity check failed. Clear cache before retrying:")
+            suggestions.append("1. npm cache clean --force")
+            suggestions.append("2. Delete package-lock.json")
+            suggestions.append("3. Then retry npm install")
+
+        else:
+            suggestions.append("npm install failed. Before retrying the same command, try:")
+            suggestions.append("1. Delete node_modules and package-lock.json: rm -rf node_modules package-lock.json")
+            suggestions.append("2. Clear npm cache: npm cache clean --force")
+            suggestions.append("3. Then try: npm install")
+
+    # Python/pip install errors
+    elif any(cmd in command for cmd in ['pip install', 'pip3 install', 'poetry install']):
+        if 'could not find a version' in error_output or 'no matching distribution' in error_output:
+            suggestions.append("Package not found. Try:")
+            suggestions.append("1. Check package name spelling")
+            suggestions.append("2. Verify the package exists: pip search <package>")
+            suggestions.append("3. Try with a specific version: pip install package==version")
+
+        elif 'permission denied' in error_output:
+            suggestions.append("Permission error. Don't use sudo. Instead:")
+            suggestions.append("1. Use virtual environment: python -m venv venv && source venv/bin/activate")
+            suggestions.append("2. Install with --user flag: pip install --user <package>")
+
+        else:
+            suggestions.append("pip install failed. Try:")
+            suggestions.append("1. Upgrade pip: pip install --upgrade pip")
+            suggestions.append("2. Use --no-cache-dir: pip install --no-cache-dir <package>")
+
+    # Build command errors
+    elif any(cmd in command for cmd in ['npm run build', 'yarn build', 'pnpm build']):
+        if 'command not found' in error_output:
+            suggestions.append("Build script not found. Instead of retrying:")
+            suggestions.append("1. Check package.json scripts section")
+            suggestions.append("2. Verify the build script name")
+            suggestions.append("3. Install dependencies first: npm install")
+
+        elif 'out of memory' in error_output or 'javascript heap' in error_output:
+            suggestions.append("Memory error. Don't retry the same command. Try:")
+            suggestions.append("1. Increase memory: NODE_OPTIONS='--max-old-space-size=4096' npm run build")
+            suggestions.append("2. Or close other applications to free memory")
+
+    # Docker errors
+    elif 'docker' in command:
+        if 'cannot connect to the docker daemon' in error_output or 'daemon not running' in error_output:
+            suggestions.append("Docker daemon not running. Don't retry. Instead:")
+            suggestions.append("1. On macOS: open -a Docker")
+            suggestions.append("2. On Linux: sudo systemctl start docker")
+            suggestions.append("3. Wait for Docker to start, then retry")
+
+        elif 'port is already allocated' in error_output:
+            suggestions.append("Port conflict. Don't retry. Instead:")
+            suggestions.append("1. Find process using port: lsof -i :<port>")
+            suggestions.append("2. Kill the process or use a different port")
+
+    # Git errors
+    elif command.startswith('git'):
+        if 'not a git repository' in error_output:
+            suggestions.append("Not a git repo. Instead of retrying:")
+            suggestions.append("1. Initialize: git init")
+            suggestions.append("2. Or check you're in the correct directory")
+
+        elif 'permission denied' in error_output and 'publickey' in error_output:
+            suggestions.append("SSH key issue. Don't retry. Instead:")
+            suggestions.append("1. Use HTTPS URL instead of SSH")
+            suggestions.append("2. Or set up SSH keys: ssh-keygen")
+
+    # Test command errors
+    elif any(cmd in command for cmd in ['npm test', 'yarn test', 'pytest', 'jest']):
+        suggestions.append("Tests failed. Don't retry the same command. Instead:")
+        suggestions.append("1. Read the test failure output carefully")
+        suggestions.append("2. Fix the failing tests")
+        suggestions.append("3. Then run tests again to verify fixes")
+
+    # Generic command failures
+    if not suggestions:
+        suggestions.append(f"Command '{command}' failed with exit code {exit_code}.")
+        suggestions.append("Don't retry the exact same command. Instead:")
+        suggestions.append("1. Read the error message carefully")
+        suggestions.append("2. Try a different approach or fix the root cause")
+        suggestions.append("3. Consider alternative commands or tools")
+
+    return "\n".join(suggestions)
+
+
 class AutonomousAgent:
     """
     Autonomous agent that completes tasks end-to-end with verification.
@@ -1136,6 +1323,9 @@ class AutonomousAgent:
         logger.info(
             f"[AutonomousAgent] Verification commands: {self.verification_commands}"
         )
+
+        # Track pending consent requests for dangerous commands
+        self.pending_consents: Dict[str, Dict[str, Any]] = {}
 
     def _assess_task_complexity(
         self, request: str, context: Optional[TaskContext] = None
@@ -1664,12 +1854,40 @@ class AutonomousAgent:
             elif "explain" in request_lower:
                 label = "Explain code"
                 desc = "Providing explanation of the code"
+            elif "npm install" in request_lower or "yarn install" in request_lower or "pnpm install" in request_lower:
+                # Package installation commands
+                pm = "npm" if "npm" in request_lower else "yarn" if "yarn" in request_lower else "pnpm"
+                label = f"Install dependencies with {pm}"
+                desc = f"Running {pm} install to install project dependencies"
+            elif any(cmd in request_lower for cmd in ["npm start", "npm run", "npm dev", "yarn start", "yarn dev"]):
+                # Run/start commands
+                if "dev" in request_lower:
+                    label = "Start development server"
+                    desc = "Running dev script to start the development server"
+                elif "build" in request_lower:
+                    label = "Build project"
+                    desc = "Running build script to create production build"
+                else:
+                    label = "Run npm script"
+                    desc = f"Executing the requested npm/yarn script"
+            elif "run" in request_lower and any(word in request_lower for word in ["command", "script", "execute"]):
+                # Generic command execution
+                label = "Execute command"
+                desc = "Running the requested command"
             else:
                 # Extract first meaningful verb/noun phrase from request
-                words = request.split()[:6]
-                label = " ".join(words)[:30].strip()
-                if not label:
+                # Skip question words like "can you", "could you", "please"
+                words = request.replace("?", "").split()
+                # Remove question words from the beginning
+                while words and words[0].lower() in ["can", "could", "would", "will", "please", "you"]:
+                    words = words[1:]
+
+                label = " ".join(words[:4])[:40].strip()
+                if not label or len(label) < 3:
                     label = "Process request"
+                # Capitalize first letter if not already
+                if label and not label[0].isupper():
+                    label = label[0].upper() + label[1:]
                 desc = request[:100] if len(request) > 100 else request
 
             # Emit plan_start event in the format the frontend expects
@@ -1970,15 +2188,18 @@ Return ONLY the JSON, no markdown or explanations."""
         self, context: TaskContext, tool_name: str
     ) -> Optional[Dict]:
         """
-        Calculate step progress based on tool activity and emit step_update if needed.
+        DISABLED: Step progress now shown via activity stream only.
 
-        Maps tool activities to plan steps:
-        - Step 0 (Check dependencies/Analyze): read_file, search_files, list_directory
-        - Step 1 (Create/Implement): write_file, edit_file
-        - Step 2 (Update/Finalize): run_command, additional writes
+        Previously used heuristics to guess step progress from tool usage,
+        but this was inaccurate. Now we show the execution plan as a preview
+        and rely on the activity stream to show what's actually happening.
         """
-        if not context.plan_id or context.step_count == 0:
-            return None
+        # Disabled - return None to prevent heuristic step updates
+        return None
+
+        # Old heuristic logic disabled below:
+        # if not context.plan_id or context.step_count == 0:
+        #     return None
 
         # Determine which step we should be on based on activities
         len(context.files_read) > 0
@@ -2018,20 +2239,22 @@ Return ONLY the JSON, no markdown or explanations."""
         # Mark previous steps as completed if we're advancing
         events = []
         if target_step > context.current_step_index:
-            # Complete previous steps
-            for i in range(context.current_step_index, target_step):
-                if context.step_progress_emitted.get(i) != "completed":
+            # Complete all steps from current to target (except target itself)
+            for step_idx in range(context.current_step_index, target_step):
+                step_status = context.step_progress_emitted.get(step_idx)
+                # Only mark as completed if it was running or pending (not already completed)
+                if step_status != "completed":
                     events.append(
                         {
                             "type": "step_update",
                             "data": {
                                 "plan_id": context.plan_id,
-                                "step_index": i,
+                                "step_index": step_idx,
                                 "status": "completed",
                             },
                         }
                     )
-                    context.step_progress_emitted[i] = "completed"
+                    context.step_progress_emitted[step_idx] = "completed"
 
             # Mark new step as running
             context.current_step_index = target_step
@@ -2181,6 +2404,63 @@ Return ONLY the JSON, no markdown or explanations."""
 
                 command = arguments["command"]
 
+                # Check if this is a dangerous command that requires consent
+                cmd_info = get_command_info(command)
+                if cmd_info is not None and cmd_info.requires_confirmation:
+                    # Check if consent has already been granted for this command
+                    consent_id = arguments.get("consent_id")
+
+                    # Check global consent approvals first
+                    if consent_id and consent_id in _consent_approvals:
+                        approval = _consent_approvals[consent_id]
+                        if approval.get("approved"):
+                            # Consent was approved, proceed with execution
+                            logger.info(f"[AutonomousAgent] ✅ Consent approved for command: {command}")
+                            # Clean up the approval to prevent reuse
+                            del _consent_approvals[consent_id]
+                        else:
+                            # Consent was denied
+                            logger.info(f"[AutonomousAgent] ❌ Consent denied for command: {command}")
+                            return {
+                                "success": False,
+                                "error": "User denied consent for this command",
+                                "consent_denied": True
+                            }
+                    elif not consent_id or consent_id not in self.pending_consents:
+                        # Generate new consent request
+                        consent_id = str(uuid.uuid4())
+                        permission_request = format_permission_request(command, cmd_info, cwd)
+
+                        # Store pending consent in both locations
+                        consent_data = {
+                            "command": command,
+                            "cwd": cwd,
+                            "cmd_info": cmd_info,
+                            "permission_request": permission_request,
+                            "timestamp": time.time()
+                        }
+                        self.pending_consents[consent_id] = consent_data
+                        _consent_approvals[consent_id] = {
+                            "approved": False,
+                            "command": command,
+                            "timestamp": time.time(),
+                            "pending": True
+                        }
+
+                        # Return consent required response
+                        return {
+                            "success": False,
+                            "requires_consent": True,
+                            "consent_id": consent_id,
+                            "command": command,
+                            "danger_level": cmd_info.risk_level.value,
+                            "warning": permission_request["warning_message"],
+                            "consequences": cmd_info.consequences,
+                            "alternatives": cmd_info.alternatives,
+                            "rollback_possible": cmd_info.rollback_possible,
+                            "error": f"⚠️ CONSENT REQUIRED: This command requires user approval. A consent dialog has been shown to the user. DO NOT retry this command until the user has approved it. The consent_id is: {consent_id}"
+                        }
+
                 # Set up environment with npm_config_prefix removed (conflicts with nvm)
                 env = os.environ.copy()
                 env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
@@ -2240,32 +2520,194 @@ Return ONLY the JSON, no markdown or explanations."""
                     except Exception:
                         pass  # Keep original if parsing fails
 
-                # Use bash explicitly to support 'source' command for nvm/pyenv
-                result = subprocess.run(
+                # Determine timeout - use parameter or default (5 minutes)
+                cmd_timeout = arguments.get("timeout_seconds", 300)
+
+                # Cap timeout at 30 minutes for safety
+                cmd_timeout = min(cmd_timeout, 1800)
+
+                # Auto-extend timeout for known long-running commands
+                long_running_patterns = [
+                    'npm install', 'npm ci', 'yarn install', 'pnpm install', 'bun install',
+                    'pip install', 'poetry install', 'pipenv install',
+                    'bundle install', 'gem install',
+                    'composer install', 'composer update',
+                    'cargo build', 'cargo install',
+                    'mvn install', 'mvn package', 'mvn compile', 'gradle build', 'gradle assemble',
+                    'docker build', 'docker-compose build',
+                    'npm run build', 'yarn build', 'pnpm build',
+                    'npm test', 'yarn test', 'pytest', 'jest --',
+                ]
+
+                if any(pattern in command for pattern in long_running_patterns):
+                    cmd_timeout = max(cmd_timeout, 1200)  # 20 minutes minimum for complex operations
+                    logger.info(f"[AutonomousAgent] Extended timeout to {cmd_timeout}s for long-running command")
+                elif cmd_timeout != 300:
+                    logger.info(f"[AutonomousAgent] Using custom timeout: {cmd_timeout}s")
+
+                # ==== INTELLIGENT PORT CONFLICT HANDLING ====
+                # Check if this is a dev server command that might have port conflicts
+                dev_server_patterns = [
+                    'npm run dev', 'npm run start', 'npm start',
+                    'yarn dev', 'yarn start',
+                    'pnpm dev', 'pnpm start',
+                    'bun dev', 'bun start',
+                    'vite', 'next dev', 'next start',
+                    'uvicorn', 'python -m uvicorn', 'fastapi',
+                    'flask run', 'python app.py', 'python main.py',
+                    'rails server', 'rails s',
+                ]
+
+                is_dev_server_cmd = any(pattern in command for pattern in dev_server_patterns)
+
+                if is_dev_server_cmd and cwd:
+                    from backend.services.navi_brain import SelfHealingEngine
+                    import asyncio
+
+                    # Get configured port from project config files
+                    configured_port = SelfHealingEngine._get_configured_port(cwd)
+
+                    # Remember this port for future use
+                    if configured_port:
+                        SelfHealingEngine._port_memory[cwd] = configured_port
+                        logger.info(f"[AutonomousAgent] Found configured port {configured_port} for project")
+                    else:
+                        # Try to remember from previous runs
+                        configured_port = SelfHealingEngine._port_memory.get(cwd)
+                        if configured_port:
+                            logger.info(f"[AutonomousAgent] Using remembered port {configured_port} for project")
+
+                    # Check if the configured port is in use
+                    if configured_port:
+                        from backend.services.navi_brain import PortManager
+
+                        # Check port status
+                        port_status = await PortManager.check_port(configured_port)
+
+                        if not port_status.is_available:
+                            # Port is busy - identify the process
+                            process_owner = await SelfHealingEngine._identify_process_owner(configured_port, cwd)
+
+                            if process_owner["is_same_project"]:
+                                # Server is already running for this project!
+                                logger.info(f"[AutonomousAgent] Port {configured_port} already running for this project - reporting success")
+                                return {
+                                    "success": True,
+                                    "result": f"✅ Development server is already running on port {configured_port}\nAccess it at: http://localhost:{configured_port}",
+                                    "exit_code": 0,
+                                    "reason": "Server already running on configured port"
+                                }
+
+                            elif not process_owner["is_related"]:
+                                # Different project - this is a real conflict
+                                process_name = port_status.process_name or "Unknown process"
+                                process_cmd = port_status.process_command or ""
+
+                                # Find alternative port
+                                alt_port = await PortManager.find_available_port(configured_port, configured_port + 100)
+
+                                logger.info(
+                                    f"[AutonomousAgent] Port {configured_port} occupied by different project. "
+                                    f"Will use port {alt_port} instead."
+                                )
+
+                                # Modify command to use alternative port
+                                command = PortManager.modify_command_for_port(command, alt_port)
+
+                                # Update port memory
+                                SelfHealingEngine._port_memory[cwd] = alt_port
+
+                                # Add info message (will be shown to user)
+                                logger.info(
+                                    f"[AutonomousAgent] Modified command to use port {alt_port} "
+                                    f"(original port {configured_port} in use by {process_name})"
+                                )
+
+                # Use async subprocess for real-time streaming output
+                import asyncio
+
+                logger.info(f"[AutonomousAgent] Executing command with streaming output: {command[:100]}...")
+
+                # Create async subprocess
+                process = await asyncio.create_subprocess_shell(
                     command,
-                    shell=True,
-                    executable="/bin/bash",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                     cwd=cwd,
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
                     env=env,
+                    executable="/bin/bash",
                 )
+
+                stdout_lines = []
+                stderr_lines = []
+
+                async def read_stream(stream, output_list, stream_name):
+                    """Read from stream line by line."""
+                    while True:
+                        line = await stream.readline()
+                        if not line:
+                            break
+
+                        line_text = line.decode('utf-8', errors='replace').rstrip()
+                        output_list.append(line_text)
+
+                # Read stdout and stderr concurrently
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(
+                            read_stream(process.stdout, stdout_lines, "stdout"),
+                            read_stream(process.stderr, stderr_lines, "stderr"),
+                        ),
+                        timeout=cmd_timeout
+                    )
+                except asyncio.TimeoutError:
+                    process.kill()
+                    await process.wait()
+                    return {
+                        "success": False,
+                        "exit_code": -1,
+                        "stdout": "\n".join(stdout_lines),
+                        "stderr": f"Command timed out after {cmd_timeout} seconds",
+                        "error": f"Command execution exceeded timeout of {cmd_timeout} seconds"
+                    }
+
+                # Wait for process to complete
+                exit_code = await process.wait()
+
+                stdout_text = "\n".join(stdout_lines)
+                stderr_text = "\n".join(stderr_lines)
 
                 context.commands_run.append(
                     {
                         "command": arguments["command"],
-                        "exit_code": result.returncode,
-                        "success": result.returncode == 0,
+                        "exit_code": exit_code,
+                        "success": exit_code == 0,
                     }
                 )
 
-                return {
-                    "success": result.returncode == 0,
-                    "exit_code": result.returncode,
-                    "stdout": result.stdout[:3000] if result.stdout else "",
-                    "stderr": result.stderr[:3000] if result.stderr else "",
+                # If command failed, analyze the error and suggest alternatives
+                error_analysis = ""
+                if exit_code != 0:
+                    error_analysis = analyze_command_error(
+                        command=arguments["command"],
+                        stderr=stderr_text,
+                        stdout=stdout_text,
+                        exit_code=exit_code
+                    )
+                    logger.info(f"[AutonomousAgent] Command failed - error analysis:\n{error_analysis}")
+
+                response = {
+                    "success": exit_code == 0,
+                    "exit_code": exit_code,
+                    "stdout": stdout_text[:3000] if stdout_text else "",
+                    "stderr": stderr_text[:3000] if stderr_text else "",
                 }
+
+                # Add error analysis to help the agent try a different approach
+                if error_analysis:
+                    response["error_analysis"] = error_analysis
+
+                return response
 
             elif tool_name == "search_files":
                 import glob as glob_module
@@ -2775,7 +3217,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                         "input": "",
                                     }
                                     if text_buffer:
-                                        yield {"type": "text", "text": text_buffer}
+                                        yield {"type": "text", "text": text_buffer, "timestamp": get_event_timestamp()}
                                         text_buffer = ""
 
                             elif event_type == "content_block_delta":
@@ -2805,7 +3247,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if len(text_buffer) >= 30 or text.endswith(
                                         (".", "!", "?", "\n")
                                     ):
-                                        yield {"type": "text", "text": text_buffer}
+                                        yield {"type": "text", "text": text_buffer, "timestamp": get_event_timestamp()}
                                         text_buffer = ""
                                 elif (
                                     delta.get("type") == "input_json_delta"
@@ -2833,6 +3275,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                             "name": current_tool["name"],
                                             "arguments": args,
                                         },
+                                        "timestamp": get_event_timestamp(),
                                     }
 
                                     # Execute the tool
@@ -2845,6 +3288,33 @@ Return ONLY the JSON, no markdown or explanations."""
                                     logger.info(
                                         f"[AutonomousAgent] ✅ Tool result: success={result.get('success', 'N/A')}"
                                     )
+
+                                    # Check if consent is required for this command
+                                    if result.get("requires_consent"):
+                                        logger.info(
+                                            f"[AutonomousAgent] 🔐 Consent required for command: {result.get('command')}"
+                                        )
+                                        # Emit consent event to frontend
+                                        yield {
+                                            "type": "command.consent_required",
+                                            "data": {
+                                                "consent_id": result.get("consent_id"),
+                                                "command": result.get("command"),
+                                                "shell": "bash",
+                                                "cwd": args.get("cwd", self.workspace_path),
+                                                "danger_level": result.get("danger_level", "medium"),
+                                                "warning": result.get("warning", ""),
+                                                "consequences": result.get("consequences", []),
+                                                "alternatives": result.get("alternatives", []),
+                                                "rollback_possible": result.get("rollback_possible", False),
+                                            },
+                                            "timestamp": get_event_timestamp(),
+                                        }
+                                        # Don't yield tool_result yet - wait for consent
+                                        # Skip adding to tool_calls array for now
+                                        current_tool = None
+                                        continue
+
                                     if not result.get("success"):
                                         logger.warning(
                                             f"[AutonomousAgent] ⚠️ Tool error: {result.get('error', 'Unknown error')}"
@@ -2855,6 +3325,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                             "id": current_tool["id"],
                                             "result": result,
                                         },
+                                        "timestamp": get_event_timestamp(),
                                     }
 
                                     tool_calls.append(
@@ -2888,7 +3359,7 @@ Return ONLY the JSON, no markdown or explanations."""
                             continue
 
                     if text_buffer:
-                        yield {"type": "text", "text": text_buffer}
+                        yield {"type": "text", "text": text_buffer, "timestamp": get_event_timestamp()}
 
                     # Log stop reason
                     logger.info(f"[AutonomousAgent] 🛑 LLM Stop Reason: {stop_reason}")
@@ -3046,7 +3517,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                 if len(text_buffer) >= 30 or text.endswith(
                                     (".", "!", "?", "\n")
                                 ):
-                                    yield {"type": "text", "text": text_buffer}
+                                    yield {"type": "text", "text": text_buffer, "timestamp": get_event_timestamp()}
                                     text_buffer = ""
 
                             if delta.get("tool_calls"):
@@ -3077,7 +3548,7 @@ Return ONLY the JSON, no markdown or explanations."""
                             continue
 
                     if text_buffer:
-                        yield {"type": "text", "text": text_buffer}
+                        yield {"type": "text", "text": text_buffer, "timestamp": get_event_timestamp()}
 
                     if finish_reason == "tool_calls" and tool_calls:
                         assistant_tool_calls = []
@@ -3395,6 +3866,7 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                     f"1. Fixing the issue manually\n"
                     f"2. Providing more specific instructions\n"
                     f"3. Checking if there are missing dependencies or configuration\n",
+                    "timestamp": get_event_timestamp(),
                 }
 
                 # Mark plan as failed
@@ -3571,6 +4043,7 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                     yield {
                         "type": "text",
                         "text": "\n\n🔧 **Now implementing the fix...**\n",
+                        "timestamp": get_event_timestamp()
                     }
 
                     # Add a forceful follow-up message to make LLM actually implement
@@ -3643,6 +4116,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                 yield {
                     "type": "text",
                     "text": "\n✅ **Task completed** (no code changes needed)\n",
+                "timestamp": get_event_timestamp()
                 }
                 yield {"type": "status", "status": "completed"}
 
@@ -3715,6 +4189,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     yield {
                         "type": "text",
                         "text": "\n\n**Quick validation (simple task)...**\n",
+                    "timestamp": get_event_timestamp()
                     }
                     logger.info(
                         "[AutonomousAgent] 🚀 Using quick validation for simple task"
@@ -3732,6 +4207,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         yield {
                             "type": "text",
                             "text": "\n✅ **Quick validation passed!**\n",
+                        "timestamp": get_event_timestamp()
                         }
                         yield {"type": "status", "status": "completed"}
 
@@ -3775,6 +4251,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         yield {
                             "type": "text",
                             "text": f"\n⚠️ **Syntax error:** {error_msg}\n",
+                            "timestamp": get_event_timestamp()
                         }
                         # Continue to retry loop - don't do full verification
                         context.error_history.append(
@@ -3796,7 +4273,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         continue  # Skip to next iteration
 
                 # For MEDIUM and COMPLEX tasks: run appropriate verification
-                yield {"type": "text", "text": "\n\n**Running verification...**\n"}
+                yield {"type": "text", "text": "\n\n**Running verification...**\n", "timestamp": get_event_timestamp()}
 
                 # Always run tests for MEDIUM and COMPLEX tasks (not just COMPLEX)
                 # Tests are crucial for validating changes work correctly
@@ -3836,6 +4313,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     yield {
                         "type": "text",
                         "text": "\n✅ **All verifications passed!**\n",
+                    "timestamp": get_event_timestamp()
                     }
                     yield {"type": "status", "status": "completed"}
 
@@ -3926,6 +4404,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     yield {
                         "type": "text",
                         "text": f"\n🔄 **Loop detected - same error {context.consecutive_same_error_count} times.** Forcing different strategy...\n",
+                        "timestamp": get_event_timestamp()
                     }
                     yield {
                         "type": "loop_detected",
@@ -3936,6 +4415,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     yield {
                         "type": "text",
                         "text": f"\n❌ **Verification failed.** Analyzing errors and fixing...\n\n{error_message}\n",
+                        "timestamp": get_event_timestamp()
                     }
 
                 # Add error context to messages for retry
@@ -4092,6 +4572,7 @@ After fixing, I'll run verification again.""",
         yield {
             "type": "text",
             "text": f"\n⚠️ **Max iterations ({context.max_iterations}) reached.** Some issues may remain.\n",
+            "timestamp": get_event_timestamp()
         }
 
         # Mark plan as failed/incomplete

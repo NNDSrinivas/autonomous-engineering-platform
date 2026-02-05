@@ -16,11 +16,11 @@ import {
   Zap,
   SkipForward
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Progress } from '../ui/progress';
+import { ScrollArea } from '../ui/scroll-area';
 import {
   Dialog,
   DialogContent,
@@ -28,11 +28,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { useEndToEndWorkflow, WorkflowPhase } from '@/hooks/useEndToEndWorkflow';
-import { useWorkflowHistory } from '@/hooks/useWorkflowHistory';
-import { cn } from '@/lib/utils';
-import type { JiraTask } from '@/types';
+} from '../ui/dialog';
+import { useEndToEndWorkflow, WorkflowPhase } from '../../hooks/useEndToEndWorkflow';
+import { useWorkflowHistory } from '../../hooks/useWorkflowHistory';
+import { cn } from '../../lib/utils';
+import type { JiraTask } from '../../types';
 
 const phaseIcons: Record<WorkflowPhase, React.ReactNode> = {
   idle: <Clock className="h-4 w-4" />,

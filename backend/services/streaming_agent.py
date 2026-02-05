@@ -770,6 +770,11 @@ NAVI_TOOLS = [
                     "type": "string",
                     "description": "Optional: working directory relative to workspace root",
                 },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Optional: timeout in seconds (default 300, max 1800). Use longer timeouts for builds, tests, or package installs.",
+                    "default": 300
+                },
             },
             "required": ["command"],
         },

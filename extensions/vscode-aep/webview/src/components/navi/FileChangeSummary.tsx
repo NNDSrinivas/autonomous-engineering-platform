@@ -99,8 +99,8 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   onFileClick,
   onPreviewAll,
 }) => {
-  // Start expanded by default so files are visible immediately
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Start collapsed by default for compact layout
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Calculate totals if not provided
   const additions = totalAdditions ?? files.reduce((sum, f) => sum + (f.additions || 0), 0);
@@ -212,7 +212,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 12px 14px;
+          padding: 8px 12px;
           cursor: pointer;
           transition: background 0.15s ease;
           border-bottom: 1px solid transparent;
@@ -249,7 +249,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         }
 
         .fcs-count {
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 600;
           color: var(--vscode-foreground, #e2e8f0);
           white-space: nowrap;
@@ -264,7 +264,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
 
         .fcs-stat {
           font-family: "SF Mono", "Menlo", "Monaco", monospace;
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 600;
           padding: 2px 6px;
           border-radius: 4px;
@@ -381,7 +381,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           align-items: center;
           justify-content: space-between;
           width: 100%;
-          padding: 10px 12px;
+          padding: 6px 8px;
           margin-bottom: 4px;
           background: rgba(255, 255, 255, 0.02);
           border: 1px solid transparent;
@@ -439,7 +439,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         .fcs-icon--config { color: #6d8086; }
 
         .fcs-filename {
-          font-size: 13px;
+          font-size: 11px;
           font-weight: 500;
           color: var(--vscode-foreground, #e2e8f0);
           white-space: nowrap;

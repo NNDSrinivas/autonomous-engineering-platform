@@ -1331,3 +1331,52 @@
   font-size: 10px;
   font-weight: 500;
 }
+
+/* Diff Stats Styling - Sleek classic style */
+.navi-diff-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.navi-diff-separator {
+  margin: 0 4px;
+  color: #666;
+}
+
+.navi-diff-additions {
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.navi-diff-deletions {
+  color: #f87171;
+  font-weight: 600;
+}
+
+/* Better action card styling */
+.navi-action-card {
+  margin: 8px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.navi-action-title {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 6px;
+}
+
+.navi-action-detail {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  color: #a0a0a0;
+}

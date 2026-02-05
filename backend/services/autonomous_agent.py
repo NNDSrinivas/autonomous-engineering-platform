@@ -3733,10 +3733,27 @@ Return ONLY the JSON, no markdown or explanations."""
 
         yield {"type": "status", "status": "planning", "task_id": context.task_id}
 
+        # Emit thinking progress: analyzing request
+        yield {
+            "type": "thinking_progress",
+            "message": "Analyzing your request...",
+            "timestamp": time.time() * 1000,
+        }
+
         # Gather environment info ONCE at the start to avoid blind guessing
+        yield {
+            "type": "thinking_progress",
+            "message": "Checking project configuration...",
+            "timestamp": time.time() * 1000,
+        }
         env_info = await self._diagnose_environment()
 
         # Generate and emit execution plan for complex tasks
+        yield {
+            "type": "thinking_progress",
+            "message": "Planning actions...",
+            "timestamp": time.time() * 1000,
+        }
         plan_steps = []
         async for plan_event in self._generate_plan(request, env_info, context):
             yield plan_event

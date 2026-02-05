@@ -40,17 +40,20 @@ export const llmProviders: LLMProvider[] = [
       { id: 'openai/gpt-5', name: 'GPT-5', description: 'Most capable OpenAI model' },
       { id: 'openai/gpt-5-mini', name: 'GPT-5 Mini', description: 'Fast & efficient' },
       { id: 'openai/gpt-5-nano', name: 'GPT-5 Nano', description: 'Ultra-fast for simple tasks' },
-      { id: 'openai/gpt-4.1', name: 'GPT-4.1', description: 'Previous generation flagship' },
       { id: 'openai/gpt-4o', name: 'GPT-4o', description: 'Optimized multimodal model' },
+      { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable' },
+      { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Fast GPT-4' },
+      { id: 'openai/o3-mini', name: 'o3-mini', description: 'Reasoning model' },
     ],
   },
   {
     id: 'anthropic',
     name: 'Anthropic',
     models: [
-      { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4', description: 'Balanced performance' },
+      { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4', description: 'Latest balanced model' },
       { id: 'anthropic/claude-opus-4', name: 'Claude Opus 4', description: 'Most capable Claude' },
       { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Previous generation' },
+      { id: 'anthropic/claude-3.5-haiku', name: 'Claude 3.5 Haiku', description: 'Fast and affordable' },
     ],
   },
   {

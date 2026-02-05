@@ -1407,6 +1407,55 @@ async def auto_fix_by_id(
         return {"success": False, "error": str(e)}
 
 
+@router.post("/consent/{consent_id}")
+async def handle_consent_response(
+    consent_id: str,
+    request: Request,
+) -> Dict[str, Any]:
+    """
+    Handle user consent approval/denial for dangerous commands.
+
+    The frontend sends consent responses when the user approves or denies
+    a dangerous command execution (e.g., rm, kill, chmod).
+    """
+    try:
+        # Import the global consent storage from autonomous_agent
+        from backend.services.autonomous_agent import _consent_approvals
+
+        body = await request.json()
+        approved = body.get("approved", False)
+        command = body.get("command", "")
+
+        logger.info(f"[NAVI API] 🔐 Consent {consent_id}: {'APPROVED' if approved else 'DENIED'} for command: {command}")
+
+        # Update the consent approval in global storage
+        if consent_id in _consent_approvals:
+            _consent_approvals[consent_id]["approved"] = approved
+            _consent_approvals[consent_id]["pending"] = False
+            _consent_approvals[consent_id]["response_timestamp"] = time.time()
+        else:
+            # Consent ID not found (might have expired or already processed)
+            logger.warning(f"[NAVI API] Consent {consent_id} not found in pending approvals")
+            _consent_approvals[consent_id] = {
+                "approved": approved,
+                "command": command,
+                "timestamp": time.time(),
+                "pending": False,
+                "response_timestamp": time.time()
+            }
+
+        return {
+            "success": True,
+            "consent_id": consent_id,
+            "approved": approved,
+            "message": f"Consent {'approved' if approved else 'denied'}"
+        }
+
+    except Exception as e:
+        logger.error(f"[NAVI API] Error handling consent {consent_id}: {e}")
+        return {"success": False, "error": str(e)}
+
+
 async def _apply_auto_fix(
     request: Request, workspace_root: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -7168,7 +7217,67 @@ async def navi_autonomous_task(
             logger.info("[NAVI Autonomous] Message augmented with image analysis")
 
     async def stream_generator():
-        """Generate SSE events from the autonomous agent."""
+        """Generate SSE events from the autonomous agent with heartbeat to prevent timeout."""
+        import asyncio
+
+        async def heartbeat_wrapper(agent_generator):
+            """Wrap agent generator with periodic heartbeat events to keep SSE connection alive."""
+            last_event_time = time.time()
+            heartbeat_interval = 15  # Send heartbeat every 15 seconds of silence
+
+            async def send_heartbeat():
+                """Send periodic heartbeat events."""
+                while True:
+                    await asyncio.sleep(heartbeat_interval)
+                    current_time = time.time()
+                    if current_time - last_event_time >= heartbeat_interval:
+                        yield {
+                            "type": "heartbeat",
+                            "timestamp": time.time() * 1000,
+                            "message": "Connection alive"
+                        }
+
+            # Create heartbeat task
+            heartbeat_task = asyncio.create_task(
+                asyncio.sleep(0)  # Placeholder, we'll send heartbeats manually
+            )
+
+            try:
+                # Process events from agent with heartbeat injection
+                pending_tasks = set()
+                agent_task = asyncio.create_task(agent_generator.__anext__())
+
+                while True:
+                    # Wait for either agent event or heartbeat timeout
+                    done, pending = await asyncio.wait(
+                        {agent_task},
+                        timeout=heartbeat_interval
+                    )
+
+                    if done:
+                        # Agent sent an event
+                        try:
+                            event = await agent_task
+                            last_event_time = time.time()
+                            yield event
+                            # Create next agent task
+                            agent_task = asyncio.create_task(agent_generator.__anext__())
+                        except StopAsyncIteration:
+                            # Agent is done
+                            break
+                    else:
+                        # Timeout reached without event - send heartbeat
+                        current_time = time.time()
+                        if current_time - last_event_time >= heartbeat_interval:
+                            yield {
+                                "type": "heartbeat",
+                                "timestamp": time.time() * 1000,
+                                "message": "Connection alive"
+                            }
+                            last_event_time = current_time
+            finally:
+                heartbeat_task.cancel()
+
         try:
             agent = AutonomousAgent(
                 workspace_path=workspace_path,
@@ -7177,9 +7286,11 @@ async def navi_autonomous_task(
                 model=model,
             )
 
-            async for event in agent.execute_task(
-                request=augmented_message,  # Use augmented message with image context
-                run_verification=request.run_verification,
+            async for event in heartbeat_wrapper(
+                agent.execute_task(
+                    request=augmented_message,  # Use augmented message with image context
+                    run_verification=request.run_verification,
+                )
             ):
                 yield f"data: {json.dumps(event)}\n\n"
 

@@ -224,7 +224,11 @@ def _parse_iso_time(value: str) -> datetime:
     try:
         if value.endswith("Z"):
             value = value[:-1] + "+00:00"
-        return datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(value)
+        # Ensure timezone-aware datetime (assume UTC if naive)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except Exception as exc:
         raise ValueError(f"Invalid timestamp: {value}") from exc
 

@@ -205,10 +205,10 @@ def run_command(
 
         # Prepare environment and command with node setup if needed
         timeout = compute_timeout(cmd, timeout=300)
-        prepared_cmd = prepare_command(cmd, workdir)
 
         # Background mode for long-running servers (e.g., npm run dev)
         if req.background:
+            prepared_cmd = prepare_command(cmd, workdir)
             proc = subprocess.Popen(
                 prepared_cmd,
                 shell=True,

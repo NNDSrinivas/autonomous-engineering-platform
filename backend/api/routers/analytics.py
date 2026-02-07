@@ -2,7 +2,7 @@
 Analytics API Router - Usage and metrics dashboards.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -25,7 +25,7 @@ def _parse_int(value: Optional[str]) -> Optional[int]:
 
 
 def _compute_range(days: int) -> Dict[str, Any]:
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
     return {"days": days, "start": start, "end": end}
 

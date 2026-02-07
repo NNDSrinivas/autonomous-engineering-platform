@@ -7285,7 +7285,20 @@ async def navi_autonomous_task(
                             }
                             last_event_time = current_time
             finally:
-                pass  # Cleanup if needed
+                # Cleanup: cancel pending task and close generator if client disconnects
+                if agent_task and not agent_task.done():
+                    agent_task.cancel()
+                    try:
+                        await agent_task
+                    except asyncio.CancelledError:
+                        pass
+
+                # Attempt to close the async generator
+                try:
+                    await agent_generator.aclose()
+                except (StopAsyncIteration, RuntimeError):
+                    # Generator already closed or not started
+                    pass
 
         # Create database session for generation logging
         db = SessionLocal()

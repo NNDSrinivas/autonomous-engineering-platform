@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, LargeBinary, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, LargeBinary, String, Text, func
 
 from backend.core.db import Base
 
@@ -22,7 +22,7 @@ class McpServer(Base):
     last_error = Column(Text, nullable=True)
     user_id = Column(String(200), index=True, nullable=True)
     org_id = Column(String(200), index=True, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

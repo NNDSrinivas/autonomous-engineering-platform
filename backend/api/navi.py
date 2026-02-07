@@ -1435,23 +1435,26 @@ async def handle_consent_response(
             f"[NAVI API] 🔐 Consent {consent_id}: {'APPROVED' if approved else 'DENIED'} for command: {command}"
         )
 
+        # TODO: Move consent storage to DB/Redis for multi-user support
+        # and add user/org validation (consent_id, user_id, org_id)
+
         # Update the consent approval in global storage
-        if consent_id in _consent_approvals:
-            _consent_approvals[consent_id]["approved"] = approved
-            _consent_approvals[consent_id]["pending"] = False
-            _consent_approvals[consent_id]["response_timestamp"] = time.time()
-        else:
+        if consent_id not in _consent_approvals:
             # Consent ID not found (might have expired or already processed)
+            # Do not create new consent record to prevent spoofing
             logger.warning(
                 f"[NAVI API] Consent {consent_id} not found in pending approvals"
             )
-            _consent_approvals[consent_id] = {
-                "approved": approved,
-                "command": command,
-                "timestamp": time.time(),
-                "pending": False,
-                "response_timestamp": time.time(),
+            return {
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Consent not found or has expired",
             }
+
+        # Update existing consent
+        _consent_approvals[consent_id]["approved"] = approved
+        _consent_approvals[consent_id]["pending"] = False
+        _consent_approvals[consent_id]["response_timestamp"] = time.time()
 
         return {
             "success": True,
@@ -7248,23 +7251,6 @@ async def navi_autonomous_task(
             last_event_time = time.time()
             heartbeat_interval = 10  # Send heartbeat every 10 seconds of silence (reduced from 15s for better reliability)
 
-            async def send_heartbeat():
-                """Send periodic heartbeat events."""
-                while True:
-                    await asyncio.sleep(heartbeat_interval)
-                    current_time = time.time()
-                    if current_time - last_event_time >= heartbeat_interval:
-                        yield {
-                            "type": "heartbeat",
-                            "timestamp": time.time() * 1000,
-                            "message": "Connection alive",
-                        }
-
-            # Create heartbeat task
-            heartbeat_task = asyncio.create_task(
-                asyncio.sleep(0)  # Placeholder, we'll send heartbeats manually
-            )
-
             try:
                 # Process events from agent with heartbeat injection
                 agent_task = asyncio.create_task(agent_generator.__anext__())
@@ -7299,7 +7285,7 @@ async def navi_autonomous_task(
                             }
                             last_event_time = current_time
             finally:
-                heartbeat_task.cancel()
+                pass  # Cleanup if needed
 
         # Create database session for generation logging
         db = SessionLocal()

@@ -23,6 +23,9 @@ from backend.core.auth.models import User, Role
 
 router = APIRouter(prefix="/api/orgs", tags=["org-onboarding"])
 
+# Track if tables have been initialized (to avoid DDL on every request)
+_tables_initialized = False
+
 
 def _now() -> datetime:
     return datetime.now(tz=timezone.utc)
@@ -34,6 +37,21 @@ def _slugify(name: str) -> str:
 
 
 def _ensure_tables(db: Session) -> None:
+    """Initialize org tables if not already done.
+
+    TODO: Move to Alembic migrations for production.
+    This on-demand creation is a development convenience but has issues:
+    - Permissions: Requires DDL rights on every request
+    - Concurrency: Race conditions with multiple requests
+    - Performance: Overhead on every request (mitigated by flag)
+    - Operations: Schema changes not tracked/versioned
+    """
+    global _tables_initialized
+
+    # Skip if already initialized (avoid DDL on every request)
+    if _tables_initialized:
+        return
+
     db.execute(
         text(
             """
@@ -76,6 +94,8 @@ def _ensure_tables(db: Session) -> None:
         )
     )
     db.commit()
+
+    _tables_initialized = True
 
 
 class OrgOut(BaseModel):

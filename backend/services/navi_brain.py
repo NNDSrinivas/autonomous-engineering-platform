@@ -5562,6 +5562,10 @@ class SelfHealingEngine:
 
         elif error_type == "port":
             # Intelligent port conflict handling
+            # TODO: Verify recovery-action executor supports "intelligentPortRecovery" type
+            # If not recognized downstream, port recovery will silently fail. Consider:
+            # 1. Keep old action types (checkPort/killPort/findPort) as fallback, OR
+            # 2. Add executor support in same PR
             port = int(captured_groups[0]) if captured_groups else 3000
             workspace_path = context.get("workspace_path") if context else None
 

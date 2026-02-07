@@ -686,14 +686,14 @@ class StreamEvent:
             result["task_state"] = self.content  # {state, context}
         elif self.type == StreamEventType.TASK_COMPLETE:
             # Explicit task completion signal with full summary
-            result[
-                "task_complete"
-            ] = self.content  # {success, summary, files_modified, etc.}
+            result["task_complete"] = (
+                self.content
+            )  # {success, summary, files_modified, etc.}
         elif self.type == StreamEventType.BUILD_VERIFICATION:
             # Build/type-check verification results
-            result[
-                "build_verification"
-            ] = self.content  # {success, command, output, errors}
+            result["build_verification"] = (
+                self.content
+            )  # {success, command, output, errors}
         return result
 
 

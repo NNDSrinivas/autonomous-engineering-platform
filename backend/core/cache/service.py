@@ -12,9 +12,9 @@ from backend.infra.cache.redis_cache import cache as redis
 DEFAULT_TTL = int(os.getenv("CACHE_DEFAULT_TTL_SEC", "600"))  # 10m default
 
 # singleflight map to prevent dogpiling with last access tracking
-_singleflight: dict[
-    str, tuple[asyncio.Lock, float]
-] = {}  # key -> (lock, last_access_time)
+_singleflight: dict[str, tuple[asyncio.Lock, float]] = (
+    {}
+)  # key -> (lock, last_access_time)
 _singleflight_lock = asyncio.Lock()  # Protects singleflight dict creation
 _max_singleflight_size = 1000  # Limit singleflight dict size
 _singleflight_ttl = 300  # Remove locks not accessed for 5 minutes

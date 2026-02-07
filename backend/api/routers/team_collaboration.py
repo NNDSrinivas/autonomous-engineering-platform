@@ -778,9 +778,7 @@ async def _calculate_team_pulse(db: Session, org_id: str) -> Dict[str, Any]:
         activity_level = (
             "high"
             if activity_rate > 0.3
-            else "medium"
-            if activity_rate > 0.1
-            else "low"
+            else "medium" if activity_rate > 0.1 else "low"
         )
 
         # Calculate overall health
@@ -796,9 +794,7 @@ async def _calculate_team_pulse(db: Session, org_id: str) -> Dict[str, Any]:
             "mood": (
                 "positive"
                 if overall_health > 0.7
-                else "neutral"
-                if overall_health > 0.4
-                else "needs_attention"
+                else "neutral" if overall_health > 0.4 else "needs_attention"
             ),
             "last_updated": datetime.utcnow(),
         }

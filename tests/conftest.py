@@ -12,13 +12,13 @@ os.environ.setdefault("TOKENIZER_FALLBACK_ENABLED", "true")
 os.environ.setdefault("REDIS_URL", "")
 os.environ.setdefault("NAVI_DISABLE_LLM", "true")
 
-import pytest
-import subprocess
-import sys
-from pathlib import Path
-from httpx import Client
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+import pytest  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+from httpx import Client  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker, Session  # noqa: E402
 
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

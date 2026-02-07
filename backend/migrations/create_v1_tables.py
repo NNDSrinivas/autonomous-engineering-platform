@@ -21,9 +21,9 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from sqlalchemy import create_engine, inspect
-from backend.core.db import Base
-from backend.core.config import settings
+from sqlalchemy import create_engine, inspect  # noqa: E402
+from backend.core.db import Base  # noqa: E402
+from backend.core.config import settings  # noqa: E402
 
 # Import all models to register them with Base.metadata
 

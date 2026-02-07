@@ -529,9 +529,9 @@ class ImpactAnalyzer:
                 "and coordinate with all affected teams"
             )
         else:
-            recommendations[
-                "rollback"
-            ] = "Standard rollback: Use deployment automation to revert to previous version"
+            recommendations["rollback"] = (
+                "Standard rollback: Use deployment automation to revert to previous version"
+            )
 
         # Risk level ordering for comparisons
         risk_order = {

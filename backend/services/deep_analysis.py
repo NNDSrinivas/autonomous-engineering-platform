@@ -1717,9 +1717,9 @@ class AdvancedGitOperations:
             if pick_result["success"]:
                 result["picked_commits"].append(commit)
             else:
-                result[
-                    "message"
-                ] = f"Failed at commit {commit}: {pick_result['message']}"
+                result["message"] = (
+                    f"Failed at commit {commit}: {pick_result['message']}"
+                )
                 result["conflicts"] = pick_result.get("conflicts", [])
                 return result
 
@@ -1949,9 +1949,9 @@ class AdvancedGitOperations:
             result["status"] = stdout
 
         result["success"] = True
-        result[
-            "message"
-        ] = "Bisect started. Test current commit and mark as 'good' or 'bad'"
+        result["message"] = (
+            "Bisect started. Test current commit and mark as 'good' or 'bad'"
+        )
         result["next_steps"] = [
             "1. Test the current commit for the bug",
             "2. If bug exists: git bisect bad",
@@ -2653,9 +2653,9 @@ class AdvancedDatabaseOperations:
             except Exception as e:
                 result["message"] = f"Failed to generate migration: {e}"
         else:
-            result[
-                "message"
-            ] = "No supported migration system found (Alembic, Django, or Prisma)"
+            result["message"] = (
+                "No supported migration system found (Alembic, Django, or Prisma)"
+            )
 
         return result
 
@@ -2753,12 +2753,12 @@ class AdvancedDatabaseOperations:
 
         elif (workspace / "manage.py").exists():
             # Django requires app name and migration name
-            result[
-                "message"
-            ] = "Django rollback requires app name: python manage.py migrate <app> <migration>"
-            result[
-                "suggestion"
-            ] = "Use: python manage.py showmigrations to see migration names"
+            result["message"] = (
+                "Django rollback requires app name: python manage.py migrate <app> <migration>"
+            )
+            result["suggestion"] = (
+                "Use: python manage.py showmigrations to see migration names"
+            )
 
         return result
 
@@ -2916,9 +2916,9 @@ class AdvancedDatabaseOperations:
                 result["message"] = f"Failed to run Prisma seed: {e}"
                 return result
 
-        result[
-            "message"
-        ] = "No seed file found. Create one at seeds/seed.py or similar location."
+        result["message"] = (
+            "No seed file found. Create one at seeds/seed.py or similar location."
+        )
         return result
 
     @classmethod

@@ -401,9 +401,9 @@ class PatchApplicator:
             target_path = self.workspace_root / target_file
 
             if not target_path.exists():
-                application_result[
-                    "error"
-                ] = f"Target file does not exist: {target_file}"
+                application_result["error"] = (
+                    f"Target file does not exist: {target_file}"
+                )
                 return application_result
 
             # Create backup
@@ -502,9 +502,9 @@ class PatchApplicator:
             metadata_files = list(self.backup_dir.glob(f"*_{rollback_id}.bak.json"))
 
             if not backup_files or not metadata_files:
-                rollback_result[
-                    "error"
-                ] = f"Backup files not found for rollback_id: {rollback_id}"
+                rollback_result["error"] = (
+                    f"Backup files not found for rollback_id: {rollback_id}"
+                )
                 return rollback_result
 
             backup_file = backup_files[0]

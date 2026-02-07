@@ -133,9 +133,9 @@ def _serialize_server(row: McpServer, include_config: bool = True) -> Dict[str, 
         "enabled": row.enabled,
         "status": row.status,
         "tool_count": row.tool_count,
-        "last_checked_at": row.last_checked_at.isoformat()
-        if row.last_checked_at
-        else None,
+        "last_checked_at": (
+            row.last_checked_at.isoformat() if row.last_checked_at else None
+        ),
         "last_error": row.last_error,
         "config": config,
         "source": "external",

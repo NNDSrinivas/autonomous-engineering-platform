@@ -119,12 +119,12 @@ class NaviMemoryIntegration:
 
             # 3. Get conversation context if in a conversation
             if conversation_id:
-                context[
-                    "conversation_context"
-                ] = self.conversation_memory.build_conversation_context(
-                    conversation_id,
-                    max_messages=20,
-                    include_summary=True,
+                context["conversation_context"] = (
+                    self.conversation_memory.build_conversation_context(
+                        conversation_id,
+                        max_messages=20,
+                        include_summary=True,
+                    )
                 )
 
             # 4. Search for relevant code context
@@ -138,10 +138,10 @@ class NaviMemoryIntegration:
             )
 
             # 6. Get personalization context
-            context[
-                "personalization"
-            ] = self.response_personalizer.build_personalization_context(
-                user_id, org_id
+            context["personalization"] = (
+                self.response_personalizer.build_personalization_context(
+                    user_id, org_id
+                )
             )
 
             # 7. Predict additional relevant context

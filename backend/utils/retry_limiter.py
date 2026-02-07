@@ -253,9 +253,11 @@ class IntelligentRetryLimiter:
                     {
                         "action_signature": attempt.action_signature,
                         "attempts": attempt.attempt_count,
-                        "last_error": attempt.error_messages[-1]
-                        if attempt.error_messages
-                        else None,
+                        "last_error": (
+                            attempt.error_messages[-1]
+                            if attempt.error_messages
+                            else None
+                        ),
                         "first_attempted": attempt.first_attempt.isoformat(),
                         "last_attempted": attempt.last_attempt.isoformat(),
                     }

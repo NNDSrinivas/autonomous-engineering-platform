@@ -535,15 +535,36 @@ async def get_conversation(
 async def update_conversation(
     conversation_id: UUID,
     update: ConversationUpdate,
+    user_id: int,
+    org_id: Optional[int] = None,
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Update conversation metadata."""
+    """Update conversation metadata.
+
+    Security: Requires user_id and verifies conversation ownership before update.
+    """
     service = get_conversation_memory_service(db)
 
+    # Fetch conversation first to verify ownership
+    conversation = service.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Verify ownership: conversation belongs to the authenticated user/org
+    if conversation.user_id != user_id:
+        raise HTTPException(
+            status_code=403, detail="Not authorized to modify this conversation"
+        )
+    if org_id and hasattr(conversation, "org_id") and conversation.org_id != org_id:
+        raise HTTPException(
+            status_code=403, detail="Not authorized to modify this conversation"
+        )
+
+    # Apply updates
     update_data = {k: v for k, v in update.model_dump().items() if v is not None}
     conversation = service.update_conversation(conversation_id, **update_data)
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=500, detail="Update failed")
 
     return {
         "id": str(conversation.id),

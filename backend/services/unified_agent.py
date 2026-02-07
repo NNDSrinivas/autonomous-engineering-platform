@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from backend.ai.llm_router import LLMRouter, LLMResponse, ToolCall
+from backend.services.command_utils import format_command_message
 
 logger = logging.getLogger(__name__)
 
@@ -1209,21 +1210,16 @@ class ToolExecutor:
                     + f"\n... (truncated, {len(stderr_text)} total chars)"
                 )
 
-            status_icon = "✅" if process.returncode == 0 else "❌"
-            preview = ""
-            if stderr_text:
-                preview = stderr_text.splitlines()[0][:160]
-            elif stdout_text:
-                preview = stdout_text.splitlines()[0][:160]
+            success = process.returncode == 0
+            message = format_command_message(command, success, stdout_text, stderr_text)
 
             return {
                 "command": command,
                 "exit_code": process.returncode,
                 "stdout": stdout_text,
                 "stderr": stderr_text,
-                "success": process.returncode == 0,
-                "message": f"{status_icon} Command: `{command}`"
-                + (f" — {preview}" if preview else ""),
+                "success": success,
+                "message": message,
             }
         except Exception as e:
             return {"error": f"Error running command: {e}", "success": False}

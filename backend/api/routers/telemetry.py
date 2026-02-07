@@ -15,6 +15,71 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/telemetry", tags=["telemetry"])
 
+# Security: Telemetry data limits and PII protection
+MAX_STRING_LENGTH = 10000  # Maximum length for any string value
+MAX_EVENT_DATA_SIZE = 50000  # Maximum total size for event_data JSON
+SENSITIVE_KEYS = {
+    "password",
+    "token",
+    "apiKey",
+    "api_key",
+    "secret",
+    "authorization",
+    "cookie",
+    "session",
+    "jwt",
+    "bearer",
+}
+
+
+def _sanitize_event_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sanitize event data to prevent PII leaks and limit size.
+
+    - Redacts known sensitive keys
+    - Truncates long strings
+    - Limits total payload size
+    """
+    if not isinstance(data, dict):
+        return {}
+
+    sanitized = {}
+    total_size = 0
+
+    for key, value in data.items():
+        # Redact sensitive keys
+        if key.lower() in SENSITIVE_KEYS or any(
+            sens in key.lower() for sens in SENSITIVE_KEYS
+        ):
+            sanitized[key] = "[REDACTED]"
+            total_size += len("[REDACTED]")
+            continue
+
+        # Truncate long strings
+        if isinstance(value, str):
+            if len(value) > MAX_STRING_LENGTH:
+                truncated = value[:MAX_STRING_LENGTH]
+                sanitized[key] = truncated + f"... [truncated from {len(value)} chars]"
+                total_size += len(sanitized[key])
+            else:
+                sanitized[key] = value
+                total_size += len(value)
+        # Recursively sanitize nested dicts
+        elif isinstance(value, dict):
+            sanitized[key] = _sanitize_event_data(value)
+            total_size += len(str(sanitized[key]))
+        # Keep other types as-is (numbers, booleans, lists)
+        else:
+            sanitized[key] = value
+            total_size += len(str(value))
+
+        # Stop if we've exceeded the max size
+        if total_size > MAX_EVENT_DATA_SIZE:
+            sanitized["_size_limit_exceeded"] = True
+            break
+
+    return sanitized
+
 
 class TelemetryEvent(BaseModel):
     """Individual telemetry event from frontend"""
@@ -142,13 +207,16 @@ def _persist_telemetry_event(
     if event.data.get("orgId") and str(event.data.get("orgId")).isdigit():
         org_id_int = int(event.data.get("orgId"))
 
+    # Sanitize event data to prevent PII leaks and limit size
+    sanitized_data = _sanitize_event_data(event.data)
+
     db_event = DBTelemetryEvent(
         org_id=org_id_int,
         user_id=user_id_int,
         event_type=event.type or "unknown",  # Full dotted type for specificity
         event_category=event_category,  # First segment for grouping
         event_name=event_name,
-        event_data=event.data,
+        event_data=sanitized_data,
         session_id=event.sessionId,
         user_agent=user_agent,
         ip_address=client_ip,

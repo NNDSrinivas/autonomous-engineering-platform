@@ -429,7 +429,9 @@ class Settings(BaseSettings):
     # External MCP server policy controls (enterprise safety)
     mcp_require_https: bool = True  # Enforce HTTPS for external MCP servers
     mcp_block_private_networks: bool = True  # Block localhost/private IPs
-    mcp_allowed_hosts: List[str] = []  # Optional allowlist for external MCP hosts
+    mcp_allowed_hosts: List[str] = Field(
+        default_factory=list
+    )  # Optional allowlist for external MCP hosts
     mcp_allowed_tools: List[str] = [  # Tools exposed via MCP
         "git_operations",
         "database_operations",

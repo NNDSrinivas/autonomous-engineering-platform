@@ -44,8 +44,18 @@ def upgrade() -> None:
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.Column("user_id", sa.String(length=200), nullable=True),
         sa.Column("org_id", sa.String(length=200), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
     )
     op.create_index("ix_mcp_servers_user_id", "mcp_servers", ["user_id"])
     op.create_index("ix_mcp_servers_org_id", "mcp_servers", ["org_id"])

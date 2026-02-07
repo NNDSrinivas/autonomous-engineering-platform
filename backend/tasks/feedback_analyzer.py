@@ -92,6 +92,7 @@ def start_feedback_analyzer(interval_minutes: int = 15):
             logger.error(
                 "[FeedbackAnalyzer] Cannot schedule task: no running event loop"
             )
+            _analyzer_task = None  # Reset state on failure
         else:
             loop.create_task(_analyzer_task.run())
             logger.info("[FeedbackAnalyzer] Task scheduled")

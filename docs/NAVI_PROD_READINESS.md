@@ -113,6 +113,154 @@ actions.extend([
 
 ---
 
+### 3. Consent Approval Authorization Bypass (CRITICAL)
+
+**Location:** `backend/api/navi.py` - Consent approval endpoint
+
+**Issue:**
+- Consent approval endpoint does not validate that the requester is authorized to approve consent
+- Unknown consent IDs are accepted without rejection
+- No check that user approving matches user who initiated the consent
+- Security risk: Any authenticated user can approve any consent request (including unknown ones)
+
+**Impact:**
+- ❌ **Security vulnerability** - Authorization bypass
+- ❌ Users can approve consents they don't own
+- ❌ Malicious users could approve dangerous operations
+- ❌ Audit trail doesn't capture invalid approval attempts
+
+**Required Fix:**
+- Add authorization check: validate requester owns the consent request
+- Reject unknown consent IDs with proper error message
+- Log failed approval attempts for security monitoring
+- Add rate limiting to prevent consent ID enumeration attacks
+
+**Tracking:**
+- Issue: To be created in next sprint
+- Target: Next PR after PR #64 merge
+- Priority: P0 - Critical security vulnerability
+
+**Related Code:**
+```python
+# Current (INSECURE):
+# Accepts unknown consent IDs, no authorization check
+if consent_id not in pending_consents:
+    # Should reject, but currently proceeds
+    pass
+
+# Required (SECURE):
+if consent_id not in pending_consents:
+    raise HTTPException(status_code=404, detail="Consent request not found")
+if pending_consents[consent_id]["user_id"] != current_user.user_id:
+    raise HTTPException(status_code=403, detail="Not authorized to approve this consent")
+```
+
+---
+
+### 4. DDL Migration Race Condition (CRITICAL)
+
+**Location:** Database migration execution in multi-worker deployments
+
+**Issue:**
+- Multiple backend workers may attempt to run migrations simultaneously
+- No coordination mechanism to ensure only one worker runs migrations
+- Race conditions can cause:
+  - Duplicate table creation attempts (fails with "already exists" error)
+  - Partial migration application across workers
+  - Inconsistent schema state if migrations fail mid-execution
+  - Database locks and timeouts during concurrent DDL operations
+
+**Impact:**
+- ❌ **Deployment failures** in multi-worker environments (K8s, ECS, etc.)
+- ❌ Staging/production deployments blocked by migration errors
+- ❌ Potential data corruption if migrations applied partially
+- ❌ Manual intervention required to recover from failed migrations
+
+**Required Fix:**
+- **Option A (Recommended):** Use init containers in Kubernetes to run migrations before app starts
+- **Option B:** Implement distributed lock (Redis/PostgreSQL advisory locks) before running migrations
+- **Option C:** Run migrations manually in deployment pipeline (most conservative)
+- Add migration status health check endpoint
+- Document migration rollback procedures
+
+**Tracking:**
+- Issue: To be created in next sprint
+- Target: Next PR after PR #64 merge
+- Priority: P0 - Blocks multi-worker production deployment
+
+**Related Code:**
+```python
+# Current (UNSAFE for multi-worker):
+# backend/api/main.py startup event
+@app.on_event("startup")
+async def startup():
+    # Multiple workers all run this simultaneously
+    alembic_upgrade("head")  # Race condition here
+
+# Required (SAFE - init container approach):
+# kubernetes/deployments/backend.yaml
+initContainers:
+- name: migrations
+  image: backend:latest
+  command: ["alembic", "upgrade", "head"]
+  # Only one init container runs per deployment
+```
+
+---
+
+### 5. Retry Limiter Thread-Safety Issue (MEDIUM)
+
+**Location:** `backend/utils/retry_limiter.py` - Global retry state management
+
+**Issue:**
+- Global retry state dictionary accessed without locks in multi-threaded environment
+- Race conditions when multiple threads update retry counts simultaneously
+- Potential for:
+  - Lost retry count updates (thread A and B both read count=2, both write count=3)
+  - Inconsistent retry limits (one thread sees limit, another doesn't)
+  - Memory leaks if cleanup happens during concurrent access
+
+**Impact:**
+- ⚠️ Retry limits may not be enforced correctly under load
+- ⚠️ Could allow more retries than intended (bypassing rate limits)
+- ⚠️ Rare but possible: crashes from concurrent dict modifications
+- ⚠️ Memory growth from failed cleanup operations
+
+**Required Fix:**
+- Add threading.Lock() around retry state dictionary access
+- Use thread-safe data structures (queue.Queue or collections with locks)
+- Consider using Redis for distributed retry state (multi-process safe)
+- Add tests for concurrent retry attempts
+
+**Tracking:**
+- Issue: To be created in next sprint
+- Target: Next PR after PR #64 merge
+- Priority: P2 - Medium (edge case under high concurrency)
+
+**Related Code:**
+```python
+# Current (UNSAFE):
+# Multiple threads access _retry_counts without synchronization
+_retry_counts = {}  # Global dict, no lock
+
+def check_retry(key):
+    count = _retry_counts.get(key, 0)  # Race: Thread A reads
+    # Thread B reads same count here
+    _retry_counts[key] = count + 1  # Both threads write, one update lost
+
+# Required (SAFE):
+import threading
+_retry_lock = threading.Lock()
+_retry_counts = {}
+
+def check_retry(key):
+    with _retry_lock:
+        count = _retry_counts.get(key, 0)
+        _retry_counts[key] = count + 1
+```
+
+---
+
 ## Release Criteria (Minimum for Production)
 - Reliability:
   - 20+ consecutive E2E runs with zero flakes.
@@ -539,6 +687,9 @@ sudo systemctl enable --now navi-feedback-analyzer.timer
 ### Pre-Production Validation
 - [ ] **✅ Critical auth context issue fixed (see "CRITICAL PRE-PRODUCTION BLOCKERS" section above)**
 - [ ] **✅ Port recovery action type issue fixed (see "CRITICAL PRE-PRODUCTION BLOCKERS" section above)**
+- [ ] **✅ Consent approval authorization bypass fixed (see blocker #3 above)**
+- [ ] **✅ DDL migration race condition fixed (see blocker #4 above)**
+- [ ] **✅ Retry limiter thread-safety issue fixed (see blocker #5 above)**
 - [ ] 100+ real LLM E2E tests passing (p95 < 5s)
 - [ ] Audit encryption mandatory and tested
 - [ ] Learning system background analyzer running

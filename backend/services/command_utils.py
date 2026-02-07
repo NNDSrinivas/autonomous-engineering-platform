@@ -196,23 +196,27 @@ def run_subprocess(
     """
     env = get_command_env()
     full_command = prepare_command(command, cwd)
-    proc = subprocess.run(
-        full_command,
-        shell=True,
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-        check=False,
-        timeout=timeout,
-        env=env,
-        executable="/bin/bash",
-    )
-    stdout = proc.stdout or ""
-    stderr = proc.stderr or ""
-    if merge_stderr:
-        stdout = stdout + ("\n" if stdout and stderr else "") + stderr
-        stderr = ""
-    return proc.returncode == 0, stdout, stderr, proc.returncode
+    try:
+        proc = subprocess.run(
+            full_command,
+            shell=True,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+            env=env,
+            executable="/bin/bash",
+        )
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        if merge_stderr:
+            stdout = stdout + ("\n" if stdout and stderr else "") + stderr
+            stderr = ""
+        return proc.returncode == 0, stdout, stderr, proc.returncode
+    except subprocess.TimeoutExpired:
+        # Return structured timeout failure (mirrors async behavior)
+        return False, "", f"Command timed out after {timeout}s", -1
 
 
 async def run_subprocess_async(

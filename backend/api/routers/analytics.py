@@ -79,9 +79,17 @@ def _summarize_llm_metrics(
         for row in models
     ]
 
+    # Use dialect-appropriate date truncation (PostgreSQL vs SQLite)
+    dialect = db.bind.dialect.name
+    if dialect == "postgresql":
+        day_column = func.date_trunc("day", LlmMetric.created_at).label("day")
+    else:
+        # SQLite: use date() function to truncate to day
+        day_column = func.date(LlmMetric.created_at).label("day")
+
     daily_rows = (
         query.with_entities(
-            func.date_trunc("day", LlmMetric.created_at).label("day"),
+            day_column,
             func.coalesce(func.sum(LlmMetric.total_tokens), 0),
             func.coalesce(func.sum(LlmMetric.total_cost), 0.0),
         )

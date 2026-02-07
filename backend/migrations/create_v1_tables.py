@@ -36,9 +36,23 @@ def main():
     print("=" * 60)
     print()
 
-    # Get database URL
+    # Get database URL (redact credentials for security)
     database_url = settings.sqlalchemy_url
-    print(f"Database URL: {database_url}")
+    # Mask password in URL for logging
+    safe_url = database_url
+    if "://" in database_url and "@" in database_url:
+        # Extract scheme and rest
+        scheme, rest = database_url.split("://", 1)
+        # If auth is present, mask it
+        if "@" in rest:
+            auth_and_rest = rest.split("@", 1)
+            # Keep only the username, mask password
+            if ":" in auth_and_rest[0]:
+                user = auth_and_rest[0].split(":")[0]
+                safe_url = f"{scheme}://{user}:****@{auth_and_rest[1]}"
+            else:
+                safe_url = f"{scheme}://****@{auth_and_rest[1]}"
+    print(f"Database URL: {safe_url}")
     print()
 
     # Create engine

@@ -22,6 +22,51 @@ NAVI has strong technical foundations and recent improvements in observability a
 3) **Production Deployment**: Staging environment validation with real workloads
 4) **Background Services**: Learning system analyzer needs scheduler integration
 
+## 🔴 CRITICAL PRE-PRODUCTION BLOCKERS
+
+**Status:** **MUST FIX BEFORE PRODUCTION**
+
+The following issues were identified during Copilot code review (PR #64) and must be addressed before production deployment:
+
+### 1. Authentication Context Not Used (CRITICAL)
+
+**Location:** `backend/api/navi.py:7147` - Autonomous task endpoint
+
+**Issue:**
+- Endpoint uses `DEV_*` environment variables instead of authenticated request context
+- Bypasses authentication layer entirely for user/org context
+- Breaks multi-tenancy and org isolation in production
+- Security risk: Activity misattribution, unauthorized access
+
+**Impact:**
+- ❌ Cannot deploy to production - breaks security model
+- ❌ Multi-org deployments will fail
+- ❌ Audit trails will be incorrect
+
+**Required Fix:**
+- Refactor autonomous task endpoint to pull user/org from auth layer (request.state / dependency injection)
+- Only fall back to DEV_* in explicit dev/test mode
+- Add validation that authenticated user matches org context
+- Update all code paths that derive user_id/org_id from env vars
+
+**Tracking:**
+- Issue: To be created in next sprint
+- Target: Next PR after PR #64 merge
+- Priority: P0 - Blocks production deployment
+
+**Related Code:**
+```python
+# Current (BROKEN for production):
+user_id = os.getenv("DEV_USER_ID", "default_user")
+org_id = os.getenv("X_ORG_ID", "default_org")
+
+# Required (production-ready):
+user_id = user.user_id  # From authenticated request
+org_id = user.org_id    # From authenticated request
+```
+
+---
+
 ## Release Criteria (Minimum for Production)
 - Reliability:
   - 20+ consecutive E2E runs with zero flakes.
@@ -446,6 +491,7 @@ sudo systemctl enable --now navi-feedback-analyzer.timer
 ## Go-Live Checklist (Updated)
 
 ### Pre-Production Validation
+- [ ] **✅ Critical auth context issue fixed (see "CRITICAL PRE-PRODUCTION BLOCKERS" section above)**
 - [ ] 100+ real LLM E2E tests passing (p95 < 5s)
 - [ ] Audit encryption mandatory and tested
 - [ ] Learning system background analyzer running
@@ -1155,7 +1201,23 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 
 ### ❌ BLOCKING PRODUCTION (Must Fix - Week 1-2)
 
-#### 1. Real LLM E2E Validation ❌ **CRITICAL**
+#### 1. Fix Authentication Context Usage ❌ **P0 BLOCKER**
+**Current State:** Autonomous endpoint uses DEV_* env vars instead of auth context
+**Impact:** Breaks multi-tenancy, security model, and audit trails
+**Required Work:**
+- [ ] Refactor `backend/api/navi.py:7147` to use authenticated request context
+- [ ] Pull user_id/org_id from auth layer (request.state / dependency injection)
+- [ ] Add validation that authenticated user matches org context
+- [ ] Only fall back to DEV_* in explicit dev/test mode
+- [ ] Test multi-org isolation
+
+**Effort:** 1-2 days (major refactoring)
+**Tracking:** See "CRITICAL PRE-PRODUCTION BLOCKERS" section above
+**Deliverable:** Production-ready authentication for autonomous tasks
+
+---
+
+#### 2. Real LLM E2E Validation ❌ **CRITICAL**
 **Current State:** Tests use mocked LLMs, real model performance unknown
 **Impact:** Unknown production reliability and latency
 **Required Work:**
@@ -1170,7 +1232,7 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 
 ---
 
-#### 2. Make Audit Encryption Mandatory ⚠️ **HIGH PRIORITY**
+#### 3. Make Audit Encryption Mandatory ⚠️ **HIGH PRIORITY**
 **Current State:** Audit encryption available but optional
 **Impact:** Compliance risk if audit logs leak
 **Required Work:**
@@ -1184,7 +1246,7 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 
 ---
 
-#### 3. Staging Environment Deployment ⚙️ **CRITICAL**
+#### 4. Staging Environment Deployment ⚙️ **CRITICAL**
 **Current State:** Infrastructure defined, not validated
 **Impact:** Production deployment untested
 **Required Work:**
@@ -1202,7 +1264,7 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 
 ### ⚠️ HIGH PRIORITY (Week 2-3)
 
-#### 4. Monitoring Dashboards 📊
+#### 5. Monitoring Dashboards 📊
 **Status:** Metrics defined, visualization needed
 **Required Work:**
 - [ ] Create Grafana dashboard for LLM metrics (cost, latency, errors)
@@ -1220,7 +1282,7 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 
 ---
 
-#### 5. Define and Monitor SLOs 🎯
+#### 6. Define and Monitor SLOs 🎯
 **Status:** No SLOs defined
 **Required Work:**
 - [ ] Define SLOs:
@@ -1240,7 +1302,7 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 
 ---
 
-#### 6. Incident Response Runbooks 📖
+#### 7. Incident Response Runbooks 📖
 **Status:** Not documented
 **Required Work:**
 - [ ] Write runbooks for common scenarios:
@@ -1265,7 +1327,7 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 
 ### 🟢 MEDIUM PRIORITY (Week 3-4)
 
-#### 7. Load Testing 🔥
+#### 8. Load Testing 🔥
 **Status:** Not done
 **Required Work:**
 - [ ] Create load testing scenarios
@@ -1282,7 +1344,7 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 
 ---
 
-#### 8. Production Database Setup 🗄️
+#### 9. Production Database Setup 🗄️
 **Status:** Infrastructure ready, not provisioned
 **Required Work:**
 - [ ] Provision production PostgreSQL (AWS RDS/GCP Cloud SQL)
@@ -1301,7 +1363,7 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 
 ---
 
-#### 9. Security Audit 🔒
+#### 10. Security Audit 🔒
 **Status:** Self-assessment complete, third-party needed
 **Required Work:**
 - [ ] Third-party penetration testing

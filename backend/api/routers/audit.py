@@ -8,6 +8,7 @@ from fastapi.responses import PlainTextResponse
 from datetime import datetime, timezone
 import csv
 import io
+import json
 import os
 from pydantic import BaseModel
 from typing import Optional
@@ -209,7 +210,12 @@ def export_audit_logs(
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
-            writer.writerow(_audit_row_to_dict(row, include_payload=include_payload))
+            row_dict = _audit_row_to_dict(row, include_payload=include_payload)
+            # JSON-encode payload to prevent CSV corruption from nested dicts/lists
+            if include_payload and "payload" in row_dict and row_dict["payload"]:
+                if isinstance(row_dict["payload"], (dict, list)):
+                    row_dict["payload"] = json.dumps(row_dict["payload"])
+            writer.writerow(row_dict)
 
         return PlainTextResponse(output.getvalue(), media_type="text/csv")
     except ValueError as e:

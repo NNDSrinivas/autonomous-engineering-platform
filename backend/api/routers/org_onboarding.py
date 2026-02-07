@@ -59,15 +59,15 @@ def _ensure_tables(db: Session) -> None:
     if _tables_initialized:
         return
 
-    # DEV-ONLY: Block runtime DDL in production/staging to prevent race conditions
+    # In production/staging, assume Alembic has created tables and skip runtime DDL
+    # This prevents multi-worker DDL race conditions
     if settings.APP_ENV in ("production", "staging"):
-        logger.error(
-            "[OrgOnboarding] Runtime DDL blocked in production/staging. "
-            "Use Alembic migrations instead: alembic upgrade head"
+        logger.info(
+            "[OrgOnboarding] Skipping runtime DDL in production/staging; "
+            "tables must be managed via Alembic migrations."
         )
-        raise RuntimeError(
-            "Runtime DDL not allowed in production/staging. Use Alembic migrations."
-        )
+        _tables_initialized = True
+        return
 
     db.execute(
         text(

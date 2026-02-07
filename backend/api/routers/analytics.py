@@ -97,14 +97,26 @@ def _summarize_llm_metrics(
         .order_by("day")
         .all()
     )
-    daily = [
-        {
-            "date": row[0].date().isoformat() if row[0] else None,
-            "tokens": int(row[1] or 0),
-            "cost": float(row[2] or 0.0),
-        }
-        for row in daily_rows
-    ]
+    # Parse dates per dialect (PostgreSQL returns datetime, SQLite returns string)
+    daily = []
+    for row in daily_rows:
+        raw_day = row[0]
+        if raw_day is None:
+            date_str = None
+        elif hasattr(raw_day, "date"):
+            # PostgreSQL: date_trunc returns datetime with .date() method
+            date_str = raw_day.date().isoformat()
+        else:
+            # SQLite: func.date() returns string like "YYYY-MM-DD"
+            date_str = str(raw_day)
+
+        daily.append(
+            {
+                "date": date_str,
+                "tokens": int(row[1] or 0),
+                "cost": float(row[2] or 0.0),
+            }
+        )
 
     return {
         "summary": {

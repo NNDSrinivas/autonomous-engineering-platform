@@ -250,7 +250,7 @@ async def run_subprocess_async(
     except asyncio.TimeoutError:
         process.kill()
         await process.wait()
-        return False, f"Command timed out after {timeout}s", "", -1
+        return False, "", f"Command timed out after {timeout}s", -1
 
     stdout = (stdout_bytes or b"").decode("utf-8", errors="replace")
     stderr = (stderr_bytes or b"").decode("utf-8", errors="replace")

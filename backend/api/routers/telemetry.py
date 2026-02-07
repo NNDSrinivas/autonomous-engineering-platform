@@ -68,7 +68,25 @@ def _sanitize_event_data(data: Dict[str, Any]) -> Dict[str, Any]:
         elif isinstance(value, dict):
             sanitized[key] = _sanitize_event_data(value)
             total_size += len(str(sanitized[key]))
-        # Keep other types as-is (numbers, booleans, lists)
+        # Recursively sanitize lists
+        elif isinstance(value, list):
+            sanitized_list = []
+            for item in value:
+                if isinstance(item, str):
+                    if len(item) > MAX_STRING_LENGTH:
+                        sanitized_list.append(
+                            item[:MAX_STRING_LENGTH]
+                            + f"... [truncated from {len(item)} chars]"
+                        )
+                    else:
+                        sanitized_list.append(item)
+                elif isinstance(item, dict):
+                    sanitized_list.append(_sanitize_event_data(item))
+                else:
+                    sanitized_list.append(item)
+            sanitized[key] = sanitized_list
+            total_size += len(str(sanitized_list))
+        # Keep other types as-is (numbers, booleans)
         else:
             sanitized[key] = value
             total_size += len(str(value))

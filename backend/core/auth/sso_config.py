@@ -9,8 +9,11 @@ fallback for backward compatibility.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -32,7 +35,10 @@ def _load_providers_from_env() -> list[dict[str, Any]]:
         return []
     try:
         providers = json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.warning(
+            f"Failed to parse SSO_PROVIDERS_JSON: {e}. Check environment variable format."
+        )
         return []
     if isinstance(providers, dict):
         providers = [providers]

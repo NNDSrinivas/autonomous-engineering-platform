@@ -19,6 +19,7 @@ export interface FileDiffViewProps {
   diff: FileDiff;
   defaultExpanded?: boolean;
   onFileClick?: (path: string) => void;
+  operation?: 'create' | 'edit' | 'delete';
 }
 
 // Get file extension for syntax highlighting class
@@ -49,6 +50,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
   diff,
   defaultExpanded = false,
   onFileClick,
+  operation = 'edit',
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
@@ -78,6 +80,10 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
     onFileClick?.(diff.path);
   };
 
+  const headerLabel = operation === 'create' ? 'Created file' :
+                     operation === 'delete' ? 'Deleted file' :
+                     'Edited file';
+
   return (
     <div className="fdv-container">
       {/* Header */}
@@ -86,7 +92,16 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           <span className="fdv-chevron">
             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </span>
-          <span className="fdv-label">Edited file</span>
+          <span className="fdv-label">{headerLabel}</span>
+          {operation === 'create' && diff.additions > 0 && (
+            <span className="fdv-badge fdv-badge--create">+{diff.additions} -{diff.deletions}</span>
+          )}
+          {operation === 'edit' && (diff.additions > 0 || diff.deletions > 0) && (
+            <span className="fdv-badge fdv-badge--edit">+{diff.additions} -{diff.deletions}</span>
+          )}
+          {operation === 'delete' && diff.deletions > 0 && (
+            <span className="fdv-badge fdv-badge--delete">-{diff.deletions}</span>
+          )}
         </div>
         <button className="fdv-copy-btn" onClick={handleCopy} title="Copy changes">
           {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -176,6 +191,34 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           font-weight: 500;
           color: rgba(255, 255, 255, 0.8);
           letter-spacing: -0.01em;
+        }
+
+        .fdv-badge {
+          margin-left: 8px;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 600;
+          font-family: "SF Mono", "Fira Code", Consolas, monospace;
+          letter-spacing: -0.02em;
+        }
+
+        .fdv-badge--create {
+          background-color: rgba(74, 222, 128, 0.15);
+          color: #4ade80;
+          border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+
+        .fdv-badge--edit {
+          background-color: rgba(96, 165, 250, 0.15);
+          color: #60a5fa;
+          border: 1px solid rgba(96, 165, 250, 0.3);
+        }
+
+        .fdv-badge--delete {
+          background-color: rgba(248, 113, 113, 0.15);
+          color: #f87171;
+          border: 1px solid rgba(248, 113, 113, 0.3);
         }
 
         .fdv-copy-btn {
@@ -373,6 +416,24 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
 
           .fdv-chevron, .fdv-label {
             color: rgba(0, 0, 0, 0.7);
+          }
+
+          .fdv-badge--create {
+            background-color: rgba(74, 222, 128, 0.1);
+            color: #16a34a;
+            border-color: rgba(74, 222, 128, 0.25);
+          }
+
+          .fdv-badge--edit {
+            background-color: rgba(96, 165, 250, 0.1);
+            color: #2563eb;
+            border-color: rgba(96, 165, 250, 0.25);
+          }
+
+          .fdv-badge--delete {
+            background-color: rgba(248, 113, 113, 0.1);
+            color: #dc2626;
+            border-color: rgba(248, 113, 113, 0.25);
           }
 
           .fdv-copy-btn {

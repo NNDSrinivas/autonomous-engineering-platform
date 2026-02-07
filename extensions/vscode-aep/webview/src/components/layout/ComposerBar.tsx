@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useUIState, type Attachment } from '../../state/uiStore';
 import { postMessage } from '../../utils/vscodeApi';
 import { ModeSelector, type Mode } from '../input/ModeSelector';
@@ -72,8 +72,11 @@ export function ComposerBar() {
   const [model, setModel] = useState<Model>('auto');
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const mirrorRef = useRef<HTMLDivElement | null>(null);
   const attachMenuRef = useRef<HTMLDivElement | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
+  const resizeRafRef = useRef<number | null>(null);
+  const lastHeightRef = useRef<number>(0);
 
   // Check if thinking (from UI state)
   const isThinking = state.isThinking;
@@ -123,6 +126,34 @@ export function ComposerBar() {
       default: return 'Ask NAVI to help with your code...';
     }
   };
+
+  const resizeTextarea = useCallback(() => {
+    const textarea = textareaRef.current;
+    const mirror = mirrorRef.current;
+    if (!textarea || !mirror) return;
+    mirror.textContent = message || ' ';
+    const nextHeight = Math.min(Math.max(mirror.offsetHeight, 44), 160);
+    if (lastHeightRef.current !== nextHeight) {
+      textarea.style.height = `${nextHeight}px`;
+      lastHeightRef.current = nextHeight;
+    }
+  }, [message]);
+
+  useLayoutEffect(() => {
+    if (resizeRafRef.current) {
+      cancelAnimationFrame(resizeRafRef.current);
+    }
+    resizeRafRef.current = requestAnimationFrame(() => {
+      resizeTextarea();
+      resizeRafRef.current = null;
+    });
+  }, [message, attachments.length, resizeTextarea]);
+
+  useEffect(() => () => {
+    if (resizeRafRef.current) {
+      cancelAnimationFrame(resizeRafRef.current);
+    }
+  }, []);
 
   const sendMessage = useCallback(async (input: string) => {
     if (!input.trim() || isDisabled) {
@@ -233,15 +264,31 @@ export function ComposerBar() {
       <div className="p-4">
         <form onSubmit={handleSubmit}>
           <div
-            className="navi-composer relative rounded-[14px] transition-all duration-150"
+            className="navi-composer relative rounded-[14px] transition-colors duration-150"
             style={{
-              background: DESIGN_TOKENS.composer.bg,
-              backdropFilter: 'blur(14px)',
-              border: `1px solid ${DESIGN_TOKENS.composer.border}`,
+              ['--composer-bg' as any]: DESIGN_TOKENS.composer.bg,
+              ['--composer-border' as any]: DESIGN_TOKENS.composer.border,
               padding: '12px 12px 40px 12px',
               minHeight: DESIGN_TOKENS.composer.minHeight
             }}
           >
+            <div
+              ref={mirrorRef}
+              aria-hidden="true"
+              className="pointer-events-none absolute opacity-0"
+              style={{
+                left: '12px',
+                right: '12px',
+                padding: '8px 12px',
+                fontSize: DESIGN_TOKENS.fonts.composerInput,
+                fontFamily: DESIGN_TOKENS.fonts.ui,
+                lineHeight: '20px',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                wordBreak: 'break-word',
+                boxSizing: 'border-box'
+              }}
+            />
             {attachments.length > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {attachments.map((attachment) => {
@@ -280,25 +327,26 @@ export function ComposerBar() {
               value={message}
               onChange={(e) => {
                 setMessage(e.target.value);
-                // Auto-resize with proper limits
-                const textarea = e.target as HTMLTextAreaElement;
-                textarea.style.height = 'auto';
-                textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 44), 160)}px`;
               }}
               onKeyDown={handleKeyDown}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               placeholder={getPlaceholder()}
               disabled={isDisabled}
+              wrap="soft"
               rows={1}
-              className="navi-input w-full bg-transparent border-none outline-none resize-none placeholder-composer-text"
+              className="navi-input navi-input--composer w-full bg-transparent border-none outline-none resize-none overflow-x-hidden overflow-y-auto placeholder-composer-text"
               style={{
                 minHeight: DESIGN_TOKENS.composer.minHeight,
                 maxHeight: DESIGN_TOKENS.composer.maxHeight,
                 color: DESIGN_TOKENS.composer.text,
                 fontSize: DESIGN_TOKENS.fonts.composerInput,
                 fontFamily: DESIGN_TOKENS.fonts.ui,
-                lineHeight: '1.5'
+                lineHeight: '20px',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                wordBreak: 'break-word',
+                boxSizing: 'border-box'
               }}
             />
 

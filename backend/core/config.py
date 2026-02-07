@@ -426,6 +426,10 @@ class Settings(BaseSettings):
     mcp_transport: str = "stdio"  # Transport: stdio, http, websocket
     mcp_http_port: int = 8765  # Port for HTTP transport
     mcp_websocket_port: int = 8766  # Port for WebSocket transport
+    # External MCP server policy controls (enterprise safety)
+    mcp_require_https: bool = True  # Enforce HTTPS for external MCP servers
+    mcp_block_private_networks: bool = True  # Block localhost/private IPs
+    mcp_allowed_hosts: List[str] = []  # Optional allowlist for external MCP hosts
     mcp_allowed_tools: List[str] = [  # Tools exposed via MCP
         "git_operations",
         "database_operations",

@@ -1,0 +1,255 @@
+# NAVI Backend Deployment - Staging Environment
+#
+# This deployment includes database configuration from secrets
+# and an init container for database migrations.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: navi-backend
+  namespace: navi-staging
+  labels:
+    app: navi
+    component: backend
+    environment: staging
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Zero-downtime deployments
+  selector:
+    matchLabels:
+      app: navi
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: navi
+        component: backend
+        environment: staging
+      annotations:
+        # Force pod restart on config/secret changes
+        checksum/config: "{{ include (print $.Template.BasePath \"/configmap.yaml\") . | sha256sum }}"
+        checksum/secret: "{{ include (print $.Template.BasePath \"/secret.yaml\") . | sha256sum }}"
+    spec:
+      # Init container: Run database migrations before starting app
+      initContainers:
+        - name: db-migrate
+          image: your-registry/navi-backend:staging
+          imagePullPolicy: Always
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Running database migrations..."
+              alembic upgrade head
+              echo "Migrations completed successfully"
+          envFrom:
+            - secretRef:
+                name: navi-database-staging
+            - configMapRef:
+                name: navi-database-config-staging
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+      containers:
+        - name: backend
+          image: your-registry/navi-backend:staging
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8787
+              protocol: TCP
+
+          # Environment variables from ConfigMap and Secrets
+          envFrom:
+            # Application configuration
+            - configMapRef:
+                name: navi-backend-config
+
+            # Database credentials and connection string
+            - secretRef:
+                name: navi-database-staging
+
+            # Database connection pool settings
+            - configMapRef:
+                name: navi-database-config-staging
+
+            # General application secrets (API keys, etc.)
+            - secretRef:
+                name: navi-backend-secrets
+
+          # Additional environment variables
+          env:
+            - name: ENVIRONMENT
+              value: "staging"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+
+          # Health checks
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30  # Allow up to 150s for startup
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # Resource allocation
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+
+          # Security context
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # App needs to write logs
+            capabilities:
+              drop:
+                - ALL
+
+          # Volume mounts (if needed for TLS certs, etc.)
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: /var/log/navi
+
+      # Pod-level security
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Volumes
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+
+      # Pod disruption budget for high availability
+      # (Note: Create separate PodDisruptionBudget resource)
+      affinity:
+        # Prefer spreading pods across different nodes
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - navi
+                    - key: component
+                      operator: In
+                      values:
+                        - backend
+                topologyKey: kubernetes.io/hostname
+---
+# Service for backend
+apiVersion: v1
+kind: Service
+metadata:
+  name: navi-backend
+  namespace: navi-staging
+  labels:
+    app: navi
+    component: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8787
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: navi
+    component: backend
+---
+# HorizontalPodAutoscaler for auto-scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: navi-backend
+  namespace: navi-staging
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: navi-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max

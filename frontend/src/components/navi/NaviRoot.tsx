@@ -36,15 +36,15 @@ const NaviRoot: React.FC<NaviRootProps> = ({ initialInput = '' }) => {
           {currentMode === 'chat' && (
             <NaviChatPanel />
           )}
-          
+
           {currentMode === 'workflow' && (
             <EndToEndWorkflowPanel task={mockTask} />
           )}
-          
+
           {currentMode === 'approval' && (
             <NaviApprovalPanel />
           )}
-          
+
           {currentMode === 'errorcheck' && (
             <NaviCheckErrorsAndFixPanel />
           )}
@@ -54,43 +54,39 @@ const NaviRoot: React.FC<NaviRootProps> = ({ initialInput = '' }) => {
         <div className="w-80 border-l border-gray-200 bg-white p-4">
           <h3 className="font-medium text-gray-900 mb-4">Quick Actions</h3>
           <div className="space-y-2">
-            <button 
+            <button
               onClick={() => setCurrentMode('chat')}
-              className={`w-full text-left p-3 rounded-lg transition-colors ${
-                currentMode === 'chat' 
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+              className={`w-full text-left p-3 rounded-lg transition-colors ${currentMode === 'chat'
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
                   : 'hover:bg-gray-50 text-gray-700'
-              }`}
+                }`}
             >
               💬 Chat Mode
             </button>
-            <button 
+            <button
               onClick={() => setCurrentMode('workflow')}
-              className={`w-full text-left p-3 rounded-lg transition-colors ${
-                currentMode === 'workflow' 
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+              className={`w-full text-left p-3 rounded-lg transition-colors ${currentMode === 'workflow'
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
                   : 'hover:bg-gray-50 text-gray-700'
-              }`}
+                }`}
             >
               ⚡ Workflow Mode
             </button>
-            <button 
+            <button
               onClick={() => setCurrentMode('approval')}
-              className={`w-full text-left p-3 rounded-lg transition-colors ${
-                currentMode === 'approval' 
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+              className={`w-full text-left p-3 rounded-lg transition-colors ${currentMode === 'approval'
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
                   : 'hover:bg-gray-50 text-gray-700'
-              }`}
+                }`}
             >
               ✅ Approval Panel
             </button>
-            <button 
+            <button
               onClick={() => setCurrentMode('errorcheck')}
-              className={`w-full text-left p-3 rounded-lg transition-colors ${
-                currentMode === 'errorcheck' 
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+              className={`w-full text-left p-3 rounded-lg transition-colors ${currentMode === 'errorcheck'
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
                   : 'hover:bg-gray-50 text-gray-700'
-              }`}
+                }`}
             >
               🔍 Error Check
             </button>

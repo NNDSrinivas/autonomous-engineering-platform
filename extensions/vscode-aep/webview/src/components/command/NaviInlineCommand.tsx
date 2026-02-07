@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './NaviInlineCommand.css';
 
 // =============================================================================
@@ -41,6 +41,14 @@ export const NaviInlineCommand: React.FC<NaviInlineCommandProps> = ({
   );
   const hasOutput = Boolean(output && output.trim());
   const allowOutput = showOutput || status === 'error';
+  const outputRef = useRef<HTMLPreElement>(null);
+
+  // Auto-scroll to bottom when output changes
+  useEffect(() => {
+    if (outputRef.current && output && !allowOutput) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [output, allowOutput]);
 
   const getStatusIcon = () => {
     switch (status) {
@@ -98,22 +106,11 @@ export const NaviInlineCommand: React.FC<NaviInlineCommandProps> = ({
             <div className="nic-output">
               <pre>{formatOutput()}</pre>
             </div>
-          ) : (
-            <div className="nic-output-hint">
-              <span>Output available in Activity panel.</span>
-              {commandId && onOpenActivity && (
-                <button
-                  className="nic-output-link"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onOpenActivity(commandId);
-                  }}
-                >
-                  View output
-                </button>
-              )}
+          ) : hasOutput ? (
+            <div className="nic-output">
+              <pre ref={outputRef}>{output}</pre>
             </div>
-          )}
+          ) : null}
 
           {status === 'error' && exitCode !== undefined && (
             <div className="nic-exit">Exit code: {exitCode}</div>

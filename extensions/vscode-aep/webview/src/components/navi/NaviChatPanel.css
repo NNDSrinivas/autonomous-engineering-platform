@@ -494,18 +494,25 @@ html.light .navi-status-text--done {
 }
 
 
-/* Legacy icon button style */
+/* Icon button with polish styling */
 .navi-icon-btn {
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   color: #9ca3af;
   font-size: 12px;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 4px;
+  border-radius: 6px;
+  transition: color 0.15s ease, transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .navi-icon-btn:hover {
   color: #e5e7eb;
+  background: rgba(75, 85, 99, 0.2);
+  border-color: rgba(75, 85, 99, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: navi-icon-hover 0.2s ease;
 }
 
 .navi-icon-btn--active {
@@ -754,6 +761,18 @@ html.light .navi-status-text--done {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+@keyframes navi-icon-hover {
+  0% { transform: translateY(0) scale(1); }
+  70% { transform: translateY(-2px) scale(1.05); }
+  100% { transform: translateY(-1px) scale(1.02); }
+}
+
+@keyframes nic-caret-nudge {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
 }
 
 .navi-pill--secondary:hover {

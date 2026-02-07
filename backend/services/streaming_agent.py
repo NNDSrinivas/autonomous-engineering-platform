@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import re
-import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -109,26 +108,29 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
     """
     Parse an execution plan from LLM text output.
     Returns plan dict with steps if found, None otherwise.
+
+    DISABLED: Execution plans were causing phantom "All steps completed" issues
+    where the LLM would list steps it didn't actually execute. Now we only show
+    actual tool executions as they happen, not predicted plans.
     """
-    match = PLAN_INTRO_PATTERN.search(text)
-    if not match:
-        return None
-
-    steps_text = match.group(1)
-    steps = []
-
-    for step_match in STEP_PATTERN.finditer(steps_text):
-        step_num = int(step_match.group(1))
-        title = step_match.group(2).strip()
-        detail = (step_match.group(3) or "").strip()
-
-        if title:  # Only add if we have a title
-            steps.append({"index": step_num, "title": title, "detail": detail})
-
-    if len(steps) >= 2:  # Only return if we have at least 2 steps
-        return {"plan_id": f"plan-{uuid.uuid4().hex[:8]}", "steps": steps}
-
+    # DISABLED - always return None to prevent phantom step detection
     return None
+
+    # Original code kept for reference but unreachable:
+    # match = PLAN_INTRO_PATTERN.search(text)
+    # if not match:
+    #     return None
+    # steps_text = match.group(1)
+    # steps = []
+    # for step_match in STEP_PATTERN.finditer(steps_text):
+    #     step_num = int(step_match.group(1))
+    #     title = step_match.group(2).strip()
+    #     detail = (step_match.group(3) or "").strip()
+    #     if title:
+    #         steps.append({"index": step_num, "title": title, "detail": detail})
+    # if len(steps) >= 2:
+    #     return {"plan_id": f"plan-{uuid.uuid4().hex[:8]}", "steps": steps}
+    # return None
 
 
 # ========== BUILD VERIFICATION ==========
@@ -684,14 +686,14 @@ class StreamEvent:
             result["task_state"] = self.content  # {state, context}
         elif self.type == StreamEventType.TASK_COMPLETE:
             # Explicit task completion signal with full summary
-            result["task_complete"] = (
-                self.content
-            )  # {success, summary, files_modified, etc.}
+            result[
+                "task_complete"
+            ] = self.content  # {success, summary, files_modified, etc.}
         elif self.type == StreamEventType.BUILD_VERIFICATION:
             # Build/type-check verification results
-            result["build_verification"] = (
-                self.content
-            )  # {success, command, output, errors}
+            result[
+                "build_verification"
+            ] = self.content  # {success, command, output, errors}
         return result
 
 
@@ -773,7 +775,7 @@ NAVI_TOOLS = [
                 "timeout_seconds": {
                     "type": "integer",
                     "description": "Optional: timeout in seconds (default 300, max 1800). Use longer timeouts for builds, tests, or package installs.",
-                    "default": 300
+                    "default": 300,
                 },
             },
             "required": ["command"],

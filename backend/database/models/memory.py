@@ -673,6 +673,20 @@ class Conversation(Base):
         comment="Status: active, archived, deleted",
     )
 
+    # UI metadata
+    is_pinned: Mapped[bool] = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Pinned in history",
+    )
+    is_starred: Mapped[bool] = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Starred in history",
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = Column(
         DateTime(timezone=True),

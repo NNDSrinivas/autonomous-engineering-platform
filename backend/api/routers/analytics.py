@@ -1,0 +1,273 @@
+"""
+Analytics API Router - Usage and metrics dashboards.
+"""
+
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import case, func
+from sqlalchemy.orm import Session
+
+from backend.core.auth.deps import require_role
+from backend.core.auth.models import Role, User
+from backend.database.session import get_db
+from backend.models.llm_metrics import LlmMetric, TaskMetric
+from backend.models.telemetry_events import ErrorEvent
+
+router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+
+def _parse_int(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    return int(value) if str(value).isdigit() else None
+
+
+def _compute_range(days: int) -> Dict[str, Any]:
+    end = datetime.utcnow()
+    start = end - timedelta(days=days)
+    return {"days": days, "start": start, "end": end}
+
+
+def _summarize_llm_metrics(
+    db: Session,
+    start: datetime,
+    org_id: Optional[int],
+    user_id: Optional[int],
+) -> Dict[str, Any]:
+    query = db.query(LlmMetric).filter(LlmMetric.created_at >= start)
+    if org_id is not None:
+        query = query.filter(LlmMetric.org_id == org_id)
+    if user_id is not None:
+        query = query.filter(LlmMetric.user_id == user_id)
+
+    summary_row = query.with_entities(
+        func.count(LlmMetric.id),
+        func.coalesce(func.sum(LlmMetric.total_tokens), 0),
+        func.coalesce(func.sum(LlmMetric.total_cost), 0.0),
+        func.avg(LlmMetric.latency_ms),
+        func.coalesce(func.sum(case((LlmMetric.status != "success", 1), else_=0)), 0),
+    ).first()
+
+    total_requests = int(summary_row[0] or 0)
+    total_tokens = int(summary_row[1] or 0)
+    total_cost = float(summary_row[2] or 0.0)
+    avg_latency = float(summary_row[3] or 0.0) if summary_row[3] is not None else None
+    error_count = int(summary_row[4] or 0)
+    error_rate = (error_count / total_requests) if total_requests else 0.0
+
+    models = (
+        query.with_entities(
+            LlmMetric.model,
+            func.count(LlmMetric.id),
+            func.coalesce(func.sum(LlmMetric.total_tokens), 0),
+            func.coalesce(func.sum(LlmMetric.total_cost), 0.0),
+        )
+        .group_by(LlmMetric.model)
+        .order_by(func.sum(LlmMetric.total_tokens).desc())
+        .all()
+    )
+
+    model_breakdown = [
+        {
+            "model": row[0],
+            "requests": int(row[1] or 0),
+            "tokens": int(row[2] or 0),
+            "cost": float(row[3] or 0.0),
+        }
+        for row in models
+    ]
+
+    daily_rows = (
+        query.with_entities(
+            func.date_trunc("day", LlmMetric.created_at).label("day"),
+            func.coalesce(func.sum(LlmMetric.total_tokens), 0),
+            func.coalesce(func.sum(LlmMetric.total_cost), 0.0),
+        )
+        .group_by("day")
+        .order_by("day")
+        .all()
+    )
+    daily = [
+        {
+            "date": row[0].date().isoformat() if row[0] else None,
+            "tokens": int(row[1] or 0),
+            "cost": float(row[2] or 0.0),
+        }
+        for row in daily_rows
+    ]
+
+    return {
+        "summary": {
+            "requests": total_requests,
+            "total_tokens": total_tokens,
+            "total_cost": total_cost,
+            "avg_latency_ms": avg_latency,
+            "error_rate": error_rate,
+            "error_count": error_count,
+        },
+        "models": model_breakdown,
+        "daily": daily,
+    }
+
+
+def _summarize_tasks(
+    db: Session,
+    start: datetime,
+    org_id: Optional[int],
+    user_id: Optional[int],
+) -> List[Dict[str, Any]]:
+    query = db.query(TaskMetric).filter(TaskMetric.created_at >= start)
+    if org_id is not None:
+        query = query.filter(TaskMetric.org_id == org_id)
+    if user_id is not None:
+        query = query.filter(TaskMetric.user_id == user_id)
+
+    rows = (
+        query.with_entities(TaskMetric.status, func.count(TaskMetric.id))
+        .group_by(TaskMetric.status)
+        .all()
+    )
+    return [{"status": row[0], "count": int(row[1] or 0)} for row in rows]
+
+
+def _summarize_errors(
+    db: Session,
+    start: datetime,
+    org_id: Optional[int],
+    user_id: Optional[int],
+) -> List[Dict[str, Any]]:
+    query = db.query(ErrorEvent).filter(ErrorEvent.created_at >= start)
+    if org_id is not None:
+        query = query.filter(ErrorEvent.org_id == org_id)
+    if user_id is not None:
+        query = query.filter(ErrorEvent.user_id == user_id)
+
+    rows = (
+        query.with_entities(ErrorEvent.severity, func.count(ErrorEvent.id))
+        .group_by(ErrorEvent.severity)
+        .all()
+    )
+    return [{"severity": row[0], "count": int(row[1] or 0)} for row in rows]
+
+
+@router.get("/usage")
+def usage_dashboard(
+    days: int = Query(30, ge=1, le=365),
+    user: User = Depends(require_role(Role.VIEWER)),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    range_info = _compute_range(days)
+    user_id = _parse_int(user.user_id)
+    if user_id is None:
+        return {
+            "scope": "user",
+            "range": {
+                "days": days,
+                "start": range_info["start"].isoformat(),
+                "end": range_info["end"].isoformat(),
+            },
+            "summary": {
+                "requests": 0,
+                "total_tokens": 0,
+                "total_cost": 0.0,
+                "avg_latency_ms": None,
+                "error_rate": 0.0,
+                "error_count": 0,
+            },
+            "models": [],
+            "daily": [],
+            "tasks": [],
+            "errors": [],
+            "note": "User ID is not numeric; usage metrics are unavailable.",
+        }
+
+    llm = _summarize_llm_metrics(db, range_info["start"], None, user_id)
+    tasks = _summarize_tasks(db, range_info["start"], None, user_id)
+    errors = _summarize_errors(db, range_info["start"], None, user_id)
+
+    return {
+        "scope": "user",
+        "range": {
+            "days": days,
+            "start": range_info["start"].isoformat(),
+            "end": range_info["end"].isoformat(),
+        },
+        **llm,
+        "tasks": tasks,
+        "errors": errors,
+    }
+
+
+@router.get("/org")
+def org_dashboard(
+    days: int = Query(30, ge=1, le=365),
+    user: User = Depends(require_role(Role.ADMIN)),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    range_info = _compute_range(days)
+    org_id = _parse_int(user.org_id)
+    if org_id is None:
+        return {
+            "scope": "org",
+            "range": {
+                "days": days,
+                "start": range_info["start"].isoformat(),
+                "end": range_info["end"].isoformat(),
+            },
+            "summary": {
+                "requests": 0,
+                "total_tokens": 0,
+                "total_cost": 0.0,
+                "avg_latency_ms": None,
+                "error_rate": 0.0,
+                "error_count": 0,
+            },
+            "models": [],
+            "daily": [],
+            "tasks": [],
+            "errors": [],
+            "note": "Org ID is not numeric; org usage metrics are unavailable.",
+        }
+
+    llm = _summarize_llm_metrics(db, range_info["start"], org_id, None)
+    tasks = _summarize_tasks(db, range_info["start"], org_id, None)
+    errors = _summarize_errors(db, range_info["start"], org_id, None)
+
+    top_users = (
+        db.query(
+            LlmMetric.user_id,
+            func.coalesce(func.sum(LlmMetric.total_tokens), 0),
+            func.coalesce(func.sum(LlmMetric.total_cost), 0.0),
+            func.count(LlmMetric.id),
+        )
+        .filter(LlmMetric.created_at >= range_info["start"])
+        .filter(LlmMetric.org_id == org_id)
+        .group_by(LlmMetric.user_id)
+        .order_by(func.sum(LlmMetric.total_tokens).desc())
+        .limit(10)
+        .all()
+    )
+    users = [
+        {
+            "user_id": row[0],
+            "tokens": int(row[1] or 0),
+            "cost": float(row[2] or 0.0),
+            "requests": int(row[3] or 0),
+        }
+        for row in top_users
+    ]
+
+    return {
+        "scope": "org",
+        "range": {
+            "days": days,
+            "start": range_info["start"].isoformat(),
+            "end": range_info["end"].isoformat(),
+        },
+        **llm,
+        "tasks": tasks,
+        "errors": errors,
+        "top_users": users,
+    }

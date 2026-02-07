@@ -110,26 +110,26 @@ export function ActivityPanel({
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
-        return <Check className="w-4 h-4 text-green-500" />;
+        return <Check className="activity-status-icon activity-status-icon--completed" />;
       case 'in_progress':
-        return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
+        return <Loader2 className="activity-status-icon activity-status-icon--progress" />;
       case 'failed':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+        return <AlertCircle className="activity-status-icon activity-status-icon--error" />;
       default:
-        return <Clock className="w-4 h-4 text-gray-400" />;
+        return <Clock className="activity-status-icon activity-status-icon--pending" />;
     }
   };
 
   const getOperationColor = (operation: string) => {
     switch (operation) {
       case 'create':
-        return 'text-green-600 dark:text-green-400';
+        return 'activity-op activity-op--create';
       case 'modify':
-        return 'text-yellow-600 dark:text-yellow-400';
+        return 'activity-op activity-op--modify';
       case 'delete':
-        return 'text-red-600 dark:text-red-400';
+        return 'activity-op activity-op--delete';
       default:
-        return 'text-gray-600 dark:text-gray-400';
+        return 'activity-op';
     }
   };
 
@@ -149,31 +149,17 @@ export function ActivityPanel({
         : 'Nothing to show with current filters.';
 
   return (
-    <div
-      className="activity-panel relative flex flex-col h-full border-l border-white/10 bg-[#0c1117] text-slate-100 overflow-hidden"
-      style={{
-        backgroundImage:
-          "linear-gradient(rgba(148,163,184,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.06) 1px, transparent 1px)",
-        backgroundSize: "20px 20px, 20px 20px",
-        backgroundPosition: "0 0, 0 0",
-      }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0 opacity-20"
-        style={{
-          backgroundImage:
-            "linear-gradient(transparent 0%, rgba(56,189,248,0.12) 48%, transparent 100%)",
-          backgroundSize: "100% 120px",
-        }}
-      />
+    <div className="activity-panel relative flex flex-col h-full overflow-hidden">
+      <div className="activity-panel-grid" aria-hidden="true" />
+      <div className="activity-panel-sheen" aria-hidden="true" />
       {/* Header */}
-      <div className="relative px-5 py-4 border-b border-white/10">
+      <div className="activity-panel__header relative px-5 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold tracking-wide text-slate-100">
+            <h2 className="activity-panel__title text-lg font-semibold tracking-wide">
               Activity
             </h2>
-            <div className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400/70">
+            <div className="activity-panel__subtitle mt-1 text-xs uppercase tracking-[0.2em]">
               Execution Feed
             </div>
           </div>
@@ -181,29 +167,29 @@ export function ActivityPanel({
             {onViewHistory && (
               <button
                 onClick={onViewHistory}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 hover:bg-white/10 transition-colors"
+                className="activity-pill activity-pill--ghost"
               >
                 History
               </button>
             )}
-            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+            <div className="activity-pill activity-pill--stat">
               {completedSteps}/{steps.length} steps
             </div>
           </div>
         </div>
-        <div className="mt-3 text-sm text-slate-300/80">
+        <div className="activity-panel__meta mt-3 text-sm">
           {totalChanges} file changes • {totalCommands} command{totalCommands !== 1 ? 's' : ''}
         </div>
         {!showCommands && !showFileChanges && (
-          <div className="mt-2 text-xs text-slate-400/80">
+          <div className="activity-panel__note mt-2 text-xs">
             Filters hide commands and file changes.
           </div>
         )}
 
         {/* Progress bar */}
-        <div className="mt-4 h-2 rounded-full bg-white/5 p-[1px]">
+        <div className="activity-progress mt-4 h-2 rounded-full p-[1px]">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-sky-400 via-blue-500 to-cyan-300 transition-all duration-300"
+            className="activity-progress__bar h-full rounded-full transition-all duration-300"
             style={{ width: `${(completedSteps / Math.max(steps.length, 1)) * 100}%` }}
           />
         </div>
@@ -220,31 +206,31 @@ export function ActivityPanel({
           return (
             <div
               key={step.id}
-              className={`border-b border-white/5 ${isCurrent ? 'bg-white/5 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.2)]' : ''}`}
+              className={`activity-step ${isCurrent ? 'activity-step--current' : ''}`}
             >
               {/* Step header */}
               <button
                 onClick={() => toggleStep(step.id)}
-                className="w-full p-4 flex items-start gap-3 transition-colors hover:bg-white/5"
+                className="activity-step-toggle w-full p-4 flex items-start gap-3 transition-colors"
               >
                 <div className="mt-0.5">{getStatusIcon(step.status)}</div>
 
                 <div className="flex-1 text-left">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-100">
+                    <span className="activity-step-title font-medium">
                       Step {index + 1}
                     </span>
                     {isCurrent && (
-                      <span className="px-2 py-0.5 text-xs rounded-full border border-sky-400/40 bg-sky-400/10 text-sky-100">
+                      <span className="activity-step-badge px-2 py-0.5 text-xs rounded-full">
                         Live
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-sm text-slate-300/80">
+                  <p className="activity-step-desc mt-1 text-sm">
                     {step.description}
                   </p>
                   {(stepFileChanges.length > 0 || stepCommands.length > 0) && (
-                    <div className="mt-2 text-xs text-slate-400/70">
+                    <div className="activity-step-meta mt-2 text-xs">
                       {stepFileChanges.length} file{stepFileChanges.length !== 1 ? 's' : ''}
                       {stepCommands.length > 0 ? ` • ${stepCommands.length} command${stepCommands.length !== 1 ? 's' : ''}` : ''}
                     </div>
@@ -252,29 +238,29 @@ export function ActivityPanel({
                 </div>
 
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                  <ChevronDown className="activity-step-chevron w-4 h-4" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="activity-step-chevron w-4 h-4" />
                 )}
               </button>
 
               {/* Expanded details */}
               {isExpanded && (
-                <div className="px-4 pb-5 space-y-4">
+                <div className="activity-step-details px-4 pb-5 space-y-4">
                   {stepFileChanges.length > 0 && (
                     <div className="space-y-2">
-                      <div className="text-xs uppercase tracking-[0.2em] text-slate-400/70">File Changes</div>
+                      <div className="activity-section-label text-xs uppercase tracking-[0.2em]">File Changes</div>
                       {stepFileChanges.map((change, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center gap-3 rounded-lg border border-white/5 bg-white/5 p-2 hover:bg-white/10 cursor-pointer group"
+                          className="activity-change-card flex items-center gap-3 rounded-lg p-2 cursor-pointer group"
                           onClick={() => onFileClick?.(change.path)}
                         >
-                          <FileCode className="w-4 h-4 text-slate-200" />
+                          <FileCode className="activity-change-icon w-4 h-4" />
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-slate-100 truncate">
+                              <span className="activity-change-path text-sm truncate">
                                 {change.path}
                               </span>
                               <span className={`text-xs ${getOperationColor(change.operation)}`}>
@@ -283,38 +269,38 @@ export function ActivityPanel({
                             </div>
 
                             {(change.additions !== undefined || change.deletions !== undefined) && (
-                              <div className="mt-1 flex items-center gap-2 text-xs">
+                              <div className="activity-change-stats mt-1 flex items-center gap-2 text-xs">
                                 {change.additions !== undefined && (
-                                  <span className="text-green-600 dark:text-green-400">
+                                  <span className="activity-change-add">
                                     +{change.additions}
                                   </span>
                                 )}
                                 {change.deletions !== undefined && (
-                                  <span className="text-red-600 dark:text-red-400">
+                                  <span className="activity-change-del">
                                     -{change.deletions}
                                   </span>
                                 )}
                               </div>
                             )}
 
-                        {change.error && (
-                          <div className="mt-1 text-xs text-rose-400">
-                            {change.error}
+                            {change.error && (
+                              <div className="activity-change-error mt-1 text-xs">
+                                {change.error}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
 
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                        {getStatusIcon(change.status)}
-                      </div>
+                          <div className="activity-change-status opacity-0 group-hover:opacity-100 transition-opacity">
+                            {getStatusIcon(change.status)}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
                   )}
 
                   {stepCommands.length > 0 && (
                     <div className="space-y-2">
-                      <div className="text-xs uppercase tracking-[0.2em] text-slate-400/70">
+                      <div className="activity-section-label text-xs uppercase tracking-[0.2em]">
                         {showCommandOutput ? 'Command Output' : 'Commands'}
                       </div>
                       {stepCommands.map((command) => {
@@ -330,26 +316,26 @@ export function ActivityPanel({
                         <div
                           key={command.id}
                           data-command-id={command.id}
-                          className={`rounded-lg border border-white/10 bg-[#0b1118] p-3 ${isHighlighted ? 'ring-1 ring-sky-400/60 bg-sky-500/5' : ''}`}
+                          className={`activity-command-card rounded-lg p-3 ${isHighlighted ? 'activity-command-card--highlighted' : ''}`}
                         >
                           <div className="flex items-start gap-2">
-                            <Terminal className="w-4 h-4 text-slate-200 mt-0.5" />
+                            <Terminal className="activity-command-icon w-4 h-4 mt-0.5" />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-sm text-slate-100 truncate font-mono">
+                                <span className="activity-command-text text-sm truncate font-mono">
                                   $ {command.command}
                                 </span>
                                 <div className="flex items-center gap-2">
                                   {onViewInChat && (
                                     <button
-                                      className="text-[11px] text-slate-300 hover:text-slate-100"
+                                      className="activity-link-btn text-[11px]"
                                       onClick={() => onViewInChat(command.id)}
                                     >
                                       View in chat
                                     </button>
                                   )}
                                   {typeof command.exitCode === 'number' && (
-                                    <span className="text-xs text-slate-400">
+                                    <span className="activity-command-exit text-xs">
                                       exit {command.exitCode}
                                     </span>
                                   )}
@@ -357,32 +343,32 @@ export function ActivityPanel({
                                 </div>
                               </div>
                               {shouldShowOutput && (
-                                <div className="mt-2 rounded-md border border-white/5 bg-[#0e1622] px-3 py-2 text-xs">
+                                <div className="activity-command-output mt-2 rounded-md px-3 py-2 text-xs">
                                   {hasOutput ? (
-                                    <div className={`space-y-2 ${isCommandExpanded ? 'max-h-56 overflow-auto' : 'max-h-20 overflow-hidden'}`}>
+                                    <div className={`activity-command-output-body space-y-2 ${isCommandExpanded ? 'max-h-56 overflow-auto' : 'max-h-20 overflow-hidden'}`}>
                                       {command.stdout && (
-                                        <pre className="whitespace-pre-wrap text-slate-200">
+                                        <pre className="activity-command-stdout whitespace-pre-wrap">
                                           {command.stdout}
                                         </pre>
                                       )}
                                       {command.stderr && (
-                                        <pre className="whitespace-pre-wrap text-rose-400">
+                                        <pre className="activity-command-stderr whitespace-pre-wrap">
                                           {command.stderr}
                                         </pre>
                                       )}
                                     </div>
                                   ) : (
-                                    <div className="text-slate-400">No output</div>
+                                    <div className="activity-command-empty">No output</div>
                                   )}
                                   {command.truncated && (
-                                    <div className="mt-2 text-[11px] text-slate-400">Output truncated</div>
+                                    <div className="activity-command-truncated mt-2 text-[11px]">Output truncated</div>
                                   )}
                                 </div>
                               )}
                               {hasOutput && (
                                 <button
                                   onClick={() => toggleCommand(command.id)}
-                                  className="mt-2 inline-flex items-center text-xs text-slate-300 hover:text-slate-100"
+                                  className="activity-link-btn mt-2 inline-flex items-center text-xs"
                                 >
                                   {outputToggleLabel}
                                 </button>
@@ -395,7 +381,7 @@ export function ActivityPanel({
                   )}
 
                   {stepFileChanges.length === 0 && stepCommands.length === 0 && (
-                    <div className="rounded-lg border border-white/5 bg-white/5 p-3 text-xs text-slate-400">
+                    <div className="activity-empty-card rounded-lg p-3 text-xs">
                       {emptyLabel}
                     </div>
                   )}
@@ -408,16 +394,16 @@ export function ActivityPanel({
 
       {/* Footer actions - only show if there are actual file changes */}
       {completedSteps === steps.length && completedSteps > 0 && totalChanges > 0 && (
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex gap-2">
+        <div className="activity-footer-actions p-4 flex gap-2">
           <button
             onClick={onAcceptAll}
-            className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            className="activity-footer-btn activity-footer-btn--accept flex-1 px-4 py-2 rounded-lg transition-colors text-sm font-medium"
           >
             Accept All Changes
           </button>
           <button
             onClick={onRejectAll}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg transition-colors text-sm font-medium"
+            className="activity-footer-btn activity-footer-btn--reject px-4 py-2 rounded-lg transition-colors text-sm font-medium"
           >
             Reject
           </button>

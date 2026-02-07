@@ -525,15 +525,55 @@ export class NaviAPIClient {
     return this.request('/api/advanced/mcp/tools');
   }
 
+  async listMcpServers(): Promise<McpServerListResponse> {
+    return this.request('/api/advanced/mcp/servers');
+  }
+
+  async createMcpServer(payload: McpServerCreateRequest): Promise<McpServer> {
+    return this.request('/api/advanced/mcp/servers', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateMcpServer(serverId: number, payload: McpServerUpdateRequest): Promise<McpServer> {
+    return this.request(`/api/advanced/mcp/servers/${serverId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteMcpServer(serverId: number): Promise<{ ok: boolean }> {
+    return this.request(`/api/advanced/mcp/servers/${serverId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async testMcpServer(serverId: number): Promise<McpServerTestResponse> {
+    return this.request(`/api/advanced/mcp/servers/${serverId}/test`, {
+      method: 'POST',
+    });
+  }
+
   async executeMcpTool(
     tool_name: string,
     arguments_: Record<string, unknown>,
-    approved: boolean = false
+    approved: boolean = false,
+    server_id?: string
   ): Promise<McpExecutionResult> {
-    return this.request(`/api/advanced/mcp/execute?tool_name=${encodeURIComponent(tool_name)}&approved=${approved}`, {
+    const serverParam = server_id ? `&server_id=${encodeURIComponent(server_id)}` : '';
+    return this.request(`/api/advanced/mcp/execute?tool_name=${encodeURIComponent(tool_name)}&approved=${approved}${serverParam}`, {
       method: 'POST',
       body: JSON.stringify(arguments_),
     });
+  }
+
+  async getUsageAnalytics(days: number = 30): Promise<AnalyticsUsageResponse> {
+    return this.request(`/api/analytics/usage?days=${encodeURIComponent(String(days))}`);
+  }
+
+  async getOrgAnalytics(days: number = 30): Promise<AnalyticsOrgResponse> {
+    return this.request(`/api/analytics/org?days=${encodeURIComponent(String(days))}`);
   }
 
   async advancedHealthCheck(): Promise<AdvancedHealthResponse> {
@@ -613,6 +653,7 @@ export interface McpToolsResponse {
     protocolVersion: string;
     capabilities: Record<string, unknown>;
   };
+  servers: McpServer[];
   tools: Array<{
     name: string;
     description: string;
@@ -624,8 +665,70 @@ export interface McpToolsResponse {
     metadata: {
       category: string;
       requires_approval: boolean;
+      server_id?: string | number;
+      server_name?: string;
+      source?: 'builtin' | 'external';
+      transport?: string;
+      scope?: 'org' | 'user' | 'builtin';
     };
   }>;
+}
+
+export interface McpServer {
+  id: number | string;
+  name: string;
+  url: string;
+  transport: string;
+  auth_type: string;
+  enabled: boolean;
+  status: string;
+  tool_count?: number | null;
+  last_checked_at?: string | null;
+  last_error?: string | null;
+  config?: {
+    auth_header_name?: string | null;
+    headers?: Record<string, string>;
+    username?: string | null;
+  };
+  source?: 'builtin' | 'external';
+  scope?: 'org' | 'user' | 'builtin';
+}
+
+export interface McpServerCreateRequest {
+  name: string;
+  url: string;
+  transport: string;
+  auth_type: string;
+  auth_header_name?: string | null;
+  headers?: Record<string, string>;
+  username?: string | null;
+  token?: string | null;
+  password?: string | null;
+  enabled?: boolean;
+}
+
+export interface McpServerUpdateRequest {
+  name?: string;
+  url?: string;
+  transport?: string;
+  auth_type?: string;
+  auth_header_name?: string | null;
+  headers?: Record<string, string>;
+  username?: string | null;
+  token?: string | null;
+  password?: string | null;
+  enabled?: boolean;
+  clear_secrets?: boolean;
+}
+
+export interface McpServerListResponse {
+  items: McpServer[];
+}
+
+export interface McpServerTestResponse {
+  ok: boolean;
+  tool_count?: number;
+  error?: string;
 }
 
 export interface McpExecutionResult {
@@ -637,7 +740,72 @@ export interface McpExecutionResult {
     category?: string;
     executed_at?: string;
     requires_approval?: boolean;
+    server_id?: string | number;
+    server_name?: string;
+    source?: 'builtin' | 'external';
+    scope?: 'org' | 'user' | 'builtin';
   };
+}
+
+export interface AnalyticsRange {
+  days: number;
+  start: string;
+  end: string;
+}
+
+export interface AnalyticsSummary {
+  requests: number;
+  total_tokens: number;
+  total_cost: number;
+  avg_latency_ms: number | null;
+  error_rate: number;
+  error_count: number;
+}
+
+export interface AnalyticsModelBreakdown {
+  model: string;
+  requests: number;
+  tokens: number;
+  cost: number;
+}
+
+export interface AnalyticsDailyUsage {
+  date: string | null;
+  tokens: number;
+  cost: number;
+}
+
+export interface AnalyticsTaskBreakdown {
+  status: string;
+  count: number;
+}
+
+export interface AnalyticsErrorBreakdown {
+  severity: string;
+  count: number;
+}
+
+export interface AnalyticsUsageResponse {
+  scope: 'user';
+  range: AnalyticsRange;
+  summary: AnalyticsSummary;
+  models: AnalyticsModelBreakdown[];
+  daily: AnalyticsDailyUsage[];
+  tasks: AnalyticsTaskBreakdown[];
+  errors: AnalyticsErrorBreakdown[];
+  note?: string;
+}
+
+export interface AnalyticsOrgResponse {
+  scope: 'org';
+  range: AnalyticsRange;
+  summary: AnalyticsSummary;
+  models: AnalyticsModelBreakdown[];
+  daily: AnalyticsDailyUsage[];
+  tasks: AnalyticsTaskBreakdown[];
+  errors: AnalyticsErrorBreakdown[];
+  top_users: Array<{ user_id: number; tokens: number; cost: number; requests: number }>;
+  note?: string;
 }
 
 export interface AdvancedHealthResponse {

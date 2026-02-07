@@ -688,10 +688,10 @@ class LLMRouter:
             "anthropic": os.environ.get(
                 "ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"
             ),
-            "openai": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+            "openai": os.environ.get("OPENAI_MODEL", "gpt-4o"),
             "google": os.environ.get("GOOGLE_MODEL", "gemini-1.5-flash"),
         }
-        return defaults.get(provider, "gpt-4o-mini")
+        return defaults.get(provider, "gpt-4o")
 
     # ------------------------------------------------------------------
     # Payload building (varies per provider)

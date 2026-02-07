@@ -9,9 +9,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     APP_NAME: str = "Autonomous Engineering Platform"  # Human-readable application name
-    APP_SLUG: str = (
-        "autonomous-engineering-platform"  # Machine-friendly identifier (e.g., for URLs, config)
-    )
+    APP_SLUG: str = "autonomous-engineering-platform"  # Machine-friendly identifier (e.g., for URLs, config)
 
     # Redis configuration
     REDIS_URL: str | None = None
@@ -133,3 +131,12 @@ if settings.JWT_ENABLED and not (
         "JWT_SECRET (or JWT_SECRET_PREVIOUS) or JWT_JWKS_URL must be set when JWT_ENABLED=true. "
         "Set JWT_SECRET/JWT_SECRET_PREVIOUS for HS256 or JWT_JWKS_URL for RS256."
     )
+
+# Validate audit encryption: encryption key is REQUIRED in production/staging
+if settings.APP_ENV in ("production", "staging") and settings.enable_audit_logging:
+    if not settings.AUDIT_ENCRYPTION_KEY:
+        raise ValueError(
+            f"AUDIT_ENCRYPTION_KEY is REQUIRED when APP_ENV={settings.APP_ENV} and audit logging is enabled. "
+            "Set AUDIT_ENCRYPTION_KEY environment variable to a secure 32-byte base64 key. "
+            "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+        )

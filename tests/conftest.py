@@ -7,6 +7,7 @@ Provides:
 """
 
 import os
+
 os.environ.setdefault("TOKENIZER_FALLBACK_ENABLED", "true")
 os.environ.setdefault("REDIS_URL", "")
 os.environ.setdefault("NAVI_DISABLE_LLM", "true")
@@ -60,6 +61,8 @@ def get_default_headers(org_id: str = TEST_ORG_ID) -> dict:
     headers = {"X-Org-Id": org_id}
     headers.update(get_auth_headers())
     return headers
+
+
 FIXTURE_PATH = "data/seed/memory_graph_fixture.json"
 
 

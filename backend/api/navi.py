@@ -111,9 +111,9 @@ class RunState(BaseModel):
     context: ContextPack
     plan: Optional[Plan] = None
     current_step: int = 0
-    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = (
-        "idle"
-    )
+    status: Literal[
+        "idle", "planning", "executing", "verifying", "done", "failed"
+    ] = "idle"
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: float = Field(default_factory=time.time)
 
@@ -182,7 +182,7 @@ MODEL_ALIASES: Dict[str, Dict[str, str]] = {
 def _resolve_model(model: Optional[str]) -> str:
     """Resolve model alias to actual model ID."""
     if not model:
-        return "gpt-4o-mini"  # Default model
+        return "gpt-4o"  # Default model for production
 
     # Check if it's an alias
     if model in MODEL_ALIASES:
@@ -1181,7 +1181,9 @@ async def analyze_working_changes(
                             "severity": (
                                 "high"
                                 if any(i["severity"] == "high" for i in issues)
-                                else "medium" if issues else "low"
+                                else "medium"
+                                if issues
+                                else "low"
                             ),
                             "issues": issues,
                             "diff": change.get("diff", "")[:1000],
@@ -1426,7 +1428,9 @@ async def handle_consent_response(
         approved = body.get("approved", False)
         command = body.get("command", "")
 
-        logger.info(f"[NAVI API] 🔐 Consent {consent_id}: {'APPROVED' if approved else 'DENIED'} for command: {command}")
+        logger.info(
+            f"[NAVI API] 🔐 Consent {consent_id}: {'APPROVED' if approved else 'DENIED'} for command: {command}"
+        )
 
         # Update the consent approval in global storage
         if consent_id in _consent_approvals:
@@ -1435,20 +1439,22 @@ async def handle_consent_response(
             _consent_approvals[consent_id]["response_timestamp"] = time.time()
         else:
             # Consent ID not found (might have expired or already processed)
-            logger.warning(f"[NAVI API] Consent {consent_id} not found in pending approvals")
+            logger.warning(
+                f"[NAVI API] Consent {consent_id} not found in pending approvals"
+            )
             _consent_approvals[consent_id] = {
                 "approved": approved,
                 "command": command,
                 "timestamp": time.time(),
                 "pending": False,
-                "response_timestamp": time.time()
+                "response_timestamp": time.time(),
             }
 
         return {
             "success": True,
             "consent_id": consent_id,
             "approved": approved,
-            "message": f"Consent {'approved' if approved else 'denied'}"
+            "message": f"Consent {'approved' if approved else 'denied'}",
         }
 
     except Exception as e:
@@ -4408,8 +4414,8 @@ class FileAttachment(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User message")
     model: str = Field(
-        default="gpt-4o-mini",
-        description="LLM model (e.g., gpt-4o-mini, gpt-4.1, gpt-5.1)",
+        default="gpt-4o",
+        description="LLM model (e.g., gpt-4o, gpt-4o-mini, gpt-4.1, gpt-5.1)",
     )
     mode: str = Field(
         default="chat-only",
@@ -6285,6 +6291,12 @@ async def navi_chat_stream(
                                     else ""
                                 )
                             )
+                            if not output_preview:
+                                stdout_preview = tool_result.get("stdout", "")
+                                stderr_preview = tool_result.get("stderr", "")
+                                output_preview = (stderr_preview or stdout_preview)[
+                                    :200
+                                ]
                             yield f"data: {json.dumps({'activity': {'kind': 'tool_result', 'label': 'Result', 'detail': output_preview[:200], 'status': status}})}\n\n"
 
                         elif event.type == AgentEventType.VERIFICATION:
@@ -7122,6 +7134,14 @@ async def navi_autonomous_task(
     """
     import os
     from backend.services.autonomous_agent import AutonomousAgent
+    from backend.core.db import SessionLocal
+
+    # Extract user context (from auth state or dev environment)
+    # In production, this would come from http_request.state after auth middleware
+    user_id = os.environ.get("DEV_USER_ID", "anonymous")
+    org_id = os.environ.get("DEV_ORG_ID", "default-org")
+
+    logger.info(f"[NAVI Autonomous] User context: user_id={user_id}, org_id={org_id}")
 
     # Determine workspace path (support both workspace_path and workspace_root)
     workspace_path = request.workspace_path or request.workspace_root
@@ -7223,7 +7243,7 @@ async def navi_autonomous_task(
         async def heartbeat_wrapper(agent_generator):
             """Wrap agent generator with periodic heartbeat events to keep SSE connection alive."""
             last_event_time = time.time()
-            heartbeat_interval = 15  # Send heartbeat every 15 seconds of silence
+            heartbeat_interval = 10  # Send heartbeat every 10 seconds of silence (reduced from 15s for better reliability)
 
             async def send_heartbeat():
                 """Send periodic heartbeat events."""
@@ -7234,7 +7254,7 @@ async def navi_autonomous_task(
                         yield {
                             "type": "heartbeat",
                             "timestamp": time.time() * 1000,
-                            "message": "Connection alive"
+                            "message": "Connection alive",
                         }
 
             # Create heartbeat task
@@ -7244,14 +7264,12 @@ async def navi_autonomous_task(
 
             try:
                 # Process events from agent with heartbeat injection
-                pending_tasks = set()
                 agent_task = asyncio.create_task(agent_generator.__anext__())
 
                 while True:
                     # Wait for either agent event or heartbeat timeout
                     done, pending = await asyncio.wait(
-                        {agent_task},
-                        timeout=heartbeat_interval
+                        {agent_task}, timeout=heartbeat_interval
                     )
 
                     if done:
@@ -7261,7 +7279,9 @@ async def navi_autonomous_task(
                             last_event_time = time.time()
                             yield event
                             # Create next agent task
-                            agent_task = asyncio.create_task(agent_generator.__anext__())
+                            agent_task = asyncio.create_task(
+                                agent_generator.__anext__()
+                            )
                         except StopAsyncIteration:
                             # Agent is done
                             break
@@ -7272,11 +7292,14 @@ async def navi_autonomous_task(
                             yield {
                                 "type": "heartbeat",
                                 "timestamp": time.time() * 1000,
-                                "message": "Connection alive"
+                                "message": "Connection alive",
                             }
                             last_event_time = current_time
             finally:
                 heartbeat_task.cancel()
+
+        # Create database session for generation logging
+        db = SessionLocal()
 
         try:
             agent = AutonomousAgent(
@@ -7284,6 +7307,9 @@ async def navi_autonomous_task(
                 api_key=api_key,
                 provider=provider,
                 model=model,
+                db_session=db,
+                user_id=user_id,
+                org_id=org_id,
             )
 
             async for event in heartbeat_wrapper(
@@ -7297,6 +7323,9 @@ async def navi_autonomous_task(
         except Exception as e:
             logger.exception(f"[NAVI Autonomous] Error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+        finally:
+            # Close database session
+            db.close()
 
         yield "data: [DONE]\n\n"
 

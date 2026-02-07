@@ -107,9 +107,9 @@ class ProjectAnalyzer:
                     commands["typecheck"] = "npx tsc --noEmit"
 
                 if "test" in scripts:
-                    commands["test"] = (
-                        f"{run_cmd} test -- --passWithNoTests --watchAll=false"
-                    )
+                    commands[
+                        "test"
+                    ] = f"{run_cmd} test -- --passWithNoTests --watchAll=false"
                 elif "jest" in deps:
                     commands["test"] = "npx jest --passWithNoTests"
                 elif "vitest" in deps:
@@ -609,6 +609,10 @@ NAVI_TOOLS = [
                 "checks": {
                     "type": "array",
                     "description": "For health_aggregate: list of checks to run",
+                    "items": {
+                        "type": "object",
+                        "description": "Individual health check configuration",
+                    },
                 },
             },
             "required": ["condition_type"],
@@ -1205,12 +1209,21 @@ class ToolExecutor:
                     + f"\n... (truncated, {len(stderr_text)} total chars)"
                 )
 
+            status_icon = "✅" if process.returncode == 0 else "❌"
+            preview = ""
+            if stderr_text:
+                preview = stderr_text.splitlines()[0][:160]
+            elif stdout_text:
+                preview = stdout_text.splitlines()[0][:160]
+
             return {
                 "command": command,
                 "exit_code": process.returncode,
                 "stdout": stdout_text,
                 "stderr": stderr_text,
                 "success": process.returncode == 0,
+                "message": f"{status_icon} Command: `{command}`"
+                + (f" — {preview}" if preview else ""),
             }
         except Exception as e:
             return {"error": f"Error running command: {e}", "success": False}

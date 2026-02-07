@@ -84,7 +84,7 @@ class LLMIntentClassifier:
     def _get_default_model(self, provider: str) -> str:
         """Get default model for provider"""
         defaults = {
-            "openai": "gpt-4o-mini",
+            "openai": "gpt-4o",
             "anthropic": "claude-3-5-sonnet-20241022",
             "google": "gemini-1.5-pro",
             "mistral": "mistral-large-latest",

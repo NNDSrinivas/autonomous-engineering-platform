@@ -18,7 +18,7 @@ class ActionAttempt:
     """Tracks attempts for a specific action + error combination"""
 
     action_signature: str  # Unique signature of the action (what NAVI tried)
-    error_signature: str   # Signature of the error that resulted
+    error_signature: str  # Signature of the error that resulted
     attempt_count: int = 0
     first_attempt: datetime = field(default_factory=datetime.now)
     last_attempt: datetime = field(default_factory=datetime.now)
@@ -50,7 +50,9 @@ class IntelligentRetryLimiter:
         self._action_attempts: Dict[str, ActionAttempt] = {}
         self._successful_approaches: Dict[str, datetime] = {}
 
-    def _generate_action_signature(self, action: str, target: str, approach: Optional[str] = None) -> str:
+    def _generate_action_signature(
+        self, action: str, target: str, approach: Optional[str] = None
+    ) -> str:
         """
         Generate signature for a specific action.
 
@@ -70,9 +72,10 @@ class IntelligentRetryLimiter:
         # Normalize error: remove line numbers, timestamps, etc.
         normalized = error.lower().strip()
         # Remove common variable parts
-        for pattern in [r'\d+', r'at \d+:\d+', r'line \d+']:
+        for pattern in [r"\d+", r"at \d+:\d+", r"line \d+"]:
             import re
-            normalized = re.sub(pattern, '', normalized)
+
+            normalized = re.sub(pattern, "", normalized)
         return hashlib.md5(normalized.encode()).hexdigest()[:16]
 
     def _get_attempt_key(self, action_sig: str, error_sig: str) -> str:
@@ -84,7 +87,7 @@ class IntelligentRetryLimiter:
         action: str,
         target: str,
         error: Optional[str] = None,
-        approach: Optional[str] = None
+        approach: Optional[str] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if NAVI should be allowed to try this action.
@@ -132,11 +135,7 @@ class IntelligentRetryLimiter:
         return True, None
 
     def record_attempt(
-        self,
-        action: str,
-        target: str,
-        error: str,
-        approach: Optional[str] = None
+        self, action: str, target: str, error: str, approach: Optional[str] = None
     ):
         """
         Record that NAVI attempted an action and got an error.
@@ -153,8 +152,7 @@ class IntelligentRetryLimiter:
 
         if key not in self._action_attempts:
             self._action_attempts[key] = ActionAttempt(
-                action_signature=action_sig,
-                error_signature=error_sig
+                action_signature=action_sig, error_signature=error_sig
             )
 
         attempt = self._action_attempts[key]
@@ -177,13 +175,16 @@ class IntelligentRetryLimiter:
 
         # Clear any failed attempts for this action
         to_remove = [
-            key for key, attempt in self._action_attempts.items()
+            key
+            for key, attempt in self._action_attempts.items()
             if attempt.action_signature == action_sig
         ]
         for key in to_remove:
             del self._action_attempts[key]
 
-    def _generate_alternative_suggestion(self, action: str, target: str, error: str) -> str:
+    def _generate_alternative_suggestion(
+        self, action: str, target: str, error: str
+    ) -> str:
         """
         Generate a suggestion for an alternative approach when an action keeps failing.
 
@@ -201,37 +202,41 @@ class IntelligentRetryLimiter:
                 "Consider creating a backup before editing",
                 "Try editing a smaller section of the file",
                 "Check if the file has the correct permissions",
-                "Verify the file path exists and is correct"
+                "Verify the file path exists and is correct",
             ],
             "run_command": [
                 "Try breaking the command into smaller steps",
                 "Check if required dependencies are installed",
                 "Try running with different flags or options",
                 "Verify the environment variables are set correctly",
-                "Check if you need different permissions"
+                "Check if you need different permissions",
             ],
             "create_file": [
                 "Ensure the parent directory exists first",
                 "Check if a file with that name already exists",
                 "Try creating the file in a different location",
-                "Verify you have write permissions in that directory"
+                "Verify you have write permissions in that directory",
             ],
             "read_file": [
                 "Check if the file path is correct",
                 "Verify the file exists at that location",
                 "Try listing the directory contents first",
-                "Check if you need different permissions to access the file"
-            ]
+                "Check if you need different permissions to access the file",
+            ],
         }
 
-        action_suggestions = suggestions.get(action, [
-            "Try a completely different approach to solve this problem",
-            "Consider breaking the task into smaller steps",
-            "Look for alternative tools or methods"
-        ])
+        action_suggestions = suggestions.get(
+            action,
+            [
+                "Try a completely different approach to solve this problem",
+                "Consider breaking the task into smaller steps",
+                "Look for alternative tools or methods",
+            ],
+        )
 
         # Pick a suggestion (could be made smarter based on the error)
         import random
+
         suggestion = random.choice(action_suggestions)
 
         return (
@@ -244,20 +249,25 @@ class IntelligentRetryLimiter:
         failures = []
         for key, attempt in self._action_attempts.items():
             if attempt.attempt_count >= self.MAX_IDENTICAL_RETRIES:
-                failures.append({
-                    "action_signature": attempt.action_signature,
-                    "attempts": attempt.attempt_count,
-                    "last_error": attempt.error_messages[-1] if attempt.error_messages else None,
-                    "first_attempted": attempt.first_attempt.isoformat(),
-                    "last_attempted": attempt.last_attempt.isoformat()
-                })
+                failures.append(
+                    {
+                        "action_signature": attempt.action_signature,
+                        "attempts": attempt.attempt_count,
+                        "last_error": attempt.error_messages[-1]
+                        if attempt.error_messages
+                        else None,
+                        "first_attempted": attempt.first_attempt.isoformat(),
+                        "last_attempted": attempt.last_attempt.isoformat(),
+                    }
+                )
         return failures
 
     def _cleanup_old_attempts(self):
         """Remove attempts outside the memory window"""
         now = datetime.now()
         to_remove = [
-            key for key, attempt in self._action_attempts.items()
+            key
+            for key, attempt in self._action_attempts.items()
             if now - attempt.last_attempt > self.MEMORY_WINDOW
         ]
         for key in to_remove:
@@ -265,7 +275,8 @@ class IntelligentRetryLimiter:
 
         # Also cleanup old successes
         to_remove_success = [
-            key for key, timestamp in self._successful_approaches.items()
+            key
+            for key, timestamp in self._successful_approaches.items()
             if now - timestamp > self.MEMORY_WINDOW
         ]
         for key in to_remove_success:
@@ -284,7 +295,7 @@ class IntelligentRetryLimiter:
             "max_identical_retries": self.MAX_IDENTICAL_RETRIES,
             "tracking_window_minutes": self.TRACKING_WINDOW.total_seconds() / 60,
             "memory_window_minutes": self.MEMORY_WINDOW.total_seconds() / 60,
-            "repeated_failures": self.get_repeated_failures()
+            "repeated_failures": self.get_repeated_failures(),
         }
 
 

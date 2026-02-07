@@ -1597,6 +1597,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   } | null = null;
   private _lastRunSummary: { content: string; timestamp: number } | null = null;
   private _lastRunAbortedAt: number | null = null;
+  private _currentAbortController: AbortController | null = null;
 
   // Command output tracking for focusTerminal and showOutput functionality
   private _commandOutputs = new Map<string, { command: string; cwd?: string; stdout: string; stderr: string; exitCode?: number; durationMs?: number }>();
@@ -4267,6 +4268,18 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             break;
           }
 
+          case 'cancelRequest': {
+            console.log('[Extension Host] [AEP] 🛑 CANCEL REQUEST received');
+            if (this._currentAbortController) {
+              console.log('[Extension Host] [AEP] ✅ Aborting ongoing request');
+              this._currentAbortController.abort();
+              this._currentAbortController = null;
+            } else {
+              console.log('[Extension Host] [AEP] ⚠️ No active request to cancel');
+            }
+            break;
+          }
+
           case 'sendMessage': {
             const text = String(msg.text || '').trim();
             if (!text) {
@@ -6559,6 +6572,60 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             break;
           }
 
+          case 'feedback': {
+            // Handle feedback submission from NAVI chat panel
+            const { messageId, feedback, comment, genId } = msg;
+
+            if (!messageId || !feedback) {
+              console.warn('[AEP] Invalid feedback message:', msg);
+              return;
+            }
+
+            console.log(`[AEP] Submitting feedback for message ${messageId}: ${feedback}`);
+
+            try {
+              const baseUrl = this.getBackendBaseUrl().replace('/api/navi/chat', '');
+
+              // For now, use a mock org/user until auth is fully wired
+              // TODO: Extract from auth middleware when user context is available
+              const feedbackPayload = {
+                gen_id: genId || messageId, // Fallback to messageId if gen_id not available
+                org_key: 'default-org',
+                user_sub: 'dev-user',
+                rating: feedback === 'like' ? 1 : -1,
+                reason: null,
+                comment: comment || null
+              };
+
+              const response = await fetch(`${baseUrl}/api/feedback/submit`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(feedbackPayload)
+              });
+
+              if (!response.ok) {
+                const error = await response.text();
+                console.error('[AEP] Feedback submission failed:', error);
+                vscode.window.showWarningMessage('Failed to submit feedback');
+                return;
+              }
+
+              const result = await response.json();
+              console.log('[AEP] Feedback submitted successfully:', result);
+
+              // Optionally show success message to user
+              vscode.window.setStatusBarMessage('✓ Feedback submitted', 2000);
+
+            } catch (error) {
+              console.error('[AEP] Error submitting feedback:', error);
+              vscode.window.showWarningMessage('Failed to submit feedback');
+            }
+
+            break;
+          }
+
           default:
             console.warn('[Extension Host] [AEP] Unknown message from webview:', msg);
         }
@@ -7923,6 +7990,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const targetUrl = `${this.getBackendBaseUrl()}/api/navi/chat`;
 
       controller = new AbortController();
+      this._currentAbortController = controller;
       const config = vscode.workspace.getConfiguration('aep.navi');
       const baseTimeoutMs = config.get<number>('requestTimeout') || DEFAULT_REQUEST_TIMEOUT_MS;
       // Check if this is an action request early to set appropriate timeout
@@ -8833,6 +8901,16 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     project_id: parsed.project_id,
                     iteration: parsed.iteration,
                     tasks_completed: parsed.tasks_completed,
+                  });
+                }
+
+                // Handle generation_logged event for feedback tracking
+                if (parsed.type === 'generation_logged' && parsed.gen_id) {
+                  console.log('[AEP] 📝 Generation logged for feedback:', parsed.gen_id);
+                  this.postToWebview({
+                    type: 'navi.generation_logged',
+                    gen_id: parsed.gen_id,
+                    timestamp: parsed.timestamp || Date.now(),
                   });
                 }
 
@@ -9798,6 +9876,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       finalizeProgressDone();
       this.postToWebview({ type: 'botThinking', value: false });
       this.finishActivityRun(runId);
+      // Clear the abort controller reference
+      this._currentAbortController = null;
     }
   }
 

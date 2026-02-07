@@ -5,7 +5,7 @@ Provides utilities to format NAVI messages with proper markdown structure,
 separating concise user-facing messages from verbose thinking/reasoning.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from dataclasses import dataclass
 
 
@@ -149,10 +149,7 @@ class NaviMessageBuilder:
     def build(self) -> FormattedMessage:
         """Build the final formatted message"""
         main_message = "".join(self.sections).strip()
-        return FormattedMessage(
-            main_message=main_message,
-            thinking_steps=self.thinking
-        )
+        return FormattedMessage(main_message=main_message, thinking_steps=self.thinking)
 
 
 class MessageTemplates:
@@ -164,7 +161,7 @@ class MessageTemplates:
         process_name: str,
         process_cmd: str,
         alternative_port: int,
-        framework: str
+        framework: str,
     ) -> FormattedMessage:
         """Format a port conflict message with proper structure"""
         builder = NaviMessageBuilder()
@@ -172,7 +169,7 @@ class MessageTemplates:
         # Concise main message
         builder.add_info(
             f"Port {port} is currently in use. Starting on port {alternative_port} instead.",
-            "🚀"
+            "🚀",
         )
 
         builder.add_paragraph(
@@ -184,12 +181,8 @@ class MessageTemplates:
         builder.add_thinking_step(
             f"Detected port {port} is occupied by: {process_name}"
         )
-        builder.add_thinking_step(
-            f"Process command: {process_cmd[:80]}..."
-        )
-        builder.add_thinking_step(
-            f"Selected alternative port: {alternative_port}"
-        )
+        builder.add_thinking_step(f"Process command: {process_cmd[:80]}...")
+        builder.add_thinking_step(f"Selected alternative port: {alternative_port}")
 
         return builder.build()
 
@@ -199,27 +192,26 @@ class MessageTemplates:
         framework: str,
         install_cmd: str,
         run_cmd: str,
-        port: Optional[int] = None
+        port: Optional[int] = None,
     ) -> FormattedMessage:
         """Format project run instructions"""
         builder = NaviMessageBuilder()
 
         builder.add_heading(f"Running {project_name}", 3)
 
-        builder.add_paragraph(
-            f"This is a {MarkdownFormatter.bold(framework)} project."
-        )
+        builder.add_paragraph(f"This is a {MarkdownFormatter.bold(framework)} project.")
 
         builder.add_heading("Setup", 4)
-        builder.add_numbered_list([
-            f"Install dependencies: {MarkdownFormatter.code_inline(install_cmd)}",
-            f"Start the server: {MarkdownFormatter.code_inline(run_cmd)}"
-        ])
+        builder.add_numbered_list(
+            [
+                f"Install dependencies: {MarkdownFormatter.code_inline(install_cmd)}",
+                f"Start the server: {MarkdownFormatter.code_inline(run_cmd)}",
+            ]
+        )
 
         if port:
             builder.add_info(
-                f"Server will be available at http://localhost:{port}",
-                "🌐"
+                f"Server will be available at http://localhost:{port}", "🌐"
             )
 
         return builder.build()
@@ -228,7 +220,7 @@ class MessageTemplates:
     def error_with_context(
         error_message: str,
         context: Optional[str] = None,
-        suggestions: Optional[List[str]] = None
+        suggestions: Optional[List[str]] = None,
     ) -> FormattedMessage:
         """Format an error message with context and suggestions"""
         builder = NaviMessageBuilder()

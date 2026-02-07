@@ -1406,8 +1406,9 @@ export const ConnectorsPanel: React.FC<ConnectorsPanelProps> = ({
           background: rgba(0, 0, 0, 0.6);
           backdrop-filter: blur(4px);
           display: flex;
-          align-items: center;
-          justify-content: center;
+          align-items: stretch;
+          justify-content: stretch;
+          padding: 16px;
           z-index: 1000;
           animation: navi-fade-in 0.2s ease;
         }
@@ -1418,12 +1419,13 @@ export const ConnectorsPanel: React.FC<ConnectorsPanelProps> = ({
         }
 
         .navi-overlay-panel {
-          width: 90%;
-          max-width: 600px;
-          max-height: 80vh;
+          width: 100%;
+          height: 100%;
+          max-width: none;
+          max-height: none;
           background: hsl(var(--card));
           border: 1px solid hsl(var(--border));
-          border-radius: 16px;
+          border-radius: 18px;
           display: flex;
           flex-direction: column;
           overflow: hidden;
@@ -1463,6 +1465,12 @@ export const ConnectorsPanel: React.FC<ConnectorsPanelProps> = ({
 
         .navi-overlay-header h3 svg {
           color: hsl(var(--primary));
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .navi-overlay-header h3:hover svg {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .navi-overlay-count {
@@ -1546,8 +1554,12 @@ export const ConnectorsPanel: React.FC<ConnectorsPanelProps> = ({
           color: hsl(var(--muted-foreground));
           font-size: 12px;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
           white-space: nowrap;
+        }
+
+        .connectors-filter-btn svg {
+          transition: transform 0.2s ease, filter 0.2s ease;
         }
 
         .connectors-filter-btn:hover {
@@ -1555,10 +1567,15 @@ export const ConnectorsPanel: React.FC<ConnectorsPanelProps> = ({
           border-color: hsl(var(--primary) / 0.3);
         }
 
+        .connectors-filter-btn:hover svg {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
+        }
+
         .connectors-filter-btn.active {
-          background: hsl(var(--primary) / 0.1);
-          border-color: hsl(var(--primary) / 0.4);
-          color: hsl(var(--primary));
+          background: hsl(var(--secondary) / 0.6);
+          border-color: hsl(var(--primary) / 0.35);
+          color: hsl(var(--foreground));
         }
 
         .connectors-filter-backdrop {
@@ -1698,6 +1715,12 @@ export const ConnectorsPanel: React.FC<ConnectorsPanelProps> = ({
           width: 18px;
           height: 18px;
           color: hsl(var(--primary));
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .connectors-category-header:hover .connectors-category-icon {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .connectors-category-label {
@@ -1717,7 +1740,16 @@ export const ConnectorsPanel: React.FC<ConnectorsPanelProps> = ({
 
         .connectors-category-chevron {
           color: hsl(var(--muted-foreground));
-          transition: transform 0.2s ease;
+          transition: transform 0.2s ease, color 0.2s ease;
+        }
+
+        .connectors-category-chevron svg {
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .connectors-category-header:hover .connectors-category-chevron svg {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .connectors-category-list {
@@ -1750,12 +1782,24 @@ export const ConnectorsPanel: React.FC<ConnectorsPanelProps> = ({
           height: 36px;
           border-radius: 8px;
           flex-shrink: 0;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
         .connector-item-svg {
           width: 20px;
           height: 20px;
           color: hsl(var(--foreground));
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .connector-item:hover .connector-item-icon {
+          transform: translateY(-1px) scale(1.03);
+          box-shadow: 0 6px 16px hsl(var(--primary) / 0.18);
+        }
+
+        .connector-item:hover .connector-item-svg {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.18));
         }
 
         .connector-item-info {
@@ -1802,9 +1846,18 @@ export const ConnectorsPanel: React.FC<ConnectorsPanelProps> = ({
           flex-shrink: 0;
         }
 
+        .connector-item-action svg {
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
         .connector-item-action:hover {
           background: hsl(var(--primary) / 0.2);
           border-color: hsl(var(--primary) / 0.5);
+        }
+
+        .connector-item-action:hover svg {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .connector-item-action.connected {

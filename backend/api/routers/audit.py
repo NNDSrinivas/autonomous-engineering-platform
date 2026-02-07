@@ -4,6 +4,10 @@ Audit and Replay API endpoints
 
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
+from datetime import datetime, timezone
+import csv
+import io
 import os
 from pydantic import BaseModel
 from typing import Optional
@@ -148,6 +152,99 @@ def list_audit_logs(
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve audit logs: {str(e)}"
         )
+
+
+@router.get("/audit/export")
+def export_audit_logs(
+    format: str = Query("json", pattern="^(json|csv)$"),
+    org: Optional[str] = Query(None, description="Filter by organization key"),
+    actor: Optional[str] = Query(None, description="Filter by actor subject"),
+    since: Optional[str] = Query(None, description="ISO timestamp (inclusive)"),
+    until: Optional[str] = Query(None, description="ISO timestamp (inclusive)"),
+    include_payload: bool = Query(False, description="Include raw payload data"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum records to return"),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_role(Role.ADMIN)),
+):
+    """
+    Export audit logs as JSON or CSV for compliance tooling.
+    """
+    try:
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            AuditLog.__table__.create(bind=db.get_bind(), checkfirst=True)
+
+        q = select(AuditLog).order_by(desc(AuditLog.created_at)).limit(limit)
+        if org:
+            q = q.where(AuditLog.org_key == org)
+        if actor:
+            q = q.where(AuditLog.actor_sub == actor)
+        if since:
+            q = q.where(AuditLog.created_at >= _parse_iso_time(since))
+        if until:
+            q = q.where(AuditLog.created_at <= _parse_iso_time(until))
+
+        rows = db.execute(q).scalars().all()
+
+        if format == "json":
+            return [
+                _audit_row_to_dict(row, include_payload=include_payload) for row in rows
+            ]
+
+        output = io.StringIO()
+        fieldnames = [
+            "id",
+            "route",
+            "method",
+            "event_type",
+            "org_key",
+            "actor_sub",
+            "actor_email",
+            "resource_id",
+            "status_code",
+            "created_at",
+        ]
+        if include_payload:
+            fieldnames.append("payload")
+
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(_audit_row_to_dict(row, include_payload=include_payload))
+
+        return PlainTextResponse(output.getvalue(), media_type="text/csv")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to export audit logs: {str(e)}"
+        )
+
+
+def _parse_iso_time(value: str) -> datetime:
+    try:
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        return datetime.fromisoformat(value)
+    except Exception as exc:
+        raise ValueError(f"Invalid timestamp: {value}") from exc
+
+
+def _audit_row_to_dict(row: AuditLog, include_payload: bool = False) -> dict:
+    data = {
+        "id": row.id,
+        "route": row.route,
+        "method": row.method,
+        "event_type": row.event_type,
+        "org_key": row.org_key,
+        "actor_sub": row.actor_sub,
+        "actor_email": row.actor_email,
+        "resource_id": row.resource_id,
+        "status_code": row.status_code,
+        "created_at": row.created_at.astimezone(timezone.utc).isoformat(),
+    }
+    if include_payload:
+        data["payload"] = row.payload
+    return data
 
 
 @router.post("/audit/{audit_id}/decrypt", response_model=AuditDecryptOut)

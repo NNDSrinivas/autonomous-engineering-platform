@@ -317,7 +317,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
 
     let assistantContent = '';
     let modelInfo: { id: string; name: string } | null = null;
-    
+
     const updateAssistant = (chunk: string) => {
       assistantContent += chunk;
       setMessages(prev => {
@@ -345,11 +345,11 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
           if (last?.role === 'assistant') {
             return prev.map((m, i) => i === prev.length - 1
               ? {
-                  ...m,
-                  modelId: model.id,
-                  modelName: model.name,
-                  metadata: metadata || m.metadata  // Store state/agentRun/suggestions
-                }
+                ...m,
+                modelId: model.id,
+                modelName: model.name,
+                metadata: metadata || m.metadata  // Store state/agentRun/suggestions
+              }
               : m
             );
           }
@@ -377,7 +377,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
 
     // Remove messages from this point
     setMessages(prev => prev.slice(0, messageIndex));
-    
+
     // Resend with the specified model
     await sendMessage(userMessage.content, modelId);
   }, [messages, sendMessage]);
@@ -385,7 +385,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
   const setModel = useCallback(async (providerId: string, modelId: string, showToast = true) => {
     setSelectedProvider(providerId);
     setSelectedModel(modelId);
-    
+
     // Persist preference if authenticated
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
@@ -399,7 +399,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
         }, {
           onConflict: 'user_id,preference_key',
         });
-      
+
       if (!error && showToast) {
         const modelName = llmProviders
           .flatMap(p => p.models)

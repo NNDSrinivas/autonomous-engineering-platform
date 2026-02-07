@@ -114,6 +114,17 @@ class ConversationCreate(BaseModel):
     initial_context: Optional[Dict[str, Any]] = None
 
 
+class ConversationUpdate(BaseModel):
+    """Request model for updating a conversation."""
+
+    title: Optional[str] = None
+    status: Optional[str] = Field(default=None, pattern="^(active|archived|deleted)$")
+    workspace_path: Optional[str] = None
+    initial_context: Optional[Dict[str, Any]] = None
+    is_pinned: Optional[bool] = None
+    is_starred: Optional[bool] = None
+
+
 class MessageCreate(BaseModel):
     """Request model for adding a message."""
 
@@ -440,6 +451,8 @@ async def list_conversations(
             "id": str(c.id),
             "title": c.title,
             "status": c.status,
+            "is_pinned": c.is_pinned,
+            "is_starred": c.is_starred,
             "workspace_path": c.workspace_path,
             "created_at": c.created_at.isoformat(),
             "updated_at": c.updated_at.isoformat(),
@@ -470,6 +483,8 @@ async def create_conversation(
         "id": str(result.id),
         "title": result.title,
         "status": result.status,
+        "is_pinned": result.is_pinned,
+        "is_starred": result.is_starred,
         "created_at": result.created_at.isoformat(),
     }
 
@@ -492,6 +507,8 @@ async def get_conversation(
         "id": str(conversation.id),
         "title": conversation.title,
         "status": conversation.status,
+        "is_pinned": conversation.is_pinned,
+        "is_starred": conversation.is_starred,
         "workspace_path": conversation.workspace_path,
         "initial_context": conversation.initial_context,
         "created_at": conversation.created_at.isoformat(),
@@ -512,6 +529,33 @@ async def get_conversation(
         ]
 
     return result
+
+
+@router.patch("/conversations/{conversation_id}")
+async def update_conversation(
+    conversation_id: UUID,
+    update: ConversationUpdate,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Update conversation metadata."""
+    service = get_conversation_memory_service(db)
+
+    update_data = {k: v for k, v in update.model_dump().items() if v is not None}
+    conversation = service.update_conversation(conversation_id, **update_data)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return {
+        "id": str(conversation.id),
+        "title": conversation.title,
+        "status": conversation.status,
+        "is_pinned": conversation.is_pinned,
+        "is_starred": conversation.is_starred,
+        "workspace_path": conversation.workspace_path,
+        "initial_context": conversation.initial_context,
+        "created_at": conversation.created_at.isoformat(),
+        "updated_at": conversation.updated_at.isoformat(),
+    }
 
 
 @router.post("/conversations/{conversation_id}/messages")

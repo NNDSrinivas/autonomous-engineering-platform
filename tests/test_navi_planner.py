@@ -30,6 +30,7 @@ def _require_auth_headers():
     headers.setdefault("X-Org-Id", TEST_ORG_ID)
     return headers
 
+
 pytestmark = pytest.mark.integration
 
 

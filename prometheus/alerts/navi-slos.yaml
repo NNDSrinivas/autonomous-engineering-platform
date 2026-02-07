@@ -1,0 +1,471 @@
+# NAVI SLO Alert Rules for Prometheus
+# Last Updated: 2026-02-07
+# Version: 1.0
+#
+# Usage:
+#   1. Copy to Prometheus alerts directory
+#   2. Add to prometheus.yml:
+#      rule_files:
+#        - "alerts/navi-slos.yaml"
+#   3. Reload Prometheus: kill -HUP <prometheus-pid>
+
+groups:
+  # ============================================================================
+  # AVAILABILITY SLO ALERTS
+  # Target: 99.5% uptime
+  # ============================================================================
+  - name: navi_availability_slo
+    interval: 30s
+    rules:
+      - alert: LowAvailability
+        expr: |
+          (
+            sum(rate(http_requests_total{status!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) < 0.995
+        for: 5m
+        labels:
+          severity: critical
+          slo: availability
+          component: backend
+        annotations:
+          summary: "NAVI availability below SLO (< 99.5%)"
+          description: "Current availability: {{ $value | humanizePercentage }} (target: ≥ 99.5%)\nError budget exhausted!"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/low-availability.md"
+
+      - alert: AvailabilityAtRisk
+        expr: |
+          (
+            sum(rate(http_requests_total{status!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) < 0.997
+        for: 5m
+        labels:
+          severity: warning
+          slo: availability
+          component: backend
+        annotations:
+          summary: "NAVI availability trending toward SLO violation"
+          description: "Current availability: {{ $value | humanizePercentage }} (target: ≥ 99.5%)\nApproaching SLO threshold"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+  # ============================================================================
+  # LATENCY SLO ALERTS
+  # Target: P95 < 5000ms, P99 < 10000ms
+  # ============================================================================
+  - name: navi_latency_slo
+    interval: 30s
+    rules:
+      - alert: HighP95Latency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 5
+        for: 2m
+        labels:
+          severity: critical
+          slo: latency_p95
+          component: backend
+        annotations:
+          summary: "NAVI P95 latency exceeds SLO (> 5000ms)"
+          description: "Current P95 latency: {{ $value | humanizeDuration }}\nTarget: < 5000ms\nSLO VIOLATED"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/high-latency.md"
+
+      - alert: HighP99Latency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 10
+        for: 2m
+        labels:
+          severity: warning
+          slo: latency_p99
+          component: backend
+        annotations:
+          summary: "NAVI P99 latency exceeds SLO (> 10000ms)"
+          description: "Current P99 latency: {{ $value | humanizeDuration }}\nTarget: < 10000ms\nTail latency degraded"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+      - alert: LatencySpike
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 10
+        for: 1m
+        labels:
+          severity: critical
+          slo: latency_p95
+          component: backend
+        annotations:
+          summary: "CRITICAL: NAVI latency spike detected"
+          description: "Current P95 latency: {{ $value | humanizeDuration }}\nThis is 2x the SLO target!\nImmediate investigation required"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+  # ============================================================================
+  # ERROR RATE SLO ALERTS
+  # Target: < 1% error rate
+  # ============================================================================
+  - name: navi_error_rate_slo
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          slo: error_rate
+          component: backend
+        annotations:
+          summary: "NAVI error rate exceeds SLO (> 1%)"
+          description: "Current error rate: {{ $value | humanizePercentage }}\nTarget: < 1%\nSLO VIOLATED"
+          dashboard: "http://localhost:3001/d/navi-errors"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/high-error-rate.md"
+
+      - alert: ErrorRateSpike
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          slo: error_rate
+          component: backend
+        annotations:
+          summary: "CRITICAL: NAVI error rate spike (> 5%)"
+          description: "Current error rate: {{ $value | humanizePercentage }}\nThis is 5x the SLO target!\nPossible outage - immediate action required"
+          dashboard: "http://localhost:3001/d/navi-errors"
+
+      - alert: ErrorRateElevated
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.005
+        for: 10m
+        labels:
+          severity: warning
+          slo: error_rate
+          component: backend
+        annotations:
+          summary: "NAVI error rate elevated (> 0.5%)"
+          description: "Current error rate: {{ $value | humanizePercentage }}\nApproaching SLO threshold (1%)"
+          dashboard: "http://localhost:3001/d/navi-errors"
+
+  # ============================================================================
+  # TASK SUCCESS RATE SLO ALERTS
+  # Target: ≥ 95% task success
+  # ============================================================================
+  - name: navi_task_success_slo
+    interval: 30s
+    rules:
+      - alert: LowTaskSuccessRate
+        expr: |
+          sum(rate(aep_task_success_rate[5m])) < 0.95
+        for: 10m
+        labels:
+          severity: critical
+          slo: task_success
+          component: autonomous_agent
+        annotations:
+          summary: "NAVI task success rate below SLO (< 95%)"
+          description: "Current success rate: {{ $value | humanizePercentage }}\nTarget: ≥ 95%\nSLO VIOLATED"
+          dashboard: "http://localhost:3001/d/navi-task-metrics"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/low-task-success.md"
+
+      - alert: TaskSuccessRateAtRisk
+        expr: |
+          sum(rate(aep_task_success_rate[5m])) < 0.97
+        for: 10m
+        labels:
+          severity: warning
+          slo: task_success
+          component: autonomous_agent
+        annotations:
+          summary: "NAVI task success rate trending down"
+          description: "Current success rate: {{ $value | humanizePercentage }}\nApproaching SLO threshold (95%)"
+          dashboard: "http://localhost:3001/d/navi-task-metrics"
+
+      - alert: TaskFailureSpike
+        expr: |
+          sum(rate(aep_task_success_rate[5m])) < 0.90
+        for: 5m
+        labels:
+          severity: critical
+          slo: task_success
+          component: autonomous_agent
+        annotations:
+          summary: "CRITICAL: NAVI task failure spike (< 90% success)"
+          description: "Current success rate: {{ $value | humanizePercentage }}\nSignificant degradation - immediate investigation required"
+          dashboard: "http://localhost:3001/d/navi-task-metrics"
+
+  # ============================================================================
+  # LLM LATENCY SLO ALERTS
+  # Target: P95 < 5000ms
+  # ============================================================================
+  - name: navi_llm_latency_slo
+    interval: 30s
+    rules:
+      - alert: HighLLMLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(aep_llm_latency_ms_bucket[5m])) by (le)
+          ) > 5000
+        for: 2m
+        labels:
+          severity: critical
+          slo: llm_latency
+          component: llm_client
+        annotations:
+          summary: "LLM P95 latency exceeds SLO (> 5000ms)"
+          description: "Current P95 LLM latency: {{ $value }}ms\nTarget: < 5000ms\nSLO VIOLATED"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/high-llm-latency.md"
+
+      - alert: LLMLatencyByModel
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(aep_llm_latency_ms_bucket[5m])) by (le, model)
+          ) > 5000
+        for: 2m
+        labels:
+          severity: warning
+          slo: llm_latency
+          component: llm_client
+        annotations:
+          summary: "LLM latency high for model {{ $labels.model }}"
+          description: "Current P95 latency for {{ $labels.model }}: {{ $value }}ms\nTarget: < 5000ms"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+      - alert: LLMLatencySpike
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(aep_llm_latency_ms_bucket[1m])) by (le)
+          ) > 10000
+        for: 30s
+        labels:
+          severity: critical
+          slo: llm_latency
+          component: llm_client
+        annotations:
+          summary: "CRITICAL: LLM latency spike (> 10000ms)"
+          description: "Current P95 LLM latency: {{ $value }}ms\nThis is 2x the SLO target!\nPossible LLM API degradation"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+  # ============================================================================
+  # LLM ERROR RATE SLO ALERTS
+  # Target: < 1% LLM call failures
+  # ============================================================================
+  - name: navi_llm_error_rate_slo
+    interval: 30s
+    rules:
+      - alert: HighLLMErrorRate
+        expr: |
+          (
+            sum(rate(aep_llm_calls_total{status="error"}[5m]))
+            /
+            sum(rate(aep_llm_calls_total[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          slo: llm_error_rate
+          component: llm_client
+        annotations:
+          summary: "LLM error rate exceeds SLO (> 1%)"
+          description: "Current LLM error rate: {{ $value | humanizePercentage }}\nTarget: < 1%\nSLO VIOLATED"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/llm-api-errors.md"
+
+      - alert: LLMErrorSpike
+        expr: |
+          (
+            sum(rate(aep_llm_calls_total{status="error"}[5m]))
+            /
+            sum(rate(aep_llm_calls_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          slo: llm_error_rate
+          component: llm_client
+        annotations:
+          summary: "CRITICAL: LLM error rate spike (> 5%)"
+          description: "Current LLM error rate: {{ $value | humanizePercentage }}\nPossible LLM API outage - check Anthropic/OpenAI status"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+      - alert: LLMErrorsByModel
+        expr: |
+          (
+            sum(rate(aep_llm_calls_total{status="error"}[5m])) by (model)
+            /
+            sum(rate(aep_llm_calls_total[5m])) by (model)
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          slo: llm_error_rate
+          component: llm_client
+        annotations:
+          summary: "LLM errors for model {{ $labels.model }} (> 1%)"
+          description: "Current error rate for {{ $labels.model }}: {{ $value | humanizePercentage }}\nConsider switching to backup model"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+  # ============================================================================
+  # COST SLO ALERTS
+  # Target: < $50/hour LLM spend
+  # ============================================================================
+  - name: navi_cost_slo
+    interval: 1m
+    rules:
+      - alert: HighLLMCost
+        expr: |
+          sum(rate(aep_llm_cost_usd_total[1h])) * 3600 > 50
+        for: 10m
+        labels:
+          severity: warning
+          slo: cost
+          component: llm_client
+        annotations:
+          summary: "LLM cost exceeds budget (> $50/hour)"
+          description: "Current hourly cost: ${{ $value }}\nTarget: < $50/hour\nConsider switching to cheaper models"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/high-llm-cost.md"
+
+      - alert: LLMCostSpike
+        expr: |
+          sum(rate(aep_llm_cost_usd_total[1h])) * 3600 > 100
+        for: 5m
+        labels:
+          severity: critical
+          slo: cost
+          component: llm_client
+        annotations:
+          summary: "CRITICAL: LLM cost spike (> $100/hour)"
+          description: "Current hourly cost: ${{ $value }}\nThis is 2x the budget!\nInvestigate for runaway tasks or expensive model usage"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+      - alert: HighCostPerModel
+        expr: |
+          sum(rate(aep_llm_cost_usd_total[1h])) by (model) * 3600 > 30
+        for: 10m
+        labels:
+          severity: warning
+          slo: cost
+          component: llm_client
+        annotations:
+          summary: "High cost for model {{ $labels.model }} (> $30/hour)"
+          description: "Current hourly cost for {{ $labels.model }}: ${{ $value }}\nConsider optimizing usage or switching models"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+  # ============================================================================
+  # OPERATIONAL HEALTH ALERTS (Non-SLO)
+  # ============================================================================
+  - name: navi_operational_health
+    interval: 30s
+    rules:
+      - alert: NoMetrics
+        expr: up{job="navi-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: monitoring
+        annotations:
+          summary: "NAVI backend metrics not available"
+          description: "Prometheus cannot scrape NAVI /metrics endpoint\nBackend may be down or metrics endpoint broken"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/metrics-down.md"
+
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            process_resident_memory_bytes{job="navi-backend"}
+            /
+            (1024 * 1024 * 1024)
+          ) > 4
+        for: 10m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "NAVI backend memory usage high (> 4GB)"
+          description: "Current memory usage: {{ $value }}GB\nPossible memory leak - monitor for increase"
+
+      - alert: HighCPUUsage
+        expr: |
+          rate(process_cpu_seconds_total{job="navi-backend"}[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "NAVI backend CPU usage high (> 80%)"
+          description: "Current CPU usage: {{ $value }}%\nCheck for expensive operations or infinite loops"
+
+      - alert: DatabaseConnectionFailures
+        expr: |
+          rate(database_connection_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection failures detected"
+          description: "Current error rate: {{ $value }}/sec\nCheck database availability and connection pool settings"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/database-failures.md"
+
+  # ============================================================================
+  # ERROR BUDGET ALERTS
+  # ============================================================================
+  - name: navi_error_budget
+    interval: 5m
+    rules:
+      - alert: ErrorBudgetLow
+        expr: |
+          (
+            1 - (
+              sum(rate(http_requests_total{status!~"5.."}[30d]))
+              /
+              sum(rate(http_requests_total[30d]))
+            )
+          ) / 0.005 > 0.75
+        for: 1h
+        labels:
+          severity: warning
+          slo: availability
+          component: error_budget
+        annotations:
+          summary: "Error budget 75% consumed (30-day window)"
+          description: "Only 25% error budget remaining\nSlow down feature velocity and focus on reliability"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+
+      - alert: ErrorBudgetExhausted
+        expr: |
+          (
+            1 - (
+              sum(rate(http_requests_total{status!~"5.."}[30d]))
+              /
+              sum(rate(http_requests_total[30d]))
+            )
+          ) / 0.005 > 1.0
+        for: 30m
+        labels:
+          severity: critical
+          slo: availability
+          component: error_budget
+        annotations:
+          summary: "ERROR BUDGET EXHAUSTED - Feature freeze required"
+          description: "100% error budget consumed\nIMPLEMENT FEATURE FREEZE: No deployments except reliability fixes"
+          dashboard: "http://localhost:3001/d/navi-llm-metrics"
+          runbook: "https://github.com/NNDSrinivas/autonomous-engineering-platform/docs/runbooks/error-budget-exhausted.md"

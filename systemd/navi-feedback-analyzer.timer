@@ -1,0 +1,25 @@
+[Unit]
+Description=NAVI Feedback Analyzer Timer - Run every 15 minutes
+Documentation=https://github.com/your-org/autonomous-engineering-platform
+Requires=navi-feedback-analyzer.service
+
+[Timer]
+# Run every 15 minutes
+OnCalendar=*:0/15
+# OnCalendar Alternative formats:
+# - Every 15 minutes: *:0/15
+# - Every hour at :00: hourly
+# - Every day at 2:15 AM: 02:15:00
+# - Weekdays at 9 AM: Mon-Fri 09:00:00
+
+# Run immediately if system was down during scheduled time
+Persistent=true
+
+# Randomize start time by up to 2 minutes to avoid thundering herd
+RandomizedDelaySec=120
+
+# Unit to trigger
+Unit=navi-feedback-analyzer.service
+
+[Install]
+WantedBy=timers.target

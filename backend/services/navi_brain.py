@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import re
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -1731,9 +1732,9 @@ class ProjectAnalyzer:
                 )
 
             if "all" in types or "circular_deps" in types:
-                results["circular_deps"] = (
-                    await CodeDebugger.detect_circular_dependencies(workspace_path)
-                )
+                results[
+                    "circular_deps"
+                ] = await CodeDebugger.detect_circular_dependencies(workspace_path)
 
             if "all" in types or "code_smells" in types:
                 results["code_smells"] = await CodeDebugger.detect_code_smells(
@@ -5390,7 +5391,7 @@ class SelfHealingEngine:
         if vite_config_ts.exists():
             try:
                 content = vite_config_ts.read_text()
-                match = re.search(r'port:\s*(\d+)', content)
+                match = re.search(r"port:\s*(\d+)", content)
                 if match:
                     return int(match.group(1))
             except Exception:
@@ -5401,7 +5402,7 @@ class SelfHealingEngine:
         if vite_config_js.exists():
             try:
                 content = vite_config_js.read_text()
-                match = re.search(r'port:\s*(\d+)', content)
+                match = re.search(r"port:\s*(\d+)", content)
                 if match:
                     return int(match.group(1))
             except Exception:
@@ -5412,7 +5413,7 @@ class SelfHealingEngine:
         if next_config.exists():
             try:
                 content = next_config.read_text()
-                match = re.search(r'port:\s*(\d+)', content)
+                match = re.search(r"port:\s*(\d+)", content)
                 if match:
                     return int(match.group(1))
             except Exception:
@@ -5426,7 +5427,7 @@ class SelfHealingEngine:
                 scripts = data.get("scripts", {})
                 dev_script = scripts.get("dev", "") + scripts.get("start", "")
                 # Look for port flags in scripts
-                match = re.search(r'--port[=\s]+(\d+)|PORT=(\d+)', dev_script)
+                match = re.search(r"--port[=\s]+(\d+)|PORT=(\d+)", dev_script)
                 if match:
                     return int(match.group(1) or match.group(2))
             except Exception:
@@ -5438,7 +5439,7 @@ class SelfHealingEngine:
             if env_path.exists():
                 try:
                     content = env_path.read_text()
-                    match = re.search(r'PORT=(\d+)', content)
+                    match = re.search(r"PORT=(\d+)", content)
                     if match:
                         return int(match.group(1))
                 except Exception:
@@ -5464,11 +5465,16 @@ class SelfHealingEngine:
         # Get process info
         port_status = await PortManager.check_port(port)
         if port_status.is_available or not port_status.process_pid:
-            return {"is_same_project": False, "is_related": False, "workspace": "", "reason": "No process found"}
+            return {
+                "is_same_project": False,
+                "is_related": False,
+                "workspace": "",
+                "reason": "No process found",
+            }
 
         try:
             # Get process command and working directory
-            if platform.system() == "Darwin":
+            if sys.platform == "darwin":
                 # macOS: use lsof to get process cwd
                 result = subprocess.run(
                     ["lsof", "-a", "-p", str(port_status.process_pid), "-d", "cwd"],
@@ -5476,7 +5482,9 @@ class SelfHealingEngine:
                     text=True,
                     timeout=5,
                 )
-                cwd_line = [line for line in result.stdout.split("\n") if "cwd" in line.lower()]
+                cwd_line = [
+                    line for line in result.stdout.split("\n") if "cwd" in line.lower()
+                ]
                 if cwd_line:
                     # Extract directory path from lsof output
                     parts = cwd_line[0].split()
@@ -5490,21 +5498,24 @@ class SelfHealingEngine:
                                 "is_same_project": True,
                                 "is_related": True,
                                 "workspace": process_cwd,
-                                "reason": "Same workspace - server already running"
+                                "reason": "Same workspace - server already running",
                             }
-                        elif workspace_path_resolved in process_cwd_resolved or process_cwd_resolved in workspace_path_resolved:
+                        elif (
+                            workspace_path_resolved in process_cwd_resolved
+                            or process_cwd_resolved in workspace_path_resolved
+                        ):
                             return {
                                 "is_same_project": False,
                                 "is_related": True,
                                 "workspace": process_cwd,
-                                "reason": "Related workspace (parent/child directory)"
+                                "reason": "Related workspace (parent/child directory)",
                             }
                         else:
                             return {
                                 "is_same_project": False,
                                 "is_related": False,
                                 "workspace": process_cwd,
-                                "reason": "Different project entirely"
+                                "reason": "Different project entirely",
                             }
 
             # Fallback: just check command
@@ -5514,7 +5525,7 @@ class SelfHealingEngine:
                     "is_same_project": True,
                     "is_related": True,
                     "workspace": workspace_path,
-                    "reason": "Workspace path in command"
+                    "reason": "Workspace path in command",
                 }
 
         except Exception as e:
@@ -5524,7 +5535,7 @@ class SelfHealingEngine:
             "is_same_project": False,
             "is_related": False,
             "workspace": "",
-            "reason": "Unknown - could not determine"
+            "reason": "Unknown - could not determine",
         }
 
     @classmethod
@@ -5602,9 +5613,9 @@ class SelfHealingEngine:
 
         if diagnosis.auto_fixable and retry_count < 3:
             result["recovery_plan"] = diagnosis.recovery_actions
-            result["message"] = (
-                f"Attempting automatic recovery: {diagnosis.likely_cause}"
-            )
+            result[
+                "message"
+            ] = f"Attempting automatic recovery: {diagnosis.likely_cause}"
         else:
             result["message"] = (
                 f"Manual intervention needed: {diagnosis.likely_cause}\n\nSuggested fixes:\n"

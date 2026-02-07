@@ -213,6 +213,13 @@ class FeedbackService:
             )
         except Exception as e:
             logger.warning(f"Failed to persist learning suggestion to database: {e}")
+            # Rollback to keep session usable after failed commit
+            try:
+                await self.session.rollback()
+            except Exception as rollback_error:
+                logger.error(
+                    f"Failed to rollback after persist error: {rollback_error}"
+                )
             # Don't fail the feedback submission if DB persistence fails
 
     async def get_feedback_stats(

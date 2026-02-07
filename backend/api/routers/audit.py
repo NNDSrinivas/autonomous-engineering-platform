@@ -165,18 +165,48 @@ def export_audit_logs(
     include_payload: bool = Query(False, description="Include raw payload data"),
     limit: int = Query(1000, ge=1, le=10000, description="Maximum records to return"),
     db: Session = Depends(get_db),
-    _: User = Depends(require_role(Role.ADMIN)),
+    current_user: User = Depends(require_role(Role.ADMIN)),
 ):
     """
     Export audit logs as JSON or CSV for compliance tooling.
+
+    Security: Exports are scoped to the caller's organization by default.
+    Cross-org export requires elevated privileges (future: SUPERADMIN role).
     """
     try:
+        # Get caller's organization context
+        user_org = getattr(current_user, "org_key", None) or getattr(
+            current_user, "org_id", None
+        )
+        if not user_org:
+            raise HTTPException(
+                status_code=500,
+                detail="User missing organization context - cannot scope audit export",
+            )
+
+        # Check if user has super-admin privileges (cross-org export)
+        # For now, all admins are org-scoped. Future: add SUPERADMIN role.
+        is_super_admin = False
+
+        # Enforce org scoping: admins can only export their own org's logs
+        if org and org != user_org and not is_super_admin:
+            raise HTTPException(
+                status_code=403, detail="Cross-organization audit export not permitted"
+            )
+
+        # Use caller's org if not specified, or validate if specified
+        effective_org = org if (org and is_super_admin) else user_org
+
         if os.getenv("PYTEST_CURRENT_TEST"):
             AuditLog.__table__.create(bind=db.get_bind(), checkfirst=True)
 
-        q = select(AuditLog).order_by(desc(AuditLog.created_at)).limit(limit)
-        if org:
-            q = q.where(AuditLog.org_key == org)
+        # Always filter by organization for security
+        q = (
+            select(AuditLog)
+            .where(AuditLog.org_key == effective_org)
+            .order_by(desc(AuditLog.created_at))
+            .limit(limit)
+        )
         if actor:
             q = q.where(AuditLog.actor_sub == actor)
         if since:

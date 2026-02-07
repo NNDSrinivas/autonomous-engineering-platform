@@ -5476,7 +5476,9 @@ class SelfHealingEngine:
             # Get process command and working directory
             if sys.platform == "darwin":
                 # macOS: use lsof to get process cwd
-                result = subprocess.run(
+                # Run in thread pool to avoid blocking event loop
+                result = await asyncio.to_thread(
+                    subprocess.run,
                     ["lsof", "-a", "-p", str(port_status.process_pid), "-d", "cwd"],
                     capture_output=True,
                     text=True,

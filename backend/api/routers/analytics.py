@@ -80,11 +80,14 @@ def _summarize_llm_metrics(
     ]
 
     # Use dialect-appropriate date truncation (PostgreSQL vs SQLite)
-    dialect = db.bind.dialect.name
+    # Use get_bind() to safely get the engine (db.bind can be None)
+    bind = db.get_bind()
+    dialect = bind.dialect.name if bind else "sqlite"
+
     if dialect == "postgresql":
         day_column = func.date_trunc("day", LlmMetric.created_at).label("day")
     else:
-        # SQLite: use date() function to truncate to day
+        # SQLite and other dialects: use date() function to truncate to day
         day_column = func.date(LlmMetric.created_at).label("day")
 
     daily_rows = (

@@ -48,6 +48,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from backend.core.db import get_db
+from backend.core.auth.deps import require_role
+from backend.core.auth.models import User, Role
 from backend.agent.agent_loop import run_agent_loop
 from backend.agent.planner_v3 import PlannerV3
 from backend.agent.tool_executor import execute_tool_with_sources
@@ -1411,12 +1413,15 @@ async def auto_fix_by_id(
 async def handle_consent_response(
     consent_id: str,
     request: Request,
+    user: User = Depends(require_role(Role.VIEWER)),
 ) -> Dict[str, Any]:
     """
     Handle user consent approval/denial for dangerous commands.
 
     The frontend sends consent responses when the user approves or denies
     a dangerous command execution (e.g., rm, kill, chmod).
+
+    Requires authentication to prevent unauthorized consent manipulation.
     """
     try:
         # Import the global consent storage from autonomous_agent

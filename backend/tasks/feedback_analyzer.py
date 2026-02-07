@@ -86,8 +86,15 @@ def start_feedback_analyzer(interval_minutes: int = 15):
     global _analyzer_task
     if _analyzer_task is None:
         _analyzer_task = FeedbackAnalyzerTask(interval_minutes)
-        asyncio.create_task(_analyzer_task.run())
-        logger.info("[FeedbackAnalyzer] Task scheduled")
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.error(
+                "[FeedbackAnalyzer] Cannot schedule task: no running event loop"
+            )
+        else:
+            loop.create_task(_analyzer_task.run())
+            logger.info("[FeedbackAnalyzer] Task scheduled")
 
 
 def stop_feedback_analyzer():

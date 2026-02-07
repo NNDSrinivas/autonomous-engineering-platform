@@ -19,15 +19,26 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "mcp_servers",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
+        sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(length=160), nullable=False),
         sa.Column("url", sa.String(length=600), nullable=False),
-        sa.Column("transport", sa.String(length=40), nullable=False, server_default="streamable_http"),
-        sa.Column("auth_type", sa.String(length=40), nullable=False, server_default="none"),
+        sa.Column(
+            "transport",
+            sa.String(length=40),
+            nullable=False,
+            server_default="streamable_http",
+        ),
+        sa.Column(
+            "auth_type", sa.String(length=40), nullable=False, server_default="none"
+        ),
         sa.Column("config_json", sa.Text(), nullable=True),
         sa.Column("secret_json", sa.LargeBinary(), nullable=True),
-        sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("status", sa.String(length=32), nullable=False, server_default="unknown"),
+        sa.Column(
+            "enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "status", sa.String(length=32), nullable=False, server_default="unknown"
+        ),
         sa.Column("tool_count", sa.Integer(), nullable=True),
         sa.Column("last_checked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_error", sa.Text(), nullable=True),

@@ -115,7 +115,7 @@ class OrgCreateRequest(BaseModel):
 def create_org(
     req: OrgCreateRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(require_role(Role.VIEWER)),
+    user: User = Depends(require_role(Role.ADMIN)),
 ):
     _ensure_tables(db)
     org_id = uuid.uuid4().hex
@@ -189,6 +189,10 @@ def select_org(
     return {"org_id": req.org_id}
 
 
+# Allowed roles for invitations
+ALLOWED_INVITE_ROLES = {"member", "viewer", "admin"}
+
+
 class OrgInviteRequest(BaseModel):
     org_id: str
     emails: list[str] = Field(..., min_items=1)
@@ -202,6 +206,15 @@ def invite_users(
     user: User = Depends(require_role(Role.VIEWER)),
 ):
     _ensure_tables(db)
+
+    # Validate role against allowlist
+    if req.role not in ALLOWED_INVITE_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid role. Allowed roles: {', '.join(sorted(ALLOWED_INVITE_ROLES))}",
+        )
+
+    # Check inviter is owner or admin (not just any member)
     row = db.execute(
         text(
             """
@@ -213,6 +226,12 @@ def invite_users(
     ).fetchone()
     if not row:
         raise HTTPException(status_code=403, detail="User not in organization")
+
+    inviter_role = row[0]
+    if inviter_role not in ("owner", "admin"):
+        raise HTTPException(
+            status_code=403, detail="Only owners and admins can invite users"
+        )
 
     invites = []
     for email in req.emails:

@@ -61,42 +61,51 @@ async def receive_telemetry(
 
     # Process and persist events
     persisted_count = 0
-    for event in batch.events:
-        logger.debug(
-            f"[Telemetry] {event.type} | session={event.sessionId} | data={event.data}"
-        )
-
-        # Persist to database for v1 analytics
-        try:
-            _persist_telemetry_event(
-                session=session,
-                event=event,
-                client_ip=client_ip,
-                user_agent=user_agent,
+    try:
+        for event in batch.events:
+            logger.debug(
+                f"[Telemetry] {event.type} | session={event.sessionId} | data={event.data}"
             )
-            persisted_count += 1
-        except Exception as e:
-            logger.warning(f"Failed to persist telemetry event: {e}")
 
-        # Emit Prometheus metrics for real-time monitoring
-        if event.type == "navi.streaming.performance":
-            _emit_streaming_metrics(event.data)
-        elif event.type == "navi.llm.generation":
-            _emit_llm_metrics(event.data)
-        elif event.type == "navi.error":
-            logger.warning(
-                f"[Telemetry] Frontend error: {event.data.get('error')} | {event.data.get('context', {})}"
-            )
-            # Persist error events to error_events table
+            # Persist to database for v1 analytics (add to session, commit later)
             try:
-                await _persist_error_event(
+                _persist_telemetry_event(
                     session=session,
                     event=event,
                     client_ip=client_ip,
                     user_agent=user_agent,
                 )
+                persisted_count += 1
             except Exception as e:
-                logger.warning(f"Failed to persist error event: {e}")
+                logger.warning(f"Failed to persist telemetry event: {e}")
+
+            # Emit Prometheus metrics for real-time monitoring
+            if event.type == "navi.streaming.performance":
+                _emit_streaming_metrics(event.data)
+            elif event.type == "navi.llm.generation":
+                _emit_llm_metrics(event.data)
+            elif event.type == "navi.error":
+                logger.warning(
+                    f"[Telemetry] Frontend error: {event.data.get('error')} | {event.data.get('context', {})}"
+                )
+                # Persist error events to error_events table (add to session, commit later)
+                try:
+                    _persist_error_event(
+                        session=session,
+                        event=event,
+                        client_ip=client_ip,
+                        user_agent=user_agent,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to persist error event: {e}")
+
+        # Commit all events in a single transaction
+        session.commit()
+        logger.debug(f"[Telemetry] 💾 Batch committed {persisted_count} events")
+    except Exception as e:
+        logger.error(f"[Telemetry] Failed to commit batch: {e}")
+        session.rollback()
+        persisted_count = 0
 
     return {
         "success": True,
@@ -149,8 +158,8 @@ def _persist_telemetry_event(
     )
 
     session.add(db_event)
-    session.commit()
-    logger.debug(f"[Telemetry] 💾 Persisted event {event.type} to database")
+    # Note: Commit is handled by caller to batch multiple events
+    logger.debug(f"[Telemetry] ✓ Added event {event.type} to session")
 
 
 def _persist_error_event(
@@ -187,8 +196,8 @@ def _persist_error_event(
     )
 
     session.add(error_event)
-    session.commit()
-    logger.debug("[Telemetry] 💾 Persisted error event to database")
+    # Note: Commit is handled by caller to batch multiple events
+    logger.debug("[Telemetry] ✓ Added error event to session")
 
 
 def _emit_streaming_metrics(data: Dict[str, Any]) -> None:

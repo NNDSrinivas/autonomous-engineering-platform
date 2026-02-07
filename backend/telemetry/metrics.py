@@ -65,7 +65,7 @@ RAG_CHUNKS_RETRIEVED = Counter(
 
 # Iteration-level tracing metrics
 TASK_ITERATIONS = Histogram(
-    "aep_task_iterations_total",
+    "aep_task_iterations",
     "Number of LLM iterations per task",
     ["status"],
     buckets=(1, 2, 3, 5, 8, 13, 21, 34),

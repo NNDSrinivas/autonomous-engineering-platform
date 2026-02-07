@@ -44,16 +44,9 @@ def main():
     engine = create_engine(database_url)
     inspector = inspect(engine)
 
-    # Get list of new tables
-    new_tables = [
-        "llm_metrics",
-        "rag_metrics",
-        "task_metrics",
-        "learning_suggestions",
-        "learning_feedback",
-        "learning_insights",
-        "telemetry_events",
-    ]
+    # Get list of new tables from SQLAlchemy metadata (auto-discovered from models)
+    # This ensures the list stays in sync with actual modeled tables
+    new_tables = sorted(Base.metadata.tables.keys())
 
     # Check which tables already exist
     existing_tables = inspector.get_table_names()

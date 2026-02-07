@@ -6,6 +6,7 @@ Lightweight tables are created on demand, similar to org_scan.
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
@@ -19,6 +20,9 @@ from sqlalchemy import text
 from backend.core.db import get_db
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import User, Role
+from backend.core.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/orgs", tags=["org-onboarding"])
@@ -45,12 +49,25 @@ def _ensure_tables(db: Session) -> None:
     - Concurrency: Race conditions with multiple requests
     - Performance: Overhead on every request (mitigated by flag)
     - Operations: Schema changes not tracked/versioned
+
+    IMPORTANT: Only runs in development mode to avoid multi-worker DDL races.
+    Production/staging deployments MUST use Alembic migrations instead.
     """
     global _tables_initialized
 
     # Skip if already initialized (avoid DDL on every request)
     if _tables_initialized:
         return
+
+    # DEV-ONLY: Block runtime DDL in production/staging to prevent race conditions
+    if settings.APP_ENV in ("production", "staging"):
+        logger.error(
+            "[OrgOnboarding] Runtime DDL blocked in production/staging. "
+            "Use Alembic migrations instead: alembic upgrade head"
+        )
+        raise RuntimeError(
+            "Runtime DDL not allowed in production/staging. Use Alembic migrations."
+        )
 
     db.execute(
         text(

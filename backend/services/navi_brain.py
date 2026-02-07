@@ -5561,24 +5561,33 @@ class SelfHealingEngine:
             )
 
         elif error_type == "port":
-            # Intelligent port conflict handling
-            # TODO: Verify recovery-action executor supports "intelligentPortRecovery" type
-            # If not recognized downstream, port recovery will silently fail. Consider:
-            # 1. Keep old action types (checkPort/killPort/findPort) as fallback, OR
-            # 2. Add executor support in same PR
+            # Port conflict handling - using backward-compatible action types
+            # Use existing action types (checkPort/killPort/findPort) that executor supports
             port = int(captured_groups[0]) if captured_groups else 3000
-            workspace_path = context.get("workspace_path") if context else None
 
-            # This will be replaced with actual async logic during execution
-            # For now, just provide the smart recovery actions
-            actions.append(
-                {
-                    "type": "intelligentPortRecovery",
-                    "port": port,
-                    "workspace_path": workspace_path,
-                    "description": f"Intelligently resolve port {port} conflict",
-                    "auto_execute": True,  # Can auto-execute after checking
-                }
+            # Provide sequence of actions for intelligent port recovery
+            # These actions are recognized by the existing recovery executor
+            actions.extend(
+                [
+                    {
+                        "type": "checkPort",
+                        "port": port,
+                        "description": f"Check what's using port {port}",
+                        "auto_execute": False,
+                    },
+                    {
+                        "type": "killPort",
+                        "port": port,
+                        "description": f"Kill process on port {port}",
+                        "auto_execute": False,  # Requires user confirmation
+                    },
+                    {
+                        "type": "findPort",
+                        "port": port,
+                        "description": f"Find alternative port near {port}",
+                        "auto_execute": True,
+                    },
+                ]
             )
 
         elif error_type == "lint":

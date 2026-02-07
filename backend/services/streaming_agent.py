@@ -761,6 +761,8 @@ NAVI_TOOLS = [
                     "type": "integer",
                     "description": "Optional: timeout in seconds (default 300, max 1800). Use longer timeouts for builds, tests, or package installs.",
                     "default": 300,
+                    "minimum": 1,
+                    "maximum": 1800,
                 },
             },
             "required": ["command"],

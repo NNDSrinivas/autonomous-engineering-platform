@@ -203,6 +203,51 @@ This document closes the current production gaps and provides concrete artifacts
 
 ---
 
+## Critical Pre-Production Blockers
+
+**Status:** 🔴 **MUST FIX BEFORE PRODUCTION**
+
+The following issues were identified during Copilot code review (PR #64) and must be addressed in the next PR:
+
+### 1. Authentication Context Not Used (CRITICAL)
+
+**Location:** `backend/api/navi.py:7147` - Autonomous task endpoint
+
+**Issue:**
+- Endpoint uses `DEV_*` environment variables instead of authenticated request context
+- Bypasses authentication layer entirely for user/org context
+- Breaks multi-tenancy and org isolation in production
+- Security risk: Activity misattribution, unauthorized access
+
+**Impact:**
+- ❌ Cannot deploy to production - breaks security model
+- ❌ Multi-org deployments will fail
+- ❌ Audit trails will be incorrect
+
+**Required Fix:**
+- Refactor autonomous task endpoint to pull user/org from auth layer (request.state / dependency injection)
+- Only fall back to DEV_* in explicit dev/test mode
+- Add validation that authenticated user matches org context
+- Update all code paths that derive user_id/org_id from env vars
+
+**Tracking:**
+- Issue: To be created in next sprint
+- Target: Next PR after PR #64 merge
+- Priority: P0 - Blocks production deployment
+
+**Related Code:**
+```python
+# Current (BROKEN for production):
+user_id = os.getenv("DEV_USER_ID", "default_user")
+org_id = os.getenv("X_ORG_ID", "default_org")
+
+# Required (production-ready):
+user_id = user.user_id  # From authenticated request
+org_id = user.org_id    # From authenticated request
+```
+
+---
+
 # Go‑Live Checklist (Minimum)
 
 - User onboarding flow complete
@@ -212,3 +257,4 @@ This document closes the current production gaps and provides concrete artifacts
 - Pricing published
 - Support loop active
 - Metrics dashboards live
+- ✅ **Critical auth context issue fixed (see above)**

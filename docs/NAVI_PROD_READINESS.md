@@ -67,6 +67,52 @@ org_id = user.org_id    # From authenticated request
 
 ---
 
+### 2. Port Recovery Action Type Not Supported (MEDIUM)
+
+**Location:** `backend/services/navi_brain.py:5582` - Port conflict recovery
+
+**Issue:**
+- Changed recovery action type from `checkPort`/`killPort`/`findPort` to `intelligentPortRecovery`
+- New action type may not be recognized by downstream executors
+- Port recovery could silently fail if executor doesn't support new type
+- No executor implementation included in PR #64
+
+**Impact:**
+- ⚠️ Port recovery may not work (regression from current behavior)
+- Port conflict errors may not be automatically resolved
+- Tasks could fail due to port conflicts without proper recovery
+
+**Required Fix:**
+- Option A: Reintroduce old action types (`checkPort`, `killPort`, `findPort`) as fallback alongside new action
+- Option B: Add executor support for `intelligentPortRecovery` action type
+- Option C: Keep old action types and deprecate new one until executor is ready
+
+**Tracking:**
+- Issue: To be created in next sprint
+- Target: Next PR after PR #64 merge
+- Priority: P2 - Medium (functionality regression, not security)
+
+**Related Code:**
+```python
+# Current (new action type):
+{
+    "type": "intelligentPortRecovery",
+    "port": port,
+    "workspace_path": workspace_path,
+    "description": f"Intelligently recover from port {port} conflict",
+    "auto_execute": True,
+}
+
+# Option A (backward-compatible fallback):
+actions.extend([
+    {"type": "checkPort", "port": port, ...},
+    {"type": "killPort", "port": port, ...},
+    {"type": "findPort", "port": port, ...},
+])
+```
+
+---
+
 ## Release Criteria (Minimum for Production)
 - Reliability:
   - 20+ consecutive E2E runs with zero flakes.
@@ -492,6 +538,7 @@ sudo systemctl enable --now navi-feedback-analyzer.timer
 
 ### Pre-Production Validation
 - [ ] **✅ Critical auth context issue fixed (see "CRITICAL PRE-PRODUCTION BLOCKERS" section above)**
+- [ ] **✅ Port recovery action type issue fixed (see "CRITICAL PRE-PRODUCTION BLOCKERS" section above)**
 - [ ] 100+ real LLM E2E tests passing (p95 < 5s)
 - [ ] Audit encryption mandatory and tested
 - [ ] Learning system background analyzer running

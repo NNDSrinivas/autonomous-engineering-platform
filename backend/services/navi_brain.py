@@ -5425,7 +5425,10 @@ class SelfHealingEngine:
             try:
                 data = json.loads(package_json.read_text())
                 scripts = data.get("scripts", {})
-                dev_script = scripts.get("dev", "") + scripts.get("start", "")
+                # Join scripts with space to prevent token merging (e.g., "3000npm" → "3000 npm")
+                dev_script = " ".join(
+                    [scripts.get("dev", ""), scripts.get("start", "")]
+                )
                 # Look for port flags in scripts
                 match = re.search(r"--port[=\s]+(\d+)|PORT=(\d+)", dev_script)
                 if match:

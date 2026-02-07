@@ -38,7 +38,11 @@ class FeedbackAnalyzerTask:
             # Generate aggregate insights for each org
             for org_id in org_ids:
                 try:
-                    insights = analyzer.generate_aggregate_insights(org_id)
+                    # Offload potentially expensive analysis to worker thread
+                    insights = await asyncio.to_thread(
+                        analyzer.generate_aggregate_insights, org_id
+                    )
+                    # Add insights to store (sync operation, but fast)
                     for insight in insights:
                         manager.store.add_insight(insight)
 

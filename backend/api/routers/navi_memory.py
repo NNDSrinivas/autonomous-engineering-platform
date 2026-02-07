@@ -15,6 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.core.auth.deps import get_current_user
+from backend.core.auth.models import User
 from backend.database.session import get_db
 from backend.services.memory.user_memory import get_user_memory_service
 from backend.services.memory.org_memory import get_org_memory_service
@@ -535,13 +537,12 @@ async def get_conversation(
 async def update_conversation(
     conversation_id: UUID,
     update: ConversationUpdate,
-    user_id: int,
-    org_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """Update conversation metadata.
 
-    Security: Requires user_id and verifies conversation ownership before update.
+    Security: Uses authenticated user from JWT/session, not user-controlled params.
     """
     service = get_conversation_memory_service(db)
 
@@ -550,12 +551,25 @@ async def update_conversation(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Verify ownership: conversation belongs to the authenticated user/org
+    # Verify ownership: conversation belongs to the authenticated user
+    # Get user_id from authenticated user (not from request params)
+    user_id = (
+        current_user.user_id if hasattr(current_user, "user_id") else current_user.id
+    )
+    org_id = getattr(current_user, "org_id", None) or getattr(
+        current_user, "org_key", None
+    )
+
     if conversation.user_id != user_id:
         raise HTTPException(
             status_code=403, detail="Not authorized to modify this conversation"
         )
-    if org_id and hasattr(conversation, "org_id") and conversation.org_id != org_id:
+    if (
+        org_id
+        and hasattr(conversation, "org_id")
+        and conversation.org_id
+        and conversation.org_id != org_id
+    ):
         raise HTTPException(
             status_code=403, detail="Not authorized to modify this conversation"
         )

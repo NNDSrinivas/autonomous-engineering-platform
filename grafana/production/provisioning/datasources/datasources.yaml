@@ -1,0 +1,23 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: ${PROMETHEUS_URL}
+    isDefault: true
+    editable: false
+
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: ${NAVI_DB_HOST}
+    database: ${NAVI_DB_NAME}
+    user: ${NAVI_DB_USER}
+    editable: false
+    secureJsonData:
+      password: ${NAVI_DB_PASSWORD}
+    jsonData:
+      sslmode: require
+      postgresVersion: 1500
+      timescaledb: false

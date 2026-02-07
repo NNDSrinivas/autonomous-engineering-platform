@@ -156,7 +156,7 @@ def list_audit_logs(
 
 @router.get("/audit/export")
 def export_audit_logs(
-    format: str = Query("json", pattern="^(json|csv)$"),
+    export_format: str = Query("json", pattern="^(json|csv)$"),
     org: Optional[str] = Query(None, description="Filter by organization key"),
     actor: Optional[str] = Query(None, description="Filter by actor subject"),
     since: Optional[str] = Query(None, description="ISO timestamp (inclusive)"),
@@ -185,7 +185,7 @@ def export_audit_logs(
 
         rows = db.execute(q).scalars().all()
 
-        if format == "json":
+        if export_format == "json":
             return [
                 _audit_row_to_dict(row, include_payload=include_payload) for row in rows
             ]

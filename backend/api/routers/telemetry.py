@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.core.settings import settings
 from backend.database.session import get_db
 
 logger = logging.getLogger(__name__)
@@ -144,8 +145,8 @@ def _persist_telemetry_event(
     db_event = DBTelemetryEvent(
         org_id=org_id_int,
         user_id=user_id_int,
-        event_type=event_category or "unknown",
-        event_category=event_category,
+        event_type=event.type or "unknown",  # Full dotted type for specificity
+        event_category=event_category,  # First segment for grouping
         event_name=event_name,
         event_data=event.data,
         session_id=event.sessionId,
@@ -191,7 +192,7 @@ def _persist_error_event(
         component=event.data.get("component"),
         operation=event.data.get("operation"),
         session_id=event.sessionId,
-        environment="production",  # Could be extracted from config
+        environment=settings.APP_ENV or "development",
         user_visible=1 if event.data.get("userVisible", True) else 0,
     )
 

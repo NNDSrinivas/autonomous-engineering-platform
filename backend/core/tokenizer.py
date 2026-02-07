@@ -9,13 +9,18 @@ logger = logging.getLogger(__name__)
 
 
 class SimpleCharTokenizer:
-    """Fallback tokenizer for offline/test environments."""
+    """Fallback tokenizer for offline/test environments.
 
-    def encode(self, text: str) -> list[str]:
-        return list(text)
+    Returns list[int] to match tiktoken interface (using character ordinals as token IDs).
+    """
 
-    def decode(self, tokens: list[str]) -> str:
-        return "".join(tokens)
+    def encode(self, text: str) -> list[int]:
+        """Encode text into a list of integer token IDs (character ordinals)."""
+        return [ord(c) for c in text]
+
+    def decode(self, tokens: list[int]) -> str:
+        """Decode a list of integer token IDs back into text."""
+        return "".join(chr(t) for t in tokens)
 
 
 def _should_allow_fallback() -> bool:

@@ -26,6 +26,7 @@ from backend.core.db import Base  # noqa: E402
 from backend.core.config import settings  # noqa: E402
 
 # Import all models to register them with Base.metadata
+import backend.models  # noqa: E402, F401
 
 
 def main():

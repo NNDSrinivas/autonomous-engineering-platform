@@ -11,6 +11,7 @@ from typing import Dict, Tuple, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import hashlib
+import re
 
 
 @dataclass
@@ -65,7 +66,8 @@ class IntelligentRetryLimiter:
         if approach:
             components.append(approach)
         combined = ":".join(components)
-        return hashlib.md5(combined.encode()).hexdigest()[:16]
+        # Using SHA-256 for bucketing/signatures (non-cryptographic purpose)
+        return hashlib.sha256(combined.encode()).hexdigest()[:16]
 
     def _generate_error_signature(self, error: str) -> str:
         """Generate signature for an error message (normalized)"""
@@ -73,10 +75,9 @@ class IntelligentRetryLimiter:
         normalized = error.lower().strip()
         # Remove common variable parts
         for pattern in [r"\d+", r"at \d+:\d+", r"line \d+"]:
-            import re
-
             normalized = re.sub(pattern, "", normalized)
-        return hashlib.md5(normalized.encode()).hexdigest()[:16]
+        # Using SHA-256 for bucketing/signatures (non-cryptographic purpose)
+        return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
     def _get_attempt_key(self, action_sig: str, error_sig: str) -> str:
         """Combine action and error signatures into a unique key"""
@@ -234,10 +235,12 @@ class IntelligentRetryLimiter:
             ],
         )
 
-        # Pick a suggestion (could be made smarter based on the error)
-        import random
-
-        suggestion = random.choice(action_suggestions)
+        # Pick a deterministic suggestion based on the action/target/error combination
+        # This ensures consistent UX and makes debugging easier
+        key = f"{action}|{target}|{error}"
+        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        index = int(digest[:8], 16) % len(action_suggestions)
+        suggestion = action_suggestions[index]
 
         return (
             f"This action has been tried {self.MAX_IDENTICAL_RETRIES} times with the same error. "

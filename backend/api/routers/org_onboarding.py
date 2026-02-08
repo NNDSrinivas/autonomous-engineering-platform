@@ -61,7 +61,7 @@ def _ensure_tables(db: Session) -> None:
 
     # In production/staging, assume Alembic has created tables and skip runtime DDL
     # This prevents multi-worker DDL race conditions
-    if settings.APP_ENV in ("production", "staging"):
+    if settings.app_env in ("production", "staging"):
         logger.info(
             "[OrgOnboarding] Skipping runtime DDL in production/staging; "
             "tables must be managed via Alembic migrations."

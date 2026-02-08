@@ -441,7 +441,7 @@ async def stream_plan_updates(
             yield f"data: {json.dumps({'seq': None, 'type': 'connected', 'payload': {'plan_id': plan_id}})}\n\n"
 
             # In test/CI environments, return immediately after initial handshake to avoid hanging connections
-            env_now = os.getenv("APP_ENV", settings.APP_ENV).lower()
+            env_now = os.getenv("APP_ENV", settings.app_env).lower()
             if env_now in {"test", "ci"}:
                 return
 

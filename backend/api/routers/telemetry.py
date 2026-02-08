@@ -278,7 +278,7 @@ def _persist_error_event(
         component=event.data.get("component"),
         operation=event.data.get("operation"),
         session_id=event.sessionId,
-        environment=settings.APP_ENV or "development",
+        environment=settings.app_env or "development",
         user_visible=1 if event.data.get("userVisible", True) else 0,
     )
 

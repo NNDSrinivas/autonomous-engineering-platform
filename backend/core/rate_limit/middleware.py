@@ -415,7 +415,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             log_rate_limit_middleware_error(str(e), path, method)
             # If fallback is enabled (dev/ci), keep the system available.
-            if settings.RATE_LIMITING_FALLBACK_ENABLED or settings.APP_ENV in {
+            if settings.RATE_LIMITING_FALLBACK_ENABLED or settings.app_env in {
                 "development",
                 "dev",
                 "test",

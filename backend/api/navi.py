@@ -1435,8 +1435,7 @@ async def handle_consent_response(
             f"[NAVI API] 🔐 Consent {consent_id}: {'APPROVED' if approved else 'DENIED'} for command: {command}"
         )
 
-        # TODO: Move consent storage to DB/Redis for multi-user support
-        # and add user/org validation (consent_id, user_id, org_id)
+        # TODO: Move consent storage to DB/Redis for persistent multi-user support
 
         # Update the consent approval in global storage
         if consent_id not in _consent_approvals:
@@ -1449,6 +1448,31 @@ async def handle_consent_response(
                 "success": False,
                 "consent_id": consent_id,
                 "error": "Consent not found or has expired",
+            }
+
+        # Validate user/org ownership to prevent consent hijacking
+        consent_record = _consent_approvals[consent_id]
+        consent_user_id = consent_record.get("user_id")
+        consent_org_id = consent_record.get("org_id")
+
+        if consent_user_id and consent_user_id != user.user_id:
+            logger.warning(
+                f"[NAVI API] ⚠️ Security: User {user.user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
+            )
+            return {
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Unauthorized: You do not have permission to approve this consent",
+            }
+
+        if consent_org_id and consent_org_id != user.org_id:
+            logger.warning(
+                f"[NAVI API] ⚠️ Security: Org {user.org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
+            )
+            return {
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Unauthorized: This consent belongs to a different organization",
             }
 
         # Update existing consent

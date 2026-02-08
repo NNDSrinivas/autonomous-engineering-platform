@@ -230,7 +230,7 @@ patterns:
       - "start the server"
       - "serve the site"
 
-  - regex: "build\\s+(?:the\\s+)?(?:app|project|site)?\\b"
+  - regex: "build(?:\\s+(?:the\\s+)?(?:app|project|site))?\\b"
     action: "build"
     confidence: 0.8
     examples:

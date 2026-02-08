@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     # Application environment
-    APP_ENV: str = "development"
+    app_env: str = "development"
     DEBUG: bool = False  # Enable debug mode for development
     # Defer optional/auxiliary router imports until first request hits those paths
     DEFER_OPTIONAL_ROUTERS: bool = True
@@ -135,10 +135,10 @@ if settings.JWT_ENABLED and not (
     )
 
 # Validate audit encryption: encryption key is REQUIRED in production/staging
-if settings.APP_ENV in ("production", "staging") and settings.enable_audit_logging:
+if settings.app_env in ("production", "staging") and settings.enable_audit_logging:
     if not settings.AUDIT_ENCRYPTION_KEY:
         raise ValueError(
-            f"AUDIT_ENCRYPTION_KEY is REQUIRED when APP_ENV={settings.APP_ENV} and audit logging is enabled. "
+            f"AUDIT_ENCRYPTION_KEY is REQUIRED when app_env={settings.app_env} and audit logging is enabled. "
             "Set AUDIT_ENCRYPTION_KEY environment variable to a secure 32-byte base64 key. "
             "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
         )

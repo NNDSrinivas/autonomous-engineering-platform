@@ -3376,6 +3376,8 @@ Return ONLY the JSON, no markdown or explanations."""
                             "cmd_info": cmd_info,
                             "permission_request": permission_request,
                             "timestamp": int(__import__("time").time()),
+                            "user_id": self.user_id,
+                            "org_id": self.org_id,
                         }
                         self.pending_consents[consent_id] = consent_data
                         _consent_approvals[consent_id] = {
@@ -3383,6 +3385,8 @@ Return ONLY the JSON, no markdown or explanations."""
                             "command": command,
                             "timestamp": int(__import__("time").time()),
                             "pending": True,
+                            "user_id": self.user_id,
+                            "org_id": self.org_id,
                         }
 
                         # Return consent required response

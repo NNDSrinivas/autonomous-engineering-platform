@@ -14,6 +14,41 @@ from typing import Iterable, List, Optional, Tuple
 
 import subprocess
 import asyncio
+import shutil
+
+
+def get_shell_executable() -> str:
+    """
+    Get the best available shell executable for command execution.
+
+    Checks in order:
+    1. User's SHELL environment variable (if set and valid)
+    2. /bin/bash (preferred for advanced features)
+    3. /bin/sh (POSIX-compliant fallback)
+
+    Returns:
+        Path to shell executable
+    """
+    # Check user's preferred shell from environment
+    user_shell = os.environ.get("SHELL")
+    if user_shell and os.path.isfile(user_shell) and os.access(user_shell, os.X_OK):
+        return user_shell
+
+    # Try bash first (preferred for advanced features)
+    if shutil.which("bash"):
+        return shutil.which("bash")
+
+    # Fall back to sh (POSIX-compliant, available on all Unix-like systems)
+    if shutil.which("sh"):
+        return shutil.which("sh")
+
+    # Last resort: try common paths
+    for shell in ["/bin/bash", "/bin/sh", "/usr/bin/bash", "/usr/bin/sh"]:
+        if os.path.isfile(shell) and os.access(shell, os.X_OK):
+            return shell
+
+    # If all else fails, use /bin/sh (should exist on all Unix-like systems)
+    return "/bin/sh"
 
 
 def is_node_command(command: str, extra_cmds: Optional[Iterable[str]] = None) -> bool:
@@ -225,7 +260,7 @@ def run_subprocess(
             check=False,
             timeout=timeout,
             env=env,
-            executable="/bin/bash",
+            executable=get_shell_executable(),
         )
         stdout = proc.stdout or ""
         stderr = proc.stderr or ""
@@ -259,7 +294,7 @@ async def run_subprocess_async(
         cwd=cwd,
         stdout=asyncio.subprocess.PIPE,
         stderr=stderr_target,
-        executable="/bin/bash",
+        executable=get_shell_executable(),
         env=env,
     )
     try:

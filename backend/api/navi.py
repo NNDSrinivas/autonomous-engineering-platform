@@ -7174,7 +7174,8 @@ async def navi_autonomous_task(
     # Extract user context from authenticated user
     # - Derive from the user dependency (authenticated via require_role)
     # - In development/test/CI, allow overriding via DEV_* environment variables for convenience
-    if settings.app_env in {"dev", "development", "test", "ci"}:
+    # Use normalized environment checks to handle aliases (dev, Dev, DEVELOPMENT, etc.)
+    if settings.is_development() or settings.is_test():
         # In dev-like environments, allow convenient overrides for testing
         user_id = (
             os.environ.get("DEV_USER_ID")

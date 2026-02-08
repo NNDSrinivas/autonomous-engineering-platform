@@ -138,6 +138,11 @@ class Settings(BaseSettings):
         origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
         return [origin for origin in origins if origin]
 
+    @property
+    def APP_ENV(self) -> str:
+        """Backwards compatibility alias for app_env (uppercase)."""
+        return self.app_env
+
     def _normalize_env(self) -> str:
         """
         Normalize this instance's environment name to canonical form.

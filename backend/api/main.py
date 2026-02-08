@@ -45,7 +45,7 @@ from backend.core.rate_limit.middleware import RateLimitMiddleware
 from backend.core.auth.vscode_middleware import VscodeAuthMiddleware
 
 from backend.core.config import settings
-from backend.core.settings import validate_production_settings
+from backend.core.settings import settings as core_settings, validate_production_settings
 
 # removed unused: setup_logging (using obs logging instead)
 # removed unused: metrics_router (using new /metrics mount)
@@ -197,7 +197,7 @@ init_tracing()
 async def lifespan(app: FastAPI):
     """Application lifespan: manage startup/shutdown of background services."""
     # Startup: validate production settings and initialize background services
-    validate_production_settings(settings)  # Validate production-specific settings
+    validate_production_settings(core_settings)  # Validate production-specific settings
     await on_startup()  # PR-29: Health system startup
     presence_lifecycle.start_cleanup_thread()
     yield
@@ -346,7 +346,7 @@ app.add_middleware(
     allow_dev_bypass=settings.allow_dev_auth_bypass,
 )
 # RequestIDMiddleware removed - ObservabilityMiddleware provides this functionality
-app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
+app.add_middleware(RateLimitMiddleware, enabled=core_settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 
 # Conditional audit logging (disabled in test/CI environments to prevent DB errors)

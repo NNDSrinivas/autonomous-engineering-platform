@@ -97,6 +97,7 @@ class Cache:
         Atomically get and delete a JSON value.
 
         Uses Redis GETDEL when available (atomic operation).
+        Falls back to Lua script for older Redis versions.
         Falls back to locked get-then-delete for in-memory cache.
 
         Returns:
@@ -104,9 +105,22 @@ class Cache:
         """
         r = await self._ensure()
         if r:
-            # Use Redis GETDEL for atomic read-and-delete
-            raw = await r.getdel(key)
-            return json.loads(raw) if raw else None
+            # Use Redis GETDEL for atomic read-and-delete (Redis 6.2+)
+            try:
+                raw = await r.getdel(key)
+                return json.loads(raw) if raw else None
+            except (AttributeError, TypeError):
+                # Fallback for Redis/redis-py versions without GETDEL support
+                # Use an atomic Lua script to GET and DEL the key
+                lua_script = """
+                local v = redis.call('GET', KEYS[1])
+                if v then
+                    redis.call('DEL', KEYS[1])
+                end
+                return v
+                """
+                raw = await r.eval(lua_script, 1, key)
+                return json.loads(raw) if raw else None
         else:
             # For in-memory cache, use lock to make operation atomic
             async with self._mem_lock:

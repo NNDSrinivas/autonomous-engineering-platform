@@ -1246,12 +1246,16 @@ Please debug this issue and continue with the original task. The user's new mess
                 )
 
                 # OPTIMIZATION: Check cache for 50-95% latency improvement on repeated queries
+                # Include workspace/model/provider for proper cache scoping
+                # Note: org_id/user_id would improve tenant isolation but aren't available
+                # on this unauthenticated VS Code extension endpoint
                 cache_key = generate_cache_key(
                     message=actual_message,
                     mode=request.mode,
-                    conversation_history=conversation_history[
-                        -5:
-                    ],  # Last 5 for cache key
+                    conversation_history=conversation_history[-5:],  # Last 5 for cache key
+                    workspace_path=workspace_path,
+                    model=llm_model,
+                    provider=llm_provider,
                 )
                 cached_result = get_cached_response(cache_key)
 

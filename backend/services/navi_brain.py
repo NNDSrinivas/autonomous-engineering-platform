@@ -34,6 +34,7 @@ from datetime import datetime
 import re
 import logging
 import sys
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -5236,6 +5237,7 @@ class SelfHealingEngine:
     # Using OrderedDict with bounded size to prevent unbounded memory growth
     _PORT_MEMORY_MAX_SIZE = 1000  # Limit to 1000 workspace entries
     _port_memory: OrderedDict[str, int] = OrderedDict()
+    _port_memory_lock = threading.Lock()  # Protect port memory from concurrent access
 
     @classmethod
     def _update_port_memory(cls, workspace_path: str, port: int) -> None:
@@ -5246,15 +5248,16 @@ class SelfHealingEngine:
         This helper should be used for all writes to _port_memory to
         ensure the in-memory cache does not grow without bound.
         """
-        # Mark as most recently used (if it already exists)
-        if workspace_path in cls._port_memory:
-            cls._port_memory.move_to_end(workspace_path)
-        # Set or update the port for this workspace
-        cls._port_memory[workspace_path] = port
-        # Enforce bounded size by evicting least recently used entries
-        while len(cls._port_memory) > cls._PORT_MEMORY_MAX_SIZE:
-            # popitem(last=False) removes the oldest (least recently used) item
-            cls._port_memory.popitem(last=False)
+        with cls._port_memory_lock:
+            # Mark as most recently used (if it already exists)
+            if workspace_path in cls._port_memory:
+                cls._port_memory.move_to_end(workspace_path)
+            # Set or update the port for this workspace
+            cls._port_memory[workspace_path] = port
+            # Enforce bounded size by evicting least recently used entries
+            while len(cls._port_memory) > cls._PORT_MEMORY_MAX_SIZE:
+                # popitem(last=False) removes the oldest (least recently used) item
+                cls._port_memory.popitem(last=False)
 
     # Common error patterns and their fixes
     ERROR_PATTERNS = {

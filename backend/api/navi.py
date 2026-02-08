@@ -1426,7 +1426,7 @@ async def handle_consent_response(
     """
     try:
         # Import the global consent storage from autonomous_agent
-        from backend.services.autonomous_agent import _consent_approvals
+        from backend.services.autonomous_agent import _consent_approvals, _consent_lock
 
         body = await request.json()
         approved = body.get("approved", False)
@@ -1438,51 +1438,52 @@ async def handle_consent_response(
 
         # TODO: Move consent storage to DB/Redis for persistent multi-user support
 
-        # Update the consent approval in global storage
-        if consent_id not in _consent_approvals:
-            # Consent ID not found (might have expired or already processed)
-            # Do not create new consent record to prevent spoofing
-            logger.warning(
-                f"[NAVI API] Consent {consent_id} not found in pending approvals"
-            )
-            return {
-                "success": False,
-                "consent_id": consent_id,
-                "error": "Consent not found or has expired",
-            }
-
-        # Validate user/org ownership to prevent consent hijacking
-        consent_record = _consent_approvals[consent_id]
-        consent_user_id = consent_record.get("user_id")
-        consent_org_id = consent_record.get("org_id")
-
         # Derive org consistently using getattr to handle different User implementations
         user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
 
-        if consent_user_id and consent_user_id != user.user_id:
-            logger.warning(
-                f"[NAVI API] ⚠️ Security: User {user.user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
-            )
-            return {
-                "success": False,
-                "consent_id": consent_id,
-                "error": "Unauthorized: You do not have permission to approve this consent",
-            }
+        # Update the consent approval in global storage (protected by lock for thread safety)
+        with _consent_lock:
+            if consent_id not in _consent_approvals:
+                # Consent ID not found (might have expired or already processed)
+                # Do not create new consent record to prevent spoofing
+                logger.warning(
+                    f"[NAVI API] Consent {consent_id} not found in pending approvals"
+                )
+                return {
+                    "success": False,
+                    "consent_id": consent_id,
+                    "error": "Consent not found or has expired",
+                }
 
-        if consent_org_id and user_org_id and consent_org_id != user_org_id:
-            logger.warning(
-                f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
-            )
-            return {
-                "success": False,
-                "consent_id": consent_id,
-                "error": "Unauthorized: This consent belongs to a different organization",
-            }
+            # Validate user/org ownership to prevent consent hijacking
+            consent_record = _consent_approvals[consent_id]
+            consent_user_id = consent_record.get("user_id")
+            consent_org_id = consent_record.get("org_id")
 
-        # Update existing consent
-        _consent_approvals[consent_id]["approved"] = approved
-        _consent_approvals[consent_id]["pending"] = False
-        _consent_approvals[consent_id]["response_timestamp"] = time.time()
+            if consent_user_id and consent_user_id != user.user_id:
+                logger.warning(
+                    f"[NAVI API] ⚠️ Security: User {user.user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
+                )
+                return {
+                    "success": False,
+                    "consent_id": consent_id,
+                    "error": "Unauthorized: You do not have permission to approve this consent",
+                }
+
+            if consent_org_id and user_org_id and consent_org_id != user_org_id:
+                logger.warning(
+                    f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
+                )
+                return {
+                    "success": False,
+                    "consent_id": consent_id,
+                    "error": "Unauthorized: This consent belongs to a different organization",
+                }
+
+            # Update existing consent
+            _consent_approvals[consent_id]["approved"] = approved
+            _consent_approvals[consent_id]["pending"] = False
+            _consent_approvals[consent_id]["response_timestamp"] = time.time()
 
         return {
             "success": True,
@@ -7139,13 +7140,12 @@ async def navi_autonomous_task(
     db: Session = Depends(get_db),
     user: User = Depends(require_role(Role.VIEWER)),
 ):
-    # DEBUG: Print to stdout to ensure this endpoint is being called
-    print("[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
-    print(
-        f"[NAVI Autonomous DEBUG] Message: {request.message[:100] if request.message else 'None'}..."
+    # DEBUG: Log endpoint invocation for troubleshooting
+    logger.debug(
+        "[NAVI Autonomous] Endpoint called - Message: %s, Attachments: %s",
+        request.message[:100] if request.message else "None",
+        len(request.attachments) if request.attachments else 0,
     )
-    print(f"[NAVI Autonomous DEBUG] Attachments: {request.attachments}")
-    print("[NAVI Autonomous DEBUG] =====================================")
     """
     NAVI Autonomous Task Execution
 

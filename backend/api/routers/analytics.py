@@ -202,7 +202,15 @@ def org_dashboard(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     range_info = _compute_range(days)
-    org_id = user.org_id
+
+    # Derive org consistently using getattr to handle different User implementations
+    # Fail closed if no org context is available to prevent cross-tenant data leakage
+    org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+    if not org_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Organization context required for org dashboard"
+        )
 
     llm = _summarize_llm_metrics(db, range_info["start"], org_id, None)
     tasks = _summarize_tasks(db, range_info["start"], org_id, None)

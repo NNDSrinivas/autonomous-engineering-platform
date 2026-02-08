@@ -19,6 +19,7 @@ import subprocess
 import asyncio
 import uuid
 import re
+import threading
 import time
 from typing import AsyncGenerator, AsyncIterator, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
@@ -83,6 +84,7 @@ logger = logging.getLogger(__name__)
 #   - Should use Redis with TTL (~5min) and atomic operations to prevent races
 #   - Consider adding "processed" flag and rejecting updates to already-processed consents
 _consent_approvals: Dict[str, Dict[str, Any]] = {}
+_consent_lock = threading.Lock()  # Protect consent mutations from concurrent access
 
 # ========== PLAN DETECTION ==========
 # Patterns to detect execution plans in LLM output
@@ -3339,26 +3341,35 @@ Return ONLY the JSON, no markdown or explanations."""
                     # Check if consent has already been granted for this command
                     consent_id = arguments.get("consent_id")
 
-                    # Check global consent approvals first
-                    if consent_id and consent_id in _consent_approvals:
-                        approval = _consent_approvals[consent_id]
-                        if approval.get("approved"):
-                            # Consent was approved, proceed with execution
-                            logger.info(
-                                f"[AutonomousAgent] ✅ Consent approved for command: {command}"
-                            )
-                            # Clean up the approval to prevent reuse
-                            del _consent_approvals[consent_id]
-                        else:
-                            # Consent was denied
-                            logger.info(
-                                f"[AutonomousAgent] ❌ Consent denied for command: {command}"
-                            )
-                            return {
-                                "success": False,
-                                "error": "User denied consent for this command",
-                                "consent_denied": True,
-                            }
+                    # Check global consent approvals first (protected by lock)
+                    with _consent_lock:
+                        consent_approved = False
+                        consent_denied = False
+
+                        if consent_id and consent_id in _consent_approvals:
+                            approval = _consent_approvals[consent_id]
+                            if approval.get("approved"):
+                                # Consent was approved, proceed with execution
+                                logger.info(
+                                    f"[AutonomousAgent] ✅ Consent approved for command: {command}"
+                                )
+                                # Clean up the approval to prevent reuse
+                                del _consent_approvals[consent_id]
+                                consent_approved = True
+                            else:
+                                # Consent was denied
+                                logger.info(
+                                    f"[AutonomousAgent] ❌ Consent denied for command: {command}"
+                                )
+                                consent_denied = True
+
+                    # Handle consent decision outside lock to avoid holding it during return
+                    if consent_denied:
+                        return {
+                            "success": False,
+                            "error": "User denied consent for this command",
+                            "consent_denied": True,
+                        }
                     elif not consent_id or consent_id not in self.pending_consents:
                         # Generate new consent request
                         consent_id = str(uuid.uuid4())
@@ -3377,14 +3388,15 @@ Return ONLY the JSON, no markdown or explanations."""
                             "org_id": self.org_id,
                         }
                         self.pending_consents[consent_id] = consent_data
-                        _consent_approvals[consent_id] = {
-                            "approved": False,
-                            "command": command,
-                            "timestamp": int(__import__("time").time()),
-                            "pending": True,
-                            "user_id": self.user_id,
-                            "org_id": self.org_id,
-                        }
+                        with _consent_lock:
+                            _consent_approvals[consent_id] = {
+                                "approved": False,
+                                "command": command,
+                                "timestamp": int(__import__("time").time()),
+                                "pending": True,
+                                "user_id": self.user_id,
+                                "org_id": self.org_id,
+                            }
 
                         # Return consent required response
                         return {

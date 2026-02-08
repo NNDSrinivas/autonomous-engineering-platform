@@ -47,7 +47,26 @@ def is_node_command(command: str, extra_cmds: Optional[Iterable[str]] = None) ->
     cmd_parts = (command or "").split()
     if not cmd_parts:
         return False
-    first_cmd = cmd_parts[0]
+
+    # Skip leading environment variable assignments (e.g., PORT=3001 npm run dev)
+    # Also skip 'env' command (e.g., env NODE_ENV=production npm start)
+    executable_index = 0
+    for i, part in enumerate(cmd_parts):
+        if part == "env":
+            # Skip 'env' command itself
+            executable_index = i + 1
+            continue
+        if "=" in part:
+            # Skip KEY=VALUE assignments
+            executable_index = i + 1
+            continue
+        # Found the actual executable
+        break
+
+    if executable_index >= len(cmd_parts):
+        return False
+
+    first_cmd = cmd_parts[executable_index]
     return any(first_cmd == nc or first_cmd.endswith(f"/{nc}") for nc in node_commands)
 
 

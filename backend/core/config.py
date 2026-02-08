@@ -102,7 +102,8 @@ class Settings(BaseSettings):
                         f"Extra fields not permitted in app_env '{sanitize_for_logging(str(env_app_env))}': {sanitized_fields}"
                     )
             # Allow auth bypass automatically in test/ci unless explicitly configured
-            normalized_env = normalize_env(env_app_env)
+            # Default to "development" if env_app_env is None to avoid normalize_env error
+            normalized_env = normalize_env(env_app_env or "development")
             if (
                 normalized_env in ("test", "ci")
                 and "ALLOW_DEV_AUTH_BYPASS" not in os.environ

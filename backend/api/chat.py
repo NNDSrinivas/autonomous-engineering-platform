@@ -27,11 +27,8 @@ from backend.services.navi_memory_service import (
 )
 from backend.services.git_service import GitService
 from backend.core.ai.llm_service import LLMService
-from backend.core.response_cache import (
-    get_cached_response,
-    set_cached_response,
-    generate_cache_key,
-)
+
+# Note: Cache imports removed - caching disabled for unauthenticated endpoint (security)
 from backend.autonomous.enhanced_coding_engine import (
     TaskType as AutonomousTaskType,
 )
@@ -1245,26 +1242,14 @@ Please debug this issue and continue with the original task. The user's new mess
                     request.conversationHistory
                 )
 
-                # OPTIMIZATION: Check cache for 50-95% latency improvement on repeated queries
-                # Include workspace/model/provider for proper cache scoping
-                # Note: org_id/user_id would improve tenant isolation but aren't available
-                # on this unauthenticated VS Code extension endpoint
-                # IMPORTANT: Align cache key with actual LLM input (last 5 messages).
-                # Using full history would cause cache misses for identical effective inputs.
-                cache_conversation_history = (
-                    conversation_history[-5:] if conversation_history else None
-                )
-                cache_key = generate_cache_key(
-                    message=actual_message,
-                    mode=request.mode,
-                    conversation_history=cache_conversation_history,
-                    workspace_path=workspace_path,
-                    model=llm_model,
-                    provider=llm_provider,
-                )
-                cached_result = get_cached_response(cache_key)
+                # SECURITY: Caching disabled for unauthenticated endpoint
+                # Without org_id/user_id scoping, cache could leak data between users
+                # who happen to have the same workspace_path + message + history.
+                # TODO: Re-enable caching when proper per-client scoping is available
+                # (e.g., authenticated org/user, extension session ID, or anonymous token).
+                cached_result = None
 
-                if cached_result:
+                if cached_result is not None:
                     # Cache HIT - return immediately without LLM call!
                     logger.info(
                         "🚀 Cache HIT - serving cached response (latency saved!)"
@@ -1309,10 +1294,8 @@ Please debug this issue and continue with the original task. The user's new mess
                         elif "result" in event:
                             navi_result = event["result"]
 
-                    # Cache the result for future requests
-                    if navi_result:
-                        set_cached_response(cache_key, navi_result)
-                        logger.info(f"💾 Result cached for key {cache_key[:8]}...")
+                    # Note: Caching disabled for security (see above)
+                    # TODO: Re-enable when proper per-client scoping is available
 
                 # Process the final result
                 if navi_result:

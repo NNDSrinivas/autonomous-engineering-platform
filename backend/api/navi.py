@@ -192,6 +192,7 @@ def _resolve_model(model: Optional[str]) -> str:
     """
     if not model:
         from backend.core.settings import settings
+
         # Use cheaper model for dev/test, full model for production
         return "gpt-4o" if settings.is_production() else "gpt-4o-mini"
 

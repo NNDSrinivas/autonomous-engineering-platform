@@ -61,9 +61,21 @@ def generate_cache_key(
     # Note: Preserve original message case to avoid collisions where case matters
     # (e.g., code identifiers, file paths on case-sensitive filesystems)
     #
-    # IMPORTANT: Hash full conversation history to prevent cache collisions.
-    # Truncating history would cause different conversations to hash to the same key,
-    # leading to incorrect cache hits where unrelated queries return cached responses.
+    # IMPORTANT: Hash conversation history incrementally to prevent cache collisions
+    # while minimizing CPU/memory cost. For long chats, JSON-serializing full history
+    # on every request is expensive. Instead, we hash each message individually and
+    # combine into a single fixed-size digest.
+    history_hash = ""
+    if conversation_history:
+        # Hash each message individually and combine
+        message_hashes = []
+        for msg in conversation_history:
+            msg_str = f"{msg.get('role')}:{msg.get('content', '')}"
+            msg_hash = hashlib.sha256(msg_str.encode()).hexdigest()
+            message_hashes.append(msg_hash)
+        # Combine all message hashes into one history hash
+        history_hash = hashlib.sha256("".join(message_hashes).encode()).hexdigest()
+
     normalized = {
         "message": message.strip(),
         "mode": mode,
@@ -72,17 +84,7 @@ def generate_cache_key(
         "workspace_path": workspace_path,
         "model": model,
         "provider": provider,
-        "history": (
-            [
-                {
-                    "role": msg.get("role"),
-                    "content": msg.get("content", ""),  # Full content, no truncation
-                }
-                for msg in (conversation_history or [])
-            ]
-            if conversation_history
-            else []
-        ),
+        "history_hash": history_hash,  # Fixed-size hash instead of full history
     }
 
     # Create stable JSON representation

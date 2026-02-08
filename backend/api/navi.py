@@ -7197,7 +7197,9 @@ async def navi_autonomous_task(
                 detail="Authenticated user and organization context are required for autonomous tasks",
             )
 
-    logger.info(f"[NAVI Autonomous] User context: user_id={user_id}, org_id={org_id}")
+    logger.debug(
+        "[NAVI Autonomous] User context: user_id=%s, org_id=%s", user_id, org_id
+    )
 
     # Determine workspace path (support both workspace_path and workspace_root)
     workspace_path = request.workspace_path or request.workspace_root

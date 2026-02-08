@@ -7299,7 +7299,9 @@ async def navi_autonomous_task(
             """Wrap agent generator with periodic heartbeat events to keep SSE connection alive."""
             last_event_time = time.time()
             heartbeat_interval = 10  # Send heartbeat every 10 seconds of silence (reduced from 15s for better reliability)
-            agent_task = None  # Initialize before try to avoid UnboundLocalError in finally
+            agent_task = (
+                None  # Initialize before try to avoid UnboundLocalError in finally
+            )
 
             try:
                 # Process events from agent with heartbeat injection

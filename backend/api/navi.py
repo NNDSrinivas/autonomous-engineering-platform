@@ -1456,6 +1456,9 @@ async def handle_consent_response(
         consent_user_id = consent_record.get("user_id")
         consent_org_id = consent_record.get("org_id")
 
+        # Derive org consistently using getattr to handle different User implementations
+        user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
         if consent_user_id and consent_user_id != user.user_id:
             logger.warning(
                 f"[NAVI API] ⚠️ Security: User {user.user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
@@ -1466,9 +1469,9 @@ async def handle_consent_response(
                 "error": "Unauthorized: You do not have permission to approve this consent",
             }
 
-        if consent_org_id and consent_org_id != user.org_id:
+        if consent_org_id and user_org_id and consent_org_id != user_org_id:
             logger.warning(
-                f"[NAVI API] ⚠️ Security: Org {user.org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
+                f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
             )
             return {
                 "success": False,
@@ -7296,6 +7299,7 @@ async def navi_autonomous_task(
             """Wrap agent generator with periodic heartbeat events to keep SSE connection alive."""
             last_event_time = time.time()
             heartbeat_interval = 10  # Send heartbeat every 10 seconds of silence (reduced from 15s for better reliability)
+            agent_task = None  # Initialize before try to avoid UnboundLocalError in finally
 
             try:
                 # Process events from agent with heartbeat injection
@@ -7332,7 +7336,7 @@ async def navi_autonomous_task(
                             last_event_time = current_time
             finally:
                 # Cleanup: cancel pending task and close generator if client disconnects
-                if agent_task and not agent_task.done():
+                if agent_task is not None and not agent_task.done():
                     agent_task.cancel()
                     try:
                         await agent_task

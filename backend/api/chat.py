@@ -30,7 +30,7 @@ from backend.core.ai.llm_service import LLMService
 from backend.core.response_cache import (
     get_cached_response,
     set_cached_response,
-    _generate_cache_key,
+    generate_cache_key,
 )
 from backend.autonomous.enhanced_coding_engine import (
     TaskType as AutonomousTaskType,
@@ -1246,7 +1246,7 @@ Please debug this issue and continue with the original task. The user's new mess
                 )
 
                 # OPTIMIZATION: Check cache for 50-95% latency improvement on repeated queries
-                cache_key = _generate_cache_key(
+                cache_key = generate_cache_key(
                     message=actual_message,
                     mode=request.mode,
                     conversation_history=conversation_history[

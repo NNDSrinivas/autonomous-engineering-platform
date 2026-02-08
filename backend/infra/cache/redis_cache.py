@@ -8,10 +8,12 @@ from typing import Any, Optional, Iterable
 
 try:
     from redis import asyncio as aioredis  # type: ignore
+    from redis.exceptions import ResponseError  # type: ignore
 
     aioredis_available = True
 except ImportError:
     aioredis = None  # type: ignore
+    ResponseError = Exception  # type: ignore - Fallback to base Exception
     aioredis_available = False
 
 REDIS_URL = os.getenv("REDIS_URL")
@@ -112,12 +114,15 @@ class Cache:
             except (AttributeError, TypeError):
                 # redis-py doesn't have getdel method - fall back to Lua script
                 pass  # Continue to Lua fallback below
-            except Exception as e:
-                # Check if it's a ResponseError from Redis server (doesn't support GETDEL < 6.2)
-                if "ResponseError" in str(type(e)):
+            except ResponseError as e:
+                # Only fall back when the Redis server does not recognize the GETDEL command
+                msg = str(e).lower()
+                if "unknown command" in msg and "getdel" in msg:
+                    # Older Redis server without GETDEL support - fall back to Lua script
                     pass  # Continue to Lua fallback below
                 else:
-                    raise  # Re-raise unexpected errors
+                    # Other ResponseError types are real errors and should not be swallowed
+                    raise
 
             # Fallback for Redis/redis-py versions without GETDEL support
             # Use an atomic Lua script to GET and DEL the key

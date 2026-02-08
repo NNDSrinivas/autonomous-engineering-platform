@@ -169,8 +169,8 @@ sleep 25 && lsof -i :8787
 **Key Settings:**
 ```bash
 # LLM API Keys
-OPENAI_API_KEY=sk-proj-xLkwFHyn...
-ANTHROPIC_API_KEY=sk-ant-api03-SSTPsi6t...
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+ANTHROPIC_API_KEY=YOUR_ANTHROPIC_API_KEY
 
 # Authentication (DISABLED for local dev)
 JWT_ENABLED=false

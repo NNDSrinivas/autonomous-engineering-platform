@@ -73,7 +73,7 @@ def _ensure_tables(db: Session) -> None:
         # This prevents multi-worker DDL race conditions and provides clear errors
         if settings.is_production_like():
             logger.info(
-                f"[OrgOnboarding] Verifying tables exist in {settings._normalize_env()} environment; "
+                f"[OrgOnboarding] Verifying tables exist in {settings.app_env} environment; "
                 "tables must be managed via Alembic migrations."
             )
             # Verify required tables exist

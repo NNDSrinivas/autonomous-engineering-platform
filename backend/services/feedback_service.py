@@ -125,7 +125,7 @@ class FeedbackService:
                 gen_id, gen_log, rating, reason, comment
             )
         except Exception as e:
-            logger.warning(f"Failed to bridge feedback to learning system: {e}")
+            logger.warning("Failed to bridge feedback to learning system: %s", e)
 
         return True
 

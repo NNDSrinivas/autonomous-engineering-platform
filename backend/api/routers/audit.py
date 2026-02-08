@@ -306,7 +306,18 @@ def _audit_row_to_dict(row: AuditLog, include_payload: bool = False) -> dict:
         "created_at": created_at.astimezone(timezone.utc).isoformat(),
     }
     if include_payload:
-        data["payload"] = row.payload
+        # Serialize payload safely for JSON export (handle bytes and other non-JSON types)
+        if isinstance(row.payload, bytes):
+            import base64
+
+            data["payload"] = base64.b64encode(row.payload).decode("utf-8")
+        elif isinstance(row.payload, str):
+            data["payload"] = row.payload
+        else:
+            # For dicts/lists/other types, ensure they're JSON-serializable
+            data["payload"] = (
+                json.dumps(row.payload, default=str) if row.payload else None
+            )
     return data
 
 

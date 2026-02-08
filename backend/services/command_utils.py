@@ -29,10 +29,13 @@ def get_shell_executable() -> str:
     Returns:
         Path to shell executable
     """
-    # Check user's preferred shell from environment
+    # Check user's preferred shell from environment, but only accept sh-compatible shells
+    # Non-POSIX shells like fish will break command execution with shell=True
     user_shell = os.environ.get("SHELL")
     if user_shell and os.path.isfile(user_shell) and os.access(user_shell, os.X_OK):
-        return user_shell
+        shell_name = os.path.basename(user_shell)
+        if shell_name in {"bash", "sh", "zsh", "dash"}:
+            return user_shell
 
     # Try bash first (preferred for advanced features)
     bash_path = shutil.which("bash")

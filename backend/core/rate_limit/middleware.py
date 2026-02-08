@@ -414,13 +414,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         except Exception as e:
             log_rate_limit_middleware_error(str(e), path, method)
-            # If fallback is enabled (dev/ci), keep the system available.
+            # If fallback is enabled (dev/test/ci), keep the system available.
             # Use normalized environment checks to handle aliases (dev, Dev, DEVELOPMENT, etc.)
+            # Note: is_test() includes both "test" and "ci" environments
             if (
                 settings.RATE_LIMITING_FALLBACK_ENABLED
                 or settings.is_development()
                 or settings.is_test()
-                or settings._normalize_env() == "ci"
             ):
                 return await call_next(request)
             return JSONResponse(

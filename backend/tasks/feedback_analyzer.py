@@ -26,8 +26,10 @@ class FeedbackAnalyzerTask:
             analyzer = manager.analyzer
 
             # Get all unique org_ids from feedback records
+            # Snapshot values to prevent RuntimeError if dict changes during iteration
             org_ids = set()
-            for feedback in manager.store.feedback_records.values():
+            feedback_records = list(manager.store.feedback_records.values())
+            for feedback in feedback_records:
                 if feedback.org_id:
                     org_ids.add(feedback.org_id)
 

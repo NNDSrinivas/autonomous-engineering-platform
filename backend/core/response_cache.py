@@ -119,7 +119,7 @@ def get_cached_response(cache_key: str) -> Optional[Any]:
         _cache.move_to_end(cache_key)
 
         _cache_hits += 1
-        logger.info(f"✅ Cache HIT for key {cache_key[:8]}... (saved LLM call!)")
+        logger.debug(f"Cache HIT for key {cache_key[:8]}... (saved LLM call!)")
         return response
 
 
@@ -138,18 +138,20 @@ def set_cached_response(cache_key: str, response: Any) -> None:
         if cache_key in _cache:
             _cache[cache_key] = (response, time.time())
             _cache.move_to_end(cache_key)
-            logger.info(f"✅ Updated cached response for key {cache_key[:8]}...")
+            logger.debug(f"Updated cached response for key {cache_key[:8]}...")
         else:
             # Adding new key: evict LRU if at capacity
             if len(_cache) >= _max_cache_size:
                 # popitem(last=False) removes the first (oldest/least recently used) item in O(1)
                 evicted_key, _ = _cache.popitem(last=False)
                 _cache_evictions += 1
-                logger.debug(f"Cache evicted LRU key {evicted_key[:8]}...")
+                logger.info(
+                    f"Cache evicted LRU key {evicted_key[:8]}... (capacity reached)"
+                )
 
             # Add new item (automatically goes to end of OrderedDict)
             _cache[cache_key] = (response, time.time())
-            logger.info(f"✅ Cached response for key {cache_key[:8]}...")
+            logger.debug(f"Cached response for key {cache_key[:8]}...")
 
 
 def clear_cache() -> None:

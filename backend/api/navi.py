@@ -7184,9 +7184,8 @@ async def navi_autonomous_task(
         )
     else:
         # In production-like environments, require a real user/org context instead of hard-coded defaults
-        user_id = getattr(http_request.state, "user_id", None) or getattr(
-            request, "user_id", None
-        )
+        # Source exclusively from authenticated request context to prevent identity spoofing
+        user_id = getattr(http_request.state, "user_id", None)
         org_id = getattr(http_request.state, "org_id", None)
         if not user_id or not org_id:
             raise HTTPException(

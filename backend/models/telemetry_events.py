@@ -26,8 +26,9 @@ class TelemetryEvent(Base):
     id = Column(Integer, primary_key=True)
 
     # Organization and user context
-    org_id = Column(Integer, nullable=True, index=True)
-    user_id = Column(Integer, nullable=True, index=True)
+    # Changed from Integer to String to support non-numeric IDs (org_key, OIDC sub, etc.)
+    org_id = Column(String(128), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
 
     # Event classification
     event_type = Column(
@@ -93,8 +94,9 @@ class PerformanceMetric(Base):
     id = Column(Integer, primary_key=True)
 
     # Organization and user context
-    org_id = Column(Integer, nullable=True, index=True)
-    user_id = Column(Integer, nullable=True, index=True)
+    # Changed from Integer to String to support non-numeric IDs (org_key, OIDC sub, etc.)
+    org_id = Column(String(128), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
 
     # Metric identification
     metric_name = Column(String(255), nullable=False, index=True)
@@ -150,8 +152,9 @@ class ErrorEvent(Base):
     id = Column(Integer, primary_key=True)
 
     # Organization and user context
-    org_id = Column(Integer, nullable=True, index=True)
-    user_id = Column(Integer, nullable=True, index=True)
+    # Changed from Integer to String to support non-numeric IDs (org_key, OIDC sub, etc.)
+    org_id = Column(String(128), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
 
     # Error classification
     error_type = Column(

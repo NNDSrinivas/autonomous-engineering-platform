@@ -59,14 +59,18 @@ def main():
     engine = create_engine(database_url)
     inspector = inspect(engine)
 
-    # Get list of new tables from SQLAlchemy metadata (auto-discovered from models)
-    # This ensures the list stays in sync with actual modeled tables
-    new_tables = sorted(Base.metadata.tables.keys())
+    # Explicitly whitelist v1 analytics tables to create
+    # This ensures we only create the intended tables, not all registered models
+    v1_tables = [
+        "llm_metrics",
+        "rag_metrics",
+        "task_metrics",
+    ]
 
     # Check which tables already exist
     existing_tables = inspector.get_table_names()
-    tables_to_create = [t for t in new_tables if t not in existing_tables]
-    tables_already_exist = [t for t in new_tables if t in existing_tables]
+    tables_to_create = [t for t in v1_tables if t not in existing_tables]
+    tables_already_exist = [t for t in v1_tables if t in existing_tables]
 
     if tables_already_exist:
         print("⚠️  Tables already exist:")

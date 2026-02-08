@@ -260,7 +260,7 @@ ALLOWED_INVITE_ROLES = {"member", "viewer", "admin"}
 
 class OrgInviteRequest(BaseModel):
     org_id: str
-    emails: list[str] = Field(..., min_items=1)
+    emails: list[str] = Field(..., min_length=1)
     role: str = Field(default="member")
 
 

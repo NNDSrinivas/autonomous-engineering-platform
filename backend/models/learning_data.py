@@ -115,7 +115,8 @@ class LearningInsight(Base):
     id = Column(Integer, primary_key=True)
 
     # Organization context
-    org_id = Column(Integer, nullable=True, index=True)
+    # Changed from Integer to String to support non-numeric IDs and align with LearningSuggestion
+    org_id = Column(String(128), nullable=True, index=True)
 
     # Insight details
     insight_type = Column(
@@ -193,8 +194,9 @@ class LearningPattern(Base):
     id = Column(Integer, primary_key=True)
 
     # Organization and user context
-    org_id = Column(Integer, nullable=True, index=True)
-    user_id = Column(Integer, nullable=True, index=True)
+    # Use String to support non-numeric IDs (org_key, OIDC sub, etc.), matching LearningSuggestion
+    org_id = Column(String(128), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
 
     # Pattern details
     pattern_key = Column(

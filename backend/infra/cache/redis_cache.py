@@ -92,6 +92,36 @@ class Cache:
     async def set_json(self, key: str, value: Any, ttl_sec: int = 60) -> None:
         await self.setex(key, ttl_sec, json.dumps(value))
 
+    async def getdel_json(self, key: str) -> Optional[Any]:
+        """
+        Atomically get and delete a JSON value.
+
+        Uses Redis GETDEL when available (atomic operation).
+        Falls back to locked get-then-delete for in-memory cache.
+
+        Returns:
+            The parsed JSON value if found, None otherwise
+        """
+        r = await self._ensure()
+        if r:
+            # Use Redis GETDEL for atomic read-and-delete
+            raw = await r.getdel(key)
+            return json.loads(raw) if raw else None
+        else:
+            # For in-memory cache, use lock to make operation atomic
+            async with self._mem_lock:
+                ent = self._mem.get(key)
+                if not ent:
+                    return None
+                exp, payload = ent
+                # Check expiration
+                if time.time() >= exp:
+                    self._mem.pop(key, None)
+                    return None
+                # Delete and return
+                self._mem.pop(key)
+                return json.loads(payload)
+
     def clear_sync(self) -> None:
         """Synchronously clear in-memory cache. Only affects local cache, not Redis."""
         # Clear in-memory cache synchronously for test usage

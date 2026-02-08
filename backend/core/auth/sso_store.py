@@ -32,9 +32,11 @@ async def create_state(provider_id: str, code_verifier: str) -> str:
 
 
 async def pop_state(state: str) -> Optional[dict]:
+    """
+    Atomically retrieve and delete OAuth state.
+
+    Uses atomic getdel operation to prevent race conditions where
+    multiple consumers could read the same state before deletion.
+    """
     key = _state_key(state)
-    data = await cache.get_json(key)
-    if not data:
-        return None
-    await cache.delete(key)
-    return data
+    return await cache.getdel_json(key)

@@ -16,6 +16,7 @@ from backend.services.command_utils import (
     compute_timeout,
     format_command_message,
     get_command_env,
+    get_shell_executable,
     prepare_command,
     run_subprocess,
 )
@@ -218,7 +219,7 @@ def run_command(
                 text=True,
                 start_new_session=True,  # detach from parent
                 env=get_command_env(),
-                executable="/bin/bash",
+                executable=get_shell_executable(),
             )
             logger.info(
                 "[CMD] (background) user=%s cmd=%s workdir=%s pid=%s",

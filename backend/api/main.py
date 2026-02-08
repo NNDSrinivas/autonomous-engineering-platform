@@ -346,7 +346,7 @@ app.add_middleware(
     allow_dev_bypass=settings.allow_dev_auth_bypass,
 )
 # RequestIDMiddleware removed - ObservabilityMiddleware provides this functionality
-app.add_middleware(RateLimitMiddleware, enabled=core_settings.RATE_LIMITING_ENABLED)
+app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 
 # Conditional audit logging (disabled in test/CI environments to prevent DB errors)

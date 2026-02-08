@@ -72,12 +72,12 @@ def _ensure_tables(db: Session) -> None:
                 """
                 SELECT table_name FROM information_schema.tables
                 WHERE table_schema = 'public'
-                AND table_name IN ('navi_orgs', 'navi_org_members')
+                AND table_name IN ('navi_orgs', 'navi_org_members', 'navi_org_invites')
                 """
             )
         )
         existing_tables = {row[0] for row in result}
-        required_tables = {"navi_orgs", "navi_org_members"}
+        required_tables = {"navi_orgs", "navi_org_members", "navi_org_invites"}
         missing_tables = required_tables - existing_tables
 
         if missing_tables:

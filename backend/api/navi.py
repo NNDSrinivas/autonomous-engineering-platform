@@ -7170,7 +7170,7 @@ async def navi_autonomous_task(
     # Extract user context
     # - In production, this should come from authenticated request context (e.g. auth middleware)
     # - In development/test/CI, allow overriding via DEV_* environment variables for convenience
-    if settings.app_env in {"development", "test", "ci"}:
+    if settings.app_env in {"dev", "development", "test", "ci"}:
         # In dev-like environments, allow convenient overrides, falling back to request payload
         user_id = (
             os.environ.get("DEV_USER_ID")

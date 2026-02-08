@@ -18,12 +18,6 @@ from backend.models.telemetry_events import ErrorEvent
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 
-def _parse_int(value: Optional[str]) -> Optional[int]:
-    if value is None:
-        return None
-    return int(value) if str(value).isdigit() else None
-
-
 def _compute_range(days: int) -> Dict[str, Any]:
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
@@ -33,8 +27,8 @@ def _compute_range(days: int) -> Dict[str, Any]:
 def _summarize_llm_metrics(
     db: Session,
     start: datetime,
-    org_id: Optional[int],
-    user_id: Optional[int],
+    org_id: Optional[str],
+    user_id: Optional[str],
 ) -> Dict[str, Any]:
     query = db.query(LlmMetric).filter(LlmMetric.created_at >= start)
     if org_id is not None:
@@ -138,8 +132,8 @@ def _summarize_llm_metrics(
 def _summarize_tasks(
     db: Session,
     start: datetime,
-    org_id: Optional[int],
-    user_id: Optional[int],
+    org_id: Optional[str],
+    user_id: Optional[str],
 ) -> List[Dict[str, Any]]:
     query = db.query(TaskMetric).filter(TaskMetric.created_at >= start)
     if org_id is not None:
@@ -158,8 +152,8 @@ def _summarize_tasks(
 def _summarize_errors(
     db: Session,
     start: datetime,
-    org_id: Optional[int],
-    user_id: Optional[int],
+    org_id: Optional[str],
+    user_id: Optional[str],
 ) -> List[Dict[str, Any]]:
     query = db.query(ErrorEvent).filter(ErrorEvent.created_at >= start)
     if org_id is not None:
@@ -182,29 +176,7 @@ def usage_dashboard(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     range_info = _compute_range(days)
-    user_id = _parse_int(user.user_id)
-    if user_id is None:
-        return {
-            "scope": "user",
-            "range": {
-                "days": days,
-                "start": range_info["start"].isoformat(),
-                "end": range_info["end"].isoformat(),
-            },
-            "summary": {
-                "requests": 0,
-                "total_tokens": 0,
-                "total_cost": 0.0,
-                "avg_latency_ms": None,
-                "error_rate": 0.0,
-                "error_count": 0,
-            },
-            "models": [],
-            "daily": [],
-            "tasks": [],
-            "errors": [],
-            "note": "User ID is not numeric; usage metrics are unavailable.",
-        }
+    user_id = user.user_id
 
     llm = _summarize_llm_metrics(db, range_info["start"], None, user_id)
     tasks = _summarize_tasks(db, range_info["start"], None, user_id)
@@ -230,29 +202,7 @@ def org_dashboard(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     range_info = _compute_range(days)
-    org_id = _parse_int(user.org_id)
-    if org_id is None:
-        return {
-            "scope": "org",
-            "range": {
-                "days": days,
-                "start": range_info["start"].isoformat(),
-                "end": range_info["end"].isoformat(),
-            },
-            "summary": {
-                "requests": 0,
-                "total_tokens": 0,
-                "total_cost": 0.0,
-                "avg_latency_ms": None,
-                "error_rate": 0.0,
-                "error_count": 0,
-            },
-            "models": [],
-            "daily": [],
-            "tasks": [],
-            "errors": [],
-            "note": "Org ID is not numeric; org usage metrics are unavailable.",
-        }
+    org_id = user.org_id
 
     llm = _summarize_llm_metrics(db, range_info["start"], org_id, None)
     tasks = _summarize_tasks(db, range_info["start"], org_id, None)

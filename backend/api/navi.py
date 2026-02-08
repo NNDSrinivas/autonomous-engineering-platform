@@ -7172,11 +7172,21 @@ async def navi_autonomous_task(
     # - In development/test/CI, allow overriding via DEV_* environment variables for convenience
     if settings.app_env in {"development", "test", "ci"}:
         # In dev-like environments, allow convenient overrides, falling back to request payload
-        user_id = os.environ.get("DEV_USER_ID") or getattr(request, "user_id", None) or "anonymous"
-        org_id = os.environ.get("DEV_ORG_ID") or getattr(http_request.state, "org_id", None) or "default-org"
+        user_id = (
+            os.environ.get("DEV_USER_ID")
+            or getattr(request, "user_id", None)
+            or "anonymous"
+        )
+        org_id = (
+            os.environ.get("DEV_ORG_ID")
+            or getattr(http_request.state, "org_id", None)
+            or "default-org"
+        )
     else:
         # In production-like environments, require a real user/org context instead of hard-coded defaults
-        user_id = getattr(http_request.state, "user_id", None) or getattr(request, "user_id", None)
+        user_id = getattr(http_request.state, "user_id", None) or getattr(
+            request, "user_id", None
+        )
         org_id = getattr(http_request.state, "org_id", None)
         if not user_id or not org_id:
             raise HTTPException(

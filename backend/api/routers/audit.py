@@ -263,7 +263,15 @@ def export_audit_logs(
                         )
             writer.writerow(row_dict)
 
-        return PlainTextResponse(output.getvalue(), media_type="text/csv")
+        # Generate timestamped filename for download
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        filename = f"audit-logs-{timestamp}.csv"
+
+        return PlainTextResponse(
+            output.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     except HTTPException:
         raise
     except ValueError as e:

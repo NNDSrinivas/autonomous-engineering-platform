@@ -83,7 +83,14 @@ grafana-import:
 	./scripts/import_dashboards.sh
 
 grafana-open:
-	@open http://localhost:3001/d/navi-llm/navi-llm-performance-metrics || echo "Visit: http://localhost:3001"
+	@grafana_url="http://localhost:3001/d/navi-llm/navi-llm-performance-metrics"; \
+	if command -v xdg-open >/dev/null 2>&1; then \
+	  xdg-open "$$grafana_url"; \
+	elif command -v open >/dev/null 2>&1; then \
+	  open "$$grafana_url"; \
+	else \
+	  echo "Visit: http://localhost:3001"; \
+	fi
 
 grafana-status:
 	@docker ps | grep grafana && echo "✅ Grafana is running at http://localhost:3001" || echo "❌ Grafana is not running"

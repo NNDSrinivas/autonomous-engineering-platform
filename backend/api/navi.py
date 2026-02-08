@@ -50,6 +50,7 @@ from sqlalchemy import text
 from backend.core.db import get_db
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import User, Role
+from backend.core.settings import settings
 from backend.agent.agent_loop import run_agent_loop
 from backend.agent.planner_v3 import PlannerV3
 from backend.agent.tool_executor import execute_tool_with_sources
@@ -7166,10 +7167,16 @@ async def navi_autonomous_task(
     from backend.services.autonomous_agent import AutonomousAgent
     from backend.core.db import SessionLocal
 
-    # Extract user context (from auth state or dev environment)
-    # In production, this would come from http_request.state after auth middleware
-    user_id = os.environ.get("DEV_USER_ID", "anonymous")
-    org_id = os.environ.get("DEV_ORG_ID", "default-org")
+    # Extract user context
+    # - In production, this should come from authenticated request context (e.g. auth middleware)
+    # - In development/test/CI, allow overriding via DEV_* environment variables for convenience
+    if settings.app_env in {"development", "test", "ci"}:
+        user_id = os.environ.get("DEV_USER_ID", "anonymous")
+        org_id = os.environ.get("DEV_ORG_ID", "default-org")
+    else:
+        # Do not use DEV_* identities in production-like environments to avoid cross-tenant leakage
+        user_id = "anonymous"
+        org_id = "default-org"
 
     logger.info(f"[NAVI Autonomous] User context: user_id={user_id}, org_id={org_id}")
 

@@ -1,5 +1,5 @@
 """
-SSO state store backed by Redis (with in-memory fallback).
+SSO state store backed by Redis.
 
 Uses the shared cache abstraction so multi-node deployments share state.
 """

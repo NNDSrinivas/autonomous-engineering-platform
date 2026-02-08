@@ -248,6 +248,8 @@ def export_audit_logs(
             writer.writerow(row_dict)
 
         return PlainTextResponse(output.getvalue(), media_type="text/csv")
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

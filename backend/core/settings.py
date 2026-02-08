@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -74,7 +75,7 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     # Application environment
-    app_env: str = "development"
+    app_env: str = Field(default="development", validation_alias="APP_ENV")
     DEBUG: bool = False  # Enable debug mode for development
     # Defer optional/auxiliary router imports until first request hits those paths
     DEFER_OPTIONAL_ROUTERS: bool = True

@@ -5237,6 +5237,25 @@ class SelfHealingEngine:
     _PORT_MEMORY_MAX_SIZE = 1000  # Limit to 1000 workspace entries
     _port_memory: OrderedDict[str, int] = OrderedDict()
 
+    @classmethod
+    def _update_port_memory(cls, workspace_path: str, port: int) -> None:
+        """
+        Update the LRU-style port memory for a workspace, enforcing the
+        _PORT_MEMORY_MAX_SIZE bound.
+
+        This helper should be used for all writes to _port_memory to
+        ensure the in-memory cache does not grow without bound.
+        """
+        # Mark as most recently used (if it already exists)
+        if workspace_path in cls._port_memory:
+            cls._port_memory.move_to_end(workspace_path)
+        # Set or update the port for this workspace
+        cls._port_memory[workspace_path] = port
+        # Enforce bounded size by evicting least recently used entries
+        while len(cls._port_memory) > cls._PORT_MEMORY_MAX_SIZE:
+            # popitem(last=False) removes the oldest (least recently used) item
+            cls._port_memory.popitem(last=False)
+
     # Common error patterns and their fixes
     ERROR_PATTERNS = {
         # Dependency errors

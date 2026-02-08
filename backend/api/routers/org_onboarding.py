@@ -89,9 +89,12 @@ def _ensure_tables(db: Session) -> None:
             missing_tables = required_tables - existing_tables
 
             if missing_tables:
-                raise RuntimeError(
-                    f"Required tables missing in {settings.app_env} environment: {missing_tables}. "
-                    "Run Alembic migrations to create them."
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        f"Required tables missing in {settings.app_env} environment: {missing_tables}. "
+                        "Run Alembic migrations to create them."
+                    ),
                 )
 
             _tables_initialized = True

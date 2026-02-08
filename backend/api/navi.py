@@ -7134,6 +7134,7 @@ async def navi_autonomous_task(
     request: AutonomousTaskRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
     # DEBUG: Print to stdout to ensure this endpoint is being called
     print("[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
@@ -7167,26 +7168,25 @@ async def navi_autonomous_task(
     import os
     from backend.services.autonomous_agent import AutonomousAgent
 
-    # Extract user context
-    # - In production, this should come from authenticated request context (e.g. auth middleware)
+    # Extract user context from authenticated user
+    # - Derive from the user dependency (authenticated via require_role)
     # - In development/test/CI, allow overriding via DEV_* environment variables for convenience
     if settings.app_env in {"dev", "development", "test", "ci"}:
-        # In dev-like environments, allow convenient overrides, falling back to request payload
+        # In dev-like environments, allow convenient overrides for testing
         user_id = (
             os.environ.get("DEV_USER_ID")
-            or getattr(request, "user_id", None)
-            or "anonymous"
+            or getattr(user, "user_id", None)
+            or getattr(user, "id", None)
         )
         org_id = (
             os.environ.get("DEV_ORG_ID")
-            or getattr(http_request.state, "org_id", None)
-            or "default-org"
+            or getattr(user, "org_id", None)
+            or getattr(user, "org_key", None)
         )
     else:
-        # In production-like environments, require a real user/org context instead of hard-coded defaults
-        # Source exclusively from authenticated request context to prevent identity spoofing
-        user_id = getattr(http_request.state, "user_id", None)
-        org_id = getattr(http_request.state, "org_id", None)
+        # In production-like environments, derive from authenticated user
+        user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+        org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
         if not user_id or not org_id:
             raise HTTPException(
                 status_code=401,

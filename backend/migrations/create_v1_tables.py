@@ -90,7 +90,22 @@ def main():
     # Create tables
     try:
         print("🔧 Creating tables...")
-        Base.metadata.create_all(bind=engine, checkfirst=True)
+        # Only create the explicitly whitelisted v1 tables
+        metadata_tables_to_create = [
+            Base.metadata.tables[name]
+            for name in tables_to_create
+            if name in Base.metadata.tables
+        ]
+        if not metadata_tables_to_create:
+            print(
+                "⚠️  No matching table definitions found in metadata for requested tables."
+            )
+            return
+        Base.metadata.create_all(
+            bind=engine,
+            tables=metadata_tables_to_create,
+            checkfirst=True,
+        )
         print("✅ Tables created successfully!")
         print()
 

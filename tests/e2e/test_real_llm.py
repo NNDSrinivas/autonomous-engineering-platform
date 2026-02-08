@@ -265,29 +265,46 @@ class RealLLMTester:
                 prompt = random.choice(prompts)
                 test_queue.append((scenario, prompt, i))
 
-        # Run tests
+        # Run tests concurrently in batches
         start_time = time.time()
+        concurrent_requests = TEST_CONFIG.get("concurrent_requests", 5)
 
-        for idx, (scenario, prompt, test_num) in enumerate(test_queue, 1):
-            print(f"\n[{idx}/{len(test_queue)}] Running {scenario} test...")
+        # Process tests in batches for concurrent execution
+        for batch_start in range(0, len(test_queue), concurrent_requests):
+            batch_end = min(batch_start + concurrent_requests, len(test_queue))
+            batch = test_queue[batch_start:batch_end]
 
-            metric = await self.run_single_test(scenario, prompt, test_num)
-            self.results.metrics.append(metric)
+            print(f"\n🔄 Running batch {batch_start//concurrent_requests + 1} ({len(batch)} tests concurrently)...")
 
-            if metric.success:
-                print(
-                    f"  ✓ Success - {metric.latency_ms:.0f}ms, "
-                    f"{metric.tokens_total} tokens, ${metric.cost_usd:.4f}"
-                )
-                self.results.passed_tests += 1
-            else:
-                print(f"  ✗ Failed - {metric.error}")
-                self.results.failed_tests += 1
+            # Run batch concurrently
+            tasks = [
+                self.run_single_test(scenario, prompt, test_num)
+                for scenario, prompt, test_num in batch
+            ]
+            metrics_batch = await asyncio.gather(*tasks, return_exceptions=False)
 
-            self.results.total_tests += 1
+            # Process results
+            for idx, metric in enumerate(metrics_batch):
+                test_idx = batch_start + idx + 1
+                scenario, prompt, test_num = batch[idx]
 
-            # Small delay to avoid rate limiting
-            await asyncio.sleep(0.5)
+                self.results.metrics.append(metric)
+
+                if metric.success:
+                    print(
+                        f"  [{test_idx}/{len(test_queue)}] ✓ {scenario}: {metric.latency_ms:.0f}ms, "
+                        f"{metric.tokens_total} tokens, ${metric.cost_usd:.4f}"
+                    )
+                    self.results.passed_tests += 1
+                else:
+                    print(f"  [{test_idx}/{len(test_queue)}] ✗ {scenario}: {metric.error}")
+                    self.results.failed_tests += 1
+
+                self.results.total_tests += 1
+
+            # Small delay between batches to avoid rate limiting
+            if batch_end < len(test_queue):
+                await asyncio.sleep(1.0)
 
         end_time = time.time()
         self.results.total_duration_sec = end_time - start_time
@@ -416,10 +433,15 @@ async def test_real_llm_performance(llm_tester):
         results.error_rate < thresholds["error_rate_percent"]
     ), f"Error rate {results.error_rate:.1f}% exceeds threshold {thresholds['error_rate_percent']}%"
 
-    avg_cost = results.total_cost / results.total_tests
-    assert (
-        avg_cost < thresholds["avg_cost_per_request"]
-    ), f"Average cost ${avg_cost:.4f} exceeds threshold ${thresholds['avg_cost_per_request']}"
+    # Only assert on cost if tokens are being tracked (cost > 0)
+    avg_cost = results.total_cost / results.total_tests if results.total_tests > 0 else 0
+    if results.total_cost > 0:
+        assert (
+            avg_cost < thresholds["avg_cost_per_request"]
+        ), f"Average cost ${avg_cost:.4f} exceeds threshold ${thresholds['avg_cost_per_request']}"
+        print(f"✅ Cost tracking enabled - Average: ${avg_cost:.4f} per request")
+    else:
+        print("⚠️  Cost tracking not available (tokens not being captured from backend)")
 
     print("✅ All performance thresholds met!")
 

@@ -128,6 +128,12 @@ class StreamingMetrics:
     total_chars: int = 0
     activity_events: int = 0
 
+    # LLM API usage metrics for performance testing
+    tokens_input: int = 0  # Prompt tokens from LLM API
+    tokens_output: int = 0  # Completion tokens from LLM API
+    model: str = ""  # Model name used (e.g., "gpt-4o", "claude-sonnet-4")
+    provider: str = ""  # Provider name (e.g., "openai", "anthropic")
+
     @property
     def time_to_first_token_ms(self) -> Optional[float]:
         if self.first_token_time:
@@ -154,6 +160,11 @@ class StreamingMetrics:
             "total_chars": self.total_chars,
             "tokens_per_second": round(self.tokens_per_second, 1),
             "activity_events": self.activity_events,
+            # Include LLM API usage metrics
+            "tokens_input": self.tokens_input,
+            "tokens_output": self.tokens_output,
+            "model": self.model,
+            "provider": self.provider,
         }
 
 

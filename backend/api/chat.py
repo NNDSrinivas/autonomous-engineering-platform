@@ -1252,9 +1252,9 @@ Please debug this issue and continue with the original task. The user's new mess
                 cache_key = generate_cache_key(
                     message=actual_message,
                     mode=request.mode,
-                    conversation_history=conversation_history[
-                        -5:
-                    ],  # Last 5 for cache key
+                    conversation_history=(
+                        conversation_history[-5:] if conversation_history else None
+                    ),  # Last 5 for cache key, guard against None
                     workspace_path=workspace_path,
                     model=llm_model,
                     provider=llm_provider,

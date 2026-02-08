@@ -242,8 +242,13 @@ def export_audit_logs(
         for row in rows:
             row_dict = _audit_row_to_dict(row, include_payload=include_payload)
             # JSON-encode payload to prevent CSV corruption from nested dicts/lists
-            if include_payload and "payload" in row_dict and row_dict["payload"]:
-                if isinstance(row_dict["payload"], (dict, list)):
+            # Always serialize non-string payloads to ensure consistent format
+            if (
+                include_payload
+                and "payload" in row_dict
+                and row_dict["payload"] is not None
+            ):
+                if not isinstance(row_dict["payload"], str):
                     row_dict["payload"] = json.dumps(row_dict["payload"])
             writer.writerow(row_dict)
 

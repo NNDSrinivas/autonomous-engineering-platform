@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from backend.core.db import get_db
 from backend.core.auth.deps import require_role
@@ -190,45 +191,50 @@ def create_org(
     org_id = uuid.uuid4().hex
     slug = _slugify(req.slug or req.name)
 
-    # Ensure slug uniqueness
-    existing = db.execute(
-        text("SELECT id FROM navi_orgs WHERE slug = :slug"),
-        {"slug": slug},
-    ).fetchone()
-    if existing:
-        raise HTTPException(status_code=409, detail="Organization slug already exists")
+    # Use database UNIQUE constraint to prevent race conditions
+    # Rely on slug UNIQUE constraint instead of check-then-insert pattern
+    try:
+        db.execute(
+            text(
+                """
+                INSERT INTO navi_orgs (id, name, slug, owner_user_id, created_at)
+                VALUES (:id, :name, :slug, :owner_user_id, :created_at)
+                """
+            ),
+            {
+                "id": org_id,
+                "name": req.name,
+                "slug": slug,
+                "owner_user_id": user.user_id,
+                "created_at": _now(),
+            },
+        )
+        db.execute(
+            text(
+                """
+                INSERT INTO navi_org_members (org_id, user_id, role, created_at)
+                VALUES (:org_id, :user_id, :role, :created_at)
+                ON CONFLICT (org_id, user_id) DO NOTHING
+                """
+            ),
+            {
+                "org_id": org_id,
+                "user_id": user.user_id,
+                "role": "owner",
+                "created_at": _now(),
+            },
+        )
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        # Check if it's a slug uniqueness violation
+        if "slug" in str(e).lower() or "unique" in str(e).lower():
+            raise HTTPException(
+                status_code=409, detail="Organization slug already exists"
+            )
+        # Re-raise other integrity errors
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-    db.execute(
-        text(
-            """
-            INSERT INTO navi_orgs (id, name, slug, owner_user_id, created_at)
-            VALUES (:id, :name, :slug, :owner_user_id, :created_at)
-            """
-        ),
-        {
-            "id": org_id,
-            "name": req.name,
-            "slug": slug,
-            "owner_user_id": user.user_id,
-            "created_at": _now(),
-        },
-    )
-    db.execute(
-        text(
-            """
-            INSERT INTO navi_org_members (org_id, user_id, role, created_at)
-            VALUES (:org_id, :user_id, :role, :created_at)
-            ON CONFLICT (org_id, user_id) DO NOTHING
-            """
-        ),
-        {
-            "org_id": org_id,
-            "user_id": user.user_id,
-            "role": "owner",
-            "created_at": _now(),
-        },
-    )
-    db.commit()
     return {"id": org_id, "name": req.name, "slug": slug, "role": "owner"}
 
 

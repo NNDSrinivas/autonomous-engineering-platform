@@ -233,9 +233,9 @@ Found an issue with documentation?
 4. **Unclear explanation:** Create GitHub issue with specific questions
 
 **Documentation Owner:** Engineering Team
-**Maintainer:** [Your Name]
-**Last Reviewed:** February 7, 2026
-**Next Review:** March 7, 2026
+**Maintainer:** Engineering Team
+**Last Reviewed:** February 8, 2026
+**Next Review:** March 8, 2026
 
 ---
 

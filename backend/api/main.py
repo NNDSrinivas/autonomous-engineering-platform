@@ -45,7 +45,10 @@ from backend.core.rate_limit.middleware import RateLimitMiddleware
 from backend.core.auth.vscode_middleware import VscodeAuthMiddleware
 
 from backend.core.config import settings
-from backend.core.settings import settings as core_settings, validate_production_settings
+from backend.core.settings import (
+    settings as core_settings,
+    validate_production_settings,
+)
 
 # removed unused: setup_logging (using obs logging instead)
 # removed unused: metrics_router (using new /metrics mount)

@@ -8,13 +8,15 @@ import hashlib
 import json
 import threading
 import time
+from collections import OrderedDict
 from typing import Any, Dict, Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory cache with TTL
-_cache: Dict[str, tuple[Any, float]] = {}
+# LRU cache with TTL using OrderedDict for O(1) eviction
+# OrderedDict maintains insertion order and allows efficient LRU eviction
+_cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
 _cache_ttl_seconds = 3600  # 1 hour TTL for cached responses
 _max_cache_size = 1000  # Max cached items
 _cache_lock = threading.Lock()  # Protect cache mutations from concurrent access
@@ -113,6 +115,9 @@ def get_cached_response(cache_key: str) -> Optional[Any]:
             logger.debug(f"Cache expired for key {cache_key[:8]}...")
             return None
 
+        # Move to end (most recently used) for LRU eviction - O(1)
+        _cache.move_to_end(cache_key)
+
         _cache_hits += 1
         logger.info(f"✅ Cache HIT for key {cache_key[:8]}... (saved LLM call!)")
         return response
@@ -120,7 +125,7 @@ def get_cached_response(cache_key: str) -> Optional[Any]:
 
 def set_cached_response(cache_key: str, response: Any) -> None:
     """
-    Store response in cache.
+    Store response in cache with O(1) LRU eviction.
 
     Args:
         cache_key: Cache key from generate_cache_key()
@@ -129,13 +134,14 @@ def set_cached_response(cache_key: str, response: Any) -> None:
     global _cache, _cache_evictions
 
     with _cache_lock:
-        # Simple LRU eviction: remove oldest if at capacity
+        # O(1) LRU eviction: remove least recently used (first item) if at capacity
         if len(_cache) >= _max_cache_size:
-            oldest_key = min(_cache.keys(), key=lambda k: _cache[k][1])
-            del _cache[oldest_key]
+            # popitem(last=False) removes the first (oldest/least recently used) item in O(1)
+            evicted_key, _ = _cache.popitem(last=False)
             _cache_evictions += 1
-            logger.debug(f"Cache evicted oldest key {oldest_key[:8]}...")
+            logger.debug(f"Cache evicted LRU key {evicted_key[:8]}...")
 
+        # Add new item (automatically goes to end of OrderedDict)
         _cache[cache_key] = (response, time.time())
         logger.info(f"✅ Cached response for key {cache_key[:8]}...")
 
@@ -144,7 +150,7 @@ def clear_cache() -> None:
     """Clear all cached responses."""
     global _cache
     with _cache_lock:
-        _cache.clear()
+        _cache = OrderedDict()
         logger.info("Cache cleared")
 
 

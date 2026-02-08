@@ -59,13 +59,33 @@ def _ensure_tables(db: Session) -> None:
     if _tables_initialized:
         return
 
-    # In production/staging, assume Alembic has created tables and skip runtime DDL
-    # This prevents multi-worker DDL race conditions
+    # In production/staging, verify tables exist instead of creating them
+    # This prevents multi-worker DDL race conditions and provides clear errors
     if settings.app_env in ("production", "staging"):
         logger.info(
-            "[OrgOnboarding] Skipping runtime DDL in production/staging; "
+            "[OrgOnboarding] Verifying tables exist in production/staging; "
             "tables must be managed via Alembic migrations."
         )
+        # Verify required tables exist
+        result = db.execute(
+            text(
+                """
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND table_name IN ('navi_orgs', 'navi_org_members')
+                """
+            )
+        )
+        existing_tables = {row[0] for row in result}
+        required_tables = {"navi_orgs", "navi_org_members"}
+        missing_tables = required_tables - existing_tables
+
+        if missing_tables:
+            raise RuntimeError(
+                f"Required tables missing in {settings.app_env} environment: {missing_tables}. "
+                "Run Alembic migrations to create them."
+            )
+
         _tables_initialized = True
         return
 

@@ -7133,6 +7133,7 @@ def _get_vision_provider_for_model(model: Optional[str]):
 async def navi_autonomous_task(
     request: AutonomousTaskRequest,
     http_request: Request,
+    db: Session = Depends(get_db),
 ):
     # DEBUG: Print to stdout to ensure this endpoint is being called
     print("[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
@@ -7165,18 +7166,23 @@ async def navi_autonomous_task(
     """
     import os
     from backend.services.autonomous_agent import AutonomousAgent
-    from backend.core.db import SessionLocal
 
     # Extract user context
     # - In production, this should come from authenticated request context (e.g. auth middleware)
     # - In development/test/CI, allow overriding via DEV_* environment variables for convenience
     if settings.app_env in {"development", "test", "ci"}:
-        user_id = os.environ.get("DEV_USER_ID", "anonymous")
-        org_id = os.environ.get("DEV_ORG_ID", "default-org")
+        # In dev-like environments, allow convenient overrides, falling back to request payload
+        user_id = os.environ.get("DEV_USER_ID") or getattr(request, "user_id", None) or "anonymous"
+        org_id = os.environ.get("DEV_ORG_ID") or getattr(http_request.state, "org_id", None) or "default-org"
     else:
-        # Do not use DEV_* identities in production-like environments to avoid cross-tenant leakage
-        user_id = "anonymous"
-        org_id = "default-org"
+        # In production-like environments, require a real user/org context instead of hard-coded defaults
+        user_id = getattr(http_request.state, "user_id", None) or getattr(request, "user_id", None)
+        org_id = getattr(http_request.state, "org_id", None)
+        if not user_id or not org_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Authenticated user and organization context are required for autonomous tasks",
+            )
 
     logger.info(f"[NAVI Autonomous] User context: user_id={user_id}, org_id={org_id}")
 
@@ -7331,9 +7337,7 @@ async def navi_autonomous_task(
                     # Generator already closed or not started
                     pass
 
-        # Create database session for generation logging
-        db = SessionLocal()
-
+        # Use request-scoped database session from dependency injection
         try:
             agent = AutonomousAgent(
                 workspace_path=workspace_path,
@@ -7356,9 +7360,6 @@ async def navi_autonomous_task(
         except Exception as e:
             logger.exception(f"[NAVI Autonomous] Error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
-        finally:
-            # Close database session
-            db.close()
 
         yield "data: [DONE]\n\n"
 

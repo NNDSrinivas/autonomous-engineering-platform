@@ -210,8 +210,9 @@ Report the blockers clearly and provide manual steps.
 - NO explanations of reasoning unless asked
 
 **Safety rules:**
-- Safe commands (npm install, pip install, git status, running tests, etc.) can be executed directly - they don't need approval
-- Dangerous commands (rm, kill, chmod, destructive operations) will automatically request user consent - don't ask in text, just call the tool
+- Always follow the platform's command-approval and consent enforcement mechanisms
+- For any command that changes system state (installs, file writes, tests, git operations, rm/kill/chmod, or other destructive actions), rely on the tool's gating and obtain explicit user confirmation whenever required
+- If unsure whether a command requires approval, ask the user before calling the tool
 - Never modify files without showing a diff first
 - Never delete files without confirmation
 - Never push to git without user review

@@ -2454,16 +2454,8 @@ class AutonomousAgent:
             from backend.models.llm_metrics import LlmMetric
 
             metric = LlmMetric(
-                org_id=(
-                    int(self.org_id)
-                    if self.org_id and str(self.org_id).isdigit()
-                    else None
-                ),
-                user_id=(
-                    int(self.user_id)
-                    if self.user_id and str(self.user_id).isdigit()
-                    else None
-                ),
+                org_id=str(self.org_id) if self.org_id else None,
+                user_id=str(self.user_id) if self.user_id else None,
                 model=model,
                 provider=provider,
                 input_tokens=input_tokens,

@@ -27,8 +27,9 @@ class LlmMetric(Base):
     id = Column(Integer, primary_key=True)
 
     # Organization and user context
-    org_id = Column(Integer, nullable=True, index=True)
-    user_id = Column(Integer, nullable=True, index=True)
+    # Changed from Integer to String to support non-numeric IDs (org_key, OIDC sub, etc.)
+    org_id = Column(String(128), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
 
     # LLM call details
     model = Column(String(128), nullable=False, index=True)
@@ -92,8 +93,9 @@ class RagMetric(Base):
     id = Column(Integer, primary_key=True)
 
     # Organization and user context
-    org_id = Column(Integer, nullable=True, index=True)
-    user_id = Column(Integer, nullable=True, index=True)
+    # Changed from Integer to String to support non-numeric IDs (org_key, OIDC sub, etc.)
+    org_id = Column(String(128), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
 
     # RAG operation details
     phase = Column(String(64), nullable=False, index=True)  # planning, execution, etc.
@@ -141,8 +143,9 @@ class TaskMetric(Base):
     id = Column(Integer, primary_key=True)
 
     # Organization and user context
-    org_id = Column(Integer, nullable=True, index=True)
-    user_id = Column(Integer, nullable=True, index=True)
+    # Changed from Integer to String to support non-numeric IDs (org_key, OIDC sub, etc.)
+    org_id = Column(String(128), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
 
     # Task details
     task_id = Column(String(128), nullable=True, index=True)

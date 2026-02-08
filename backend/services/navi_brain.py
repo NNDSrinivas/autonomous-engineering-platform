@@ -5568,7 +5568,17 @@ class SelfHealingEngine:
         elif error_type == "port":
             # Port conflict handling - using backward-compatible action types
             # Use existing action types (checkPort/killPort/findPort) that executor supports
-            port = int(captured_groups[0]) if captured_groups else 3000
+            port = 3000
+            if captured_groups:
+                first_group = captured_groups[0]
+                try:
+                    port = int(first_group)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Invalid port value in captured_groups[0]: %r; falling back to default port %d",
+                        first_group,
+                        port,
+                    )
 
             # Provide sequence of actions for intelligent port recovery
             # These actions are recognized by the existing recovery executor

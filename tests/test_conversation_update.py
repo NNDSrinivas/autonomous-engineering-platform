@@ -10,7 +10,7 @@ Covers security and validation requirements per Copilot PR review:
 
 import pytest
 from uuid import uuid4
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 from fastapi import HTTPException
 
 from backend.api.routers.navi_memory import update_conversation, ConversationUpdate

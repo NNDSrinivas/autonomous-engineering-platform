@@ -274,7 +274,9 @@ class RealLLMTester:
             batch_end = min(batch_start + concurrent_requests, len(test_queue))
             batch = test_queue[batch_start:batch_end]
 
-            print(f"\n🔄 Running batch {batch_start//concurrent_requests + 1} ({len(batch)} tests concurrently)...")
+            print(
+                f"\n🔄 Running batch {batch_start//concurrent_requests + 1} ({len(batch)} tests concurrently)..."
+            )
 
             # Run batch concurrently
             tasks = [
@@ -297,7 +299,9 @@ class RealLLMTester:
                     )
                     self.results.passed_tests += 1
                 else:
-                    print(f"  [{test_idx}/{len(test_queue)}] ✗ {scenario}: {metric.error}")
+                    print(
+                        f"  [{test_idx}/{len(test_queue)}] ✗ {scenario}: {metric.error}"
+                    )
                     self.results.failed_tests += 1
 
                 self.results.total_tests += 1
@@ -434,7 +438,9 @@ async def test_real_llm_performance(llm_tester):
     ), f"Error rate {results.error_rate:.1f}% exceeds threshold {thresholds['error_rate_percent']}%"
 
     # Only assert on cost if tokens are being tracked (cost > 0)
-    avg_cost = results.total_cost / results.total_tests if results.total_tests > 0 else 0
+    avg_cost = (
+        results.total_cost / results.total_tests if results.total_tests > 0 else 0
+    )
     if results.total_cost > 0:
         assert (
             avg_cost < thresholds["avg_cost_per_request"]

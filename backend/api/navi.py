@@ -183,9 +183,17 @@ MODEL_ALIASES: Dict[str, Dict[str, str]] = {
 
 
 def _resolve_model(model: Optional[str]) -> str:
-    """Resolve model alias to actual model ID."""
+    """
+    Resolve model alias to actual model ID.
+
+    Default model is environment-aware to balance cost and quality:
+    - dev/test: gpt-4o-mini (faster, cheaper)
+    - production: gpt-4o (higher quality)
+    """
     if not model:
-        return "gpt-4o"  # Default model for production
+        from backend.core.settings import settings
+        # Use cheaper model for dev/test, full model for production
+        return "gpt-4o" if settings.is_production() else "gpt-4o-mini"
 
     # Check if it's an alias
     if model in MODEL_ALIASES:

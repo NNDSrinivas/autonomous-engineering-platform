@@ -1249,12 +1249,15 @@ Please debug this issue and continue with the original task. The user's new mess
                 # Include workspace/model/provider for proper cache scoping
                 # Note: org_id/user_id would improve tenant isolation but aren't available
                 # on this unauthenticated VS Code extension endpoint
-                # IMPORTANT: Pass full conversation history to prevent cache collisions.
-                # Truncating would cause different conversations to share cache keys.
+                # IMPORTANT: Align cache key with actual LLM input (last 5 messages).
+                # Using full history would cause cache misses for identical effective inputs.
+                cache_conversation_history = (
+                    conversation_history[-5:] if conversation_history else None
+                )
                 cache_key = generate_cache_key(
                     message=actual_message,
                     mode=request.mode,
-                    conversation_history=conversation_history or None,
+                    conversation_history=cache_conversation_history,
                     workspace_path=workspace_path,
                     model=llm_model,
                     provider=llm_provider,

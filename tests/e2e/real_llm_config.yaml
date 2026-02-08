@@ -10,6 +10,7 @@ api_key_env: OPENAI_API_KEY  # Read from environment variable
 test_runs: 100
 timeout_seconds: 60  # Increased from 30s to handle complex requests
 concurrent_requests: 5  # Run 5 tests in parallel to simulate load
+circuit_breaker_timeout_seconds: 60  # Per-request timeout to prevent batch-level delays
 
 # Metrics to track
 track_metrics:
@@ -19,17 +20,16 @@ track_metrics:
   - error_rate  # Failed requests percentage
   - throughput  # Requests per second
 
-# Performance thresholds (adjusted for LLM API latency variability)
-# Observed ranges across 3 validation runs:
-#   p50: 19.4s - 27.7s (43% variance due to API load/network)
-#   p95: 35.6s - 42.3s (19% variance)
-#   p99: 46.9s - 53.3s (14% variance)
-# Thresholds set with buffer to accommodate realistic API variability
+# Performance thresholds (updated post-optimization - Feb 2026)
+# Baseline performance after 3 optimizations (conversation history, parallel loading, caching):
+#   Normal cohort (73%): p50=5.0s, p95=9.0s, p99=12.0s
+#   With circuit breaker: Should eliminate outlier delays
+# Thresholds set with 100-150% buffer to accommodate API variability
 performance_thresholds:
-  p50_latency_ms: 28000  # 50th percentile < 28 seconds
-  p95_latency_ms: 45000  # 95th percentile < 45 seconds
-  p99_latency_ms: 55000  # 99th percentile < 55 seconds
-  error_rate_percent: 10  # Less than 10% errors (accounting for occasional timeouts)
+  p50_latency_ms: 10000  # 50th percentile < 10 seconds (vs baseline 5s)
+  p95_latency_ms: 20000  # 95th percentile < 20 seconds (vs baseline 9s)
+  p99_latency_ms: 30000  # 99th percentile < 30 seconds (vs baseline 12s)
+  error_rate_percent: 5  # Less than 5% errors (circuit breaker should catch timeouts)
   avg_cost_per_request: 0.10  # Less than $0.10 per request
 
 # Test scenarios (representative real-world NAVI tasks)

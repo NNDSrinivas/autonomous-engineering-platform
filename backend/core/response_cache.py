@@ -19,6 +19,12 @@ _cache_ttl_seconds = 3600  # 1 hour TTL for cached responses
 _max_cache_size = 1000  # Max cached items
 _cache_lock = threading.Lock()  # Protect cache mutations from concurrent access
 
+# Cache metrics for monitoring
+_cache_hits = 0
+_cache_misses = 0
+_cache_evictions = 0
+_cache_expirations = 0
+
 
 def generate_cache_key(
     message: str,
@@ -50,8 +56,10 @@ def generate_cache_key(
     """
     # Normalize inputs for consistent hashing
     # Include all scoping fields that affect output to prevent cache pollution
+    # Note: Preserve original message case to avoid collisions where case matters
+    # (e.g., code identifiers, file paths on case-sensitive filesystems)
     normalized = {
-        "message": message.strip().lower(),
+        "message": message.strip(),
         "mode": mode,
         "org_id": org_id,
         "user_id": user_id,
@@ -88,10 +96,11 @@ def get_cached_response(cache_key: str) -> Optional[Any]:
     Returns:
         Cached response or None if not found/expired
     """
-    global _cache
+    global _cache, _cache_hits, _cache_misses, _cache_expirations
 
     with _cache_lock:
         if cache_key not in _cache:
+            _cache_misses += 1
             return None
 
         response, timestamp = _cache[cache_key]
@@ -99,9 +108,12 @@ def get_cached_response(cache_key: str) -> Optional[Any]:
         # Check if expired
         if time.time() - timestamp > _cache_ttl_seconds:
             del _cache[cache_key]
+            _cache_expirations += 1
+            _cache_misses += 1
             logger.debug(f"Cache expired for key {cache_key[:8]}...")
             return None
 
+        _cache_hits += 1
         logger.info(f"✅ Cache HIT for key {cache_key[:8]}... (saved LLM call!)")
         return response
 
@@ -114,13 +126,14 @@ def set_cached_response(cache_key: str, response: Any) -> None:
         cache_key: Cache key from generate_cache_key()
         response: Response to cache
     """
-    global _cache
+    global _cache, _cache_evictions
 
     with _cache_lock:
         # Simple LRU eviction: remove oldest if at capacity
         if len(_cache) >= _max_cache_size:
             oldest_key = min(_cache.keys(), key=lambda k: _cache[k][1])
             del _cache[oldest_key]
+            _cache_evictions += 1
             logger.debug(f"Cache evicted oldest key {oldest_key[:8]}...")
 
         _cache[cache_key] = (response, time.time())
@@ -140,12 +153,32 @@ def get_cache_stats() -> Dict[str, Any]:
     Get cache statistics.
 
     Returns:
-        Dict with cache size, hit rate, etc.
+        Dict with cache size, hit rate, and other metrics
     """
     with _cache_lock:
+        total_requests = _cache_hits + _cache_misses
+        hit_rate = (_cache_hits / total_requests * 100) if total_requests > 0 else 0
+
         return {
             "size": len(_cache),
             "max_size": _max_cache_size,
             "ttl_seconds": _cache_ttl_seconds,
             "utilization_percent": (len(_cache) / _max_cache_size) * 100,
+            "hits": _cache_hits,
+            "misses": _cache_misses,
+            "total_requests": total_requests,
+            "hit_rate_percent": round(hit_rate, 2),
+            "evictions": _cache_evictions,
+            "expirations": _cache_expirations,
         }
+
+
+def reset_cache_stats() -> None:
+    """Reset cache statistics counters."""
+    global _cache_hits, _cache_misses, _cache_evictions, _cache_expirations
+    with _cache_lock:
+        _cache_hits = 0
+        _cache_misses = 0
+        _cache_evictions = 0
+        _cache_expirations = 0
+        logger.info("Cache statistics reset")

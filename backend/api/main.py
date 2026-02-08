@@ -162,6 +162,7 @@ from .routers.ai_codegen import router as ai_codegen_router
 from .routers.ai_feedback import router as ai_feedback_router
 from .events.router import router as events_router  # Universal event ingestion
 from .internal.router import router as internal_router  # System info and diagnostics
+from .routers.telemetry import router as telemetry_router  # Telemetry & cache monitoring
 from ..core.realtime_engine import presence as presence_lifecycle
 
 from .routers.jira_webhook import router as jira_webhook_router
@@ -541,6 +542,7 @@ app.include_router(memory_graph_router)  # Memory graph queries (/api/memory/*)
 app.include_router(saas_router)  # SaaS management endpoints (/saas/*)
 app.include_router(events_router, prefix="/api")  # Universal event ingestion
 app.include_router(internal_router, prefix="/api")  # System info and diagnostics
+app.include_router(telemetry_router)  # Telemetry & cache monitoring (/api/telemetry/*)
 app.include_router(review_router)
 app.include_router(smart_router)
 app.include_router(smart_review_router)

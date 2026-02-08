@@ -52,8 +52,9 @@ def _ensure_tables(db: Session) -> None:
     - Performance: Overhead on every request (mitigated by flag)
     - Operations: Schema changes not tracked/versioned
 
-    IMPORTANT: Only runs in development mode to avoid multi-worker DDL races.
+    IMPORTANT: Only runs outside of production/staging to avoid multi-worker DDL races.
     Production/staging deployments MUST use Alembic migrations instead.
+    Table creation is allowed in development, test, CI, and other non-production environments.
     """
     global _tables_initialized
 

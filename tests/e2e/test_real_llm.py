@@ -142,6 +142,33 @@ class RealLLMTester:
 
         return input_cost + output_cost
 
+    async def run_single_test_with_timeout(
+        self, scenario: str, message: str, test_num: int, timeout_seconds: int = 60
+    ) -> TestMetrics:
+        """
+        Run a single test with circuit breaker timeout.
+
+        Prevents batch-level delays by failing fast if individual requests hang.
+        Default timeout is 60 seconds per request.
+        """
+        try:
+            return await asyncio.wait_for(
+                self.run_single_test(scenario, message, test_num),
+                timeout=timeout_seconds
+            )
+        except asyncio.TimeoutError:
+            test_name = f"{scenario}_{test_num}"
+            end_time = time.time()
+            return TestMetrics(
+                test_name=test_name,
+                scenario=scenario,
+                start_time=time.time() - timeout_seconds,
+                end_time=end_time,
+                latency_ms=timeout_seconds * 1000,
+                success=False,
+                error=f"Circuit breaker timeout after {timeout_seconds}s",
+            )
+
     async def run_single_test(
         self, scenario: str, message: str, test_num: int
     ) -> TestMetrics:
@@ -278,9 +305,11 @@ class RealLLMTester:
                 f"\n🔄 Running batch {batch_start//concurrent_requests + 1} ({len(batch)} tests concurrently)..."
             )
 
-            # Run batch concurrently
+            # Run batch concurrently with per-request circuit breaker
+            # Each request has 60s timeout to prevent batch-level delays
+            timeout_per_request = TEST_CONFIG.get("circuit_breaker_timeout_seconds", 60)
             tasks = [
-                self.run_single_test(scenario, prompt, test_num)
+                self.run_single_test_with_timeout(scenario, prompt, test_num, timeout_per_request)
                 for scenario, prompt, test_num in batch
             ]
             metrics_batch = await asyncio.gather(*tasks, return_exceptions=False)

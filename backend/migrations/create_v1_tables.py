@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 """
-Database migration script for NAVI v1 tables.
+Database migration script for NAVI v1 analytics tables.
 
 Creates the following tables:
 - llm_metrics: LLM call metrics (tokens, cost, latency)
 - rag_metrics: RAG retrieval metrics
 - task_metrics: Task execution metrics
-- learning_suggestions: AI suggestions tracked for learning
-- learning_feedback: User feedback on suggestions
-- learning_insights: Generated insights from feedback analysis
-- telemetry_events: Frontend and backend telemetry events
 
 Usage:
     python backend/migrations/create_v1_tables.py

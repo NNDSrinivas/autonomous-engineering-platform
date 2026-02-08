@@ -332,3 +332,32 @@ def _emit_llm_metrics(data: Dict[str, Any]) -> None:
 async def telemetry_health() -> Dict[str, str]:
     """Health check for telemetry endpoint"""
     return {"status": "healthy", "service": "telemetry"}
+
+
+@router.get("/cache/stats")
+async def get_cache_statistics() -> Dict[str, Any]:
+    """
+    Get response cache statistics for monitoring.
+
+    Returns cache hit/miss rates, size, evictions, etc.
+    Used for monitoring cache effectiveness in production.
+    """
+    from backend.core.response_cache import get_cache_stats
+
+    stats = get_cache_stats()
+    logger.info(f"[Telemetry] Cache stats: {stats}")
+    return stats
+
+
+@router.post("/cache/reset")
+async def reset_cache_statistics() -> Dict[str, str]:
+    """
+    Reset cache statistics counters.
+
+    Useful for starting fresh measurements after deployments or config changes.
+    """
+    from backend.core.response_cache import reset_cache_stats
+
+    reset_cache_stats()
+    logger.info("[Telemetry] Cache statistics reset")
+    return {"status": "success", "message": "Cache statistics reset"}

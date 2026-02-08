@@ -35,12 +35,14 @@ def get_shell_executable() -> str:
         return user_shell
 
     # Try bash first (preferred for advanced features)
-    if shutil.which("bash"):
-        return shutil.which("bash")
+    bash_path = shutil.which("bash")
+    if bash_path:
+        return bash_path
 
     # Fall back to sh (POSIX-compliant, available on all Unix-like systems)
-    if shutil.which("sh"):
-        return shutil.which("sh")
+    sh_path = shutil.which("sh")
+    if sh_path:
+        return sh_path
 
     # Last resort: try common paths
     for shell in ["/bin/bash", "/bin/sh", "/usr/bin/bash", "/usr/bin/sh"]:

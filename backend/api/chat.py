@@ -1695,30 +1695,26 @@ async def navi_chat(
                 llm_context,
             )
 
-        # OPTIMIZATION: Fetch memories in parallel for 50% faster context loading
+        # OPTIMIZATION: Fetch memories with semantic search, fallback to recent if needed
         memories: List[Dict[str, Any]] = []
         try:
-            # Run both memory searches concurrently instead of sequential fallback
-            semantic_task = search_memory(
-                db=db,
-                user_id="default_user",
-                query=request.message,
-                limit=5,
-                min_importance=1,
-            )
-            recent_task = get_recent_memories(db=db, user_id="default_user", limit=5)
-
-            search_result, recent_result = await asyncio.gather(
-                semantic_task, recent_task, return_exceptions=True
-            )
-
-            # Use semantic search if successful, otherwise fall back to recent
-            if not isinstance(search_result, Exception) and search_result:
-                memories = search_result
-            elif not isinstance(recent_result, Exception) and recent_result:
-                memories = recent_result
-            else:
-                memories = []
+            # Try semantic search first (provides better context matching)
+            try:
+                memories = await search_memory(
+                    db=db,
+                    user_id="default_user",
+                    query=request.message,
+                    limit=5,
+                    min_importance=1,
+                )
+            except Exception:
+                # Fallback: recent memories if semantic search fails (e.g., no embeddings/OpenAI key)
+                try:
+                    memories = await get_recent_memories(
+                        db=db, user_id="default_user", limit=5
+                    )
+                except Exception:
+                    memories = []
         except Exception:
             memories = []
 

@@ -7,7 +7,7 @@
 - ✅ Database created with credentials from `.env.example` (mentor/mentor/mentor)
 - ✅ All 9 v1 tables successfully created
 - ✅ Migration chain fixed (resolved cycle dependency)
-- ✅ Migration applied: `0ab632cc0bcb -> 0031_metrics_learning`
+- ✅ All Alembic migrations applied up to the latest head: `1c91f2192fb6` (includes analytics, learning, and telemetry tables)
 
 ### 2. New Database Tables Created (v1 Analytics)
 
@@ -247,8 +247,8 @@ kubectl exec -n navi-production deployment/navi-backend -c backend -- \
 export DATABASE_URL="postgresql+psycopg2://mentor:mentor@localhost:5432/mentor"
 psql $DATABASE_URL -c "\dt" | wc -l  # Should show 84+ tables
 
-# Verify migration
-alembic current  # Should show: 0031_metrics_learning
+# Verify migration is at latest head
+alembic current  # Should show: 1c91f2192fb6 (head)
 
 # Verify specific tables
 psql $DATABASE_URL -c "SELECT count(*) FROM llm_metrics;"

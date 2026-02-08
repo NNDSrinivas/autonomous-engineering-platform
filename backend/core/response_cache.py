@@ -60,6 +60,10 @@ def generate_cache_key(
     # Include all scoping fields that affect output to prevent cache pollution
     # Note: Preserve original message case to avoid collisions where case matters
     # (e.g., code identifiers, file paths on case-sensitive filesystems)
+    #
+    # IMPORTANT: Hash full conversation history to prevent cache collisions.
+    # Truncating history would cause different conversations to hash to the same key,
+    # leading to incorrect cache hits where unrelated queries return cached responses.
     normalized = {
         "message": message.strip(),
         "mode": mode,
@@ -72,9 +76,9 @@ def generate_cache_key(
             [
                 {
                     "role": msg.get("role"),
-                    "content": msg.get("content", "")[:100],  # First 100 chars
+                    "content": msg.get("content", ""),  # Full content, no truncation
                 }
-                for msg in (conversation_history or [])[-3:]  # Last 3 messages only
+                for msg in (conversation_history or [])
             ]
             if conversation_history
             else []

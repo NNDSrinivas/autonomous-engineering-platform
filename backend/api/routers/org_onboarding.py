@@ -110,7 +110,7 @@ def _ensure_tables(db: Session) -> None:
                   name TEXT NOT NULL,
                   slug TEXT NOT NULL UNIQUE,
                   owner_user_id TEXT NOT NULL,
-                  created_at TIMESTAMP NOT NULL
+                  created_at TIMESTAMPTZ NOT NULL
                 )
                 """
             )
@@ -122,7 +122,7 @@ def _ensure_tables(db: Session) -> None:
                   org_id TEXT NOT NULL,
                   user_id TEXT NOT NULL,
                   role TEXT NOT NULL,
-                  created_at TIMESTAMP NOT NULL,
+                  created_at TIMESTAMPTZ NOT NULL,
                   PRIMARY KEY (org_id, user_id)
                 )
                 """
@@ -137,7 +137,7 @@ def _ensure_tables(db: Session) -> None:
                   email TEXT NOT NULL,
                   role TEXT NOT NULL,
                   invited_by TEXT NOT NULL,
-                  created_at TIMESTAMP NOT NULL,
+                  created_at TIMESTAMPTZ NOT NULL,
                   status TEXT NOT NULL
                 )
                 """

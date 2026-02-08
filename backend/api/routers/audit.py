@@ -249,7 +249,18 @@ def export_audit_logs(
                 and row_dict["payload"] is not None
             ):
                 if not isinstance(row_dict["payload"], str):
-                    row_dict["payload"] = json.dumps(row_dict["payload"])
+                    # Handle bytes (common for encrypted payloads) and other non-JSON types
+                    if isinstance(row_dict["payload"], bytes):
+                        import base64
+
+                        row_dict["payload"] = base64.b64encode(
+                            row_dict["payload"]
+                        ).decode("utf-8")
+                    else:
+                        # Use default=str to handle any non-JSON-serializable types
+                        row_dict["payload"] = json.dumps(
+                            row_dict["payload"], default=str
+                        )
             writer.writerow(row_dict)
 
         return PlainTextResponse(output.getvalue(), media_type="text/csv")

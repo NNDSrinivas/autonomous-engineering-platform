@@ -34,7 +34,8 @@ class FeedbackAnalyzerTask:
                     org_ids.add(feedback.org_id)
 
             logger.info(
-                f"[FeedbackAnalyzer] Analyzing feedback for {len(org_ids)} organizations"
+                "[FeedbackAnalyzer] Analyzing feedback for %d organizations",
+                len(org_ids),
             )
 
             # Generate aggregate insights for each org
@@ -49,30 +50,32 @@ class FeedbackAnalyzerTask:
                         manager.store.add_insight(insight)
 
                     logger.info(
-                        f"[FeedbackAnalyzer] Generated {len(insights)} insights for org: {org_id}"
+                        "[FeedbackAnalyzer] Generated %d insights for org: %s",
+                        len(insights),
+                        org_id,
                     )
                 except Exception as e:
                     logger.error(
-                        f"[FeedbackAnalyzer] Failed to analyze org {org_id}: {e}"
+                        "[FeedbackAnalyzer] Failed to analyze org %s: %s", org_id, e
                     )
 
             logger.info("[FeedbackAnalyzer] ✅ Analysis complete")
 
         except Exception as e:
-            logger.error(f"[FeedbackAnalyzer] Analysis failed: {e}")
+            logger.error("[FeedbackAnalyzer] Analysis failed: %s", e)
 
     async def run(self):
         """Run the analysis task periodically."""
         self.running = True
         logger.info(
-            f"[FeedbackAnalyzer] Started (interval: {self.interval_minutes} minutes)"
+            "[FeedbackAnalyzer] Started (interval: %d minutes)", self.interval_minutes
         )
 
         while self.running:
             try:
                 await self.analyze_all_orgs()
             except Exception as e:
-                logger.error(f"[FeedbackAnalyzer] Unexpected error: {e}")
+                logger.error("[FeedbackAnalyzer] Unexpected error: %s", e)
 
             # Wait for next interval
             await asyncio.sleep(self.interval_minutes * 60)
@@ -168,5 +171,5 @@ if __name__ == "__main__":
         logger.info("[FeedbackAnalyzer] Received interrupt, shutting down")
         sys.exit(0)
     except Exception as e:
-        logger.error(f"[FeedbackAnalyzer] Fatal error: {e}")
+        logger.error("[FeedbackAnalyzer] Fatal error: %s", e)
         sys.exit(1)

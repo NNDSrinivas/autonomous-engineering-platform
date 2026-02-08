@@ -196,7 +196,7 @@ class FeedbackService:
                 context=gen_log.params if gen_log.params else {},
                 feedback_type=feedback_type.value,
                 rating=rating,
-                reason=reason,
+                reason=reason[:256] if reason else None,
                 comment=comment,
                 model_used=gen_log.model,
                 gen_id=gen_id,

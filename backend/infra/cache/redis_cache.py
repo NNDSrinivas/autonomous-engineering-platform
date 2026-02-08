@@ -109,23 +109,27 @@ class Cache:
             try:
                 raw = await r.getdel(key)
                 return json.loads(raw) if raw else None
-            except (AttributeError, TypeError, Exception) as e:
-                # AttributeError/TypeError: redis-py doesn't have getdel method
-                # ResponseError: Redis server doesn't support GETDEL (< 6.2)
-                # Check if it's a "unknown command" error from Redis
-                if hasattr(e, "__class__") and "ResponseError" not in str(type(e)):
+            except (AttributeError, TypeError):
+                # redis-py doesn't have getdel method - fall back to Lua script
+                pass  # Continue to Lua fallback below
+            except Exception as e:
+                # Check if it's a ResponseError from Redis server (doesn't support GETDEL < 6.2)
+                if "ResponseError" in str(type(e)):
+                    pass  # Continue to Lua fallback below
+                else:
                     raise  # Re-raise unexpected errors
-                # Fallback for Redis/redis-py versions without GETDEL support
-                # Use an atomic Lua script to GET and DEL the key
-                lua_script = """
-                local v = redis.call('GET', KEYS[1])
-                if v then
-                    redis.call('DEL', KEYS[1])
-                end
-                return v
-                """
-                raw = await r.eval(lua_script, 1, key)
-                return json.loads(raw) if raw else None
+
+            # Fallback for Redis/redis-py versions without GETDEL support
+            # Use an atomic Lua script to GET and DEL the key
+            lua_script = """
+            local v = redis.call('GET', KEYS[1])
+            if v then
+                redis.call('DEL', KEYS[1])
+            end
+            return v
+            """
+            raw = await r.eval(lua_script, 1, key)
+            return json.loads(raw) if raw else None
         else:
             # For in-memory cache, use lock to make operation atomic
             async with self._mem_lock:

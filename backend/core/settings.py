@@ -136,7 +136,7 @@ if settings.JWT_ENABLED and not (
     )
 
 
-def validate_production_settings() -> None:
+def validate_production_settings(settings_obj: "Settings | None" = None) -> None:
     """
     Validate production/staging-specific settings.
 
@@ -144,14 +144,23 @@ def validate_production_settings() -> None:
     to allow CLI tools, tests, and offline scripts to import settings without
     triggering validation errors.
 
+    Args:
+        settings_obj: Settings object to validate. If None, uses module-level settings.
+
     Raises:
         ValueError: If required production settings are missing or invalid
     """
+    if settings_obj is None:
+        settings_obj = settings
+
     # Validate audit encryption: encryption key is REQUIRED in production/staging
-    if settings.app_env in ("production", "staging") and settings.enable_audit_logging:
-        if not settings.AUDIT_ENCRYPTION_KEY:
+    if (
+        settings_obj.app_env in ("production", "staging")
+        and settings_obj.enable_audit_logging
+    ):
+        if not settings_obj.AUDIT_ENCRYPTION_KEY:
             raise ValueError(
-                f"AUDIT_ENCRYPTION_KEY is REQUIRED when app_env={settings.app_env} and audit logging is enabled. "
+                f"AUDIT_ENCRYPTION_KEY is REQUIRED when app_env={settings_obj.app_env} and audit logging is enabled. "
                 "Set AUDIT_ENCRYPTION_KEY environment variable to a secure 32-byte base64 key. "
                 "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
             )

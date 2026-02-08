@@ -154,7 +154,7 @@ class RealLLMTester:
         try:
             return await asyncio.wait_for(
                 self.run_single_test(scenario, message, test_num),
-                timeout=timeout_seconds
+                timeout=timeout_seconds,
             )
         except asyncio.TimeoutError:
             test_name = f"{scenario}_{test_num}"
@@ -309,7 +309,9 @@ class RealLLMTester:
             # Each request has 60s timeout to prevent batch-level delays
             timeout_per_request = TEST_CONFIG.get("circuit_breaker_timeout_seconds", 60)
             tasks = [
-                self.run_single_test_with_timeout(scenario, prompt, test_num, timeout_per_request)
+                self.run_single_test_with_timeout(
+                    scenario, prompt, test_num, timeout_per_request
+                )
                 for scenario, prompt, test_num in batch
             ]
             metrics_batch = await asyncio.gather(*tasks, return_exceptions=False)

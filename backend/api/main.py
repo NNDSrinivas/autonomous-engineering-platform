@@ -45,10 +45,7 @@ from backend.core.rate_limit.middleware import RateLimitMiddleware
 from backend.core.auth.vscode_middleware import VscodeAuthMiddleware
 
 from backend.core.config import settings
-from backend.core.settings import (
-    settings as core_settings,
-    validate_production_settings,
-)
+from backend.core.settings import validate_production_settings
 
 # removed unused: setup_logging (using obs logging instead)
 # removed unused: metrics_router (using new /metrics mount)
@@ -162,7 +159,9 @@ from .routers.ai_codegen import router as ai_codegen_router
 from .routers.ai_feedback import router as ai_feedback_router
 from .events.router import router as events_router  # Universal event ingestion
 from .internal.router import router as internal_router  # System info and diagnostics
-from .routers.telemetry import router as telemetry_router  # Telemetry & cache monitoring
+from .routers.telemetry import (
+    router as telemetry_router,
+)  # Telemetry & cache monitoring
 from ..core.realtime_engine import presence as presence_lifecycle
 
 from .routers.jira_webhook import router as jira_webhook_router
@@ -198,7 +197,7 @@ init_tracing()
 async def lifespan(app: FastAPI):
     """Application lifespan: manage startup/shutdown of background services."""
     # Startup: validate production settings and initialize background services
-    validate_production_settings()  # Validate production-specific settings
+    validate_production_settings(settings)  # Validate production-specific settings
     await on_startup()  # PR-29: Health system startup
     presence_lifecycle.start_cleanup_thread()
     yield

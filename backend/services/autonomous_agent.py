@@ -3342,10 +3342,8 @@ Return ONLY the JSON, no markdown or explanations."""
                     consent_id = arguments.get("consent_id")
 
                     # Check global consent approvals first (protected by lock)
+                    consent_denied = False
                     with _consent_lock:
-                        consent_approved = False
-                        consent_denied = False
-
                         if consent_id and consent_id in _consent_approvals:
                             approval = _consent_approvals[consent_id]
                             if approval.get("approved"):
@@ -3355,7 +3353,6 @@ Return ONLY the JSON, no markdown or explanations."""
                                 )
                                 # Clean up the approval to prevent reuse
                                 del _consent_approvals[consent_id]
-                                consent_approved = True
                             else:
                                 # Consent was denied
                                 logger.info(

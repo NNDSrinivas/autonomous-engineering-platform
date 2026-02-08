@@ -5,7 +5,7 @@ Analytics API Router - Usage and metrics dashboards.
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
@@ -208,8 +208,7 @@ def org_dashboard(
     org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
     if not org_id:
         raise HTTPException(
-            status_code=401,
-            detail="Organization context required for org dashboard"
+            status_code=401, detail="Organization context required for org dashboard"
         )
 
     llm = _summarize_llm_metrics(db, range_info["start"], org_id, None)

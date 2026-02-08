@@ -36,13 +36,8 @@ def upgrade() -> None:
         ),
     )
 
-    # Drop server_default (not supported in SQLite, skip for SQLite)
-    # In PostgreSQL, we want to remove the default so new rows require explicit values
-    # In SQLite, we keep the default since ALTER COLUMN is not supported
-    bind = op.get_bind()
-    if bind.dialect.name != "sqlite":
-        op.alter_column("navi_conversations", "is_pinned", server_default=None)
-        op.alter_column("navi_conversations", "is_starred", server_default=None)
+    # Keep server_default to avoid breaking non-ORM insert paths (raw SQL, older services, etc.)
+    # The ORM also has Python defaults, but DB defaults provide a safety net for all insert paths
 
 
 def downgrade() -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -29,6 +30,7 @@ router = APIRouter(prefix="/api/orgs", tags=["org-onboarding"])
 
 # Track if tables have been initialized (to avoid DDL on every request)
 _tables_initialized = False
+_tables_init_lock = threading.Lock()
 
 
 def _now() -> datetime:
@@ -55,84 +57,90 @@ def _ensure_tables(db: Session) -> None:
     """
     global _tables_initialized
 
-    # Skip if already initialized (avoid DDL on every request)
+    # Check without lock first (fast path)
     if _tables_initialized:
         return
 
-    # In production/staging, verify tables exist instead of creating them
-    # This prevents multi-worker DDL race conditions and provides clear errors
-    if settings.app_env in ("production", "staging"):
-        logger.info(
-            "[OrgOnboarding] Verifying tables exist in production/staging; "
-            "tables must be managed via Alembic migrations."
-        )
-        # Verify required tables exist
-        result = db.execute(
+    # Acquire lock to prevent concurrent DDL operations
+    with _tables_init_lock:
+        # Double-check after acquiring lock
+        if _tables_initialized:
+            return
+
+        # In production/staging, verify tables exist instead of creating them
+        # This prevents multi-worker DDL race conditions and provides clear errors
+        if settings.app_env in ("production", "staging"):
+            logger.info(
+                "[OrgOnboarding] Verifying tables exist in production/staging; "
+                "tables must be managed via Alembic migrations."
+            )
+            # Verify required tables exist
+            result = db.execute(
+                text(
+                    """
+                    SELECT table_name FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name IN ('navi_orgs', 'navi_org_members', 'navi_org_invites')
+                    """
+                )
+            )
+            existing_tables = {row[0] for row in result}
+            required_tables = {"navi_orgs", "navi_org_members", "navi_org_invites"}
+            missing_tables = required_tables - existing_tables
+
+            if missing_tables:
+                raise RuntimeError(
+                    f"Required tables missing in {settings.app_env} environment: {missing_tables}. "
+                    "Run Alembic migrations to create them."
+                )
+
+            _tables_initialized = True
+            return
+
+        db.execute(
             text(
                 """
-                SELECT table_name FROM information_schema.tables
-                WHERE table_schema = 'public'
-                AND table_name IN ('navi_orgs', 'navi_org_members', 'navi_org_invites')
+                CREATE TABLE IF NOT EXISTS navi_orgs (
+                  id TEXT PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  slug TEXT NOT NULL UNIQUE,
+                  owner_user_id TEXT NOT NULL,
+                  created_at TIMESTAMP NOT NULL
+                )
                 """
             )
         )
-        existing_tables = {row[0] for row in result}
-        required_tables = {"navi_orgs", "navi_org_members", "navi_org_invites"}
-        missing_tables = required_tables - existing_tables
-
-        if missing_tables:
-            raise RuntimeError(
-                f"Required tables missing in {settings.app_env} environment: {missing_tables}. "
-                "Run Alembic migrations to create them."
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS navi_org_members (
+                  org_id TEXT NOT NULL,
+                  user_id TEXT NOT NULL,
+                  role TEXT NOT NULL,
+                  created_at TIMESTAMP NOT NULL,
+                  PRIMARY KEY (org_id, user_id)
+                )
+                """
             )
+        )
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS navi_org_invites (
+                  id TEXT PRIMARY KEY,
+                  org_id TEXT NOT NULL,
+                  email TEXT NOT NULL,
+                  role TEXT NOT NULL,
+                  invited_by TEXT NOT NULL,
+                  created_at TIMESTAMP NOT NULL,
+                  status TEXT NOT NULL
+                )
+                """
+            )
+        )
+        db.commit()
 
         _tables_initialized = True
-        return
-
-    db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS navi_orgs (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              slug TEXT NOT NULL UNIQUE,
-              owner_user_id TEXT NOT NULL,
-              created_at TIMESTAMP NOT NULL
-            )
-            """
-        )
-    )
-    db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS navi_org_members (
-              org_id TEXT NOT NULL,
-              user_id TEXT NOT NULL,
-              role TEXT NOT NULL,
-              created_at TIMESTAMP NOT NULL,
-              PRIMARY KEY (org_id, user_id)
-            )
-            """
-        )
-    )
-    db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS navi_org_invites (
-              id TEXT PRIMARY KEY,
-              org_id TEXT NOT NULL,
-              email TEXT NOT NULL,
-              role TEXT NOT NULL,
-              invited_by TEXT NOT NULL,
-              created_at TIMESTAMP NOT NULL,
-              status TEXT NOT NULL
-            )
-            """
-        )
-    )
-    db.commit()
-
-    _tables_initialized = True
 
 
 class OrgOut(BaseModel):

@@ -183,18 +183,11 @@ class FeedbackService:
         try:
             from backend.models.learning_data import LearningSuggestion
 
-            # Parse org_id and user_id to int if possible
-            org_id_int = None
-            if gen_log.org_key and str(gen_log.org_key).isdigit():
-                org_id_int = int(gen_log.org_key)
-
-            user_id_int = None
-            if gen_log.user_sub and str(gen_log.user_sub).isdigit():
-                user_id_int = int(gen_log.user_sub)
-
+            # Persist raw org/user identifiers so non-numeric IDs (OIDC sub, UUIDs, etc.)
+            # are not dropped for learning analytics
             suggestion = LearningSuggestion(
-                org_id=org_id_int,
-                user_id=user_id_int,
+                org_id=gen_log.org_key,
+                user_id=gen_log.user_sub,
                 category=category.value,
                 suggestion_text=f"AI generation (task_type: {gen_log.task_type})",
                 context=gen_log.params if gen_log.params else {},

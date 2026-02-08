@@ -52,8 +52,9 @@ class LearningSuggestion(Base):
     id = Column(Integer, primary_key=True)
 
     # Organization and user context
-    org_id = Column(Integer, nullable=True, index=True)
-    user_id = Column(Integer, nullable=True, index=True)
+    # Changed from Integer to String to support non-numeric IDs (org_key, OIDC sub, etc.)
+    org_id = Column(String(128), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
 
     # Suggestion details
     category = Column(String(64), nullable=False, index=True)  # SuggestionCategoryEnum

@@ -26,6 +26,7 @@ import json
 import asyncio
 import aiohttp
 import uuid
+from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncGenerator, Sequence, Tuple
 from dataclasses import dataclass, field
@@ -5232,7 +5233,9 @@ class SelfHealingEngine:
     """
 
     # Port memory: workspace_path -> last_used_port
-    _port_memory: Dict[str, int] = {}
+    # Using OrderedDict with bounded size to prevent unbounded memory growth
+    _PORT_MEMORY_MAX_SIZE = 1000  # Limit to 1000 workspace entries
+    _port_memory: OrderedDict[str, int] = OrderedDict()
 
     # Common error patterns and their fixes
     ERROR_PATTERNS = {

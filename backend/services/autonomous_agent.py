@@ -77,6 +77,11 @@ logger = logging.getLogger(__name__)
 # ========== CONSENT STORAGE ==========
 # Module-level storage for command consent approvals
 # Key: consent_id, Value: {"approved": bool, "timestamp": float, "command": str}
+# TODO: Migrate to Redis/DB with TTL for production multi-worker deployments
+#   - Current module-level dict is not safe across multiple workers
+#   - Lacks TTL, allowing unbounded growth and potential replay attacks
+#   - Should use Redis with TTL (~5min) and atomic operations to prevent races
+#   - Consider adding "processed" flag and rejecting updates to already-processed consents
 _consent_approvals: Dict[str, Dict[str, Any]] = {}
 
 # ========== PLAN DETECTION ==========

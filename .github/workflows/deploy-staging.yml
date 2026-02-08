@@ -38,7 +38,8 @@ jobs:
     needs: benchmark
     environment: staging
     timeout-minutes: 40
-    if: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' && (secrets.STAGING_CONTAINER_IMAGE != '' || secrets.ECR_IMAGE != '' || secrets.GHCR_IMAGE != '' || secrets.DOCKERHUB_IMAGE != '') }}
+    # Skip if triggered by automated benchmark commits to avoid unnecessary staging deploys
+    if: "!contains(github.event.head_commit.message, 'update NAVI benchmark scorecard')"
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3

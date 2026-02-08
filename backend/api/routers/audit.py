@@ -272,6 +272,11 @@ def _parse_iso_time(value: str) -> datetime:
 
 
 def _audit_row_to_dict(row: AuditLog, include_payload: bool = False) -> dict:
+    # Handle naive datetimes by assuming UTC when tzinfo is None
+    created_at = row.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+
     data = {
         "id": row.id,
         "route": row.route,
@@ -282,7 +287,7 @@ def _audit_row_to_dict(row: AuditLog, include_payload: bool = False) -> dict:
         "actor_email": row.actor_email,
         "resource_id": row.resource_id,
         "status_code": row.status_code,
-        "created_at": row.created_at.astimezone(timezone.utc).isoformat(),
+        "created_at": created_at.astimezone(timezone.utc).isoformat(),
     }
     if include_payload:
         data["payload"] = row.payload

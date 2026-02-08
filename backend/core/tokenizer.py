@@ -27,7 +27,7 @@ def _should_allow_fallback() -> bool:
     settings = get_settings()
     if getattr(settings, "tokenizer_fallback_enabled", False):
         return True
-    return settings.app_env in ("test", "ci")
+    return settings.is_test()
 
 
 def get_tokenizer(model_name: Optional[str] = None):

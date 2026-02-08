@@ -38,8 +38,17 @@ class IntelligentRetryLimiter:
     - Learn from what doesn't work
     """
 
-    # Maximum times to repeat the EXACT same failing action
-    MAX_IDENTICAL_RETRIES = 2
+    # Maximum total attempts (initial attempt + retries) for the EXACT same
+    # failing action+error signature within the tracking/memory windows.
+    #
+    # Example: With MAX_TOTAL_ATTEMPTS = 2:
+    #   - 1st attempt: Fails, increment counter to 1, allowed to continue
+    #   - 2nd attempt: Fails, increment counter to 2, check (2 >= 2) blocks further attempts
+    #   - Result: 2 total attempts allowed (initial + 1 retry)
+    #
+    # Set this value based on how many times you want to allow the same action
+    # to fail before blocking it. A value of 2 allows one retry; 3 allows two retries.
+    MAX_TOTAL_ATTEMPTS = 2
 
     # Time window for tracking action patterns (10 minutes)
     TRACKING_WINDOW = timedelta(minutes=10)
@@ -127,7 +136,10 @@ class IntelligentRetryLimiter:
             return True, None
 
         # Check if we've hit the limit for this specific failing action
-        if attempt.attempt_count >= self.MAX_IDENTICAL_RETRIES:
+        # Note: attempt_count is incremented AFTER each failure, so this check
+        # happens before the increment. With MAX_TOTAL_ATTEMPTS=2, we block when
+        # attempt_count reaches 2 (meaning 2 failures have already occurred).
+        if attempt.attempt_count >= self.MAX_TOTAL_ATTEMPTS:
             # We've tried this exact action too many times with the same error
             suggestion = self._generate_alternative_suggestion(action, target, error)
             return False, suggestion

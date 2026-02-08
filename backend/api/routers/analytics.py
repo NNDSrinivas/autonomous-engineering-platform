@@ -90,8 +90,8 @@ def _summarize_llm_metrics(
             func.coalesce(func.sum(LlmMetric.total_tokens), 0),
             func.coalesce(func.sum(LlmMetric.total_cost), 0.0),
         )
-        .group_by("day")
-        .order_by("day")
+        .group_by(day_column)
+        .order_by(day_column)
         .all()
     )
     # Parse dates per dialect (PostgreSQL returns datetime, SQLite returns string)

@@ -6,6 +6,40 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
+def normalize_env(env: str) -> str:
+    """
+    Normalize environment name to canonical form.
+
+    Handles common aliases:
+    - "prod" → "production"
+    - "stage" → "staging"
+    - "dev" → "development"
+    - "test" / "ci" → normalized as-is
+
+    Args:
+        env: Environment name to normalize
+
+    Returns:
+        Normalized environment name
+    """
+    env_lower = env.lower().strip()
+
+    # Normalize common production aliases
+    if env_lower in ("prod", "production"):
+        return "production"
+
+    # Normalize common staging aliases
+    if env_lower in ("stage", "staging"):
+        return "staging"
+
+    # Normalize development aliases
+    if env_lower in ("dev", "development"):
+        return "development"
+
+    # Return as-is for test, ci, and other values
+    return env_lower
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -104,6 +138,40 @@ class Settings(BaseSettings):
         origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
         return [origin for origin in origins if origin]
 
+    def _normalize_env(self) -> str:
+        """
+        Normalize this instance's environment name to canonical form.
+
+        Returns:
+            Normalized environment name
+        """
+        return normalize_env(self.app_env)
+
+    def is_production(self) -> bool:
+        """Check if running in production environment."""
+        return self._normalize_env() == "production"
+
+    def is_staging(self) -> bool:
+        """Check if running in staging environment."""
+        return self._normalize_env() == "staging"
+
+    def is_production_like(self) -> bool:
+        """
+        Check if running in production-like environment (production or staging).
+
+        Use this for checks that should apply to both production and staging,
+        such as security requirements, encryption enforcement, etc.
+        """
+        return self._normalize_env() in ("production", "staging")
+
+    def is_development(self) -> bool:
+        """Check if running in development environment."""
+        return self._normalize_env() == "development"
+
+    def is_test(self) -> bool:
+        """Check if running in test/CI environment."""
+        return self._normalize_env() in ("test", "ci")
+
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures
     # or set environment variables explicitly in test configuration instead of
@@ -154,13 +222,11 @@ def validate_production_settings(settings_obj: "Settings | None" = None) -> None
         settings_obj = settings
 
     # Validate audit encryption: encryption key is REQUIRED in production/staging
-    if (
-        settings_obj.app_env in ("production", "staging")
-        and settings_obj.enable_audit_logging
-    ):
+    if settings_obj.is_production_like() and settings_obj.enable_audit_logging:
         if not settings_obj.AUDIT_ENCRYPTION_KEY:
             raise ValueError(
-                f"AUDIT_ENCRYPTION_KEY is REQUIRED when app_env={settings_obj.app_env} and audit logging is enabled. "
+                f"AUDIT_ENCRYPTION_KEY is REQUIRED when app_env={settings_obj.app_env} "
+                f"(normalized: {settings_obj._normalize_env()}) and audit logging is enabled. "
                 "Set AUDIT_ENCRYPTION_KEY environment variable to a secure 32-byte base64 key. "
                 "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
             )

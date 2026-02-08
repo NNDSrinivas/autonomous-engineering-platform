@@ -70,9 +70,9 @@ def _ensure_tables(db: Session) -> None:
 
         # In production/staging, verify tables exist instead of creating them
         # This prevents multi-worker DDL race conditions and provides clear errors
-        if settings.app_env in ("production", "staging"):
+        if settings.is_production_like():
             logger.info(
-                "[OrgOnboarding] Verifying tables exist in production/staging; "
+                f"[OrgOnboarding] Verifying tables exist in {settings._normalize_env()} environment; "
                 "tables must be managed via Alembic migrations."
             )
             # Verify required tables exist

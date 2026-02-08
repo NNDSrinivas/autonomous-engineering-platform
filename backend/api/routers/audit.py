@@ -311,13 +311,18 @@ def _audit_row_to_dict(row: AuditLog, include_payload: bool = False) -> dict:
             import base64
 
             data["payload"] = base64.b64encode(row.payload).decode("utf-8")
-        elif isinstance(row.payload, str):
-            data["payload"] = row.payload
+            data["payload_encoding"] = "base64"
+        elif row.payload is None:
+            data["payload"] = None
         else:
-            # For dicts/lists/other types, ensure they're JSON-serializable
-            data["payload"] = (
-                json.dumps(row.payload, default=str) if row.payload else None
-            )
+            # For dicts/lists/other JSON-serializable types, return native object
+            # This avoids forcing consumers to double-parse JSON strings
+            try:
+                json.dumps(row.payload)  # Validate serializability
+                data["payload"] = row.payload  # Return as-is
+            except (TypeError, ValueError):
+                # Fallback: convert to string for non-serializable types
+                data["payload"] = str(row.payload)
     return data
 
 

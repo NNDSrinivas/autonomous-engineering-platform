@@ -175,8 +175,11 @@ class FeedbackService:
         )
 
         logger.info(
-            f"[FeedbackService] Bridged feedback to learning system: "
-            f"gen_id={gen_id}, rating={rating} → {feedback_type.value}"
+            "[FeedbackService] Bridged feedback to learning system: "
+            "gen_id=%s, rating=%s → %s",
+            gen_id,
+            rating,
+            feedback_type.value,
         )
 
         # Also persist to database for v1 analytics and history
@@ -205,7 +208,7 @@ class FeedbackService:
                 "[FeedbackService] 💾 Persisted learning suggestion to database"
             )
         except Exception as e:
-            logger.warning(f"Failed to persist learning suggestion to database: {e}")
+            logger.warning("Failed to persist learning suggestion to database: %s", e)
             # Rollback to keep session usable after failed commit
             try:
                 await self.session.rollback()

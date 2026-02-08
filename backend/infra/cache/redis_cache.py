@@ -109,7 +109,12 @@ class Cache:
             try:
                 raw = await r.getdel(key)
                 return json.loads(raw) if raw else None
-            except (AttributeError, TypeError):
+            except (AttributeError, TypeError, Exception) as e:
+                # AttributeError/TypeError: redis-py doesn't have getdel method
+                # ResponseError: Redis server doesn't support GETDEL (< 6.2)
+                # Check if it's a "unknown command" error from Redis
+                if hasattr(e, "__class__") and "ResponseError" not in str(type(e)):
+                    raise  # Re-raise unexpected errors
                 # Fallback for Redis/redis-py versions without GETDEL support
                 # Use an atomic Lua script to GET and DEL the key
                 lua_script = """

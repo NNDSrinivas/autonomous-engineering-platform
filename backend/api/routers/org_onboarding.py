@@ -232,8 +232,12 @@ def create_org(
             raise HTTPException(
                 status_code=409, detail="Organization slug already exists"
             )
-        # Re-raise other integrity errors
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        # Log and return a generic error for other integrity issues
+        logger.error("Database error creating organization", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error creating organization",
+        )
 
     return {"id": org_id, "name": req.name, "slug": slug, "role": "owner"}
 

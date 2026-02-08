@@ -227,6 +227,6 @@ def validate_production_settings(settings_obj: "Settings | None" = None) -> None
             raise ValueError(
                 f"AUDIT_ENCRYPTION_KEY is REQUIRED when app_env={settings_obj.app_env} "
                 f"(normalized: {settings_obj._normalize_env()}) and audit logging is enabled. "
-                "Set AUDIT_ENCRYPTION_KEY environment variable to a secure 32-byte base64 key. "
-                "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+                "Set AUDIT_ENCRYPTION_KEY environment variable to a Fernet-compatible encryption key. "
+                "Generate one with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
             )

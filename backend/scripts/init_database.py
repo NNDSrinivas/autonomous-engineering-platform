@@ -13,6 +13,7 @@ Usage:
     python backend/scripts/init_database.py
 """
 
+import os
 import sys
 from pathlib import Path
 

@@ -125,10 +125,35 @@
   color: var(--nic-text-muted);
   transition: transform 0.15s;
   flex-shrink: 0;
+  cursor: pointer !important;
+}
+
+.nic-expand:hover {
+  color: var(--nic-accent);
+}
+
+.nic-expand:active {
+  color: #60a5fa;
+}
+
+.nic-expand svg {
+  display: block;
+  transition: filter 0.2s ease;
+}
+
+.nic-expand:hover svg {
+  animation: nic-caret-bounce 0.35s ease;
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.4));
 }
 
 .nic-expand.is-open {
   transform: rotate(180deg);
+}
+
+@keyframes nic-caret-bounce {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+  100% { transform: translateY(0); }
 }
 
 .nic-activity-btn {
@@ -140,6 +165,7 @@
   border-radius: 6px;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .nic-activity-btn:hover {

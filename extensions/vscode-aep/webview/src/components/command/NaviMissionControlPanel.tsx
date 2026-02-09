@@ -254,6 +254,7 @@ export const NaviMissionControlPanel: React.FC<NaviMissionControlPanelProps> = (
 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [systemTime, setSystemTime] = useState(new Date());
+  const toggleOpen = () => setIsOpen((prev) => !prev);
 
   // Update system time every second
   useEffect(() => {
@@ -289,7 +290,7 @@ export const NaviMissionControlPanel: React.FC<NaviMissionControlPanelProps> = (
         <button
           type="button"
           className="mission-control-panel__title-btn"
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={toggleOpen}
           aria-expanded={isOpen}
         >
           <div className="mission-control-panel__title">
@@ -321,10 +322,19 @@ export const NaviMissionControlPanel: React.FC<NaviMissionControlPanelProps> = (
               <Trash2 size={14} />
             </button>
           )}
-          <ChevronDown
-            className={`mission-control-panel__chevron ${isOpen ? 'mission-control-panel__chevron--open' : ''}`}
-            size={16}
-          />
+          <button
+            type="button"
+            className="mission-control-panel__chevron-btn"
+            onClick={toggleOpen}
+            aria-expanded={isOpen}
+            aria-label={isOpen ? 'Collapse mission control panel' : 'Expand mission control panel'}
+            title={isOpen ? 'Collapse' : 'Expand'}
+          >
+            <ChevronDown
+              className={`mission-control-panel__chevron ${isOpen ? 'mission-control-panel__chevron--open' : ''}`}
+              size={16}
+            />
+          </button>
         </div>
       </div>
 

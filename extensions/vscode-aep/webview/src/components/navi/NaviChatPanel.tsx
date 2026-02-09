@@ -8192,7 +8192,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                     <button
                       type="button"
                       className={`navi-history-action-btn navi-action-star ${session.isStarred ? "is-active" : ""}`}
-                      onClick=(e) => {
+                      onClick={(e) => {
                         e.stopPropagation();
                         // Use backend-enabled toggle (FIX FOR DATA LOSS BUG)
                         toggleSessionStarWithBackend(session.id);
@@ -9461,20 +9461,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                   })()
                 )}
 
-                {/* Timestamp - only show when no pending actions */}
-                {(m.role === "user" || actionSource.length === 0 || completedActionMessages.has(m.id)) && (
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: 11,
-                      opacity: 0.6,
-                      textAlign: m.role === "user" ? "right" : "left",
-                    }}
-                  >
-                    {formatTime(m.createdAt)}
-                  </div>
-                )}
-
                 {/* Reviews + apply fixes */}
                 {m.role === "assistant" &&
                   m.responseData?.reviews &&
@@ -9536,64 +9522,73 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
                 {/* Only show action buttons when message is complete (not streaming) */}
                 {!m.isStreaming && (
-                  <div className="navi-chat-bubble-actions">
-                    {/* Like/Dislike for assistant messages */}
-                    {m.role === "assistant" && (
-                      <>
-                        <button
-                          type="button"
-                          className={`navi-icon-btn ${likedMessages.has(m.id) ? 'navi-icon-btn--active navi-icon-btn--liked' : ''}`}
-                          title="Good response"
-                          onClick={() => handleLikeMessage(m)}
-                        >
-                          <ThumbsUp className="h-3.5 w-3.5 navi-icon-3d" />
-                        </button>
-                        <button
-                          type="button"
-                          className={`navi-icon-btn ${dislikedMessages.has(m.id) ? 'navi-icon-btn--active navi-icon-btn--disliked' : ''}`}
-                          title="Poor response"
-                          onClick={() => handleDislikeMessage(m)}
-                        >
-                          <ThumbsDown className="h-3.5 w-3.5 navi-icon-3d" />
-                        </button>
-                        <div className="navi-icon-btn-separator" />
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      className="navi-icon-btn"
-                      title="Copy"
-                      onClick={() => handleCopyMessage(m)}
-                    >
-                      <Copy className="h-3.5 w-3.5 navi-icon-3d" />
-                    </button>
-                    {m.role === "user" && (
+                  <div className="navi-bubble-meta-row">
+                    <div className="navi-chat-bubble-actions navi-chat-bubble-actions--inline">
+                      {/* Like/Dislike for assistant messages */}
+                      {m.role === "assistant" && (
+                        <>
+                          <button
+                            type="button"
+                            className={`navi-icon-btn ${likedMessages.has(m.id) ? 'navi-icon-btn--active navi-icon-btn--liked' : ''}`}
+                            title="Good response"
+                            onClick={() => handleLikeMessage(m)}
+                          >
+                            <ThumbsUp className="h-3.5 w-3.5 navi-icon-3d" />
+                          </button>
+                          <button
+                            type="button"
+                            className={`navi-icon-btn ${dislikedMessages.has(m.id) ? 'navi-icon-btn--active navi-icon-btn--disliked' : ''}`}
+                            title="Poor response"
+                            onClick={() => handleDislikeMessage(m)}
+                          >
+                            <ThumbsDown className="h-3.5 w-3.5 navi-icon-3d" />
+                          </button>
+                          <div className="navi-icon-btn-separator" />
+                        </>
+                      )}
                       <button
                         type="button"
                         className="navi-icon-btn"
-                        title="Edit and regenerate (removes responses below)"
-                        onClick={() => handleEditMessage(m)}
+                        title="Copy"
+                        onClick={() => handleCopyMessage(m)}
                       >
-                        <Pencil className="h-3.5 w-3.5 navi-icon-3d" />
+                        <Copy className="h-3.5 w-3.5 navi-icon-3d" />
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      className="navi-icon-btn"
-                      title="Undo (remove this message)"
-                      onClick={() => handleUndoMessage(m)}
-                    >
-                      <RotateCcw className="h-3.5 w-3.5 navi-icon-3d" />
-                    </button>
-                    {m.role === "user" && (
+                      {m.role === "user" && (
+                        <button
+                          type="button"
+                          className="navi-icon-btn"
+                          title="Edit and regenerate (removes responses below)"
+                          onClick={() => handleEditMessage(m)}
+                        >
+                          <Pencil className="h-3.5 w-3.5 navi-icon-3d" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="navi-icon-btn"
-                        title="Regenerate response"
-                        onClick={() => handleRedoMessage(m)}
+                        title="Undo (remove this message)"
+                        onClick={() => handleUndoMessage(m)}
                       >
-                        <RotateCw className="h-3.5 w-3.5 navi-icon-3d" />
+                        <RotateCcw className="h-3.5 w-3.5 navi-icon-3d" />
                       </button>
+                      {m.role === "user" && (
+                        <button
+                          type="button"
+                          className="navi-icon-btn"
+                          title="Regenerate response"
+                          onClick={() => handleRedoMessage(m)}
+                        >
+                          <RotateCw className="h-3.5 w-3.5 navi-icon-3d" />
+                        </button>
+                      )}
+                    </div>
+                    {(m.role === "user" || actionSource.length === 0 || completedActionMessages.has(m.id)) && (
+                      <div
+                        className={`navi-chat-timestamp ${m.role === "user" ? "navi-chat-timestamp--user" : "navi-chat-timestamp--assistant"}`}
+                      >
+                        {formatTime(m.createdAt)}
+                      </div>
                     )}
                   </div>
                 )}

@@ -5017,6 +5017,7 @@ Return ONLY the JSON, no markdown or explanations."""
             rag_start_time = time.time()
 
             # Add timeout to prevent RAG from blocking for minutes
+            # RAG now triggers background indexing on first request, so timeout is less critical
             import asyncio
 
             try:
@@ -5026,11 +5027,12 @@ Return ONLY the JSON, no markdown or explanations."""
                         task_description=request,
                         max_context_tokens=4000,  # Limit context size
                     ),
-                    timeout=5.0,  # 5 second timeout - fail fast if RAG is slow
+                    timeout=10.0,  # 10 second timeout for RAG (allows background indexing to start)
                 )
             except asyncio.TimeoutError:
                 logger.warning(
-                    "[AutonomousAgent] RAG context retrieval timed out after 5s - continuing without RAG context"
+                    "[AutonomousAgent] RAG context retrieval timed out after 10s - "
+                    "continuing without RAG context (background indexing may be in progress)"
                 )
                 rag_context = None
 

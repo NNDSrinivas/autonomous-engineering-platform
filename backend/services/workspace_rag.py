@@ -1045,19 +1045,30 @@ async def search_codebase(
     workspace_path: str,
     query: str,
     top_k: int = 10,
+    allow_background_indexing: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Search the codebase for relevant code.
 
     Returns list of relevant code chunks with scores.
+
+    Args:
+        workspace_path: Path to workspace
+        query: Search query
+        top_k: Number of results to return
+        allow_background_indexing: If True, trigger background indexing for next time
     """
     index = get_index(workspace_path)
     if not index:
-        # Auto-index if not already done
-        await index_workspace(workspace_path)
-        index = get_index(workspace_path)
+        # OPTIMIZATION: Don't block the request to index
+        # Instead, trigger background indexing for next time
+        if allow_background_indexing:
+            import asyncio
+            logger.info(f"[RAG] No index found for {workspace_path} - scheduling background indexing")
+            # Fire and forget - don't await
+            asyncio.create_task(_background_index_workspace(workspace_path))
 
-    if not index:
+        # Return empty for now - next request will have index ready
         return []
 
     results = await SemanticSearch.search(query, index, top_k=top_k)
@@ -1075,6 +1086,28 @@ async def search_codebase(
         }
         for chunk, score in results
     ]
+
+
+async def _background_index_workspace(workspace_path: str) -> None:
+    """
+    Index workspace in background without blocking the request.
+
+    This allows the FIRST request to return quickly (without RAG),
+    while subsequent requests will have the index ready.
+    """
+    try:
+        logger.info(f"[RAG] Starting background indexing for {workspace_path}")
+        start_time = __import__("time").time()
+
+        await index_workspace(workspace_path, force_reindex=False)
+
+        elapsed = __import__("time").time() - start_time
+        logger.info(
+            f"[RAG] Background indexing completed for {workspace_path} "
+            f"in {elapsed:.2f}s - future requests will use this index"
+        )
+    except Exception as e:
+        logger.error(f"[RAG] Background indexing failed for {workspace_path}: {e}")
 
 
 async def get_context_for_task(

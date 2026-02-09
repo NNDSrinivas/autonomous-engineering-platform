@@ -230,27 +230,34 @@ async function openNativeDiff(
   scope: DiffScope = 'working'
 ) {
   try {
-    // Build file URI for working tree version
-    const absolutePath = path.join(workspaceRoot, relativePath);
+    const absolutePath = path.isAbsolute(relativePath)
+      ? relativePath
+      : path.join(workspaceRoot, relativePath);
+    const relativeForGit = path
+      .relative(workspaceRoot, absolutePath)
+      .replace(/\\/g, '/');
+    const displayPath = relativeForGit && !relativeForGit.startsWith('..')
+      ? relativeForGit
+      : relativePath;
     const fileUri = vscode.Uri.file(absolutePath);
 
-    console.log('[openNativeDiff] Opening diff for:', relativePath, 'scope:', scope);
+    console.log('[openNativeDiff] Opening diff for:', displayPath, 'scope:', scope);
 
     // Check if file exists
     const fs = require('fs');
     if (!fs.existsSync(absolutePath)) {
       console.warn('[openNativeDiff] File does not exist:', absolutePath);
-      vscode.window.showWarningMessage(`File not found: ${relativePath}`);
+      vscode.window.showWarningMessage(`File not found: ${displayPath}`);
       return;
     }
 
     // Check if file is untracked (new file)
-    const isNew = await isFileUntracked(workspaceRoot, relativePath);
+    const isNew = await isFileUntracked(workspaceRoot, relativeForGit);
     if (isNew) {
-      console.log('[openNativeDiff] File is untracked, opening directly:', relativePath);
+      console.log('[openNativeDiff] File is untracked, opening directly:', displayPath);
       // For new files, just open them directly (no diff available)
       await vscode.window.showTextDocument(fileUri, { preview: false });
-      vscode.window.showInformationMessage(`New file: ${relativePath} (no previous version to diff)`);
+      vscode.window.showInformationMessage(`New file: ${displayPath} (no previous version to diff)`);
       return;
     }
 
@@ -280,7 +287,7 @@ async function openNativeDiff(
       'vscode.diff',
       headUri,
       rightUri,
-      `Diff: ${relativePath} (${titleScope})`
+      `Diff: ${displayPath} (${titleScope})`
     );
     console.log('[openNativeDiff] Diff opened successfully');
   } catch (error) {

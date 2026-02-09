@@ -244,19 +244,19 @@ class TaskContext:
         default_factory=dict
     )  # Track which step updates have been emitted
     # Enterprise mode fields
-    enterprise_project_id: Optional[str] = (
-        None  # Link to EnterpriseProject if running in enterprise mode
-    )
-    enterprise_controller: Optional[EnhancedIterationController] = (
-        None  # Enterprise iteration controller
-    )
+    enterprise_project_id: Optional[
+        str
+    ] = None  # Link to EnterpriseProject if running in enterprise mode
+    enterprise_controller: Optional[
+        EnhancedIterationController
+    ] = None  # Enterprise iteration controller
     checkpoint_interval: int = (
         10  # Create checkpoint every N iterations in enterprise mode
     )
     last_checkpoint_iteration: int = 0  # Track when last checkpoint was created
-    gate_detector: Optional[CheckpointGateDetector] = (
-        None  # Human checkpoint gate detector
-    )
+    gate_detector: Optional[
+        CheckpointGateDetector
+    ] = None  # Human checkpoint gate detector
     pending_gate: Optional[GateTrigger] = None  # Gate waiting for human decision
     last_verification_failed: bool = False  # Track if last verification attempt failed
 
@@ -2740,7 +2740,9 @@ Use this context to understand existing patterns, dependencies, and architecture
                 pm = (
                     "npm"
                     if "npm" in request_lower
-                    else "yarn" if "yarn" in request_lower else "pnpm"
+                    else "yarn"
+                    if "yarn" in request_lower
+                    else "pnpm"
                 )
                 label = f"Install dependencies with {pm}"
                 desc = f"Running {pm} install to install project dependencies"
@@ -4602,14 +4604,14 @@ Return ONLY the JSON, no markdown or explanations."""
                 base_url = "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
-                    )
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
                 elif self.provider == "groq":
                     base_url = "https://api.groq.com/openai/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
-                    )
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
 
                 logger.info(f"[AutonomousAgent] 📡 Sending request to {base_url}...")
 
@@ -4728,10 +4730,10 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if tc.get("function", {}).get("name"):
                                         # Convert OpenAI-sanitized name back to original NAVI name
                                         openai_name = tc["function"]["name"]
-                                        tool_calls[idx]["name"] = (
-                                            OPENAI_TO_NAVI_TOOL_NAME.get(
-                                                openai_name, openai_name
-                                            )
+                                        tool_calls[idx][
+                                            "name"
+                                        ] = OPENAI_TO_NAVI_TOOL_NAME.get(
+                                            openai_name, openai_name
                                         )
                                     if tc.get("function", {}).get("arguments"):
                                         tool_calls[idx]["arguments"] += tc["function"][
@@ -5075,9 +5077,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
         # Update first step to in_progress (running)
         if plan_steps and context.plan_id:
-            context.step_progress_emitted[0] = (
-                "running"  # Track that we've emitted step 0 as running
-            )
+            context.step_progress_emitted[
+                0
+            ] = "running"  # Track that we've emitted step 0 as running
             yield {
                 "type": "step_update",
                 "data": {
@@ -5126,7 +5128,13 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
         # Add conversation history if provided (for context continuity)
         if conversation_history:
             # Convert conversation history format to LLM message format
-            for hist_msg in conversation_history[-(10 if len(conversation_history) > 10 else len(conversation_history)):]:  # Last 10 messages max
+            for hist_msg in conversation_history[
+                -(
+                    100
+                    if len(conversation_history) > 100
+                    else len(conversation_history)
+                ) :
+            ]:  # Last 100 messages max
                 role = hist_msg.get("type") or hist_msg.get("role", "user")
                 content = hist_msg.get("content", "")
                 if role and content:

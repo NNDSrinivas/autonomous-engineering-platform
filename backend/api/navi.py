@@ -114,9 +114,9 @@ class RunState(BaseModel):
     context: ContextPack
     plan: Optional[Plan] = None
     current_step: int = 0
-    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = (
-        "idle"
-    )
+    status: Literal[
+        "idle", "planning", "executing", "verifying", "done", "failed"
+    ] = "idle"
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: float = Field(default_factory=time.time)
 
@@ -1191,7 +1191,9 @@ async def analyze_working_changes(
                             "severity": (
                                 "high"
                                 if any(i["severity"] == "high" for i in issues)
-                                else "medium" if issues else "low"
+                                else "medium"
+                                if issues
+                                else "low"
                             ),
                             "issues": issues,
                             "diff": change.get("diff", "")[:1000],
@@ -6587,7 +6589,7 @@ async def navi_chat_stream(
                             memory_service.db.execute(
                                 text(
                                     """
-                                    INSERT INTO conversations (id, user_id, workspace_path, status, created_at, updated_at)
+                                    INSERT INTO navi_conversations (id, user_id, workspace_path, status, created_at, updated_at)
                                     VALUES (:id, :user_id, :workspace_path, 'active', NOW(), NOW())
                                     ON CONFLICT (id) DO NOTHING
                                 """
@@ -7326,6 +7328,138 @@ async def navi_autonomous_task(
             )
             logger.info("[NAVI Autonomous] Message augmented with image analysis")
 
+    # =========================================================================
+    # MEMORY PERSISTENCE: Load conversation history from database
+    # =========================================================================
+    from uuid import UUID
+    from backend.services.memory.conversation_memory import ConversationMemoryService
+
+    memory_service = ConversationMemoryService(db)
+    conv_uuid = None
+    conversation_history_from_db = []
+
+    # Create or load conversation
+    if request.conversation_id:
+        try:
+            conv_uuid = UUID(request.conversation_id)
+            existing_conv = memory_service.get_conversation(conv_uuid)
+
+            if existing_conv:
+                # Load conversation history from database
+                logger.info(
+                    f"[NAVI Autonomous] Loading conversation {conv_uuid} from database"
+                )
+                db_messages = memory_service.get_recent_messages(conv_uuid, limit=100)
+                conversation_history_from_db = [
+                    {"role": msg.role, "content": msg.content} for msg in db_messages
+                ]
+                logger.info(
+                    f"[NAVI Autonomous] Loaded {len(conversation_history_from_db)} messages from database"
+                )
+            else:
+                # Conversation ID provided but doesn't exist - create it
+                logger.info(f"[NAVI Autonomous] Creating conversation {conv_uuid}")
+                user_id_int = abs(hash(str(user_id))) % (10**9)
+                from sqlalchemy import text
+
+                memory_service.db.execute(
+                    text(
+                        """
+                        INSERT INTO navi_conversations (id, user_id, org_id, workspace_path, status, created_at, updated_at)
+                        VALUES (:id, :user_id, :org_id, :workspace_path, 'active', NOW(), NOW())
+                        ON CONFLICT (id) DO NOTHING
+                        """
+                    ),
+                    {
+                        "id": str(conv_uuid),
+                        "user_id": user_id_int,
+                        "org_id": abs(hash(str(org_id))) % (10**9)
+                        if org_id
+                        else None,
+                        "workspace_path": workspace_path,
+                    },
+                )
+                memory_service.db.commit()
+        except Exception as conv_err:
+            logger.warning(f"[NAVI Autonomous] Failed to load conversation: {conv_err}")
+    else:
+        # No conversation ID - create a new conversation
+        try:
+            logger.info("[NAVI Autonomous] Creating new conversation")
+            user_id_int = abs(hash(str(user_id))) % (10**9)
+            conversation = memory_service.create_conversation(
+                user_id=user_id_int,
+                org_id=abs(hash(str(org_id))) % (10**9) if org_id else None,
+                workspace_path=workspace_path,
+                title=request.message[:50]
+                + ("..." if len(request.message) > 50 else ""),
+            )
+            conv_uuid = conversation.id
+            logger.info(f"[NAVI Autonomous] Created new conversation {conv_uuid}")
+        except Exception as conv_err:
+            logger.warning(
+                f"[NAVI Autonomous] Failed to create conversation: {conv_err}"
+            )
+
+    # Use database history if available, otherwise fall back to request payload
+    final_conversation_history = (
+        conversation_history_from_db
+        if conversation_history_from_db
+        else (request.conversation_history or [])
+    )
+    logger.info(
+        f"[NAVI Autonomous] Using {len(final_conversation_history)} messages for context"
+    )
+
+    # =========================================================================
+    # CROSS-CONVERSATION MEMORY: Semantic search for relevant past conversations
+    # =========================================================================
+    relevant_past_context = ""
+    try:
+        from backend.services.memory.semantic_search import get_semantic_search_service
+
+        search_service = get_semantic_search_service(db)
+        user_id_int = abs(hash(str(user_id))) % (10**9)
+        org_id_int = abs(hash(str(org_id))) % (10**9) if org_id else None
+
+        # Search for relevant context from past conversations
+        context_data = await search_service.get_context_for_query(
+            query=request.message,
+            user_id=user_id_int,
+            org_id=org_id_int,
+            max_context_items=5,
+        )
+
+        # Build context string from search results
+        if context_data and context_data.get("conversations"):
+            relevant_conversations = context_data["conversations"]
+            if relevant_conversations:
+                relevant_past_context = (
+                    "\n\n=== RELEVANT INFORMATION FROM PAST CONVERSATIONS ===\n"
+                )
+                for idx, conv_item in enumerate(
+                    relevant_conversations[:3], 1
+                ):  # Top 3 most relevant
+                    relevant_past_context += f"\n{idx}. From '{conv_item.get('title', 'Previous conversation')}':\n"
+                    relevant_past_context += (
+                        f"   {conv_item.get('content', '')[:200]}...\n"
+                    )
+                logger.info(
+                    f"[NAVI Autonomous] Found {len(relevant_conversations)} relevant past conversations"
+                )
+    except Exception as search_err:
+        logger.warning(
+            f"[NAVI Autonomous] Semantic search failed (non-blocking): {search_err}"
+        )
+
+    # Augment message with relevant past context if found
+    final_message = augmented_message
+    if relevant_past_context:
+        final_message = f"{augmented_message}{relevant_past_context}"
+        logger.info(
+            "[NAVI Autonomous] Message augmented with past conversation context"
+        )
+
     async def stream_generator():
         """Generate SSE events from the autonomous agent with heartbeat to prevent timeout."""
         import asyncio
@@ -7399,18 +7533,61 @@ async def navi_autonomous_task(
                 org_id=org_id,
             )
 
+            # Collect assistant response for persistence
+            assistant_response_parts = []
+
             async for event in heartbeat_wrapper(
                 agent.execute_task(
-                    request=augmented_message,  # Use augmented message with image context
+                    request=final_message,  # Use message with image context + past conversation context
                     run_verification=request.run_verification,
-                    conversation_history=request.conversation_history,  # Pass conversation history for context
+                    conversation_history=final_conversation_history,  # Use database history for context
                 )
             ):
+                # Collect text events for final response
+                if event.get("type") == "text" and event.get("content"):
+                    assistant_response_parts.append(event["content"])
                 yield f"data: {json.dumps(event)}\n\n"
 
         except Exception as e:
             logger.exception(f"[NAVI Autonomous] Error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+        # =========================================================================
+        # MEMORY PERSISTENCE: Save conversation to database
+        # =========================================================================
+        if conv_uuid:
+            try:
+                # Save user message
+                await memory_service.add_message(
+                    conversation_id=conv_uuid,
+                    role="user",
+                    content=request.message,
+                    metadata={"workspace": workspace_path},
+                    generate_embedding=False,  # Skip embedding for speed
+                )
+
+                # Save assistant response
+                assistant_response = (
+                    "\n".join(assistant_response_parts)
+                    if assistant_response_parts
+                    else "Task completed"
+                )
+                await memory_service.add_message(
+                    conversation_id=conv_uuid,
+                    role="assistant",
+                    content=assistant_response,
+                    metadata={"provider": provider, "model": model},
+                    generate_embedding=False,  # Skip embedding for speed
+                )
+
+                logger.info(
+                    f"[NAVI Autonomous] Persisted conversation {conv_uuid} with {len(assistant_response)} char response"
+                )
+            except Exception as mem_error:
+                # Don't fail the stream if memory persistence fails
+                logger.warning(
+                    f"[NAVI Autonomous] Failed to persist conversation: {mem_error}"
+                )
 
         yield "data: [DONE]\n\n"
 

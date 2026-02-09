@@ -175,6 +175,12 @@ def usage_dashboard(
     user: User = Depends(require_role(Role.VIEWER)),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
+    # TODO: Add tests for multi-tenant scoping and dialect-dependent date truncation
+    # Required coverage:
+    # 1. Verify org_id/user_id filtering prevents cross-tenant data leakage
+    # 2. Test daily grouping output for both Postgres (date_trunc) and SQLite (date)
+    # 3. Validate date string parsing for SQLite mode
+    # 4. Test edge cases: empty data, single day, year boundary
     range_info = _compute_range(days)
     # Defensive attribute access for user identifier (support both user_id and id)
     user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
@@ -207,6 +213,13 @@ def org_dashboard(
     user: User = Depends(require_role(Role.ADMIN)),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
+    # TODO: Add tests for multi-tenant scoping and dialect-dependent date truncation
+    # Required coverage:
+    # 1. Verify org_id filtering prevents cross-tenant data leakage
+    # 2. Test daily grouping output for both Postgres (date_trunc) and SQLite (date)
+    # 3. Validate date string parsing for SQLite mode
+    # 4. Test edge cases: empty data, single day, year boundary
+    # 5. Verify ADMIN role requirement
     range_info = _compute_range(days)
 
     # Derive org consistently using getattr to handle different User implementations

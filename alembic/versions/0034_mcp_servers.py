@@ -26,10 +26,13 @@ def upgrade() -> None:
             "transport",
             sa.String(length=40),
             nullable=False,
-            server_default="streamable_http",
+            server_default=sa.text("'streamable_http'"),
         ),
         sa.Column(
-            "auth_type", sa.String(length=40), nullable=False, server_default="none"
+            "auth_type",
+            sa.String(length=40),
+            nullable=False,
+            server_default=sa.text("'none'"),
         ),
         sa.Column("config_json", sa.Text(), nullable=True),
         sa.Column(
@@ -45,7 +48,10 @@ def upgrade() -> None:
             "enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")
         ),
         sa.Column(
-            "status", sa.String(length=32), nullable=False, server_default="unknown"
+            "status",
+            sa.String(length=32),
+            nullable=False,
+            server_default=sa.text("'unknown'"),
         ),
         sa.Column("tool_count", sa.Integer(), nullable=True),
         sa.Column("last_checked_at", sa.DateTime(timezone=True), nullable=True),

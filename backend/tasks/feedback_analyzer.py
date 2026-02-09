@@ -18,6 +18,7 @@ class FeedbackAnalyzerTask:
     def __init__(self, interval_minutes: int = 15):
         self.interval_minutes = interval_minutes
         self.running = False
+        self.task_handle = None  # Store task handle for proper cancellation
 
     async def analyze_all_orgs(self):
         """Analyze feedback for all organizations."""
@@ -88,6 +89,9 @@ class FeedbackAnalyzerTask:
     def stop(self):
         """Stop the analysis task."""
         self.running = False
+        if self.task_handle and not self.task_handle.done():
+            self.task_handle.cancel()
+            logger.info("[FeedbackAnalyzer] Task cancelled")
         logger.info("[FeedbackAnalyzer] Stopped")
 
 
@@ -108,7 +112,7 @@ def start_feedback_analyzer(interval_minutes: int = 15):
             )
             _analyzer_task = None  # Reset state on failure
         else:
-            loop.create_task(_analyzer_task.run())
+            _analyzer_task.task_handle = loop.create_task(_analyzer_task.run())
             logger.info("[FeedbackAnalyzer] Task scheduled")
 
 

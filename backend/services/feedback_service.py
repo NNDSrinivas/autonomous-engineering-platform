@@ -164,12 +164,15 @@ class FeedbackService:
         # Get the learning manager
         learning_manager = get_feedback_manager()
 
+        # Compute effective reason (prefer reason, fallback to comment) for consistent use
+        effective_reason = reason or comment
+
         # Record the feedback to the learning system
         learning_manager.record_user_feedback(
             suggestion_id=str(gen_id),
             feedback_type=feedback_type,
             original_content="",  # Not tracked in current system
-            reason=reason or comment,
+            reason=effective_reason,
             org_id=gen_log.org_key,
             user_id=gen_log.user_sub,
         )
@@ -196,7 +199,7 @@ class FeedbackService:
                 context=gen_log.params if gen_log.params else {},
                 feedback_type=feedback_type.value,
                 rating=rating,
-                reason=reason[:256] if reason else None,
+                reason=effective_reason[:256] if effective_reason else None,
                 comment=comment,
                 model_used=gen_log.model,
                 gen_id=gen_id,

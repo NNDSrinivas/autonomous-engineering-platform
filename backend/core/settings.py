@@ -143,6 +143,11 @@ class Settings(BaseSettings):
         """Backwards compatibility alias for app_env (uppercase)."""
         return self.app_env
 
+    @APP_ENV.setter
+    def APP_ENV(self, value: str) -> None:
+        """Backwards compatibility setter for APP_ENV."""
+        self.app_env = value
+
     def _normalize_env(self) -> str:
         """
         Normalize this instance's environment name to canonical form.

@@ -9,6 +9,7 @@ import {
   LogIn,
   LogOut,
   Moon,
+  MoreHorizontal,
   PanelLeft,
   PenSquare,
   Plus,
@@ -609,6 +610,7 @@ export function CodeCompanionShell() {
   const [activityJumpCommandId, setActivityJumpCommandId] = useState<string | null>(null);
   const [chatJumpCommandId, setChatJumpCommandId] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [headerMoreOpen, setHeaderMoreOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [externalPanelRequest, setExternalPanelRequest] = useState<SidebarPanelType>(null);
   const [fullPanelOpen, setFullPanelOpen] = useState(false);
@@ -1202,58 +1204,99 @@ export function CodeCompanionShell() {
                 <Clock className="h-4 w-4 navi-history-icon" />
               </button>
 
-              {/* Notifications with Badge - Bell ring animation */}
-              <button className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-has-badge navi-bell-btn" title="Notifications">
-                <span className="navi-icon-glow" />
-                <Bell className="h-4 w-4 navi-bell-icon" />
-                <span className="navi-notification-badge">3</span>
-              </button>
-
-              {/* Theme Toggle - Animated */}
+              {/* Settings Button */}
               <button
-                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-theme-toggle"
-                title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
-                onClick={toggleTheme}
+                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-settings-btn"
+                title="Settings"
+                onClick={() => setExternalPanelRequest('account')}
               >
                 <span className="navi-icon-glow" />
-                <div className="navi-theme-icon-wrapper">
-                  {theme === 'dark' ? (
-                    <Sun className="h-4 w-4 navi-icon-sun" />
-                  ) : (
-                    <Moon className="h-4 w-4 navi-icon-moon" />
-                  )}
-                </div>
+                <Settings className="h-4 w-4 navi-settings-icon" />
               </button>
 
-              {/* Activity Panel Toggle */}
-              <button
-                className={`navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-activity-toggle ${activityPanelOpen ? "is-active" : ""}`}
-                title={activityPanelOpen ? "Hide Activity" : "Show Activity"}
-                onClick={() => setActivityPanelOpen((prev) => !prev)}
-              >
-                <span className="navi-icon-glow" />
-                <Activity className="h-4 w-4 navi-activity-icon" />
-              </button>
+              {/* More Menu - Notifications, Theme, Activity, Help */}
+              <div className="relative">
+                <button
+                  className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-more-btn"
+                  title="More"
+                  onClick={() => {
+                    setHeaderMoreOpen((prev) => !prev);
+                    if (userMenuOpen) {
+                      setUserMenuOpen(false);
+                    }
+                  }}
+                >
+                  <span className="navi-icon-glow" />
+                  <MoreHorizontal className="h-4 w-4 navi-more-icon" />
+                </button>
 
-              {/* Help - Opens documentation */}
-              <button
-                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-help-btn"
-                title="Help & Documentation"
-                onClick={() => {
-                  postMessage({ type: "help.open" });
-                  postMessage({ type: "openExternal", url: "https://docs.navra.ai" });
-                }}
-              >
-                <span className="navi-icon-glow" />
-                <HelpCircle className="h-4 w-4 navi-help-icon" />
-              </button>
+                {headerMoreOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setHeaderMoreOpen(false)}
+                    />
+                    <div className="navi-header-more-dropdown">
+                      <button
+                        className="navi-dropdown-menu-item"
+                        onClick={() => setHeaderMoreOpen(false)}
+                      >
+                        <Bell className="h-4 w-4" />
+                        <span>Notifications</span>
+                        <span className="navi-dropdown-menu-item__meta">3</span>
+                      </button>
+                      <div className="navi-dropdown-divider" />
+                      <button
+                        className="navi-dropdown-menu-item"
+                        onClick={() => {
+                          toggleTheme();
+                          setHeaderMoreOpen(false);
+                        }}
+                      >
+                        {theme === 'dark' ? (
+                          <Sun className="h-4 w-4" />
+                        ) : (
+                          <Moon className="h-4 w-4" />
+                        )}
+                        <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+                      </button>
+                      <button
+                        className="navi-dropdown-menu-item"
+                        onClick={() => {
+                          setActivityPanelOpen((prev) => !prev);
+                          setHeaderMoreOpen(false);
+                        }}
+                      >
+                        <Activity className="h-4 w-4" />
+                        <span>{activityPanelOpen ? "Hide Activity" : "Show Activity"}</span>
+                      </button>
+                      <button
+                        className="navi-dropdown-menu-item"
+                        onClick={() => {
+                          setHeaderMoreOpen(false);
+                          postMessage({ type: "help.open" });
+                          postMessage({ type: "openExternal", url: "https://docs.navra.ai" });
+                        }}
+                      >
+                        <HelpCircle className="h-4 w-4" />
+                        <span>Help & Documentation</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
 
               {/* User Menu / Sign In */}
               {isAuthenticated ? (
                 <div className="relative">
                   <button
                     className="navi-user-avatar-btn navi-animated-icon"
-                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    onClick={() => {
+                      setUserMenuOpen(!userMenuOpen);
+                      if (headerMoreOpen) {
+                        setHeaderMoreOpen(false);
+                      }
+                    }}
                   >
                     <span className="navi-avatar-glow" />
                     {user?.picture ? (
@@ -1353,16 +1396,6 @@ export function CodeCompanionShell() {
                 </div>
               ) : (
                 <div className="navi-auth-group">
-                  {/* Settings Button */}
-                  <button
-                    className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-settings-btn"
-                    title="Settings"
-                    onClick={() => setExternalPanelRequest('account')}
-                  >
-                    <span className="navi-icon-glow" />
-                    <Settings className="h-4 w-4 navi-settings-icon" />
-                  </button>
-
                   {authGateSkipped && (
                     <span className="navi-auth-required-badge">Sign in required</span>
                   )}
@@ -2381,6 +2414,7 @@ export function CodeCompanionShell() {
         }
 
         .navi-brand-tagline {
+          display: none;
           font-size: 9px;
           color: hsl(var(--muted-foreground));
           letter-spacing: 0.02em;
@@ -2549,6 +2583,20 @@ export function CodeCompanionShell() {
           gap: 4px;
         }
 
+        .navi-header-more-dropdown {
+          position: absolute;
+          right: 0;
+          top: calc(100% + 8px);
+          width: 220px;
+          background: hsl(var(--popover));
+          border: 1px solid hsl(var(--border));
+          border-radius: 12px;
+          box-shadow: 0 10px 40px hsl(0 0% 0% / 0.3);
+          overflow: hidden;
+          z-index: 50;
+          animation: dropdownSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
         /* ===== NEW CHAT BUTTON ===== */
         .navi-new-chat-btn {
           border-radius: 8px;
@@ -2710,6 +2758,7 @@ export function CodeCompanionShell() {
 
         .navi-sidebar-toggle-hint {
           position: relative;
+          display: none;
           font-size: 10px;
           font-weight: 600;
           letter-spacing: 0.02em;
@@ -3099,6 +3148,22 @@ export function CodeCompanionShell() {
 
         .navi-dropdown-menu-item svg {
           color: hsl(var(--muted-foreground));
+        }
+
+        .navi-dropdown-menu-item__meta {
+          margin-left: auto;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 6px;
+          border-radius: 999px;
+          background: hsl(var(--destructive));
+          color: white;
+          font-size: 10px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 6px hsl(var(--destructive) / 0.35);
         }
 
         .navi-menu-item-danger {

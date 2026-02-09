@@ -12,8 +12,8 @@
 **Solution:** Stream progress updates in real-time so users see immediate feedback:
 
 ```
-🎯 Analyzing your request...     (0.1s - immediate!)
-🤖 Generating response...        (3.0s - working...)
+Analyzing your request...     (0.1s - immediate!)
+Generating response...        (3.0s - working...)
 ✅ Complete!                      (4.0s - done!)
 ```
 
@@ -31,7 +31,7 @@ The streaming endpoint sends **Server-Sent Events (SSE)** with different message
    ```json
    {
      "type": "status",
-     "message": "🎯 Analyzing your request..."
+     "message": "Analyzing your request..."
    }
    ```
 
@@ -181,7 +181,7 @@ const [isStreaming, setIsStreaming] = useState(false);
 
 const sendMessageWithStreaming = async (message: string) => {
   setIsStreaming(true);
-  setStatusMessage('🎯 Analyzing your request...');
+  setStatusMessage('Analyzing your request...');
 
   try {
     await processNaviStreaming(
@@ -271,9 +271,9 @@ curl -N -X POST http://localhost:8787/api/navi/process/stream \
 
 **Expected Output:**
 ```
-data: {"type":"status","message":"🎯 Analyzing your request..."}
+data: {"type":"status","message":"Analyzing your request..."}
 
-data: {"type":"status","message":"🤖 Generating response..."}
+data: {"type":"status","message":"Generating response..."}
 
 data: {"type":"status","message":"✅ Complete!"}
 
@@ -351,8 +351,8 @@ Response appears ← User sees result
 
 ```
 User sends message →
-  🎯 Analyzing... (0.1s) ← Immediate feedback!
-  🤖 Generating... (0.1s) ← Still getting updates
+  Analyzing... (0.1s) ← Immediate feedback!
+  Generating... (0.1s) ← Still getting updates
   [LLM processing 3.5s]
   ✅ Complete! (0.1s) ← Almost done...
 Response appears ← Result ready

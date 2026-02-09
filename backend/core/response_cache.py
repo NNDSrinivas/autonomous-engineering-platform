@@ -43,11 +43,16 @@ def generate_cache_key(
 
     IMPORTANT: Includes tenant scoping (org_id, user_id) to prevent cross-tenant cache pollution.
 
+    WARNING: org_id and user_id are optional parameters. For multi-tenant deployments where
+    cross-tenant cache pollution is a security concern, callers MUST ensure org_id is provided
+    for all cache operations, or disable caching entirely when org_id is unavailable. Without
+    org_id, cache keys may collide across tenants if other parameters match.
+
     Args:
         message: User query
         mode: Agent mode (agent, chat, etc.)
         conversation_history: Recent conversation context
-        org_id: Organization identifier for multi-tenancy
+        org_id: Organization identifier for multi-tenancy (REQUIRED for tenant isolation)
         user_id: User identifier for user-specific caching
         workspace_path: Workspace path for workspace-specific caching
         model: LLM model name (affects output)

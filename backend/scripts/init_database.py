@@ -93,7 +93,9 @@ def main():
     if settings.is_production_like():
         print("🚨 PRODUCTION ENVIRONMENT DETECTED!")
         print("🚨 Running this script in production requires explicit confirmation.")
-        response = input("Type 'CREATE TABLES' (all caps) to proceed, or anything else to abort: ")
+        response = input(
+            "Type 'CREATE TABLES' (all caps) to proceed, or anything else to abort: "
+        )
         if response != "CREATE TABLES":
             print("❌ Aborted by user. No changes made.")
             sys.exit(0)

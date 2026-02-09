@@ -249,6 +249,7 @@ def export_audit_logs(
                 and row_dict["payload"] is not None
             ):
                 # Add payload_encoding column to match JSON export behavior
+                # Preserve encoding that was already set by _audit_row_to_dict()
                 if not isinstance(row_dict["payload"], str):
                     # Handle bytes (common for encrypted payloads) and other non-JSON types
                     if isinstance(row_dict["payload"], bytes):
@@ -265,7 +266,13 @@ def export_audit_logs(
                         )
                         row_dict["payload_encoding"] = "json"
                 else:
-                    row_dict["payload_encoding"] = "plain"
+                    # Only set default encoding if one hasn't already been provided
+                    # (e.g., base64-encoded bytes are already strings with encoding="base64")
+                    if (
+                        "payload_encoding" not in row_dict
+                        or row_dict["payload_encoding"] is None
+                    ):
+                        row_dict["payload_encoding"] = "plain"
             elif include_payload:
                 # Payload is None
                 row_dict["payload_encoding"] = None

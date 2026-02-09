@@ -35,6 +35,9 @@ class RunRequest(BaseModel):
     background: bool = Field(
         False, description="If true, start command in background and return immediately"
     )
+    timeout: Optional[int] = Field(
+        None, description="Timeout in seconds (default: 300)"
+    )
 
 
 class RunResponse(BaseModel):
@@ -205,7 +208,8 @@ def run_command(
         audit_id = f"{user_id}-{datetime.now(timezone.utc).isoformat()}"
 
         # Prepare environment and command with node setup if needed
-        timeout = compute_timeout(cmd, timeout=300)
+        base_timeout = req.timeout if req.timeout is not None else 300
+        timeout = compute_timeout(cmd, timeout=base_timeout)
 
         # Background mode for long-running servers (e.g., npm run dev)
         if req.background:

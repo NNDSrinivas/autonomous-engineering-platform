@@ -255,7 +255,7 @@ class IntelligentRetryLimiter:
         suggestion = action_suggestions[index]
 
         return (
-            f"This action has been tried {self.MAX_IDENTICAL_RETRIES} times with the same error. "
+            f"This action has been tried {self.MAX_TOTAL_ATTEMPTS} times with the same error. "
             f"Suggestion: {suggestion}"
         )
 
@@ -263,7 +263,7 @@ class IntelligentRetryLimiter:
         """Get list of actions that have been failing repeatedly"""
         failures = []
         for key, attempt in self._action_attempts.items():
-            if attempt.attempt_count >= self.MAX_IDENTICAL_RETRIES:
+            if attempt.attempt_count >= self.MAX_TOTAL_ATTEMPTS:
                 failures.append(
                     {
                         "action_signature": attempt.action_signature,
@@ -309,7 +309,7 @@ class IntelligentRetryLimiter:
         return {
             "active_failed_attempts": len(self._action_attempts),
             "successful_approaches": len(self._successful_approaches),
-            "max_identical_retries": self.MAX_IDENTICAL_RETRIES,
+            "max_identical_retries": self.MAX_TOTAL_ATTEMPTS,
             "tracking_window_minutes": self.TRACKING_WINDOW.total_seconds() / 60,
             "memory_window_minutes": self.MEMORY_WINDOW.total_seconds() / 60,
             "repeated_failures": self.get_repeated_failures(),

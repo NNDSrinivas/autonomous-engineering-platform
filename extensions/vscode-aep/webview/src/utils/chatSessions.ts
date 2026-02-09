@@ -977,14 +977,32 @@ const getBackendApiBase = (): string => {
 };
 
 /**
+ * Validate and convert USER_ID to numeric format
+ * Returns null if USER_ID is invalid (non-numeric or default fallback)
+ */
+const getValidUserId = (): number | null => {
+  const numericUserId = Number(USER_ID);
+  if (!Number.isInteger(numericUserId) || numericUserId <= 0) {
+    console.warn(
+      '[Chat Persistence] Backend persistence disabled: invalid USER_ID. Using local-only chat sessions.'
+    );
+    return null;
+  }
+  return numericUserId;
+};
+
+/**
  * Create a conversation in the backend database
  */
 export const createBackendConversation = async (
   session: ChatSessionSummary
 ): Promise<string | null> => {
+  const userId = getValidUserId();
+  if (userId === null) return null;
+
   try {
     const response = await fetch(
-      `${getBackendApiBase()}/api/navi-memory/conversations?user_id=${USER_ID}`,
+      `${getBackendApiBase()}/api/navi-memory/conversations?user_id=${userId}`,
       {
         method: 'POST',
         headers: {
@@ -1054,9 +1072,12 @@ export const saveMessageToBackend = async (
  * Load all conversations from the backend database
  */
 export const loadConversationsFromBackend = async (): Promise<ChatSessionSummary[]> => {
+  const userId = getValidUserId();
+  if (userId === null) return [];
+
   try {
     const response = await fetch(
-      `${getBackendApiBase()}/api/navi-memory/conversations?user_id=${USER_ID}&limit=100`,
+      `${getBackendApiBase()}/api/navi-memory/conversations?user_id=${userId}&limit=100`,
       {
         method: 'GET',
         headers: buildHeaders(),
@@ -1072,13 +1093,15 @@ export const loadConversationsFromBackend = async (): Promise<ChatSessionSummary
 
     // Convert backend format to frontend format
     return conversations.map((conv: any) => ({
-      id: `session-${conv.id}`, // Prefix to distinguish from localStorage-only sessions
+      // Use backend conversation ID directly as session ID for consistency
+      // This ensures session IDs match between local and backend storage
+      id: conv.id,
       backendConversationId: conv.id,
       title: conv.title || DEFAULT_TITLE,
       createdAt: conv.created_at,
       updatedAt: conv.updated_at,
       messageCount: 0, // Will be populated when messages are loaded
-      repoName: conv.initial_context?.repoName,
+      repoName: undefined, // Backend response doesn't include initial_context
       workspaceRoot: conv.workspace_path,
       isStarred: conv.is_starred || false,
       isPinned: conv.is_pinned || false,

@@ -118,19 +118,20 @@ const NaviChatPanel = () => {
   };
 
   // ============================================================================
-  // STEP 3: Update Send Message Handler
+  // STEP 3: Update Send Message Handler (Example - integrate into your component)
   // ============================================================================
 
-  const handleSendMessage = async (message: string) => {
-    // Add user message to chat immediately
-    addMessageToChat({
-      role: 'user',
-      content: message,
-    });
-
-    // Use streaming
-    await sendMessageWithStreaming(message);
-  };
+  // Example: Replace your existing message handler with this streaming version
+  // const handleSendMessage = async (message: string) => {
+  //   // Add user message to chat immediately
+  //   addMessageToChat({
+  //     role: 'user',
+  //     content: message,
+  //   });
+  //
+  //   // Use streaming
+  //   await sendMessageWithStreaming(message);
+  // };
 
   // ============================================================================
   // STEP 4: Add Streaming UI Component
@@ -240,37 +241,40 @@ Add these styles to NaviChatPanel.css:
 */
 
 // ============================================================================
-// ALTERNATIVE: Fallback to Regular Endpoint
+// ALTERNATIVE: Fallback to Regular Endpoint (Example)
 // ============================================================================
 
-const fallbackToRegularEndpoint = async (message: string) => {
-  try {
-    const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8787';
-    const response = await fetch(`${backendUrl}/api/navi/process`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message,
-        workspace: workspacePath,
-        llm_provider: selectedProvider,
-      }),
-    });
-
-    const result = await response.json();
-
-    if (result.success) {
-      addMessageToChat({
-        role: 'assistant',
-        content: result.message,
-        files: result.files_created || [],
-      });
-    }
-  } catch (error) {
-    console.error('Fallback failed:', error);
-  }
-};
+// Example: Optional fallback function for non-streaming endpoint
+// Uncomment and integrate into your error handling if needed
+//
+// const fallbackToRegularEndpoint = async (message: string) => {
+//   try {
+//     const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8787';
+//     const response = await fetch(`${backendUrl}/api/navi/process`, {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//       },
+//       body: JSON.stringify({
+//         message,
+//         workspace: workspacePath,
+//         llm_provider: selectedProvider,
+//       }),
+//     });
+//
+//     const result = await response.json();
+//
+//     if (result.success) {
+//       addMessageToChat({
+//         role: 'assistant',
+//         content: result.message,
+//         files: result.files_created || [],
+//       });
+//     }
+//   } catch (error) {
+//     console.error('Fallback failed:', error);
+//   }
+// };
 
 // ============================================================================
 // TESTING

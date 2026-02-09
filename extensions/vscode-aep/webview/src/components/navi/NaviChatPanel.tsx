@@ -1608,6 +1608,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
   const resetTimeoutRef = useRef<number | null>(null);
   const analysisAbortRef = useRef<AbortController | null>(null);
   const chatAbortRef = useRef<AbortController | null>(null);
+  const savedMessageIdsRef = useRef<Set<string>>(new Set()); // Track messages saved to backend
   const commandActivityRef = useRef<Map<string, string>>(new Map());
   const actionActivityRef = useRef<Map<string, string>>(new Map());
   const thinkingActivityRef = useRef<string | null>(null);
@@ -2300,23 +2301,33 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
       const existing = getSession(activeSessionId);
       if (existing?.backendConversationId && messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
-        // Only save if this is a new message (not already saved)
-        saveMessageToBackend(existing.backendConversationId, {
-          role: lastMessage.role,
-          content: lastMessage.content,
-          metadata: {
-            id: lastMessage.id,
-            createdAt: lastMessage.createdAt,
-            responseData: lastMessage.responseData,
-            actions: lastMessage.actions,
-          },
-        }).then((success) => {
-          if (success) {
-            console.log(`[NaviChatPanel] ✅ Saved message to backend: ${lastMessage.id}`);
-          } else {
-            console.warn(`[NaviChatPanel] ⚠️ Failed to save message to backend: ${lastMessage.id}`);
+        // Only save if this message hasn't been saved yet (prevents spam during streaming)
+        if (lastMessage.id && !savedMessageIdsRef.current.has(lastMessage.id)) {
+          // Check if message is complete (not streaming) - avoid saving partial content
+          const isComplete = !lastMessage.isStreaming && lastMessage.content && lastMessage.content.length > 0;
+
+          if (isComplete) {
+            savedMessageIdsRef.current.add(lastMessage.id);
+            saveMessageToBackend(existing.backendConversationId, {
+              role: lastMessage.role,
+              content: lastMessage.content,
+              metadata: {
+                id: lastMessage.id,
+                createdAt: lastMessage.createdAt,
+                responseData: lastMessage.responseData,
+                actions: lastMessage.actions,
+              },
+            }).then((success) => {
+              if (success) {
+                console.log(`[NaviChatPanel] ✅ Saved message to backend: ${lastMessage.id}`);
+              } else {
+                console.warn(`[NaviChatPanel] ⚠️ Failed to save message to backend: ${lastMessage.id}`);
+                // Remove from saved set so we can retry
+                savedMessageIdsRef.current.delete(lastMessage.id);
+              }
+            });
           }
-        });
+        }
       }
 
       const preview = derivePreview(messages);

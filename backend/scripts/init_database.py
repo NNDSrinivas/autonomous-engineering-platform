@@ -30,7 +30,7 @@ print("📦 Importing model modules...")
 
 # Core models
 try:
-    import backend.models
+    import backend.models  # noqa: F401
 
     print("   ✓ backend.models")
 except Exception as e:
@@ -38,28 +38,28 @@ except Exception as e:
 
 # Database models (memory system)
 try:
-    import backend.database.models.memory
+    import backend.database.models.memory  # noqa: F401
 
     print("   ✓ backend.database.models.memory")
 except Exception as e:
     print(f"   ⚠️  backend.database.models.memory: {e}")
 
 try:
-    import backend.database.models.rbac
+    import backend.database.models.rbac  # noqa: F401
 
     print("   ✓ backend.database.models.rbac")
 except Exception as e:
     print(f"   ⚠️  backend.database.models.rbac: {e}")
 
 try:
-    import backend.database.models.enterprise_project
+    import backend.database.models.enterprise_project  # noqa: F401
 
     print("   ✓ backend.database.models.enterprise_project")
 except Exception as e:
     print(f"   ⚠️  backend.database.models.enterprise_project: {e}")
 
 try:
-    import backend.database.models.memory_graph
+    import backend.database.models.memory_graph  # noqa: F401
 
     print("   ✓ backend.database.models.memory_graph")
 except Exception as e:
@@ -106,7 +106,7 @@ def main():
 
     # Convert async drivers to sync equivalents
     driver_mapping = {
-        "postgresql+asyncpg": "postgresql+psycopg2",
+        "postgresql+asyncpg": "postgresql+psycopg",  # Use psycopg3, not legacy psycopg2
         "sqlite+aiosqlite": "sqlite",
         "mysql+aiomysql": "mysql+pymysql",
     }

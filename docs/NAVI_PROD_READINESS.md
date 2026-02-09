@@ -207,7 +207,7 @@ The application uses a safe-by-design approach:
    - No `alembic upgrade head` in startup events
    - Prevents race conditions in multi-worker deployments
 
-2. **Kubernetes init containers** (see `kubernetes/deployments/backend-staging.yaml`)
+2. **Kubernetes init containers** (actual configuration from `kubernetes/deployments/backend-staging.yaml:38-60`)
    ```yaml
    initContainers:
      - name: db-migrate
@@ -225,7 +225,14 @@ The application uses a safe-by-design approach:
              name: navi-database-staging
          - configMapRef:
              name: navi-database-config-staging
-   # Only one init container runs per deployment
+       resources:
+         requests:
+           cpu: "100m"
+           memory: "256Mi"
+         limits:
+           cpu: "500m"
+           memory: "512Mi"
+   # Only one init container runs per deployment, preventing race conditions
    ```
 
 3. **Manual migration for production** (recommended approach)
@@ -1368,7 +1375,7 @@ backend/services/autonomous_agent.py ✅ COMPLETE
 ---
 
 ## Update Log
-- 2026-02-09: **ALL CRITICAL SECURITY BLOCKERS RESOLVED**: Verified all 5 critical pre-production blockers are fixed: (1) Authentication context now production-ready with proper validation, (2) Port recovery action type marked as optional enhancement, (3) Consent approval authorization fully implemented with security logging, (4) DDL migration race condition resolved by safe-by-design approach (no auto-migrations), (5) Retry limiter thread-safety fixed with RLock. E2E smoke test passed. Production readiness improved from 60% to ~75%. Remaining gaps are operational (monitoring dashboards, SLOs, runbooks).
+- 2026-02-09: **CRITICAL SECURITY BLOCKERS RESOLVED**: Verified 4 of 5 pre-production blockers addressed: (1) Authentication context fixed - production-ready with proper validation ✅, (2) Port recovery action type deprioritized to P2 as optional enhancement (not blocking production) ⚠️, (3) Consent approval authorization fully implemented with security logging ✅, (4) DDL migration race condition resolved by safe-by-design approach (no auto-migrations) ✅, (5) Retry limiter thread-safety fixed with RLock ✅. Items 1, 3, 4, 5 are resolved. Item 2 explicitly downgraded to non-blocking P2 enhancement. E2E smoke test passed. Production readiness improved from 60% to ~75%. Remaining gaps are operational (monitoring dashboards, SLOs, runbooks).
 - 2026-02-05: **CRITICAL INTEGRATION COMPLETE**: Wired feedback and learning systems end-to-end. Generation logging, genId tracking, event streaming, and learning feedback bridge all operational. All 4 core systems (Telemetry, Feedback, RAG, Learning) now fully integrated. See Integration Health Dashboard for details.
 - 2026-02-05: **Feedback System**: Complete generation logging in autonomous_agent.py with database session and user context. Backend emits "generation_logged" events, extension forwards to webview, frontend updates messages with genId for feedback submission.
 - 2026-02-05: **Learning System**: Bridged rating-based feedback to FeedbackLearningManager. Ratings (1-5 stars) automatically convert to accept/reject/modify feedback. Suggestions tracked on generation. Learning loop closed.

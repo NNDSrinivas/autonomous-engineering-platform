@@ -21,13 +21,24 @@ class McpServer(Base):
     transport = Column(String(40), nullable=False, default="streamable_http")
     auth_type = Column(String(40), nullable=False, default="none")
     config_json = Column(Text, nullable=True)
-    # TODO: Encrypt secret_json at rest using envelope encryption (backend.core.crypto.encrypt_token)
-    # to prevent plaintext credential persistence. Consider:
-    # 1. Renaming to secret_ciphertext/encrypted_secret to make intent explicit
-    # 2. Adding service-layer helper that always encrypts/decrypts via crypto.encrypt_token()
-    # 3. Validating at write time (reject non-bytes or unexpected format) to prevent plaintext
-    # 4. Using Fernet encryption similar to audit payload encryption
-    secret_json = Column(LargeBinary, nullable=True)
+    # SECURITY CRITICAL: secret_json field requires encryption enforcement
+    # Current risk: No enforcement at model/service layer - plaintext secrets could be stored if write path forgets encryption
+    #
+    # Required implementation (before any CRUD API is built):
+    # 1. Rename column: secret_json → secret_ciphertext (explicit intent, prevents accidental plaintext writes)
+    # 2. Create service layer: MCP server repository/service that enforces encryption on all writes
+    #    - Use backend.core.crypto.encrypt_token() for encryption (Fernet-based, similar to audit logs)
+    #    - Reject non-bytes values at write time (validation)
+    #    - Auto-decrypt on read (transparent to consumers)
+    # 3. Migration strategy: Create Alembic migration to rename column when service layer is ready
+    # 4. Documentation: Add docstring explaining this is ciphertext-only, never accepts plaintext
+    #
+    # Implementation reference: backend/api/routers/audit.py (encrypted payload handling)
+    secret_json = Column(
+        LargeBinary,
+        nullable=True,
+        comment="MUST be encrypted ciphertext (Fernet). Use service layer for encryption.",
+    )
     enabled = Column(Boolean, default=True, nullable=False)
     status = Column(String(32), nullable=False, default="unknown")
     tool_count = Column(Integer, nullable=True)

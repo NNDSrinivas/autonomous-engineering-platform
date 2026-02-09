@@ -552,11 +552,14 @@ async def list_mcp_tools(
 
     server = get_mcp_server()
     server_info = server.get_server_info()
-    builtin_tools = server.get_tool_definitions()
+    original_tools = server.get_tool_definitions()
 
-    for tool in builtin_tools:
+    # Create new list with copies to avoid mutating cached/shared dicts
+    builtin_tools = []
+    for tool in original_tools:
+        tool_copy = tool.copy()  # Shallow copy to avoid mutation
         metadata = tool.get("metadata") or {}
-        tool["metadata"] = {
+        tool_copy["metadata"] = {
             **metadata,
             "server_id": "builtin",
             "server_name": server_info.get("name"),
@@ -565,6 +568,7 @@ async def list_mcp_tools(
             "scope": "builtin",
             "category": metadata.get("category") or "builtin",
         }
+        builtin_tools.append(tool_copy)
 
     servers = (
         mcp_registry.list_servers(

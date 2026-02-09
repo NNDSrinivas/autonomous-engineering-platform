@@ -252,3 +252,19 @@ def validate_production_settings(settings_obj: "Settings | None" = None) -> None
                 "Set AUDIT_ENCRYPTION_KEY environment variable to a Fernet-compatible encryption key. "
                 "Generate one with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
             )
+
+        # Validate key format by attempting to construct a Fernet instance
+        try:
+            from cryptography.fernet import Fernet
+
+            Fernet(
+                settings_obj.AUDIT_ENCRYPTION_KEY.encode()
+                if isinstance(settings_obj.AUDIT_ENCRYPTION_KEY, str)
+                else settings_obj.AUDIT_ENCRYPTION_KEY
+            )
+        except Exception as e:
+            raise ValueError(
+                f"AUDIT_ENCRYPTION_KEY is invalid: {e}. "
+                "The key must be a valid Fernet key (32 url-safe base64-encoded bytes). "
+                "Generate a new one with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+            ) from e

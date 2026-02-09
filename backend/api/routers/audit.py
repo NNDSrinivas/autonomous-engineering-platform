@@ -331,10 +331,16 @@ def _audit_row_to_dict(row: AuditLog, include_payload: bool = False) -> dict:
     if include_payload:
         # Serialize payload safely for JSON export (handle bytes and other non-JSON types)
         # Always include payload_encoding when include_payload=true for consistent schema
-        if isinstance(row.payload, bytes):
+        if isinstance(row.payload, (bytes, bytearray, memoryview)):
             import base64
 
-            data["payload"] = base64.b64encode(row.payload).decode("utf-8")
+            # Normalize all bytes-like types to bytes for consistent encoding
+            payload_bytes = (
+                bytes(row.payload)
+                if not isinstance(row.payload, bytes)
+                else row.payload
+            )
+            data["payload"] = base64.b64encode(payload_bytes).decode("utf-8")
             data["payload_encoding"] = "base64"
         elif row.payload is None:
             data["payload"] = None

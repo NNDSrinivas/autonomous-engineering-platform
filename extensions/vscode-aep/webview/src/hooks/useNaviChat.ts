@@ -82,6 +82,14 @@ interface UseNaviChatProps {
   workspaceRoot?: string | null;
 }
 
+export interface ExecutionStep {
+  id: string;
+  phase: 'planning' | 'executing' | 'verifying' | 'fixing' | 'completed' | 'failed';
+  label: string;
+  status: 'pending' | 'running' | 'completed' | 'error';
+  detail?: string;
+}
+
 export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -91,6 +99,7 @@ export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviCh
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [lastRouterInfo, setLastRouterInfo] = useState<{ taskType: TaskType; modelName: string; reason: string } | null>(null);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
 
   // Load saved model preference on mount
   useEffect(() => {
@@ -275,6 +284,44 @@ export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviCh
               if (parsed.type === 'status') {
                 // Status updates: planning, executing, verifying, etc.
                 onDelta(`\n**${parsed.status}**${parsed.message ? ': ' + parsed.message : ''}\n`);
+
+                // Update execution steps for progress UI
+                if (chatMode === 'agent') {
+                  const phaseLabels: Record<string, string> = {
+                    planning: '📋 Planning',
+                    executing: '⚡ Executing',
+                    verifying: '✅ Verifying',
+                    fixing: '🔧 Fixing',
+                    completed: '✓ Completed',
+                    failed: '❌ Failed'
+                  };
+
+                  setExecutionSteps(prev => {
+                    const existingIdx = prev.findIndex(s => s.phase === parsed.status);
+                    const newStep: ExecutionStep = {
+                      id: parsed.status,
+                      phase: parsed.status,
+                      label: phaseLabels[parsed.status] || parsed.status,
+                      status: parsed.status === 'completed' ? 'completed'
+                            : parsed.status === 'failed' ? 'error'
+                            : 'running',
+                      detail: parsed.message
+                    };
+
+                    if (existingIdx >= 0) {
+                      // Update existing step
+                      const updated = [...prev];
+                      updated[existingIdx] = newStep;
+                      return updated;
+                    } else {
+                      // Add new step and mark previous as completed
+                      const updated = prev.map(s =>
+                        s.status === 'running' ? { ...s, status: 'completed' as const } : s
+                      );
+                      return [...updated, newStep];
+                    }
+                  });
+                }
               } else if (parsed.type === 'text' || parsed.type === 'content') {
                 // Narrative text from agent
                 onDelta(parsed.text || parsed.content || '');
@@ -352,6 +399,9 @@ export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviCh
 
   const sendMessage = useCallback(async (input: string, overrideModel?: string) => {
     if (!input.trim() || isLoading) return;
+
+    // Clear execution steps for new autonomous task
+    setExecutionSteps([]);
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -497,5 +547,6 @@ export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviCh
     getDisplayModelName,
     lastRouterInfo,
     preferencesLoaded,
+    executionSteps,
   };
 }

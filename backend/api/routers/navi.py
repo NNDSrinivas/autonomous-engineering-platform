@@ -247,10 +247,11 @@ async def process_navi_request_stream(request: NaviRequest):
     """
     Process a NAVI request with streaming response (SSE).
 
-    Streams progress updates and LLM response chunks in real-time:
-    - "status" events: "analyzing", "generating", "complete"
-    - "chunk" events: LLM response chunks as they're generated
-    - "result" event: Final structured response
+    Streams progress updates and the final result in real-time:
+    - "status" events: progress updates like "analyzing", "generating", "complete"
+    - "result" event: Final structured response with all data
+    - "done" event: Indicates that streaming is complete
+    - "error" events: Emitted if processing fails
 
     This makes the response feel instant even though it takes 3-5s total.
     """

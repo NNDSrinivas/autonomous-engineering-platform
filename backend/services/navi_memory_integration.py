@@ -167,7 +167,8 @@ class NaviMemoryIntegration:
                 for task_name, result in zip(task_names, results):
                     if isinstance(result, Exception):
                         logger.warning(
-                            f"Error retrieving {task_name}: {result}", exc_info=result
+                            f"Error retrieving {task_name}: {result}",
+                            exc_info=(type(result), result, result.__traceback__),
                         )
                     else:
                         if task_name == "predictions":

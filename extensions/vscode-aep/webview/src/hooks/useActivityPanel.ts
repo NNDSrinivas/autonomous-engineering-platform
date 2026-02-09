@@ -17,6 +17,10 @@ type ActivityPanelSnapshot = {
 
 const STORAGE_KEY = "aep.navi.activityPanel.v1";
 
+// NOTE: VS Code webview localStorage may not persist across reloads in all scenarios.
+// For production-grade persistence, consider using VS Code webview state
+// (acquireVsCodeApi().setState/getState) or backend persistence.
+// Current implementation provides best-effort local caching.
 const readSnapshot = (): ActivityPanelSnapshot | null => {
   if (typeof window === "undefined") return null;
   try {

@@ -564,6 +564,11 @@ type PanelStateSnapshot = {
   activityFilesOpen: boolean;
 };
 
+// NOTE: VS Code webview localStorage may not persist across reloads in all scenarios.
+// For production-grade persistence, consider using:
+// - VS Code webview state: acquireVsCodeApi().setState/getState
+// - Backend persistence via API calls
+// Current implementation provides best-effort local caching.
 const readPanelState = (sessionId: string): PanelStateSnapshot | null => {
   if (typeof window === "undefined") return null;
   try {

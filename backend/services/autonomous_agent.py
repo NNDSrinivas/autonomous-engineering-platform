@@ -5016,11 +5016,20 @@ Return ONLY the JSON, no markdown or explanations."""
             # === METRICS: Start RAG retrieval timer ===
             rag_start_time = time.time()
 
-            rag_context = await get_context_for_task(
-                workspace_path=self.workspace_path,
-                task_description=request,
-                max_context_tokens=4000,  # Limit context size
-            )
+            # Add timeout to prevent RAG from blocking for minutes
+            import asyncio
+            try:
+                rag_context = await asyncio.wait_for(
+                    get_context_for_task(
+                        workspace_path=self.workspace_path,
+                        task_description=request,
+                        max_context_tokens=4000,  # Limit context size
+                    ),
+                    timeout=5.0  # 5 second timeout - fail fast if RAG is slow
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"[AutonomousAgent] RAG context retrieval timed out after 5s - continuing without RAG context")
+                rag_context = None
 
             # === METRICS: Record RAG retrieval latency ===
             rag_duration_ms = (time.time() - rag_start_time) * 1000

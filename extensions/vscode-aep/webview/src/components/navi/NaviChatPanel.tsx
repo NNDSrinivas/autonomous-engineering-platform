@@ -74,6 +74,7 @@ import { useWorkspace } from "../../context/WorkspaceContext";
 import { NaviInlineCommand } from "../command";
 import { resolveBackendBase, buildHeaders } from "../../api/navi/client";
 import { ORG, USER_ID } from "../../api/client";
+import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { getRecommendedModel, getProgressMessages, detectTaskType, type TaskType } from "../../lib/llmRouter";
 import {
   clearSessionDraft,
@@ -1334,6 +1335,11 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
   const [attachments, setAttachments] = useState<AttachmentChipData[]>([]);
   const [sending, setSending] = useState(false);
   const [sendTimedOut, setSendTimedOut] = useState(false);
+
+  // Streaming state
+  const [streamingStatus, setStreamingStatus] = useState<string>("");
+  const [streamingProgress, setStreamingProgress] = useState<{ step: number; total: number } | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [backendStatus, setBackendStatus] = useState<"checking" | "ok" | "error">("checking");
   const [backendError, setBackendError] = useState<string>("");
   const [coverageGate, setCoverageGate] = useState<CoverageGateState | null>(null);
@@ -5317,6 +5323,134 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
   /* ---------- direct backend call (fallback) ---------- */
 
+  // Streaming function using Server-Sent Events (SSE)
+  const sendMessageWithStreaming = async (
+    message: string,
+    attachmentsOverride?: AttachmentChipData[],
+    modelOverride?: string,
+    modeOverride?: ChatMode,
+    placeholderAssistantId?: string
+  ): Promise<NaviChatResponse> => {
+    const { effectiveRoot } = getEffectiveWorkspace();
+    const workspaceRootToSend = effectiveRoot;
+
+    const conversationHistory = messages.slice(-MAX_CONVERSATION_HISTORY).map((msg) => ({
+      id: msg.id,
+      type: msg.role,
+      content: msg.content,
+      timestamp: msg.createdAt,
+    }));
+
+    const body = {
+      message,
+      workspace: workspaceRootToSend,
+      llm_provider: provider,
+      llm_model: modelOverride || selectedModelId,
+      mode: modeOverride || chatMode,
+      user_id: USER_ID,
+      org_id: ORG,
+      conversation_id: activeSessionId,
+    };
+
+    const backendBase = resolveBackendBase();
+    const url = `${backendBase}/api/navi/process/stream`;
+
+    setIsStreaming(true);
+    setStreamingStatus("Preparing request...");
+    setStreamingProgress(null);
+
+    return new Promise((resolve, reject) => {
+      let finalResult: NaviChatResponse | null = null;
+
+      fetchEventSource(url, {
+        method: "POST",
+        headers: buildHeaders(),
+        body: JSON.stringify(body),
+
+        onmessage(event) {
+          try {
+            const data = JSON.parse(event.data);
+
+            switch (data.type) {
+              case "status":
+                // Update status message and progress
+                setStreamingStatus(data.message);
+                if (data.step && data.total) {
+                  setStreamingProgress({ step: data.step, total: data.total });
+                }
+
+                // Update placeholder assistant message with status
+                if (placeholderAssistantId) {
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === placeholderAssistantId
+                        ? { ...msg, content: `${data.message}${data.step ? ` (${data.step}/${data.total})` : ""}`, isStreaming: true }
+                        : msg
+                    )
+                  );
+                }
+                break;
+
+              case "result":
+                // Handle the final result
+                setIsStreaming(false);
+                setStreamingStatus("");
+                setStreamingProgress(null);
+
+                finalResult = data.data;
+
+                // Update placeholder with final content
+                if (placeholderAssistantId && finalResult) {
+                  const replyText = buildAssistantReply(finalResult, message);
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === placeholderAssistantId
+                        ? { ...msg, content: replyText, isStreaming: false }
+                        : msg
+                    )
+                  );
+                }
+                break;
+
+              case "done":
+                // Stream finished
+                setIsStreaming(false);
+                setStreamingStatus("");
+                setStreamingProgress(null);
+
+                if (finalResult) {
+                  resolve(finalResult);
+                } else {
+                  reject(new Error("Stream completed without result"));
+                }
+                break;
+
+              case "error":
+                // Handle error
+                setIsStreaming(false);
+                setStreamingStatus("");
+                setStreamingProgress(null);
+                console.error("Streaming error:", data.message);
+                reject(new Error(data.message));
+                break;
+            }
+          } catch (e) {
+            console.error("Failed to parse stream event:", e);
+          }
+        },
+
+        onerror(err) {
+          console.error("Stream connection error:", err);
+          setIsStreaming(false);
+          setStreamingStatus("");
+          setStreamingProgress(null);
+          reject(err);
+          throw err; // Stop retrying
+        },
+      });
+    });
+  };
+
   const sendNaviChatRequest = async (
     message: string,
     attachmentsOverride?: AttachmentChipData[],
@@ -5988,7 +6122,10 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
     // Direct backend path – used when no VS Code host or bridge errors
     try {
-      const data = await sendNaviChatRequest(text, undefined, modelIdToSend, chatMode);
+      // Use streaming if enabled in settings
+      const data = aiSettings.streamResponses
+        ? await sendMessageWithStreaming(text, undefined, modelIdToSend, chatMode, placeholderAssistantId)
+        : await sendNaviChatRequest(text, undefined, modelIdToSend, chatMode);
       const routingInfo = normalizeRoutingInfo((data as any)?.context?.llm);
       if (routingInfo) {
         const resolvedName =

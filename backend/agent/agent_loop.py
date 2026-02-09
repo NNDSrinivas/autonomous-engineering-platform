@@ -1809,9 +1809,13 @@ async def run_agent_loop(
                     if rag_results:
                         rag_context_text = "\n\n## Relevant Code Context:\n"
                         for result in rag_results[:3]:
-                            rag_context_text += f"\n- {result.get('file_path', 'unknown')}\n"
+                            rag_context_text += (
+                                f"\n- {result.get('file_path', 'unknown')}\n"
+                            )
                 except (asyncio.TimeoutError, Exception) as e:
-                    logger.warning(f"[AGENT] RAG retrieval failed in greeting path: {e}")
+                    logger.warning(
+                        f"[AGENT] RAG retrieval failed in greeting path: {e}"
+                    )
 
             full_context = build_context(
                 workspace_ctx,
@@ -1888,8 +1892,12 @@ async def run_agent_loop(
                         rag_context_text = "\n\n## Relevant Code Context (RAG):\n"
                         for i, result in enumerate(rag_results[:5], 1):  # Top 5 chunks
                             file_path = result.get("file_path", "unknown")
-                            content = result.get("content", "")[:500]  # Truncate long chunks
-                            rag_context_text += f"\n### {i}. {file_path}\n```\n{content}\n```\n"
+                            content = result.get("content", "")[
+                                :500
+                            ]  # Truncate long chunks
+                            rag_context_text += (
+                                f"\n### {i}. {file_path}\n```\n{content}\n```\n"
+                            )
                     else:
                         logger.info(
                             "[AGENT] No RAG index available (background indexing may be in progress)"
@@ -1899,7 +1907,9 @@ async def run_agent_loop(
                         "[AGENT] RAG context retrieval timed out after 10s - continuing without RAG"
                     )
                 except Exception as e:
-                    logger.warning(f"[AGENT] RAG retrieval failed: {e} - continuing without RAG")
+                    logger.warning(
+                        f"[AGENT] RAG retrieval failed: {e} - continuing without RAG"
+                    )
 
         full_context = build_context(
             workspace_ctx,

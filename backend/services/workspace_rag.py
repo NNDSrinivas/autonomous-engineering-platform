@@ -1064,7 +1064,10 @@ async def search_codebase(
         # Instead, trigger background indexing for next time
         if allow_background_indexing:
             import asyncio
-            logger.info(f"[RAG] No index found for {workspace_path} - scheduling background indexing")
+
+            logger.info(
+                f"[RAG] No index found for {workspace_path} - scheduling background indexing"
+            )
             # Fire and forget - don't await
             asyncio.create_task(_background_index_workspace(workspace_path))
 

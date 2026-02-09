@@ -65,11 +65,19 @@ def generate_cache_key(
     # while minimizing CPU/memory cost. For long chats, JSON-serializing full history
     # on every request is expensive. Instead, we hash each message individually and
     # combine into a single fixed-size digest.
+    #
+    # Performance optimization: Only hash the last N messages and truncate content
+    # to reduce CPU overhead under heavy use while maintaining cache effectiveness.
     history_hash = ""
     if conversation_history:
-        # Hash each message individually and combine
+        # Bound history to last 10 messages to reduce hashing cost
+        # (recent context is most relevant for cache key anyway)
+        MAX_MESSAGES_FOR_HASH = 10
+        MAX_CONTENT_LENGTH = 1000  # Truncate long messages for hashing
+
+        recent_messages = conversation_history[-MAX_MESSAGES_FOR_HASH:]
         message_hashes = []
-        for msg in conversation_history:
+        for msg in recent_messages:
             # Support both dict-like messages and objects (e.g., ChatMessage instances)
             if isinstance(msg, dict):
                 role = msg.get("role")
@@ -78,9 +86,10 @@ def generate_cache_key(
                 role = getattr(msg, "role", None)
                 content = getattr(msg, "content", "")
 
-            # Ensure content is a string
+            # Ensure content is a string and truncate to reduce hashing overhead
             if not isinstance(content, str):
                 content = str(content)
+            content = content[:MAX_CONTENT_LENGTH]
 
             msg_str = f"{role}:{content}"
             msg_hash = hashlib.sha256(msg_str.encode()).hexdigest()

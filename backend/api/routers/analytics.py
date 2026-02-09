@@ -176,7 +176,10 @@ def usage_dashboard(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     range_info = _compute_range(days)
-    user_id = user.user_id
+    # Defensive attribute access for user identifier (support both user_id and id)
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    if user_id is None:
+        raise HTTPException(status_code=500, detail="User identifier is not available")
 
     llm = _summarize_llm_metrics(db, range_info["start"], None, user_id)
     tasks = _summarize_tasks(db, range_info["start"], None, user_id)

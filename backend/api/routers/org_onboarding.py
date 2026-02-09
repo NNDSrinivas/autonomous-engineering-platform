@@ -46,16 +46,20 @@ def _slugify(name: str) -> str:
 def _ensure_tables(db: Session) -> None:
     """Initialize org tables if not already done.
 
-    TODO: Move to Alembic migrations for production.
-    This on-demand creation is a development convenience but has issues:
-    - Permissions: Requires DDL rights on every request
-    - Concurrency: Race conditions with multiple requests
-    - Performance: Overhead on every request (mitigated by flag)
-    - Operations: Schema changes not tracked/versioned
+    TODO: Remove runtime DDL entirely and use Alembic migrations for ALL environments.
+    Current behavior creates divergence between dev/test and production:
+    - Permissions: Requires DDL rights that may differ across environments
+    - Concurrency: Race conditions with multiple requests (even in dev with auto-reload)
+    - Performance: Overhead on every request (mitigated by flag, but still wasteful)
+    - Operations: Schema changes not tracked/versioned in dev, causing drift
+    - Debugging: Different code paths for dev vs prod complicate troubleshooting
 
-    IMPORTANT: Only runs outside of production/staging to avoid multi-worker DDL races.
+    RECOMMENDED: Ship these tables via Alembic migration and remove this DDL path entirely.
+    Since Alembic is already in use, adding one migration is more robust than maintaining
+    dual schema provisioning strategies.
+
+    CURRENT STATE: Only runs outside production/staging to avoid multi-worker DDL races.
     Production/staging deployments MUST use Alembic migrations instead.
-    Table creation is allowed in development, test, CI, and other non-production environments.
     """
     global _tables_initialized
 

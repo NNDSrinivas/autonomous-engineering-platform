@@ -191,6 +191,14 @@ def usage_dashboard(
 
     # Extract org identifier for multi-tenant data isolation (support org_id and org_key)
     org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+    if org_id is None:
+        # SECURITY: Fail closed to prevent cross-tenant analytics leakage
+        # If user_id is not globally unique across tenants (e.g., integer IDs),
+        # allowing org_id=None would permit cross-tenant data access
+        raise HTTPException(
+            status_code=403,
+            detail="Organization context is required for usage analytics",
+        )
 
     llm = _summarize_llm_metrics(db, range_info["start"], org_id, user_id)
     tasks = _summarize_tasks(db, range_info["start"], org_id, user_id)

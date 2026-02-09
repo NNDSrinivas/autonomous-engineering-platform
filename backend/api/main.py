@@ -43,6 +43,7 @@ from backend.core.health.shutdown import on_startup, on_shutdown
 from backend.core.resilience.resilience_middleware import ResilienceMiddleware
 from backend.core.rate_limit.middleware import RateLimitMiddleware
 from backend.core.auth.vscode_middleware import VscodeAuthMiddleware
+from backend.core.auth.deps import get_current_user
 
 from backend.core.config import settings
 from backend.core.settings import (
@@ -549,7 +550,10 @@ app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(memory_graph_router)  # Memory graph queries (/api/memory/*)
-app.include_router(navi_memory_router)  # NAVI memory endpoints (/api/navi-memory/*)
+app.include_router(
+    navi_memory_router,
+    dependencies=[Depends(get_current_user)],
+)  # NAVI memory endpoints (/api/navi-memory/*) - secured with authentication
 app.include_router(saas_router)  # SaaS management endpoints (/saas/*)
 app.include_router(events_router, prefix="/api")  # Universal event ingestion
 app.include_router(internal_router, prefix="/api")  # System info and diagnostics

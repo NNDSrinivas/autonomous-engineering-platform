@@ -1073,8 +1073,17 @@ async def search_codebase(
                 logger.info(
                     f"[RAG] No index found for {workspace_path} - scheduling background indexing"
                 )
+                # Mark as in progress BEFORE creating task to prevent race condition
+                _indexing_in_progress.add(workspace_path)
+
+                async def _run_background_indexer() -> None:
+                    try:
+                        await _background_index_workspace(workspace_path)
+                    finally:
+                        _indexing_in_progress.discard(workspace_path)
+
                 # Fire and forget - don't await
-                asyncio.create_task(_background_index_workspace(workspace_path))
+                asyncio.create_task(_run_background_indexer())
             else:
                 logger.debug(
                     f"[RAG] Background indexing already in progress for {workspace_path}"
@@ -1106,10 +1115,9 @@ async def _background_index_workspace(workspace_path: str) -> None:
 
     This allows the FIRST request to return quickly (without RAG),
     while subsequent requests will have the index ready.
-    """
-    # Mark as in progress to prevent duplicate indexers
-    _indexing_in_progress.add(workspace_path)
 
+    Note: Caller is responsible for managing _indexing_in_progress set.
+    """
     try:
         logger.info(f"[RAG] Starting background indexing for {workspace_path}")
         start_time = __import__("time").time()
@@ -1123,9 +1131,7 @@ async def _background_index_workspace(workspace_path: str) -> None:
         )
     except Exception as e:
         logger.error(f"[RAG] Background indexing failed for {workspace_path}: {e}")
-    finally:
-        # Always remove from in-progress set, even if indexing failed
-        _indexing_in_progress.discard(workspace_path)
+        raise  # Re-raise to trigger finally cleanup in wrapper
 
 
 async def get_context_for_task(

@@ -24,12 +24,12 @@ if [ -n "$CHANGED_FILES" ]; then
     HAS_PYTHON_CHANGES=true
 fi
 
-# Quick exit for docs-only changes
+# Quick exit for non-Python changes
 if [ "$HAS_PYTHON_CHANGES" = false ]; then
-    echo -e "${BLUE}ℹ️  No Python files changed - skipping Python checks${NC}"
+    echo -e "${BLUE}ℹ️  No Python files changed - skipping Python-specific checks${NC}"
     echo ""
     echo "=================================="
-    echo -e "${GREEN}✅ All checks passed! Safe to push.${NC}"
+    echo -e "${GREEN}✅ All Python checks passed! Safe to push.${NC}"
     exit 0
 fi
 

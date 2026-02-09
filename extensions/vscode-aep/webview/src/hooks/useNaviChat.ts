@@ -348,10 +348,17 @@ export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviCh
                 // Fallback for regular content field
                 onDelta(parsed.content);
               } else if (parsed.error) {
+                // SSE error event - propagate to caller and stop stream
                 throw new Error(parsed.error);
               }
             } catch (e) {
-              console.warn('[NAVI] Failed to parse SSE data:', data, e);
+              // Only catch JSON parse errors - re-throw everything else
+              if (e instanceof SyntaxError) {
+                console.warn('[NAVI] Failed to parse SSE data:', data, e);
+              } else {
+                // Re-throw non-parse errors (including SSE error events)
+                throw e;
+              }
             }
           }
         }

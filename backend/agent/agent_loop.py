@@ -1892,7 +1892,7 @@ async def run_agent_loop(
                         rag_context_text = "\n\n## Relevant Code Context (RAG):\n"
                         for i, result in enumerate(rag_results[:5], 1):  # Top 5 chunks
                             file_path = result.get("file_path", "unknown")
-                            content = result.get("content", "")[
+                            content = result.get("content_preview", "")[
                                 :500
                             ]  # Truncate long chunks
                             rag_context_text += (

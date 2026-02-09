@@ -4938,10 +4938,18 @@ Return ONLY the JSON, no markdown or explanations."""
                         return
 
     async def execute_task(
-        self, request: str, run_verification: bool = True
+        self,
+        request: str,
+        run_verification: bool = True,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Execute a task autonomously with verification and self-healing.
+
+        Args:
+            request: The user's task/question
+            run_verification: Whether to run verification steps
+            conversation_history: Previous conversation messages for context
 
         Yields events:
         - {"type": "status", "status": "planning|executing|verifying|fixing|completed|failed"}
@@ -5112,7 +5120,22 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
             }
             return
 
-        messages = [{"role": "user", "content": enhanced_request}]
+        # Build messages list with conversation history for context
+        messages = []
+
+        # Add conversation history if provided (for context continuity)
+        if conversation_history:
+            # Convert conversation history format to LLM message format
+            for hist_msg in conversation_history[-(10 if len(conversation_history) > 10 else len(conversation_history)):]:  # Last 10 messages max
+                role = hist_msg.get("type") or hist_msg.get("role", "user")
+                content = hist_msg.get("content", "")
+                if role and content:
+                    # Normalize role names
+                    if role in ["user", "assistant", "system"]:
+                        messages.append({"role": role, "content": content})
+
+        # Add current request as the latest user message
+        messages.append({"role": "user", "content": enhanced_request})
 
         while context.iteration < context.max_iterations:
             context.iteration += 1

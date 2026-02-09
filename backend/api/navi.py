@@ -7403,6 +7403,7 @@ async def navi_autonomous_task(
                 agent.execute_task(
                     request=augmented_message,  # Use augmented message with image context
                     run_verification=request.run_verification,
+                    conversation_history=request.conversation_history,  # Pass conversation history for context
                 )
             ):
                 yield f"data: {json.dumps(event)}\n\n"

@@ -11,12 +11,32 @@ echo ""
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Track failures
 FAILED=0
 
-# 1. Format check
+# Get list of changed Python files FIRST to determine what checks to run
+CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep "\.py$" || true)
+HAS_PYTHON_CHANGES=false
+if [ -n "$CHANGED_FILES" ]; then
+    HAS_PYTHON_CHANGES=true
+fi
+
+# Quick exit for docs-only changes
+if [ "$HAS_PYTHON_CHANGES" = false ]; then
+    echo -e "${BLUE}ℹ️  No Python files changed - skipping Python checks${NC}"
+    echo ""
+    echo "=================================="
+    echo -e "${GREEN}✅ All checks passed! Safe to push.${NC}"
+    exit 0
+fi
+
+echo -e "${BLUE}ℹ️  Python files changed - running full validation${NC}"
+echo ""
+
+# 1. Format check (only if Python files changed)
 echo "📝 Checking code formatting..."
 if black --check backend/ tests/ 2>/dev/null; then
     echo -e "${GREEN}✓ Python formatting OK${NC}"
@@ -25,7 +45,7 @@ else
     FAILED=1
 fi
 
-# 2. Linting
+# 2. Linting (only if Python files changed)
 echo ""
 echo "🔎 Running linters..."
 if ruff check backend/ tests/ 2>/dev/null; then
@@ -39,10 +59,7 @@ fi
 echo ""
 echo "🚨 Checking for common anti-patterns in changed files..."
 
-# Get list of changed files in this commit
-CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep "\.py$" || true)
-
-if [ -z "$CHANGED_FILES" ]; then
+if [ "$HAS_PYTHON_CHANGES" = false ]; then
     echo -e "${GREEN}✓ No Python files changed${NC}"
 else
     # Check for bare except in changed files only
@@ -78,26 +95,31 @@ else
     fi
 fi
 
-# 4. Run fast tests and database health check
-echo ""
-echo "🧪 Running fast tests and database health check..."
+# 4. Run fast tests and database health check (only if Python files changed)
+if [ "$HAS_PYTHON_CHANGES" = true ]; then
+    echo ""
+    echo "🧪 Running fast tests and database health check..."
 
-# Fast unit tests
-if pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null; then
-    echo -e "${GREEN}✓ Fast tests passed${NC}"
-else
-    echo -e "${YELLOW}⚠ Fast tests failed or dependencies missing (non-blocking)${NC}"
-fi
+    # Fast unit tests
+    if pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null; then
+        echo -e "${GREEN}✓ Fast tests passed${NC}"
+    else
+        echo -e "${YELLOW}⚠ Fast tests failed or dependencies missing (non-blocking)${NC}"
+    fi
 
-# Database health check (non-blocking)
-echo ""
-echo "🗄️ Checking database health..."
-# Set non-blocking mode for development pre-push hooks
-export CI_NON_BLOCKING_DB_CHECKS=true
-if python3 scripts/db_health_check.py 2>/dev/null; then
-    echo -e "${GREEN}✓ Database health check passed${NC}"
+    # Database health check (non-blocking)
+    echo ""
+    echo "🗄️ Checking database health..."
+    # Set non-blocking mode for development pre-push hooks
+    export CI_NON_BLOCKING_DB_CHECKS=true
+    if python3 scripts/db_health_check.py 2>/dev/null; then
+        echo -e "${GREEN}✓ Database health check passed${NC}"
+    else
+        echo -e "${YELLOW}⚠ Database health check failed (non-blocking for development)${NC}"
+    fi
 else
-    echo -e "${YELLOW}⚠ Database health check failed (non-blocking for development)${NC}"
+    echo ""
+    echo -e "${BLUE}ℹ️  Skipping tests and DB checks (no Python changes)${NC}"
 fi
 
 # Summary

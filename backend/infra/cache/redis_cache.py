@@ -117,6 +117,9 @@ class Cache:
             # Use Redis GETDEL for atomic read-and-delete (Redis 6.2+)
             try:
                 raw = await r.getdel(key)
+                # Decode bytes to string if needed (defensive handling for bytes responses)
+                if isinstance(raw, bytes):
+                    raw = raw.decode("utf-8")
                 return json.loads(raw) if raw else None
             except AttributeError:
                 # redis-py doesn't have getdel method - fall back to Lua script
@@ -141,6 +144,9 @@ class Cache:
             return v
             """
             raw = await r.eval(lua_script, 1, key)
+            # Decode bytes to string if needed (redis-py eval often returns bytes even with decode_responses=True)
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
             return json.loads(raw) if raw else None
         else:
             # For in-memory cache, use lock to make operation atomic

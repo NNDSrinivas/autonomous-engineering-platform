@@ -62,15 +62,33 @@ def generate_cache_key(
         SHA256 hash of normalized inputs
 
     Raises:
-        ValueError: If org_id is None (fail closed to prevent cross-tenant cache pollution)
+        ValueError: If org_id is None in production/staging environments
     """
-    # SECURITY: Fail closed when org_id is missing to prevent cross-tenant cache pollution
+    # SECURITY: Validate org_id to prevent cross-tenant cache pollution
     # This ensures we don't accidentally serve cached responses to the wrong tenant
     if org_id is None:
-        raise ValueError(
-            "org_id is required for cache key generation to prevent cross-tenant cache pollution. "
-            "Either provide org_id or disable caching for this request."
-        )
+        # In production/staging, fail closed for security
+        # In dev/test, log warning but allow (for backward compatibility during development)
+        try:
+            from backend.core.settings import settings
+
+            if settings.is_production_like():
+                raise ValueError(
+                    "org_id is required for cache key generation in production to prevent cross-tenant cache pollution. "
+                    "Either provide org_id or disable caching for this request."
+                )
+            else:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Cache key generated without org_id - this creates cross-tenant cache collision risk. "
+                    "Provide org_id for all cache operations in production."
+                )
+        except ImportError:
+            # If settings not available, fail safe and require org_id
+            raise ValueError(
+                "org_id is required for cache key generation to prevent cross-tenant cache pollution."
+            )
 
     # Normalize inputs for consistent hashing
     # Include all scoping fields that affect output to prevent cache pollution

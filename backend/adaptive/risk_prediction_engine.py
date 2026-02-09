@@ -1353,9 +1353,7 @@ class RiskPredictionEngine:
             "trend": (
                 "increasing"
                 if risk_ratio > 0.3
-                else "stable"
-                if risk_ratio > 0.1
-                else "decreasing"
+                else "stable" if risk_ratio > 0.1 else "decreasing"
             ),
             "velocity": risk_ratio,
             "high_risk_count": high_risk_count,

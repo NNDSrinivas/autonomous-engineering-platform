@@ -598,9 +598,7 @@ async def detect_project_type(
                             detected["framework"] = (
                                 "Express"
                                 if "express" in deps
-                                else "Fastify"
-                                if "fastify" in deps
-                                else "Koa"
+                                else "Fastify" if "fastify" in deps else "Koa"
                             )
                             detected["type"] = "backend"
                             detected["recommended_platforms"] = [

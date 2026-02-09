@@ -400,9 +400,7 @@ async def generate_migration(
     lines.append(
         "```python"
         if orm in ("alembic", "django")
-        else "```typescript"
-        if orm in ("drizzle", "typeorm")
-        else "```sql"
+        else "```typescript" if orm in ("drizzle", "typeorm") else "```sql"
     )
     lines.append(migration_code)
     lines.append("```")

@@ -108,9 +108,9 @@ class ProjectAnalyzer:
                     commands["typecheck"] = "npx tsc --noEmit"
 
                 if "test" in scripts:
-                    commands[
-                        "test"
-                    ] = f"{run_cmd} test -- --passWithNoTests --watchAll=false"
+                    commands["test"] = (
+                        f"{run_cmd} test -- --passWithNoTests --watchAll=false"
+                    )
                 elif "jest" in deps:
                     commands["test"] = "npx jest --passWithNoTests"
                 elif "vitest" in deps:

@@ -1,23 +1,19 @@
 """Application settings and configuration.
 
-ARCHITECTURAL DEBT WARNING (P1 - High Priority):
+ARCHITECTURAL DEBT WARNING (P1 - High Priority)
 ================================================================================
-This module (backend/core/settings.py) duplicates functionality with
-backend/core/config.py, creating confusion and maintenance overhead.
+This module (backend/core/settings.py) currently duplicates functionality with
+backend/core/config.py, which also defines a settings/configuration class.
+This split causes confusion and maintenance overhead.
 
-Issue: Two separate Settings classes exist:
-- backend/core/settings.py (27 files importing) - Simple settings
-- backend/core/config.py (75 files importing) - Complex settings with validation
+Action required: Consolidate these into a single, unified settings
+implementation as described in the consolidation plan.
 
-Impact: 102 files affected, developers confused about which to use.
+Please do not extend or add new settings in this module or in
+backend/core/config.py without first consulting the consolidation plan.
 
-Action Required: Consolidate into single Settings class.
-Tracking: See docs/SETTINGS_CONSOLIDATION_TODO.md for detailed refactoring plan.
-
-Estimated Effort: 3.5 days (28 hours)
-Timeline: After current production deployment (post Feb 26, 2026)
-
-DO NOT extend either Settings class without consulting the consolidation plan.
+Tracking: See docs/SETTINGS_CONSOLIDATION_TODO.md for the current
+background, metrics, and refactoring plan.
 ================================================================================
 """
 

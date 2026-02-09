@@ -1,5 +1,5 @@
 import { buildHeaders, resolveBackendBase } from '../api/navi/client';
-import { USER_ID, ORG } from '../api/client';
+import { USER_ID } from '../api/client';
 
 export type ChatSessionTag = {
   label: string;

@@ -2352,6 +2352,14 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
       });
       panelStateSaveRef.current = null;
     }, 400);
+
+    // Cleanup: clear timeout on unmount or dependency change
+    return () => {
+      if (panelStateSaveRef.current) {
+        clearTimeout(panelStateSaveRef.current);
+        panelStateSaveRef.current = null;
+      }
+    };
   }, [
     activeSessionId,
     terminalEntries,

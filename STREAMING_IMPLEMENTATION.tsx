@@ -30,7 +30,9 @@ const NaviChatPanel = () => {
     setStreamingProgress(null);
 
     try {
-      await fetchEventSource('http://localhost:8787/api/navi/process/stream', {
+      // Use backend base URL from configuration (e.g., process.env.BACKEND_URL or default)
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8787';
+      await fetchEventSource(`${backendUrl}/api/navi/process/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -243,7 +245,8 @@ Add these styles to NaviChatPanel.css:
 
 const fallbackToRegularEndpoint = async (message: string) => {
   try {
-    const response = await fetch('http://localhost:8787/api/navi/process', {
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8787';
+    const response = await fetch(`${backendUrl}/api/navi/process`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -277,9 +280,9 @@ const fallbackToRegularEndpoint = async (message: string) => {
 To test the streaming implementation:
 
 1. Make sure backend is running:
-   cd /Users/mounikakapa/dev/autonomous-engineering-platform
+   cd <your-project-directory>
    source aep-venv/bin/activate
-   NAVI_DISABLE_MEMORY_CONTEXT=true python -m uvicorn backend.api.main:app --port 8787
+   python -m uvicorn backend.api.main:app --port 8787
 
 2. In VS Code extension, send a message and you should see:
    🎯 Analyzing your request... [1/6]

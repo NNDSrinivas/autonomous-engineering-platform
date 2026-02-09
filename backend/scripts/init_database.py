@@ -83,6 +83,23 @@ def main():
     print("=" * 70)
     print()
 
+    # Safety warning for production environments
+    print("⚠️  WARNING: This script will create database tables.")
+    print("⚠️  IMPORTANT: Always backup your database before running this script!")
+    print("⚠️  CAUTION: Do not run this on production without proper authorization.")
+    print()
+
+    # Check if running in production-like environment
+    if settings.is_production_like():
+        print("🚨 PRODUCTION ENVIRONMENT DETECTED!")
+        print("🚨 Running this script in production requires explicit confirmation.")
+        response = input("Type 'CREATE TABLES' (all caps) to proceed, or anything else to abort: ")
+        if response != "CREATE TABLES":
+            print("❌ Aborted by user. No changes made.")
+            sys.exit(0)
+        print()
+    print()
+
     # Get database URL and convert async URL to sync if needed
     raw_url = settings.sqlalchemy_url
     url_obj = make_url(raw_url)

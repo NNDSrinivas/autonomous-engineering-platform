@@ -68,6 +68,14 @@ export function useActivityPanel() {
       writeSnapshot({ steps, currentStep, isVisible });
       saveTimerRef.current = null;
     }, 400);
+
+    // Cleanup: clear timeout on unmount or dependency change
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
   }, [steps, currentStep, isVisible]);
 
   const appendPreviewText = useCallback((current: string, addition: string) => {

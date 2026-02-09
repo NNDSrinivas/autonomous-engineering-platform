@@ -17,7 +17,7 @@ NAVI has strong technical foundations and is **production-ready for pilot deploy
 
 ## Readiness Rating
 - **Pilot production (friendly teams)**: ✅ **READY NOW** (E2E validated, all critical security fixes complete)
-- **Enterprise production**: ⚠️ **1-2 weeks** (needs monitoring dashboards, SLOs, incident runbooks)
+- **Enterprise production**: ⚠️ **2-3 weeks (target Feb 26, 2026)** (needs monitoring dashboards, SLOs, incident runbooks)
 - **Investor readiness (pre-seed/seed)**: ✅ **YES** (strong technical validation, proven performance improvements, security hardened)
 
 ## Top Blockers (Must Fix Before Enterprise Production)
@@ -211,7 +211,7 @@ The application uses a safe-by-design approach:
    ```yaml
    initContainers:
      - name: db-migrate
-       image: your-registry/navi-backend:staging
+       image: ${CONTAINER_REGISTRY}/navi-backend:staging  # Replace with your actual container registry
        imagePullPolicy: Always
        command:
          - /bin/sh

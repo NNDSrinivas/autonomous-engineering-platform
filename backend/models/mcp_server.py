@@ -21,6 +21,9 @@ class McpServer(Base):
     transport = Column(String(40), nullable=False, default="streamable_http")
     auth_type = Column(String(40), nullable=False, default="none")
     config_json = Column(Text, nullable=True)
+    # TODO: Encrypt secret_json at rest using envelope encryption (backend.core.crypto.encrypt_token)
+    # to prevent plaintext credential persistence. Consider migrating to encrypted Text column
+    # using Fernet encryption similar to audit payload encryption.
     secret_json = Column(LargeBinary, nullable=True)
     enabled = Column(Boolean, default=True, nullable=False)
     status = Column(String(32), nullable=False, default="unknown")

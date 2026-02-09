@@ -111,7 +111,7 @@ class Cache:
             try:
                 raw = await r.getdel(key)
                 return json.loads(raw) if raw else None
-            except (AttributeError, TypeError):
+            except AttributeError:
                 # redis-py doesn't have getdel method - fall back to Lua script
                 pass  # Continue to Lua fallback below
             except ResponseError as e:

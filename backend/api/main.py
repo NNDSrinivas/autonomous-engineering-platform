@@ -201,7 +201,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan: manage startup/shutdown of background services."""
     # Startup: validate production settings and initialize background services
     validate_production_settings(
-        settings
+        core_settings
     )  # Validate production-specific settings for the active app configuration
     await on_startup()  # PR-29: Health system startup
     presence_lifecycle.start_cleanup_thread()

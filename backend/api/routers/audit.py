@@ -235,7 +235,7 @@ def export_audit_logs(
             "created_at",
         ]
         if include_payload:
-            fieldnames.append("payload")
+            fieldnames.extend(["payload", "payload_encoding"])
 
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
@@ -248,6 +248,7 @@ def export_audit_logs(
                 and "payload" in row_dict
                 and row_dict["payload"] is not None
             ):
+                # Add payload_encoding column to match JSON export behavior
                 if not isinstance(row_dict["payload"], str):
                     # Handle bytes (common for encrypted payloads) and other non-JSON types
                     if isinstance(row_dict["payload"], bytes):
@@ -256,11 +257,18 @@ def export_audit_logs(
                         row_dict["payload"] = base64.b64encode(
                             row_dict["payload"]
                         ).decode("utf-8")
+                        row_dict["payload_encoding"] = "base64"
                     else:
                         # Use default=str to handle any non-JSON-serializable types
                         row_dict["payload"] = json.dumps(
                             row_dict["payload"], default=str
                         )
+                        row_dict["payload_encoding"] = "json"
+                else:
+                    row_dict["payload_encoding"] = "plain"
+            elif include_payload:
+                # Payload is None
+                row_dict["payload_encoding"] = None
             writer.writerow(row_dict)
 
         # Generate timestamped filename for download

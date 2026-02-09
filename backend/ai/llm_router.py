@@ -683,15 +683,26 @@ class LLMRouter:
         return self._resolve_model(None, None, True, allowed_providers)
 
     def _get_default_model_for_provider(self, provider: str) -> str:
-        """Get the default model for a given provider."""
+        """
+        Get the default model for a given provider.
+
+        Uses environment-aware defaults to balance cost and quality:
+        - dev/test: cheaper/faster models (e.g., gpt-4o-mini)
+        - production: higher quality models (e.g., gpt-4o)
+        """
+        from backend.core.settings import settings
+
+        # Environment-aware OpenAI default
+        openai_default = "gpt-4o" if settings.is_production() else "gpt-4o-mini"
+
         defaults = {
             "anthropic": os.environ.get(
                 "ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"
             ),
-            "openai": os.environ.get("OPENAI_MODEL", "gpt-4o"),
+            "openai": os.environ.get("OPENAI_MODEL", openai_default),
             "google": os.environ.get("GOOGLE_MODEL", "gemini-1.5-flash"),
         }
-        return defaults.get(provider, "gpt-4o")
+        return defaults.get(provider, openai_default)
 
     # ------------------------------------------------------------------
     # Payload building (varies per provider)

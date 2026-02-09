@@ -1,0 +1,98 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: navi-feedback-analyzer
+  namespace: navi-production
+  labels:
+    app: navi
+    component: feedback-analyzer
+spec:
+  # Run every 15 minutes
+  schedule: "*/15 * * * *"
+  
+  # Keep last 3 successful and 1 failed job for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  
+  # Don't start new job if previous one is still running
+  concurrencyPolicy: Forbid
+  
+  jobTemplate:
+    spec:
+      # Job will be automatically deleted after 1 hour
+      ttlSecondsAfterFinished: 3600
+      
+      template:
+        metadata:
+          labels:
+            app: navi
+            component: feedback-analyzer
+        spec:
+          restartPolicy: OnFailure
+          
+          # Use service account with database access
+          serviceAccountName: navi-backend
+          
+          containers:
+          - name: analyzer
+            image: navi-backend:latest  # Replace with your actual image
+            imagePullPolicy: IfNotPresent
+            
+            command:
+            - python
+            - -m
+            - backend.tasks.feedback_analyzer
+            - --mode
+            - once
+            - --log-level
+            - INFO
+            
+            env:
+            # Database connection
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: navi-database
+                  key: connection-string
+            
+            # Learning system path (optional, defaults to ~/.navi/feedback)
+            - name: NAVI_FEEDBACK_PATH
+              value: /data/navi/feedback
+            
+            # Environment
+            - name: APP_ENV
+              value: production
+            
+            # Resources
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            
+            # Volume for feedback storage
+            volumeMounts:
+            - name: feedback-data
+              mountPath: /data/navi/feedback
+          
+          volumes:
+          - name: feedback-data
+            persistentVolumeClaim:
+              claimName: navi-feedback-pvc
+
+---
+# PersistentVolumeClaim for feedback data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: navi-feedback-pvc
+  namespace: navi-production
+spec:
+  accessModes:
+  - ReadWriteMany  # Multiple pods can mount (if using shared storage)
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard  # Adjust based on your cloud provider

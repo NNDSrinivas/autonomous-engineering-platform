@@ -414,13 +414,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         except Exception as e:
             log_rate_limit_middleware_error(str(e), path, method)
-            # If fallback is enabled (dev/ci), keep the system available.
-            if settings.RATE_LIMITING_FALLBACK_ENABLED or settings.APP_ENV in {
-                "development",
-                "dev",
-                "test",
-                "ci",
-            }:
+            # If fallback is enabled (dev/test/ci), keep the system available.
+            # Use centralized environment helpers to keep env semantics consistent.
+            if (
+                settings.RATE_LIMITING_FALLBACK_ENABLED
+                or settings.is_development()
+                or settings.is_test()
+            ):
                 return await call_next(request)
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

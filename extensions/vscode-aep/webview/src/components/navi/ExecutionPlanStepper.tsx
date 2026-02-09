@@ -211,7 +211,7 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
               </span>
               <div className="navi-plan-step-content">
                 <div className="navi-plan-step-title">{step.title}</div>
-                {step.detail && (
+                {step.detail && step.detail.trim() !== step.title.trim() && (
                   <div className="navi-plan-step-detail">{step.detail}</div>
                 )}
                 {step.output && (

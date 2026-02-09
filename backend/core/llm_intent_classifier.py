@@ -82,9 +82,15 @@ class LLMIntentClassifier:
                 )
 
     def _get_default_model(self, provider: str) -> str:
-        """Get default model for provider"""
+        """
+        Get default model for provider.
+
+        Uses cheaper/faster models for intent classification since this is called
+        frequently (potentially once per user message). Can be overridden via
+        NAVI_LLM_MODEL environment variable for higher accuracy if needed.
+        """
         defaults = {
-            "openai": "gpt-4o-mini",
+            "openai": "gpt-4o-mini",  # Fast and cheap for frequent classification
             "anthropic": "claude-3-5-sonnet-20241022",
             "google": "gemini-1.5-pro",
             "mistral": "mistral-large-latest",

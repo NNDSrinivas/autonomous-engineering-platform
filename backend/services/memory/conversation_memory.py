@@ -155,7 +155,14 @@ class ConversationMemoryService:
         if not conversation:
             return None
 
-        allowed_fields = {"title", "status", "workspace_path", "initial_context"}
+        allowed_fields = {
+            "title",
+            "status",
+            "workspace_path",
+            "initial_context",
+            "is_pinned",
+            "is_starred",
+        }
         for key, value in kwargs.items():
             if key in allowed_fields:
                 setattr(conversation, key, value)

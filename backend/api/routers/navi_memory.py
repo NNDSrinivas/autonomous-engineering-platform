@@ -15,6 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.core.auth.deps import get_current_user
+from backend.core.auth.models import User
 from backend.database.session import get_db
 from backend.services.memory.user_memory import get_user_memory_service
 from backend.services.memory.org_memory import get_org_memory_service
@@ -112,6 +114,17 @@ class ConversationCreate(BaseModel):
     title: Optional[str] = None
     workspace_path: Optional[str] = None
     initial_context: Optional[Dict[str, Any]] = None
+
+
+class ConversationUpdate(BaseModel):
+    """Request model for updating a conversation."""
+
+    title: Optional[str] = None
+    status: Optional[str] = Field(default=None, pattern="^(active|archived|deleted)$")
+    workspace_path: Optional[str] = None
+    initial_context: Optional[Dict[str, Any]] = None
+    is_pinned: Optional[bool] = None
+    is_starred: Optional[bool] = None
 
 
 class MessageCreate(BaseModel):
@@ -440,6 +453,8 @@ async def list_conversations(
             "id": str(c.id),
             "title": c.title,
             "status": c.status,
+            "is_pinned": c.is_pinned,
+            "is_starred": c.is_starred,
             "workspace_path": c.workspace_path,
             "created_at": c.created_at.isoformat(),
             "updated_at": c.updated_at.isoformat(),
@@ -470,6 +485,8 @@ async def create_conversation(
         "id": str(result.id),
         "title": result.title,
         "status": result.status,
+        "is_pinned": result.is_pinned,
+        "is_starred": result.is_starred,
         "created_at": result.created_at.isoformat(),
     }
 
@@ -492,6 +509,8 @@ async def get_conversation(
         "id": str(conversation.id),
         "title": conversation.title,
         "status": conversation.status,
+        "is_pinned": conversation.is_pinned,
+        "is_starred": conversation.is_starred,
         "workspace_path": conversation.workspace_path,
         "initial_context": conversation.initial_context,
         "created_at": conversation.created_at.isoformat(),
@@ -512,6 +531,68 @@ async def get_conversation(
         ]
 
     return result
+
+
+@router.patch("/conversations/{conversation_id}")
+async def update_conversation(
+    conversation_id: UUID,
+    update: ConversationUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Update conversation metadata.
+
+    Security: Uses authenticated user from JWT/session, not user-controlled params.
+    """
+    service = get_conversation_memory_service(db)
+
+    # Fetch conversation first to verify ownership
+    conversation = service.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Verify ownership: conversation belongs to the authenticated user
+    # Get user_id from authenticated user (not from request params)
+    user_id = (
+        current_user.user_id if hasattr(current_user, "user_id") else current_user.id
+    )
+    org_id = getattr(current_user, "org_id", None) or getattr(
+        current_user, "org_key", None
+    )
+
+    # Normalize both user IDs to strings to avoid type mismatch (UUID/int vs string) causing false 403s
+    if str(conversation.user_id) != str(user_id):
+        raise HTTPException(
+            status_code=403, detail="Not authorized to modify this conversation"
+        )
+    # Normalize org IDs to strings for same reason (mixed auth backends can have different types)
+    if (
+        org_id
+        and hasattr(conversation, "org_id")
+        and conversation.org_id
+        and str(conversation.org_id) != str(org_id)
+    ):
+        raise HTTPException(
+            status_code=403, detail="Not authorized to modify this conversation"
+        )
+
+    # Apply updates
+    update_data = {k: v for k, v in update.model_dump().items() if v is not None}
+    conversation = service.update_conversation(conversation_id, **update_data)
+    if not conversation:
+        raise HTTPException(status_code=500, detail="Update failed")
+
+    return {
+        "id": str(conversation.id),
+        "title": conversation.title,
+        "status": conversation.status,
+        "is_pinned": conversation.is_pinned,
+        "is_starred": conversation.is_starred,
+        "workspace_path": conversation.workspace_path,
+        "initial_context": conversation.initial_context,
+        "created_at": conversation.created_at.isoformat(),
+        "updated_at": conversation.updated_at.isoformat(),
+    }
 
 
 @router.post("/conversations/{conversation_id}/messages")

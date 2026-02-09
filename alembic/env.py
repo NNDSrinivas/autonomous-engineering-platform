@@ -13,11 +13,17 @@ from alembic import context
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from backend.core.config import settings  # noqa
 from backend.core.db import Base  # noqa
+from backend.database import models as db_models  # noqa: F401
 
 # Import all models so they're registered with Base
 from backend.models.meetings import *  # noqa
 from backend.models.integrations import *  # noqa
 from backend.models.tasks import *  # noqa
+
+# Import v1 models for metrics, learning, and telemetry
+from backend.models.llm_metrics import *  # noqa
+from backend.models.learning_data import *  # noqa
+from backend.models.telemetry_events import *  # noqa
 
 # Explicit RBAC model imports for better namespace control
 from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole  # noqa

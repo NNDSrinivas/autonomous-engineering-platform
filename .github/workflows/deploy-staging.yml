@@ -1,0 +1,82 @@
+name: Deploy NAVI Staging (AWS)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest requests
+      - name: Run NAVI benchmark
+        run: |
+          python3 scripts/navi_benchmark.py
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: navi-benchmark-${{ github.run_id }}
+          path: |
+            tmp/navi_benchmark_report.json
+            docs/NAVI_BENCHMARK_SCORECARD.md
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: benchmark
+    environment: staging
+    timeout-minutes: 40
+    # Skip if triggered by automated benchmark commits to avoid unnecessary staging deploys
+    # Allow workflow_dispatch by checking event_name first
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, 'update NAVI benchmark scorecard')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Resolve container image
+        env:
+          STAGING_CONTAINER_IMAGE: ${{ secrets.STAGING_CONTAINER_IMAGE }}
+          ECR_IMAGE: ${{ secrets.ECR_IMAGE }}
+          GHCR_IMAGE: ${{ secrets.GHCR_IMAGE }}
+          DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_IMAGE }}
+        run: |
+          if [ -n "$STAGING_CONTAINER_IMAGE" ]; then
+            echo "STAGING_IMAGE=$STAGING_CONTAINER_IMAGE" >> $GITHUB_ENV
+            echo "Using explicit STAGING_CONTAINER_IMAGE"
+          elif [ -n "$ECR_IMAGE" ]; then
+            echo "STAGING_IMAGE=$ECR_IMAGE" >> $GITHUB_ENV
+            echo "Using ECR_IMAGE"
+          elif [ -n "$GHCR_IMAGE" ]; then
+            echo "STAGING_IMAGE=$GHCR_IMAGE" >> $GITHUB_ENV
+            echo "Using GHCR_IMAGE"
+          elif [ -n "$DOCKERHUB_IMAGE" ]; then
+            echo "STAGING_IMAGE=$DOCKERHUB_IMAGE" >> $GITHUB_ENV
+            echo "Using DOCKERHUB_IMAGE"
+          else
+            echo "No container image configured"
+            exit 1
+          fi
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+      - name: Deploy staging via Terraform
+        env:
+          CONFIRM_APPLY: "1"
+          TF_VAR_container_image: ${{ env.STAGING_IMAGE }}
+          TF_VAR_name_prefix: "navi-staging"
+        run: |
+          ./scripts/infra/deploy_aws_terraform.sh

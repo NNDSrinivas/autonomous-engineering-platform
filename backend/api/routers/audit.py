@@ -4,6 +4,11 @@ Audit and Replay API endpoints
 
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
+from datetime import datetime, timezone
+import csv
+import io
+import json
 import os
 from pydantic import BaseModel
 from typing import Optional
@@ -148,6 +153,218 @@ def list_audit_logs(
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve audit logs: {str(e)}"
         )
+
+
+@router.get("/audit/export")
+def export_audit_logs(
+    export_format: str = Query("json", pattern="^(json|csv)$"),
+    org: Optional[str] = Query(None, description="Filter by organization key"),
+    actor: Optional[str] = Query(None, description="Filter by actor subject"),
+    since: Optional[str] = Query(None, description="ISO timestamp (inclusive)"),
+    until: Optional[str] = Query(None, description="ISO timestamp (inclusive)"),
+    include_payload: bool = Query(False, description="Include raw payload data"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum records to return"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(Role.ADMIN)),
+):
+    """
+    Export audit logs as JSON or CSV for compliance tooling.
+
+    Security: Exports are scoped to the caller's organization by default.
+    Cross-org export requires elevated privileges (future: SUPERADMIN role).
+    """
+    try:
+        # Get caller's organization context
+        user_org = getattr(current_user, "org_key", None) or getattr(
+            current_user, "org_id", None
+        )
+        if not user_org:
+            raise HTTPException(
+                status_code=500,
+                detail="User missing organization context - cannot scope audit export",
+            )
+
+        # Check if user has super-admin privileges (cross-org export)
+        # For now, all admins are org-scoped. Future: add SUPERADMIN role.
+        is_super_admin = False
+
+        # Enforce org scoping: admins can only export their own org's logs
+        if org and org != user_org and not is_super_admin:
+            raise HTTPException(
+                status_code=403, detail="Cross-organization audit export not permitted"
+            )
+
+        # Use caller's org if not specified, or validate if specified
+        effective_org = org if (org and is_super_admin) else user_org
+
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            AuditLog.__table__.create(bind=db.get_bind(), checkfirst=True)
+
+        # Always filter by organization for security
+        q = (
+            select(AuditLog)
+            .where(AuditLog.org_key == effective_org)
+            .order_by(desc(AuditLog.created_at))
+            .limit(limit)
+        )
+        if actor:
+            q = q.where(AuditLog.actor_sub == actor)
+        if since:
+            q = q.where(AuditLog.created_at >= _parse_iso_time(since))
+        if until:
+            q = q.where(AuditLog.created_at <= _parse_iso_time(until))
+
+        rows = db.execute(q).scalars().all()
+
+        if export_format == "json":
+            return [
+                _audit_row_to_dict(row, include_payload=include_payload) for row in rows
+            ]
+
+        output = io.StringIO()
+        # TODO: Consider streaming CSV export to reduce memory usage
+        # Current implementation buffers entire CSV (up to 10,000 rows + optional payloads) in memory
+        # via StringIO before returning. This can consume significant memory for large exports.
+        # Recommended: Use FastAPI StreamingResponse with a generator that yields CSV rows incrementally.
+        # Benefits: Lower peak memory usage, faster time-to-first-byte, better UX for large exports.
+        # Example: def generate_csv_rows() -> Iterator[str]: yield header, yield data rows...
+        # return StreamingResponse(generate_csv_rows(), media_type="text/csv", headers={...})
+
+        fieldnames = [
+            "id",
+            "route",
+            "method",
+            "event_type",
+            "org_key",
+            "actor_sub",
+            "actor_email",
+            "resource_id",
+            "status_code",
+            "created_at",
+        ]
+        if include_payload:
+            fieldnames.extend(["payload", "payload_encoding"])
+
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            row_dict = _audit_row_to_dict(row, include_payload=include_payload)
+            # JSON-encode payload to prevent CSV corruption from nested dicts/lists
+            # Always serialize non-string payloads to ensure consistent format
+            if (
+                include_payload
+                and "payload" in row_dict
+                and row_dict["payload"] is not None
+            ):
+                # Add payload_encoding column to match JSON export behavior
+                # Preserve encoding that was already set by _audit_row_to_dict()
+                if not isinstance(row_dict["payload"], str):
+                    # Handle bytes (common for encrypted payloads) and other non-JSON types
+                    if isinstance(row_dict["payload"], bytes):
+                        import base64
+
+                        row_dict["payload"] = base64.b64encode(
+                            row_dict["payload"]
+                        ).decode("utf-8")
+                        row_dict["payload_encoding"] = "base64"
+                    else:
+                        # Use default=str to handle any non-JSON-serializable types
+                        row_dict["payload"] = json.dumps(
+                            row_dict["payload"], default=str
+                        )
+                        row_dict["payload_encoding"] = "json"
+                else:
+                    # Only set default encoding if one hasn't already been provided
+                    # (e.g., base64-encoded bytes are already strings with encoding="base64")
+                    if (
+                        "payload_encoding" not in row_dict
+                        or row_dict["payload_encoding"] is None
+                    ):
+                        row_dict["payload_encoding"] = "plain"
+            elif include_payload:
+                # Payload is None
+                row_dict["payload_encoding"] = None
+            writer.writerow(row_dict)
+
+        # Generate timestamped filename for download
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        filename = f"audit-logs-{timestamp}.csv"
+
+        return PlainTextResponse(
+            output.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to export audit logs: {str(e)}"
+        )
+
+
+def _parse_iso_time(value: str) -> datetime:
+    try:
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        dt = datetime.fromisoformat(value)
+        # Ensure timezone-aware datetime (assume UTC if naive)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception as exc:
+        raise ValueError(f"Invalid timestamp: {value}") from exc
+
+
+def _audit_row_to_dict(row: AuditLog, include_payload: bool = False) -> dict:
+    # Handle naive datetimes by assuming UTC when tzinfo is None
+    created_at = row.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+
+    data = {
+        "id": row.id,
+        "route": row.route,
+        "method": row.method,
+        "event_type": row.event_type,
+        "org_key": row.org_key,
+        "actor_sub": row.actor_sub,
+        "actor_email": row.actor_email,
+        "resource_id": row.resource_id,
+        "status_code": row.status_code,
+        "created_at": created_at.astimezone(timezone.utc).isoformat(),
+    }
+    if include_payload:
+        # Serialize payload safely for JSON export (handle bytes and other non-JSON types)
+        # Always include payload_encoding when include_payload=true for consistent schema
+        if isinstance(row.payload, (bytes, bytearray, memoryview)):
+            import base64
+
+            # Normalize all bytes-like types to bytes for consistent encoding
+            payload_bytes = (
+                bytes(row.payload)
+                if not isinstance(row.payload, bytes)
+                else row.payload
+            )
+            data["payload"] = base64.b64encode(payload_bytes).decode("utf-8")
+            data["payload_encoding"] = "base64"
+        elif row.payload is None:
+            data["payload"] = None
+            data["payload_encoding"] = None
+        else:
+            # For dicts/lists/other JSON-serializable types, return native object
+            # This avoids forcing consumers to double-parse JSON strings
+            try:
+                json.dumps(row.payload)  # Validate serializability
+                data["payload"] = row.payload  # Return as-is
+                data["payload_encoding"] = "json"
+            except (TypeError, ValueError):
+                # Fallback: convert to string for non-serializable types
+                data["payload"] = str(row.payload)
+                data["payload_encoding"] = "plain"
+    return data
 
 
 @router.post("/audit/{audit_id}/decrypt", response_model=AuditDecryptOut)

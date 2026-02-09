@@ -22,6 +22,8 @@ if str(ROOT) not in sys.path:
 
 # Disable rate limiting for the smoke gate to allow repeated runs in CI/dev.
 os.environ.setdefault("RATE_LIMITING_ENABLED", "false")
+# Force test env to avoid prod-only middleware and noisy audit DB expectations.
+os.environ.setdefault("APP_ENV", "test")
 # Allow auth bypass for local E2E smoke runs.
 os.environ.setdefault("ALLOW_DEV_AUTH_BYPASS", "true")
 # Disable in-memory OAuth device store warnings for smoke gate.

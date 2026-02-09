@@ -19,6 +19,14 @@ import shutil
 from typing import Dict, Any, Optional, List
 from concurrent.futures import ThreadPoolExecutor
 
+from backend.services.command_utils import (
+    compute_timeout,
+    format_command_message,
+    get_node_env_setup,
+    is_node_command,
+    run_subprocess,
+)
+
 from .dangerous_commands import (
     get_command_info,
     format_permission_request,
@@ -29,96 +37,16 @@ logger = logging.getLogger(__name__)
 
 
 def _get_node_environment_setup(cwd: Optional[str] = None) -> str:
-    """
-    Generate shell commands to properly set up Node.js environment.
-    Handles nvm, volta, fnm, and direct PATH additions.
-    """
-    home = os.environ.get("HOME", os.path.expanduser("~"))
-    setup_commands = []
-
-    # Check for various Node version managers and add activation
-    nvm_dir = os.environ.get("NVM_DIR", os.path.join(home, ".nvm"))
-    if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
-        setup_commands.append(
-            f'export NVM_DIR="{nvm_dir}" && '
-            f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null'
-        )
-        # Check for .nvmrc in workspace
-        if cwd:
-            nvmrc = os.path.join(cwd, ".nvmrc")
-            node_version = os.path.join(cwd, ".node-version")
-            if os.path.exists(nvmrc) or os.path.exists(node_version):
-                setup_commands.append("nvm use 2>/dev/null || nvm install 2>/dev/null")
-            else:
-                setup_commands.append("nvm use default 2>/dev/null || true")
-
-    # Check for volta
-    volta_home = os.environ.get("VOLTA_HOME", os.path.join(home, ".volta"))
-    if os.path.exists(volta_home):
-        setup_commands.append(f'export VOLTA_HOME="{volta_home}"')
-        setup_commands.append('export PATH="$VOLTA_HOME/bin:$PATH"')
-
-    # Check for fnm
-    fnm_path = os.path.join(home, ".fnm")
-    if os.path.exists(fnm_path):
-        setup_commands.append(f'export PATH="{fnm_path}:$PATH"')
-        setup_commands.append(
-            'eval "$(fnm env --use-on-cd 2>/dev/null)" 2>/dev/null || true'
-        )
-
-    # Add common Node paths as fallback
-    common_paths = [
-        "/opt/homebrew/bin",  # macOS ARM homebrew
-        "/usr/local/bin",  # macOS Intel / Linux
-        os.path.join(home, ".npm-global/bin"),  # npm global
-        os.path.join(home, ".yarn/bin"),  # yarn global
-    ]
-
-    # Add node_modules/.bin if in workspace
-    if cwd:
-        node_modules_bin = os.path.join(cwd, "node_modules", ".bin")
-        if os.path.exists(node_modules_bin):
-            common_paths.insert(0, node_modules_bin)
-
-    existing_paths = [p for p in common_paths if os.path.exists(p)]
-    if existing_paths:
-        path_additions = ":".join(existing_paths)
-        setup_commands.append(f'export PATH="{path_additions}:$PATH"')
-
-    return " && ".join(setup_commands) if setup_commands else ""
+    return get_node_env_setup(
+        cwd=cwd,
+        include_project_bins=True,
+        include_common_paths=True,
+        fnm_use_on_cd=True,
+    )
 
 
 def _is_node_command(command: str) -> bool:
-    """Check if command requires Node.js environment."""
-    node_commands = [
-        "npm",
-        "npx",
-        "node",
-        "yarn",
-        "pnpm",
-        "bun",
-        "tsc",
-        "tsx",
-        "ts-node",
-        "jest",
-        "vitest",
-        "mocha",
-        "webpack",
-        "vite",
-        "esbuild",
-        "rollup",
-        "parcel",
-        "eslint",
-        "prettier",
-        "next",
-        "nuxt",
-        "gatsby",
-    ]
-    cmd_parts = command.split()
-    if not cmd_parts:
-        return False
-    first_cmd = cmd_parts[0]
-    return any(first_cmd == nc or first_cmd.endswith(f"/{nc}") for nc in node_commands)
+    return is_node_command(command)
 
 
 def _is_python_command(command: str) -> bool:
@@ -776,31 +704,14 @@ async def run_command(
         # Combine environment setup with command
         full_command = f"{env_setup} && {command}" if env_setup else command
 
-        # Execute command with enhanced environment
-        env = os.environ.copy()
-        # Ensure we have a proper shell environment
-        env["SHELL"] = os.environ.get("SHELL", "/bin/bash")
-
-        result = subprocess.run(
-            full_command,
-            shell=True,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-            executable="/bin/bash",  # Use bash for better compatibility
+        timeout = compute_timeout(full_command, timeout=timeout)
+        success, stdout, stderr, exit_code = run_subprocess(
+            full_command, cwd=cwd, timeout=timeout, merge_stderr=False
         )
 
-        # Format output
-        stdout = result.stdout.strip()
-        stderr = result.stderr.strip()
-        exit_code = result.returncode
-
-        success = exit_code == 0
-        status_icon = "✅" if success else "❌"
-
-        message_parts = [f"{status_icon} Command: `{command}`"]
+        stdout = stdout.strip()
+        stderr = stderr.strip()
+        message_parts = [format_command_message(command, success, stdout, stderr)]
         if stdout:
             message_parts.append(f"\n**Output:**\n```\n{stdout[:2000]}\n```")
         if stderr:

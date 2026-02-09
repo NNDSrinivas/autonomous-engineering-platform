@@ -9,7 +9,7 @@ import {
   Clock,
   MessageSquare,
   Folder,
-  Plus,
+  PenSquare,
   Filter,
   SortAsc,
   SortDesc
@@ -221,10 +221,10 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           </div>
           <div className="history-header-actions">
             <button className="history-new-chat-btn" onClick={onNewChat}>
-              <Plus className="h-4 w-4" />
+              <PenSquare className="h-4 w-4" />
               <span>New Chat</span>
             </button>
-            <button className="history-close-btn" onClick={onClose}>
+            <button className="navi-icon-btn navi-icon-btn--sm history-icon-btn history-close-btn" onClick={onClose}>
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -277,7 +277,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button className="search-clear" onClick={() => setSearchQuery('')}>
+              <button className="navi-icon-btn navi-icon-btn--sm history-icon-btn history-search-clear" onClick={() => setSearchQuery('')}>
                 <X className="h-3 w-3" />
               </button>
             )}
@@ -289,7 +289,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
               <option value="title">Title</option>
             </select>
             <button
-              className="sort-order-btn"
+              className="navi-icon-btn navi-icon-btn--sm history-icon-btn history-sort-btn"
               onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
               title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
             >
@@ -315,7 +315,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
               <p>{searchQuery ? 'No matching conversations' : `No ${activeTab === 'all' ? '' : activeTab + ' '}conversations yet`}</p>
               {activeTab === 'all' && (
                 <button className="history-start-chat-btn" onClick={onNewChat}>
-                  <Plus className="h-4 w-4" />
+                  <PenSquare className="h-4 w-4" />
                   Start a new chat
                 </button>
               )}
@@ -372,28 +372,28 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
 
                   <div className="history-item-actions">
                     <button
-                      className={`action-btn ${conversation.isPinned ? 'active' : ''}`}
+                      className={`navi-icon-btn navi-icon-btn--sm history-action-btn ${conversation.isPinned ? 'navi-icon-btn--active' : ''}`}
                       onClick={e => handlePin(conversation.id, e)}
                       title={conversation.isPinned ? 'Unpin' : 'Pin'}
                     >
                       <Pin className="h-3.5 w-3.5" />
                     </button>
                     <button
-                      className={`action-btn ${conversation.isStarred ? 'active' : ''}`}
+                      className={`navi-icon-btn navi-icon-btn--sm history-action-btn ${conversation.isStarred ? 'navi-icon-btn--active' : ''}`}
                       onClick={e => handleStar(conversation.id, e)}
                       title={conversation.isStarred ? 'Unstar' : 'Star'}
                     >
                       <Star className="h-3.5 w-3.5" />
                     </button>
                     <button
-                      className={`action-btn ${conversation.isArchived ? 'active' : ''}`}
+                      className={`navi-icon-btn navi-icon-btn--sm history-action-btn ${conversation.isArchived ? 'navi-icon-btn--active' : ''}`}
                       onClick={e => handleArchive(conversation.id, e)}
                       title={conversation.isArchived ? 'Unarchive' : 'Archive'}
                     >
                       <Archive className="h-3.5 w-3.5" />
                     </button>
                     <button
-                      className="action-btn action-btn--danger"
+                      className="navi-icon-btn navi-icon-btn--sm history-action-btn history-action-btn--danger"
                       onClick={e => handleDelete(conversation.id, e)}
                       title="Delete"
                     >
@@ -437,17 +437,17 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           width: 90%;
           max-width: 650px;
           max-height: 85vh;
-          background: linear-gradient(145deg, rgba(25, 30, 40, 0.98), rgba(15, 18, 25, 0.98));
-          border: 1px solid rgba(100, 180, 255, 0.15);
+          background: linear-gradient(160deg, hsl(var(--card) / 0.98), hsl(var(--background) / 0.98));
+          border: 1px solid hsl(var(--border) / 0.8);
           border-radius: 20px;
           display: flex;
           flex-direction: column;
           overflow: hidden;
           animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
           box-shadow:
-            0 25px 80px rgba(0, 0, 0, 0.6),
-            0 0 40px rgba(100, 180, 255, 0.08),
-            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            0 25px 80px hsl(var(--background) / 0.7),
+            0 0 40px hsl(var(--primary) / 0.12),
+            inset 0 1px 0 hsl(var(--foreground) / 0.04);
         }
 
         @keyframes slideUp {
@@ -467,8 +467,8 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           align-items: center;
           justify-content: space-between;
           padding: 18px 22px;
-          border-bottom: 1px solid rgba(100, 180, 255, 0.1);
-          background: rgba(255, 255, 255, 0.02);
+          border-bottom: 1px solid hsl(var(--border) / 0.7);
+          background: hsl(var(--card) / 0.35);
         }
 
         .history-header-title {
@@ -478,20 +478,20 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
         }
 
         .history-title-icon {
-          color: #64b4ff;
-          animation: pulse 2s ease-in-out infinite;
+          color: hsl(var(--primary));
+          transition: transform 0.2s ease, filter 0.2s ease;
         }
 
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.6; }
+        .history-header-title:hover .history-title-icon {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .history-header h3 {
           margin: 0;
           font-size: 17px;
           font-weight: 600;
-          color: #fff;
+          color: hsl(var(--foreground));
           letter-spacing: -0.02em;
         }
 
@@ -506,40 +506,36 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           align-items: center;
           gap: 6px;
           padding: 8px 14px;
-          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-          border: none;
+          background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+          border: 1px solid hsl(var(--primary) / 0.45);
           border-radius: 10px;
-          color: white;
+          color: hsl(var(--primary-foreground));
           font-size: 13px;
           font-weight: 500;
           cursor: pointer;
           transition: all 0.2s ease;
-          box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+          box-shadow: 0 6px 18px hsl(var(--primary) / 0.3);
         }
 
         .history-new-chat-btn:hover {
           transform: translateY(-1px);
-          box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+          box-shadow: 0 8px 24px hsl(var(--primary) / 0.35);
         }
 
-        .history-close-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 32px;
-          height: 32px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          color: rgba(255, 255, 255, 0.6);
-          cursor: pointer;
-          transition: all 0.2s ease;
+        .history-icon-btn {
+          --icon-btn-size: 30px;
         }
 
-        .history-close-btn:hover {
-          background: rgba(239, 68, 68, 0.15);
-          border-color: rgba(239, 68, 68, 0.3);
-          color: #ef4444;
+        .history-search-clear {
+          --icon-btn-size: 22px;
+          border-radius: 999px;
+        }
+
+        .history-close-btn.navi-icon-btn:hover {
+          background: hsl(var(--destructive) / 0.14);
+          border-color: hsl(var(--destructive) / 0.4);
+          color: hsl(var(--destructive));
+          box-shadow: 0 4px 12px hsl(var(--destructive) / 0.2);
         }
 
         /* Filter Tabs */
@@ -547,8 +543,8 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           display: flex;
           gap: 6px;
           padding: 12px 18px;
-          border-bottom: 1px solid rgba(100, 180, 255, 0.08);
-          background: rgba(0, 0, 0, 0.2);
+          border-bottom: 1px solid hsl(var(--border) / 0.6);
+          background: hsl(var(--background) / 0.35);
         }
 
         .history-tab {
@@ -559,7 +555,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           background: transparent;
           border: 1px solid transparent;
           border-radius: 10px;
-          color: rgba(255, 255, 255, 0.5);
+          color: hsl(var(--muted-foreground));
           font-size: 12px;
           font-weight: 500;
           cursor: pointer;
@@ -567,62 +563,38 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
         }
 
         .history-tab:hover {
-          background: rgba(255, 255, 255, 0.05);
-          color: rgba(255, 255, 255, 0.8);
+          background: hsl(var(--secondary) / 0.6);
+          color: hsl(var(--foreground));
         }
 
         .history-tab.active {
-          background: rgba(100, 180, 255, 0.15);
-          border-color: rgba(100, 180, 255, 0.3);
-          color: #64b4ff;
+          background: hsl(var(--secondary) / 0.7);
+          border-color: hsl(var(--border) / 0.7);
+          color: hsl(var(--foreground));
+          box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.08);
         }
 
         .history-tab-icon {
           transition: all 0.3s ease;
         }
 
-        .history-tab:hover .history-tab-icon--pin,
-        .history-tab.active .history-tab-icon--pin {
-          animation: pinWiggle 0.5s ease;
-        }
-
-        .history-tab:hover .history-tab-icon--star,
-        .history-tab.active .history-tab-icon--star {
-          animation: starSparkle 0.6s ease;
-        }
-
-        .history-tab:hover .history-tab-icon--archive,
-        .history-tab.active .history-tab-icon--archive {
-          animation: archiveSlide 0.4s ease;
-        }
-
-        @keyframes pinWiggle {
-          0%, 100% { transform: rotate(0deg); }
-          25% { transform: rotate(-15deg); }
-          75% { transform: rotate(15deg); }
-        }
-
-        @keyframes starSparkle {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.2); filter: drop-shadow(0 0 4px gold); }
-        }
-
-        @keyframes archiveSlide {
-          0% { transform: translateY(0); }
-          50% { transform: translateY(2px); }
-          100% { transform: translateY(0); }
+        .history-tab:hover .history-tab-icon {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .history-tab-count {
           padding: 2px 6px;
-          background: rgba(255, 255, 255, 0.1);
+          background: hsl(var(--secondary) / 0.7);
           border-radius: 6px;
           font-size: 10px;
           font-weight: 600;
+          color: hsl(var(--foreground) / 0.75);
         }
 
         .history-tab.active .history-tab-count {
-          background: rgba(100, 180, 255, 0.25);
+          background: hsl(var(--secondary) / 0.8);
+          color: hsl(var(--foreground));
         }
 
         /* Search and Filters */
@@ -631,7 +603,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           align-items: center;
           gap: 12px;
           padding: 14px 18px;
-          border-bottom: 1px solid rgba(100, 180, 255, 0.08);
+          border-bottom: 1px solid hsl(var(--border) / 0.6);
         }
 
         .history-search {
@@ -640,19 +612,25 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           align-items: center;
           gap: 10px;
           padding: 10px 14px;
-          background: rgba(0, 0, 0, 0.25);
-          border: 1px solid rgba(100, 180, 255, 0.1);
+          background: hsl(var(--secondary) / 0.45);
+          border: 1px solid hsl(var(--border) / 0.7);
           border-radius: 12px;
           transition: all 0.2s ease;
         }
 
         .history-search:focus-within {
-          border-color: rgba(100, 180, 255, 0.3);
-          box-shadow: 0 0 15px rgba(100, 180, 255, 0.1);
+          border-color: hsl(var(--primary) / 0.4);
+          box-shadow: 0 0 0 2px hsl(var(--primary) / 0.15);
         }
 
         .history-search .search-icon {
-          color: rgba(255, 255, 255, 0.4);
+          color: hsl(var(--muted-foreground));
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .history-search:focus-within .search-icon {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.18));
         }
 
         .history-search input {
@@ -660,31 +638,18 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           background: transparent;
           border: none;
           outline: none;
-          color: #fff;
+          color: hsl(var(--foreground));
           font-size: 13px;
         }
 
         .history-search input::placeholder {
-          color: rgba(255, 255, 255, 0.35);
+          color: hsl(var(--muted-foreground) / 0.8);
         }
 
-        .search-clear {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 18px;
-          height: 18px;
-          background: rgba(255, 255, 255, 0.1);
-          border: none;
-          border-radius: 50%;
-          color: rgba(255, 255, 255, 0.5);
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .search-clear:hover {
-          background: rgba(239, 68, 68, 0.2);
-          color: #ef4444;
+        .history-search-clear.navi-icon-btn:hover {
+          background: hsl(var(--destructive) / 0.12);
+          border-color: hsl(var(--destructive) / 0.4);
+          color: hsl(var(--destructive));
         }
 
         .history-sort {
@@ -695,32 +660,17 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
 
         .history-sort select {
           padding: 8px 12px;
-          background: rgba(0, 0, 0, 0.25);
-          border: 1px solid rgba(100, 180, 255, 0.1);
+          background: hsl(var(--secondary) / 0.45);
+          border: 1px solid hsl(var(--border) / 0.7);
           border-radius: 10px;
-          color: rgba(255, 255, 255, 0.8);
+          color: hsl(var(--foreground) / 0.9);
           font-size: 12px;
           cursor: pointer;
           outline: none;
         }
 
-        .sort-order-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 34px;
-          height: 34px;
-          background: rgba(0, 0, 0, 0.25);
-          border: 1px solid rgba(100, 180, 255, 0.1);
-          border-radius: 10px;
-          color: rgba(255, 255, 255, 0.6);
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .sort-order-btn:hover {
-          background: rgba(100, 180, 255, 0.1);
-          color: #64b4ff;
+        .history-sort-btn {
+          --icon-btn-size: 32px;
         }
 
         /* Conversation List */
@@ -737,15 +687,15 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           align-items: center;
           justify-content: center;
           padding: 50px 20px;
-          color: rgba(255, 255, 255, 0.5);
+          color: hsl(var(--muted-foreground));
           text-align: center;
         }
 
         .loading-spinner {
           width: 32px;
           height: 32px;
-          border: 2px solid rgba(100, 180, 255, 0.2);
-          border-top-color: #64b4ff;
+          border: 2px solid hsl(var(--primary) / 0.2);
+          border-top-color: hsl(var(--primary));
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
           margin-bottom: 12px;
@@ -756,7 +706,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
         }
 
         .empty-icon {
-          color: rgba(100, 180, 255, 0.3);
+          color: hsl(var(--primary) / 0.35);
           margin-bottom: 12px;
         }
 
@@ -766,10 +716,10 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           gap: 6px;
           margin-top: 16px;
           padding: 10px 18px;
-          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-          border: none;
+          background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+          border: 1px solid hsl(var(--primary) / 0.45);
           border-radius: 10px;
-          color: white;
+          color: hsl(var(--primary-foreground));
           font-size: 13px;
           font-weight: 500;
           cursor: pointer;
@@ -778,33 +728,33 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
 
         .history-start-chat-btn:hover {
           transform: translateY(-1px);
-          box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+          box-shadow: 0 8px 22px hsl(var(--primary) / 0.35);
         }
 
         /* History Item */
         .history-item {
           padding: 14px 16px;
           margin-bottom: 8px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid rgba(100, 180, 255, 0.08);
+          background: hsl(var(--card) / 0.7);
+          border: 1px solid hsl(var(--border) / 0.7);
           border-radius: 14px;
           cursor: pointer;
           transition: all 0.2s ease;
         }
 
         .history-item:hover {
-          background: rgba(100, 180, 255, 0.06);
-          border-color: rgba(100, 180, 255, 0.15);
+          background: hsl(var(--primary) / 0.08);
+          border-color: hsl(var(--primary) / 0.25);
           transform: translateY(-1px);
         }
 
         .history-item.selected {
-          background: rgba(100, 180, 255, 0.12);
-          border-color: rgba(100, 180, 255, 0.3);
+          background: hsl(var(--primary) / 0.15);
+          border-color: hsl(var(--primary) / 0.4);
         }
 
         .history-item.pinned {
-          border-left: 3px solid #64b4ff;
+          border-left: 3px solid hsl(var(--primary));
         }
 
         .history-item-header {
@@ -829,20 +779,20 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
         }
 
         .badge-pin {
-          background: rgba(100, 180, 255, 0.2);
-          color: #64b4ff;
+          background: hsl(var(--primary) / 0.2);
+          color: hsl(var(--primary));
         }
 
         .badge-star {
-          background: rgba(250, 204, 21, 0.2);
-          color: #facc15;
+          background: hsl(var(--accent) / 0.2);
+          color: hsl(var(--accent));
         }
 
         .history-item-title {
           flex: 1;
           font-size: 14px;
           font-weight: 500;
-          color: #fff;
+          color: hsl(var(--foreground));
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -850,13 +800,13 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
 
         .history-item-date {
           font-size: 11px;
-          color: rgba(255, 255, 255, 0.4);
+          color: hsl(var(--muted-foreground));
         }
 
         .history-item-preview {
           margin: 0 0 10px 0;
           font-size: 12px;
-          color: rgba(255, 255, 255, 0.5);
+          color: hsl(var(--muted-foreground));
           line-height: 1.4;
           display: -webkit-box;
           -webkit-line-clamp: 2;
@@ -882,7 +832,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           align-items: center;
           gap: 4px;
           font-size: 11px;
-          color: rgba(255, 255, 255, 0.4);
+          color: hsl(var(--muted-foreground));
         }
 
         .meta-item.workspace {
@@ -899,10 +849,11 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
 
         .tag {
           padding: 2px 8px;
-          background: rgba(139, 92, 246, 0.15);
+          background: hsl(var(--accent) / 0.16);
+          border: 1px solid hsl(var(--accent) / 0.3);
           border-radius: 6px;
           font-size: 10px;
-          color: rgba(139, 92, 246, 0.9);
+          color: hsl(var(--accent));
         }
 
         .history-item-actions {
@@ -916,36 +867,14 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           opacity: 1;
         }
 
-        .action-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 28px;
-          height: 28px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 7px;
-          color: rgba(255, 255, 255, 0.5);
-          cursor: pointer;
-          transition: all 0.2s ease;
+        .history-action-btn {
+          --icon-btn-size: 26px;
         }
 
-        .action-btn:hover {
-          background: rgba(100, 180, 255, 0.15);
-          border-color: rgba(100, 180, 255, 0.3);
-          color: #64b4ff;
-        }
-
-        .action-btn.active {
-          background: rgba(100, 180, 255, 0.2);
-          border-color: rgba(100, 180, 255, 0.4);
-          color: #64b4ff;
-        }
-
-        .action-btn--danger:hover {
-          background: rgba(239, 68, 68, 0.15);
-          border-color: rgba(239, 68, 68, 0.3);
-          color: #ef4444;
+        .history-action-btn--danger.navi-icon-btn:hover {
+          background: hsl(var(--destructive) / 0.14);
+          border-color: hsl(var(--destructive) / 0.4);
+          color: hsl(var(--destructive));
         }
 
         /* Footer */
@@ -954,9 +883,9 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
           align-items: center;
           justify-content: center;
           padding: 12px 18px;
-          border-top: 1px solid rgba(100, 180, 255, 0.08);
+          border-top: 1px solid hsl(var(--border) / 0.6);
           font-size: 11px;
-          color: rgba(255, 255, 255, 0.4);
+          color: hsl(var(--muted-foreground));
         }
       `}</style>
     </div>

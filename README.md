@@ -504,6 +504,29 @@ make mem-event
 make mem-consolidate
 ```
 
+#### Integration Tests (NAVI auth-protected)
+Some integration tests hit protected NAVI endpoints and require a bearer token.
+
+```bash
+# 1) Start backend with dev device flow enabled (in-memory)
+export OAUTH_DEVICE_USE_IN_MEMORY_STORE=true
+export PUBLIC_BASE_URL=http://127.0.0.1:8787
+
+# 2) Generate a dev token (script created in this repo)
+source scripts/get_dev_token.sh
+
+# 3) Run integration tests against the running backend
+TEST_BASE_URL=http://127.0.0.1:8787 \
+NAVI_TEST_URL=http://127.0.0.1:8787 \
+NAVI_TEST_TOKEN="$NAVI_TEST_TOKEN" \
+RUN_INTEGRATION_TESTS=1 \
+pytest -q tests -m integration
+```
+
+Notes:
+- `scripts/get_dev_token.sh` prints an `export NAVI_TEST_TOKEN=...` line and auto-exports when sourced.
+- Tokens are stored in-memory in dev mode; restarting backend invalidates them.
+
 ### 🔗 **Integration with IDE**
 The Context Pack is designed for IDE integration. When the agent needs context:
 1. IDE sends query + task_key to `/api/context/pack`

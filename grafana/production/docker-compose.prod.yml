@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: navi-grafana-prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "443:3000"
+    volumes:
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - ../dashboards:/var/lib/grafana/dashboards:ro
+      - ./entrypoint.sh:/etc/grafana/entrypoint.sh:ro
+      - ./tls:/etc/grafana/tls:ro
+    environment:
+      GF_SERVER_PROTOCOL: https
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL}
+      GF_SERVER_ENFORCE_DOMAIN: "true"
+      GF_SERVER_HTTP_PORT: ${GRAFANA_HTTP_PORT}
+      GF_SERVER_CERT_FILE: /etc/grafana/tls/fullchain.pem
+      GF_SERVER_CERT_KEY: /etc/grafana/tls/privkey.pem
+
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: ${GRAFANA_DB_HOST}
+      GF_DATABASE_NAME: ${GRAFANA_DB_NAME}
+      GF_DATABASE_USER: ${GRAFANA_DB_USER}
+      GF_DATABASE_SSL_MODE: require
+
+    entrypoint: ["/bin/sh", "/etc/grafana/entrypoint.sh"]
+    secrets:
+      - grafana_admin_password
+      - grafana_db_password
+      - navi_db_password
+
+secrets:
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password.txt
+  grafana_db_password:
+    file: ./secrets/grafana_db_password.txt
+  navi_db_password:
+    file: ./secrets/navi_db_password.txt

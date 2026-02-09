@@ -2,7 +2,42 @@
 
 from __future__ import annotations
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+def normalize_env(env: str) -> str:
+    """
+    Normalize environment name to canonical form.
+
+    Handles common aliases:
+    - "prod" → "production"
+    - "stage" → "staging"
+    - "dev" → "development"
+    - "test" / "ci" → normalized as-is
+
+    Args:
+        env: Environment name to normalize
+
+    Returns:
+        Normalized environment name
+    """
+    env_lower = env.lower().strip()
+
+    # Normalize common production aliases
+    if env_lower in ("prod", "production"):
+        return "production"
+
+    # Normalize common staging aliases
+    if env_lower in ("stage", "staging"):
+        return "staging"
+
+    # Normalize development aliases
+    if env_lower in ("dev", "development"):
+        return "development"
+
+    # Return as-is for test, ci, and other values
+    return env_lower
 
 
 class Settings(BaseSettings):
@@ -74,13 +109,13 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     # Application environment
-    APP_ENV: str = "development"
+    app_env: str = Field(default="development", validation_alias="APP_ENV")
     DEBUG: bool = False  # Enable debug mode for development
     # Defer optional/auxiliary router imports until first request hits those paths
     DEFER_OPTIONAL_ROUTERS: bool = True
 
     # Audit logging configuration
-    enable_audit_logging: bool = True
+    ENABLE_AUDIT_LOGGING: bool = True
     AUDIT_RETENTION_ENABLED: bool = True
     AUDIT_RETENTION_DAYS: int = 90
     AUDIT_ENCRYPTION_KEY: str | None = None
@@ -102,6 +137,62 @@ class Settings(BaseSettings):
             return ["*"]
         origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
         return [origin for origin in origins if origin]
+
+    @property
+    def APP_ENV(self) -> str:
+        """Backwards compatibility alias for app_env (uppercase)."""
+        return self.app_env
+
+    @APP_ENV.setter
+    def APP_ENV(self, value: str) -> None:
+        """Backwards compatibility setter for APP_ENV."""
+        self.app_env = value
+
+    def _normalize_env(self) -> str:
+        """
+        Normalize this instance's environment name to canonical form.
+
+        Returns:
+            Normalized environment name
+        """
+        return normalize_env(self.app_env)
+
+    def is_production(self) -> bool:
+        """Check if running in production environment."""
+        return self._normalize_env() == "production"
+
+    def is_staging(self) -> bool:
+        """Check if running in staging environment."""
+        return self._normalize_env() == "staging"
+
+    def is_production_like(self) -> bool:
+        """
+        Check if running in production-like environment (production or staging).
+
+        Use this for checks that should apply to both production and staging,
+        such as security requirements, encryption enforcement, etc.
+        """
+        return self._normalize_env() in ("production", "staging")
+
+    def is_development(self) -> bool:
+        """Check if running in development environment."""
+        return self._normalize_env() == "development"
+
+    def is_test(self) -> bool:
+        """Check if running in test/CI environment."""
+        return self._normalize_env() in ("test", "ci")
+
+    @property
+    def enable_audit_logging(self) -> bool:
+        """
+        Backwards-compatible alias for ENABLE_AUDIT_LOGGING.
+        Deprecated: prefer using ENABLE_AUDIT_LOGGING directly.
+        """
+        return self.ENABLE_AUDIT_LOGGING
+
+    @enable_audit_logging.setter
+    def enable_audit_logging(self, value: bool) -> None:
+        self.ENABLE_AUDIT_LOGGING = value
 
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures
@@ -133,3 +224,47 @@ if settings.JWT_ENABLED and not (
         "JWT_SECRET (or JWT_SECRET_PREVIOUS) or JWT_JWKS_URL must be set when JWT_ENABLED=true. "
         "Set JWT_SECRET/JWT_SECRET_PREVIOUS for HS256 or JWT_JWKS_URL for RS256."
     )
+
+
+def validate_production_settings(settings_obj: "Settings | None" = None) -> None:
+    """
+    Validate production/staging-specific settings.
+
+    This function should be called explicitly during app startup (not at import time)
+    to allow CLI tools, tests, and offline scripts to import settings without
+    triggering validation errors.
+
+    Args:
+        settings_obj: Settings object to validate. If None, uses module-level settings.
+
+    Raises:
+        ValueError: If required production settings are missing or invalid
+    """
+    if settings_obj is None:
+        settings_obj = settings
+
+    # Validate audit encryption: encryption key is REQUIRED in production/staging
+    if settings_obj.is_production_like() and settings_obj.ENABLE_AUDIT_LOGGING:
+        if not settings_obj.AUDIT_ENCRYPTION_KEY:
+            raise ValueError(
+                f"AUDIT_ENCRYPTION_KEY is REQUIRED when app_env={settings_obj.app_env} "
+                f"(normalized: {settings_obj._normalize_env()}) and audit logging is enabled. "
+                "Set AUDIT_ENCRYPTION_KEY environment variable to a Fernet-compatible encryption key. "
+                "Generate one with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+            )
+
+        # Validate key format by attempting to construct a Fernet instance
+        try:
+            from cryptography.fernet import Fernet
+
+            Fernet(
+                settings_obj.AUDIT_ENCRYPTION_KEY.encode()
+                if isinstance(settings_obj.AUDIT_ENCRYPTION_KEY, str)
+                else settings_obj.AUDIT_ENCRYPTION_KEY
+            )
+        except Exception as e:
+            raise ValueError(
+                f"AUDIT_ENCRYPTION_KEY is invalid: {e}. "
+                "The key must be a valid Fernet key (32 url-safe base64-encoded bytes). "
+                "Generate a new one with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+            ) from e

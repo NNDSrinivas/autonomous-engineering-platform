@@ -19,9 +19,31 @@ import subprocess
 import asyncio
 import uuid
 import re
-from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
+import threading
+import time
+from typing import AsyncGenerator, AsyncIterator, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+
+# Prometheus metrics for observability
+from backend.telemetry.metrics import (
+    LLM_CALLS,
+    LLM_LATENCY,
+    LLM_TOKENS,
+    LLM_COST,
+    RAG_RETRIEVAL_LATENCY,
+    RAG_CHUNKS_RETRIEVED,
+)
+
+# RAG system for codebase understanding
+from backend.services.workspace_rag import get_context_for_task
+
+# Feedback system for generation logging
+from backend.services.feedback_service import FeedbackService
+from backend.services.feedback_learning import (
+    get_feedback_manager,
+    SuggestionCategory,
+)
 
 # Enterprise iteration control (Phase 4)
 from backend.agent.enhanced_iteration_controller import (
@@ -34,7 +56,35 @@ from backend.services.checkpoint_gate_detector import (
     GateTrigger,
 )
 
+# Command safety checks
+from backend.agent.tools.dangerous_commands import (
+    get_command_info,
+    format_permission_request,
+)
+from backend.services.command_utils import (
+    compute_timeout,
+    format_command_message,
+    get_command_env,
+    get_node_env_setup,
+    is_node_command,
+    run_subprocess_async,
+)
+from backend.services.task_decomposer import (
+    TaskDecomposer,
+)
+
 logger = logging.getLogger(__name__)
+
+# ========== CONSENT STORAGE ==========
+# Module-level storage for command consent approvals
+# Key: consent_id, Value: {"approved": bool, "timestamp": float, "command": str}
+# TODO: Migrate to Redis/DB with TTL for production multi-worker deployments
+#   - Current module-level dict is not safe across multiple workers
+#   - Lacks TTL, allowing unbounded growth and potential replay attacks
+#   - Should use Redis with TTL (~5min) and atomic operations to prevent races
+#   - Consider adding "processed" flag and rejecting updates to already-processed consents
+_consent_approvals: Dict[str, Dict[str, Any]] = {}
+_consent_lock = threading.Lock()  # Protect consent mutations from concurrent access
 
 # ========== PLAN DETECTION ==========
 # Patterns to detect execution plans in LLM output
@@ -56,26 +106,29 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
     """
     Parse an execution plan from LLM text output.
     Returns plan dict with steps if found, None otherwise.
+
+    DISABLED: Execution plans were causing phantom "All steps completed" issues
+    where the LLM would list steps it didn't actually execute. Now we only show
+    actual tool executions as they happen, not predicted plans.
     """
-    match = PLAN_INTRO_PATTERN.search(text)
-    if not match:
-        return None
-
-    steps_text = match.group(1)
-    steps = []
-
-    for step_match in STEP_PATTERN.finditer(steps_text):
-        step_num = int(step_match.group(1))
-        title = step_match.group(2).strip()
-        detail = (step_match.group(3) or "").strip()
-
-        if title:  # Only add if we have a title
-            steps.append({"index": step_num, "title": title, "detail": detail})
-
-    if len(steps) >= 2:  # Only return if we have at least 2 steps
-        return {"plan_id": f"plan-{uuid.uuid4().hex[:8]}", "steps": steps}
-
+    # DISABLED - always return None to prevent phantom step detection
     return None
+
+    # Original code kept for reference but unreachable:
+    # match = PLAN_INTRO_PATTERN.search(text)
+    # if not match:
+    #     return None
+    # steps_text = match.group(1)
+    # steps = []
+    # for step_match in STEP_PATTERN.finditer(steps_text):
+    #     step_num = int(step_match.group(1))
+    #     title = step_match.group(2).strip()
+    #     detail = (step_match.group(3) or "").strip()
+    #     if title:
+    #         steps.append({"index": step_num, "title": title, "detail": detail})
+    # if len(steps) >= 2:
+    #     return {"plan_id": f"plan-{uuid.uuid4().hex[:8]}", "steps": steps}
+    # return None
 
 
 class TaskStatus(Enum):
@@ -205,6 +258,7 @@ class TaskContext:
         None  # Human checkpoint gate detector
     )
     pending_gate: Optional[GateTrigger] = None  # Gate waiting for human decision
+    last_verification_failed: bool = False  # Track if last verification attempt failed
 
     @classmethod
     def with_adaptive_limits(
@@ -414,116 +468,19 @@ class VerificationRunner:
     def __init__(self, workspace_path: str):
         self.workspace_path = workspace_path
 
-    def _get_node_env_setup(self) -> str:
-        """Get Node.js environment setup commands for nvm/fnm/volta."""
-        home = os.environ.get("HOME", os.path.expanduser("~"))
-        setup_parts = []
-
-        # Check for nvm
-        nvm_dir = os.environ.get("NVM_DIR", os.path.join(home, ".nvm"))
-        if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
-            # Check for .nvmrc or .node-version in workspace
-            nvmrc_path = os.path.join(self.workspace_path, ".nvmrc")
-            node_version_path = os.path.join(self.workspace_path, ".node-version")
-            if os.path.exists(nvmrc_path) or os.path.exists(node_version_path):
-                nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
-            else:
-                nvm_use = (
-                    "nvm use default 2>/dev/null || nvm use node 2>/dev/null || true"
-                )
-
-            setup_parts.append(
-                f'export NVM_DIR="{nvm_dir}" && '
-                f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-                f"{nvm_use}"
-            )
-
-        # Check for fnm
-        fnm_path = os.path.join(home, ".fnm")
-        if os.path.exists(fnm_path):
-            setup_parts.append(
-                f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
-            )
-
-        # Check for volta
-        volta_home = os.environ.get("VOLTA_HOME", os.path.join(home, ".volta"))
-        if os.path.exists(volta_home):
-            setup_parts.append(
-                f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"'
-            )
-
-        # Add common paths as fallback
-        common_paths = [
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            os.path.join(home, ".npm-global/bin"),
-        ]
-        node_modules_bin = os.path.join(self.workspace_path, "node_modules", ".bin")
-        if os.path.exists(node_modules_bin):
-            common_paths.insert(0, node_modules_bin)
-        existing_paths = [p for p in common_paths if os.path.exists(p)]
-        if existing_paths:
-            setup_parts.append(f'export PATH="{":".join(existing_paths)}:$PATH"')
-
-        return " && ".join(setup_parts) if setup_parts else ""
-
-    def _is_node_command(self, command: str) -> bool:
-        """Check if command requires Node.js environment."""
-        node_commands = [
-            "npm",
-            "npx",
-            "node",
-            "yarn",
-            "pnpm",
-            "tsc",
-            "tsx",
-            "jest",
-            "vitest",
-        ]
-        cmd_parts = command.split()
-        return bool(cmd_parts and cmd_parts[0] in node_commands)
-
     async def run_command(
-        self, command: str, timeout: int = 120
+        self, command: str, timeout: int = 300
     ) -> Tuple[bool, str, int]:
         """Run a command and return (success, output, exit_code)."""
         try:
-            # Set up environment with npm_config_prefix removed (conflicts with nvm)
-            env = os.environ.copy()
-            env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
-            env["SHELL"] = env.get("SHELL", "/bin/bash")
-
-            # Add Node environment setup for Node commands
-            full_command = command
-            if self._is_node_command(command):
-                env_setup = self._get_node_env_setup()
-                if env_setup:
-                    # Also unset npm_config_prefix in the shell
-                    full_command = (
-                        f"unset npm_config_prefix 2>/dev/null; {env_setup} && {command}"
-                    )
-                    logger.info(
-                        f"[VerificationRunner] Node env setup added for: {command}"
-                    )
-
-            process = await asyncio.create_subprocess_shell(
-                full_command,
+            timeout = compute_timeout(command, timeout=timeout)
+            success, stdout, _, exit_code = await run_subprocess_async(
+                command,
                 cwd=self.workspace_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                executable="/bin/bash",  # Use bash for better compatibility
-                env=env,
+                timeout=timeout,
+                merge_stderr=True,
             )
-
-            try:
-                stdout, _ = await asyncio.wait_for(
-                    process.communicate(), timeout=timeout
-                )
-                output = stdout.decode("utf-8", errors="replace")
-                return process.returncode == 0, output, process.returncode
-            except asyncio.TimeoutError:
-                process.kill()
-                return False, f"Command timed out after {timeout}s", -1
+            return success, stdout, exit_code
 
         except Exception as e:
             return False, str(e), -1
@@ -632,6 +589,119 @@ class VerificationRunner:
 # Enhanced system prompt for autonomous operation
 AUTONOMOUS_SYSTEM_PROMPT = """You are NAVI, an autonomous AI software engineer that solves ANY problem END-TO-END.
 
+## CRITICAL RULE #0: FOLLOW EXACT USER REQUEST - DO NOT SKIP STEPS
+
+🚨 **MANDATORY**: Execute EVERY part of the user's request. Do not skip steps or assume things are already done.
+
+**Example - User asks: "run npm install and check if the project is up and running"**
+
+❌ WRONG (skipping steps or wrong commands):
+- Skip npm install, just start server
+- Start server but don't verify it's running
+- Run "npm run build" instead of "npm run dev" (build doesn't start a server!)
+- Assume dependencies are installed
+- Claim server is running without actually verifying with curl/lsof
+
+✅ CORRECT (execute directly - NO numbered lists):
+[Use run_command: npm install]
+[Use start_server: npm run dev]
+[Use run_command: curl -s http://localhost:3000 OR lsof -i :3000]
+"Dependencies installed. Server running on http://localhost:3000"
+
+**Rules:**
+- If user says "run X and Y" → You MUST do both X AND Y
+- If user says "check if running" → You MUST actually verify (curl, lsof, ps)
+- If user says "install dependencies" → You MUST run npm install/pip install
+- If user says "check if project is up and running" → Start the DEV server (npm run dev/npm start), NOT build (npm run build)
+  - npm run build = compile/bundle code (doesn't start a server)
+  - npm run dev / npm start = starts a development server
+- NEVER skip steps because you "think" they're already done
+- ALWAYS verify success with actual commands (curl, ps, lsof, test runs)
+
+## UNIVERSAL PATTERN: Discover → Execute → Verify → Report
+
+For ANY task, follow this pattern:
+
+**1. DISCOVER** (Learn about the project/task by reading relevant files)
+- Package files: `package.json`, `requirements.txt`, `Cargo.toml`, `go.mod`
+- Config files: `.env`, `docker-compose.yml`, `tsconfig.json`, `vite.config.ts`
+- Scripts: `start.sh`, `Makefile`, shell scripts
+- Docs: `README.md` (only if needed)
+
+**2. EXECUTE** (Do the work, no planning announcements)
+❌ Don't say: "Let's investigate", "First, I will check", "I'll proceed with"
+✅ Just do: [read_file] [run_command] [write_file]
+
+**3. VERIFY** (Prove it worked with actual checks)
+- Servers: `curl`, `lsof -i:PORT`, `ps aux | grep`
+- Files: Read the file you just wrote/edited
+- Tests: Run the tests
+- Builds: Run the build command
+❌ NEVER claim success without verification
+
+**4. REPORT** (Brief summary with facts)
+✅ "Backend running on http://localhost:8787, tests passing"
+❌ "The server should be running. You can check by visiting..."
+
+**Example: "Deploy to production"**
+[Read deploy scripts/config to learn how]
+[Execute deployment commands]
+[Verify deployment: curl production URL, check logs]
+"Deployed to https://app.example.com, health check passing"
+
+**Example: "Add authentication"**
+[Read existing code patterns, package.json]
+[Implement auth following project conventions]
+[Run tests to verify]
+"Auth added using JWT. 3 endpoints protected. Tests passing."
+
+**Example: "Fix memory leak"**
+[Read relevant code files]
+[Identify and fix the leak]
+[Run app and monitor memory]
+"Memory leak fixed in EventEmitter cleanup. Memory stable at 150MB."
+
+The pattern works for EVERYTHING: "restart servers", "deploy to AWS", "add caching", "fix bug", "optimize query", "set up CI/CD"
+
+🚨 **CRITICAL: NO EXECUTION PLANS WITH NUMBERED LISTS**
+- NEVER write "Here's my plan:" followed by numbered steps
+- NEVER write "I'll do these steps: 1. X, 2. Y, 3. Z"
+- JUST EXECUTE TOOLS DIRECTLY with brief text between each action
+- The numbered list gets shown to users as "All steps completed" even if you don't do them all
+- If you write "1. Run tests" but then don't actually run tests, users see a LIE
+
+## CRITICAL RULE #1: BE CONCISE BUT NATURAL
+
+Strike a balance between verbose explanations and robotic silence.
+
+❌ TOO VERBOSE (Don't do this):
+"Let's start by running npm install to make sure all the necessary dependencies are installed. After that, I'll check if the project is up and running by verifying the server..."
+
+❌ TOO ROBOTIC (Don't do this):
+[Just execute tools with zero context]
+
+✅ NATURAL & CONCISE (Do this):
+"I'll install dependencies and verify the server is running."
+[Execute tools]
+"Dependencies installed. Server running on http://localhost:3000"
+
+**Rules:**
+- Start with ONE brief sentence acknowledging the request (5-15 words max)
+- NO text before individual tool calls (no "Installing...", "Now checking...", "Fixing...")
+- End with a natural summary of results
+- During iteration/fixing: Just execute tools, only summarize when done
+
+## CRITICAL RULE #2: RAPID ITERATION LIKE GITHUB COPILOT
+
+When something doesn't work, try 3-4 approaches IMMEDIATELY:
+✅ [try port 3001] → "Port 3000 busy, trying 3001"
+✅ [try PORT=3002] → "Still failing, trying 3002"
+✅ [execute lsof] → "Checking if already running"
+✅ "Running on 3002"
+
+❌ NEVER analyze, read logs, investigate configs on first failure
+❌ NEVER explain why it failed - just try the next approach
+
 ## Your Mission
 You are not just a coding assistant - you are a FULL SOFTWARE ENGINEER.
 You handle EVERYTHING: code, infrastructure, databases, DevOps, architecture, debugging, deployment - ANY software engineering challenge.
@@ -663,6 +733,172 @@ To fix this, you should:
 3. After reading code and finding issues, your NEXT action must be a fix, not more text
 4. "I'll address this" or "Let me fix that" MUST be immediately followed by tool calls that actually fix it
 
+## CRITICAL RULE #3: OUTPUT FORMATTING
+
+**URLs:**
+- Use PLAIN URLs: http://localhost:3000
+- NEVER use markdown links: ~~[http://localhost:3000](http://localhost:3000)~~
+- NEVER use HTML: ~~<a href="">~~
+- The UI handles all formatting automatically
+
+## CRITICAL RULE #4: NEVER MARK TASKS COMPLETE WHEN THEY FAILED
+
+🚨 **MANDATORY**: A task is ONLY complete when the user's request was SUCCESSFULLY fulfilled.
+
+**When a task is NOT complete:**
+- The user asked to start a server, but the server is NOT running
+- The user asked to fix an error, but the error STILL exists
+- The user asked to install dependencies, but installation FAILED
+- Any step in the user's request FAILED or produced an error
+
+**Example - User asks: "start the server and check if it's up and running"**
+
+❌ WRONG (marking as complete even though it failed):
+```
+[Try npm run dev] → Port 3000 busy
+[Try npm run dev on 3001] → Connection refused
+[Try npm run dev on 3002] → Connection refused
+"The server did not start successfully. Task completed (no code changes needed)"  ← WRONG!
+```
+**This is a LIE! The server is NOT running, so the task is NOT complete!**
+
+✅ CORRECT (debugging and fixing until it actually works):
+```
+[Try npm run dev] → Port 3000 busy
+[Check what's using port 3000] → Found process PID 12345
+[Kill process 12345]
+[Start npm run dev on port 3000] → Started
+[Verify with curl] → HTTP 200 OK
+"Server is running successfully on http://localhost:3000"  ← NOW it's complete!
+```
+
+**Rules:**
+- NEVER say "Task completed" if ANY part of the request failed
+- If something doesn't work, DEBUG and FIX IT - don't give up
+- Always VERIFY the final result matches what the user asked for
+- If you tried multiple times and it's still failing, read logs/errors and try a different approach
+- Only stop iterating when the user's request is ACTUALLY fulfilled
+
+## CRITICAL RULE #5: NEVER ASK FOR PERMISSION OR GIVE UP
+
+🚨 **MANDATORY**: You must NEVER ask the user to do anything or give up, regardless of what error you encounter.
+
+**BANNED PHRASES - NEVER USE THESE:**
+❌ "Would you like me to..."
+❌ "Should I..."
+❌ "Do you want me to..."
+❌ "Would you prefer..."
+❌ "Further action is needed..."
+❌ "You may want to..."
+❌ "Consider doing..."
+❌ "You should troubleshoot..."
+❌ "This requires manual intervention..."
+❌ "Let me know if you want me to..."
+❌ "Please check/configure/install..."
+❌ "You need to..."
+❌ "This may require..."
+
+**THIS APPLIES TO ALL TYPES OF ERRORS:**
+- Server/Port issues (port busy, connection refused)
+- Dependencies (npm install fails, version conflicts, peer dependency warnings)
+- Database (connection refused, authentication failed, schema errors)
+- Build errors (TypeScript errors, webpack failures, missing modules)
+- Environment (missing .env vars, wrong config values)
+- Permissions (EACCES, access denied, sudo required)
+- Git issues (merge conflicts, authentication, push rejected)
+- API errors (401, 403, 404, 500, rate limits)
+- Test failures (unit tests, integration tests, E2E)
+- Memory/Resource issues (out of memory, disk full)
+
+**Example 1 - Server won't start:**
+
+❌ WRONG: "The server isn't starting. Would you like me to investigate further?"
+
+✅ CORRECT:
+```
+[Try port 3000] → Port busy
+[Check what's on 3000] → Process 12345
+[Kill 12345] → Killed
+[Try again] → Still fails
+[Check for hardcoded port in config]
+[Read next.config.js, package.json]
+[Try PORT=3002] → Success!
+"Server running on http://localhost:3002"
+```
+
+**Example 2 - npm install fails:**
+
+❌ WRONG: "Package installation failed. You may need to check your Node version."
+
+✅ CORRECT:
+```
+[npm install] → Peer dependency conflict
+[Check package.json] → React 17 but needs 18
+[Try npm install --legacy-peer-deps] → Still fails
+[Clear cache: rm -rf node_modules package-lock.json]
+[npm install --force] → Different error
+[Check Node version] → v14 (too old)
+[Switch to nvm use 18]
+[npm install]
+"Switched to Node 18. Dependencies installed."
+```
+
+**Example 3 - Build fails with TypeScript errors:**
+
+❌ WRONG: "There are TypeScript errors. Please review the types in UserProfile.tsx."
+
+✅ CORRECT:
+```
+[npm run build] → 15 type errors
+[Read first error] → Property 'email' doesn't exist
+[Check UserProfile.tsx interface] → Missing field
+[Add email field to interface]
+[Build again] → 12 errors remaining
+[Read next error] → Type mismatch in API response
+[Fix API types]
+[Build]
+"Build completed, all 15 type errors fixed."
+```
+
+**Example 4 - Database connection fails:**
+
+❌ WRONG: "Database connection failed. You should verify your connection string."
+
+✅ CORRECT:
+```
+[Run migration] → Connection refused
+[Check if DB running: pg_isready] → Not found
+[Check Docker: docker ps] → Postgres not running
+[Start container: docker-compose up -d postgres]
+[Wait and retry] → Authentication failed
+[Check .env] → Wrong password
+[Fix DB_PASSWORD in .env]
+[Retry] → Success!
+"Database connected, migrations applied"
+```
+
+**GENERAL DEBUGGING STRATEGY FOR ANY ERROR:**
+1. **Read the full error message** - Don't skip it
+2. **Try the obvious fix first** - Restart, reinstall, clear cache
+3. **Check configurations** - Read config files, .env, package.json
+4. **Check resources** - Is service running? Ports open? Disk space?
+5. **Read relevant code** - Only the files mentioned in error
+6. **Try alternative approaches** - Different flags, versions, commands
+7. **Check logs** - Server logs, build logs, test output
+8. **Fix incrementally** - Fix one error, verify, move to next
+9. **Verify after each fix** - Run command again to check if it worked
+10. **Keep going** - Try 10+ different approaches if needed
+
+**INSTEAD, YOU MUST:**
+- Treat EVERY error as solvable - there's always a way
+- Read error messages carefully to understand root cause
+- Try multiple solutions rapidly (like GitHub Copilot)
+- Check configs, logs, running processes, environment vars
+- Clear caches, reinstall deps, restart services when stuck
+- Use different tools/flags/commands to work around issues
+- Keep iterating until success or you've tried EVERYTHING
+- NEVER stop until the user's request is fulfilled
+
 ## TROUBLESHOOTING - ACT FAST, DON'T OVER-ANALYZE
 When a user reports something isn't working (e.g., "site not loading", "server not starting"):
 1. **DON'T read every file in the project** - only read what's needed
@@ -670,23 +906,24 @@ When a user reports something isn't working (e.g., "site not loading", "server n
 3. **DO run diagnostic commands immediately**: `curl localhost:3000`, `docker ps`, `npm run dev`
 4. **DO check logs**: Look at terminal output, error messages, log files
 5. **FIX IT, don't explain** - Start the server, kill blocking processes, install dependencies
+6. **ALWAYS VERIFY** - After any action, verify it worked (curl for servers, test for code, ps for processes)
 
-Example of GOOD troubleshooting:
+Example of GOOD troubleshooting (with verification):
 ```
 User: "Site not loading"
-You: Check if server is running... `lsof -i :3000` → No process found
-You: Starting server... `npm run dev &` → Server started
-You: Verifying... `curl localhost:3000` → Success!
-Done!
+You: Checking if server is running... [run_command: lsof -i :3000] → No process found
+You: Starting server... [run_command: npm run dev &] → Server started
+You: Verifying... [run_command: curl -s localhost:3000] → HTTP 200 OK
+You: "Server is running successfully on http://localhost:3000"
 ```
 
-Example of BAD troubleshooting:
+Example of BAD troubleshooting (no verification):
 ```
 User: "Site not loading"
-You: Let me read package.json... reading README... reading tsconfig...
-You: "This is a Next.js project. To fix this, you should: 1. Check Node version..."
+You: Starting server... [run_command: npm run dev &]
+You: "Server started on localhost:3000" ← WRONG! Didn't verify!
 ```
-WRONG! Don't read unnecessary files. Just check if the server is running and start it!
+WRONG! You must verify the server is actually running with curl or lsof!
 
 ## CRITICAL RULE - NEVER ASK FOR PERMISSION
 YOU MUST NEVER:
@@ -955,6 +1192,26 @@ When something fails:
 2. **UNDERSTAND WHY** - Is it missing tool? Wrong version? Permission?
 3. **FIX THE ROOT CAUSE** - Don't just try random alternatives
 
+**🚨 CRITICAL: When run_command fails, check for error_analysis in the result**
+- The tool result includes an `error_analysis` field with specific suggestions
+- **DO NOT retry the exact same command** - it will fail again
+- **FOLLOW the error_analysis suggestions** - they're tailored to your specific error
+- Try the suggested alternatives in order
+
+**EXAMPLE OF GOOD PROBLEM SOLVING:**
+```
+npm install failed
+→ Check error_analysis: "Dependency conflict. Try: npm install --legacy-peer-deps"
+→ Try: run_command("npm install --legacy-peer-deps")
+→ Success!
+```
+
+**EXAMPLE OF BAD PROBLEM SOLVING (DON'T DO THIS):**
+```
+npm install failed
+→ Try: run_command("npm install") again (❌ Same command will fail again!)
+```
+
 **EXAMPLE OF GOOD PROBLEM SOLVING:**
 ```
 Error: "nvm: command not found"
@@ -1094,6 +1351,183 @@ You are a SOFTWARE ENGINEER who explains their work. Brief narration + immediate
 """
 
 
+def get_event_timestamp() -> float:
+    """
+    Get current timestamp in milliseconds for event ordering.
+
+    This ensures all events have consistent timestamps that reflect
+    their true chronological order, allowing proper sorting in the frontend.
+    """
+    return time.time() * 1000
+
+
+def analyze_command_error(
+    command: str, stderr: str, stdout: str, exit_code: int
+) -> str:
+    """
+    Analyze command errors and suggest better alternatives.
+
+    This prevents the agent from retrying the exact same command.
+    Instead, it analyzes the error and suggests specific fixes.
+    """
+    error_output = (stderr + "\n" + stdout).lower()
+    suggestions = []
+
+    # npm/yarn/pnpm install errors
+    if any(
+        cmd in command
+        for cmd in ["npm install", "yarn install", "pnpm install", "npm ci"]
+    ):
+        if "enoent" in error_output or "no such file" in error_output:
+            suggestions.append("The error indicates missing files. Try:")
+            suggestions.append(
+                "1. Check if package.json exists in the correct directory"
+            )
+            suggestions.append("2. Verify you're in the right working directory")
+            suggestions.append("3. Check if node_modules was accidentally deleted")
+
+        elif "eacces" in error_output or "permission denied" in error_output:
+            suggestions.append("Permission error detected. Instead of retrying, try:")
+            suggestions.append("1. Clear npm cache: npm cache clean --force")
+            suggestions.append(
+                "2. Check ownership of node_modules: ls -la node_modules"
+            )
+            suggestions.append(
+                "3. Delete node_modules and package-lock.json, then retry"
+            )
+
+        elif "etimedout" in error_output or "network" in error_output:
+            suggestions.append("Network timeout detected. Try a different approach:")
+            suggestions.append(
+                "1. Use a different registry: npm install --registry=https://registry.npmjs.org/"
+            )
+            suggestions.append("2. Increase timeout: npm install --fetch-timeout=60000")
+            suggestions.append("3. Try yarn or pnpm instead if npm continues failing")
+
+        elif "eresolve" in error_output or "dependency conflict" in error_output:
+            suggestions.append(
+                "Dependency conflict detected. Don't retry the same command. Instead:"
+            )
+            suggestions.append("1. Try: npm install --legacy-peer-deps")
+            suggestions.append("2. Or: npm install --force (use carefully)")
+            suggestions.append(
+                "3. Check package.json for conflicting version requirements"
+            )
+
+        elif "engine" in error_output or "node version" in error_output:
+            suggestions.append("Node version mismatch. Don't retry. Instead:")
+            suggestions.append("1. Check required Node version in package.json")
+            suggestions.append("2. Install correct version: nvm install <version>")
+            suggestions.append("3. Or remove engine requirement if not critical")
+
+        elif "checksum" in error_output or "integrity" in error_output:
+            suggestions.append("Integrity check failed. Clear cache before retrying:")
+            suggestions.append("1. npm cache clean --force")
+            suggestions.append("2. Delete package-lock.json")
+            suggestions.append("3. Then retry npm install")
+
+        else:
+            suggestions.append(
+                "npm install failed. Before retrying the same command, try:"
+            )
+            suggestions.append(
+                "1. Delete node_modules and package-lock.json: rm -rf node_modules package-lock.json"
+            )
+            suggestions.append("2. Clear npm cache: npm cache clean --force")
+            suggestions.append("3. Then try: npm install")
+
+    # Python/pip install errors
+    elif any(
+        cmd in command for cmd in ["pip install", "pip3 install", "poetry install"]
+    ):
+        if (
+            "could not find a version" in error_output
+            or "no matching distribution" in error_output
+        ):
+            suggestions.append("Package not found. Try:")
+            suggestions.append("1. Check package name spelling")
+            suggestions.append("2. Verify the package exists: pip search <package>")
+            suggestions.append(
+                "3. Try with a specific version: pip install package==version"
+            )
+
+        elif "permission denied" in error_output:
+            suggestions.append("Permission error. Don't use sudo. Instead:")
+            suggestions.append(
+                "1. Use virtual environment: python -m venv venv && source venv/bin/activate"
+            )
+            suggestions.append(
+                "2. Install with --user flag: pip install --user <package>"
+            )
+
+        else:
+            suggestions.append("pip install failed. Try:")
+            suggestions.append("1. Upgrade pip: pip install --upgrade pip")
+            suggestions.append(
+                "2. Use --no-cache-dir: pip install --no-cache-dir <package>"
+            )
+
+    # Build command errors
+    elif any(cmd in command for cmd in ["npm run build", "yarn build", "pnpm build"]):
+        if "command not found" in error_output:
+            suggestions.append("Build script not found. Instead of retrying:")
+            suggestions.append("1. Check package.json scripts section")
+            suggestions.append("2. Verify the build script name")
+            suggestions.append("3. Install dependencies first: npm install")
+
+        elif "out of memory" in error_output or "javascript heap" in error_output:
+            suggestions.append("Memory error. Don't retry the same command. Try:")
+            suggestions.append(
+                "1. Increase memory: NODE_OPTIONS='--max-old-space-size=4096' npm run build"
+            )
+            suggestions.append("2. Or close other applications to free memory")
+
+    # Docker errors
+    elif "docker" in command:
+        if (
+            "cannot connect to the docker daemon" in error_output
+            or "daemon not running" in error_output
+        ):
+            suggestions.append("Docker daemon not running. Don't retry. Instead:")
+            suggestions.append("1. On macOS: open -a Docker")
+            suggestions.append("2. On Linux: sudo systemctl start docker")
+            suggestions.append("3. Wait for Docker to start, then retry")
+
+        elif "port is already allocated" in error_output:
+            suggestions.append("Port conflict. Don't retry. Instead:")
+            suggestions.append("1. Find process using port: lsof -i :<port>")
+            suggestions.append("2. Kill the process or use a different port")
+
+    # Git errors
+    elif command.startswith("git"):
+        if "not a git repository" in error_output:
+            suggestions.append("Not a git repo. Instead of retrying:")
+            suggestions.append("1. Initialize: git init")
+            suggestions.append("2. Or check you're in the correct directory")
+
+        elif "permission denied" in error_output and "publickey" in error_output:
+            suggestions.append("SSH key issue. Don't retry. Instead:")
+            suggestions.append("1. Use HTTPS URL instead of SSH")
+            suggestions.append("2. Or set up SSH keys: ssh-keygen")
+
+    # Test command errors
+    elif any(cmd in command for cmd in ["npm test", "yarn test", "pytest", "jest"]):
+        suggestions.append("Tests failed. Don't retry the same command. Instead:")
+        suggestions.append("1. Read the test failure output carefully")
+        suggestions.append("2. Fix the failing tests")
+        suggestions.append("3. Then run tests again to verify fixes")
+
+    # Generic command failures
+    if not suggestions:
+        suggestions.append(f"Command '{command}' failed with exit code {exit_code}.")
+        suggestions.append("Don't retry the exact same command. Instead:")
+        suggestions.append("1. Read the error message carefully")
+        suggestions.append("2. Try a different approach or fix the root cause")
+        suggestions.append("3. Consider alternative commands or tools")
+
+    return "\n".join(suggestions)
+
+
 class AutonomousAgent:
     """
     Autonomous agent that completes tasks end-to-end with verification.
@@ -1105,12 +1539,18 @@ class AutonomousAgent:
         api_key: str,
         provider: str = "openai",
         model: Optional[str] = None,
-        db_session=None,  # Database session for checkpoint persistence
+        db_session=None,  # Database session for checkpoint persistence and generation logging
+        user_id: Optional[str] = None,  # User ID for generation logging
+        org_id: Optional[str] = None,  # Organization ID for generation logging
     ):
         self.workspace_path = workspace_path
         self.api_key = api_key
         self.provider = provider
-        self.db_session = db_session  # For checkpoint persistence
+        self.db_session = (
+            db_session  # For checkpoint persistence and generation logging
+        )
+        self.user_id = user_id  # For generation logging
+        self.org_id = org_id  # For generation logging
         # Always prefer Claude for autonomous tasks - it's significantly better at agentic work
         # Claude excels at: tool use, following complex instructions, multi-step reasoning
         if model:
@@ -1136,6 +1576,9 @@ class AutonomousAgent:
         logger.info(
             f"[AutonomousAgent] Verification commands: {self.verification_commands}"
         )
+
+        # Track pending consent requests for dangerous commands
+        self.pending_consents: Dict[str, Dict[str, Any]] = {}
 
     def _assess_task_complexity(
         self, request: str, context: Optional[TaskContext] = None
@@ -1202,6 +1645,300 @@ class AutonomousAgent:
         elif simple_score >= 2:
             return TaskComplexity.SIMPLE
         return TaskComplexity.MEDIUM
+
+    def _estimate_required_tokens(
+        self, request: str, context: TaskContext, complexity: TaskComplexity
+    ) -> int:
+        """
+        Dynamically estimate required tokens based on task complexity and type.
+
+        This prevents:
+        - Wasting time/money on simple tasks (was using 8192 for "create file")
+        - Timeouts on complex tasks (gives appropriate allocation)
+        - Response truncation (ensures enough tokens for markdown/explanations)
+
+        Returns:
+            Optimal max_tokens value (500-8192)
+        """
+        request_lower = request.lower()
+
+        # Micro tasks (500 tokens ≈ 375 words)
+        micro_indicators = [
+            "create file" in request_lower and len(request) < 100,
+            "add import" in request_lower or "import" in request_lower,
+            "rename" in request_lower and len(request) < 80,
+            "delete" in request_lower and len(request) < 80,
+            "typo" in request_lower or "spelling" in request_lower,
+        ]
+        if any(micro_indicators):
+            return 500
+
+        # Small tasks (1000 tokens ≈ 750 words)
+        small_indicators = [
+            complexity == TaskComplexity.SIMPLE,
+            "fix" in request_lower and len(request) < 150,
+            len(context.files_modified) == 1 and context.iteration <= 2,
+            "update" in request_lower and len(request) < 100,
+        ]
+        if any(small_indicators):
+            return 1000
+
+        # Medium tasks (2500 tokens ≈ 1875 words)
+        medium_indicators = [
+            complexity == TaskComplexity.MEDIUM,
+            len(context.files_modified) <= 3,
+            "add feature" in request_lower and len(request) < 200,
+            "implement" in request_lower and len(request) < 250,
+        ]
+        if any(medium_indicators):
+            return 2500
+
+        # Large tasks (4096 tokens ≈ 3000 words)
+        large_indicators = [
+            complexity == TaskComplexity.COMPLEX,
+            len(context.files_modified) > 3,
+            any(kw in request_lower for kw in ["refactor", "architecture", "redesign"]),
+            "build" in request_lower and len(request) > 200,
+        ]
+        if any(large_indicators):
+            return 4096
+
+        # Enterprise tasks (8192 tokens ≈ 6000 words)
+        # Only use maximum for truly massive tasks
+        enterprise_indicators = [
+            "e-commerce" in request_lower or "platform" in request_lower,
+            "end-to-end" in request_lower or "end to end" in request_lower,
+            "production" in request_lower and "deploy" in request_lower,
+            len(request) > 400,
+            "website" in request_lower
+            and "build" in request_lower
+            and len(request) > 250,
+        ]
+        if any(enterprise_indicators):
+            logger.warning(
+                "[AutonomousAgent] 🚨 Enterprise-scale task detected! "
+                "This will use max tokens (8192) and may need task decomposition."
+            )
+            return 8192
+
+        # Default: medium allocation
+        return 2500
+
+    def _should_decompose_task(self, request: str, complexity: TaskComplexity) -> bool:
+        """
+        Determine if a task should be decomposed into subtasks.
+
+        Enterprise-scale projects that span multiple features, components,
+        or require end-to-end implementation should be decomposed.
+
+        Returns:
+            True if task should be decomposed into subtasks
+        """
+        request_lower = request.lower()
+
+        # Always decompose enterprise-complexity tasks
+        if complexity == TaskComplexity.ENTERPRISE:
+            return True
+
+        # Decompose if request contains enterprise indicators
+        enterprise_indicators = [
+            "e-commerce" in request_lower and len(request) > 200,
+            "platform" in request_lower and "build" in request_lower,
+            "end-to-end" in request_lower or "end to end" in request_lower,
+            ("production" in request_lower and "deploy" in request_lower)
+            and len(request) > 200,
+            "website" in request_lower
+            and "build" in request_lower
+            and len(request) > 250,
+            any(
+                word in request_lower
+                for word in ["microservices", "distributed", "full-stack"]
+            ),
+        ]
+
+        if any(enterprise_indicators):
+            logger.info(
+                "[AutonomousAgent] 🔀 Enterprise task detected - will decompose into subtasks"
+            )
+            return True
+
+        # Decompose if request mentions multiple major components
+        component_count = sum(
+            [
+                "auth" in request_lower or "authentication" in request_lower,
+                "database" in request_lower or "db" in request_lower,
+                "api" in request_lower or "backend" in request_lower,
+                "frontend" in request_lower or "ui" in request_lower,
+                "payment" in request_lower or "checkout" in request_lower,
+                "admin" in request_lower and "dashboard" in request_lower,
+                "deployment" in request_lower or "deploy" in request_lower,
+                "testing" in request_lower or "tests" in request_lower,
+            ]
+        )
+
+        if component_count >= 3:
+            logger.info(
+                f"[AutonomousAgent] 🔀 Multi-component task detected ({component_count} components) - will decompose"
+            )
+            return True
+
+        return False
+
+    async def _execute_with_decomposition_generator(
+        self,
+        request: str,
+        context: TaskContext,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Execute a task by decomposing it into subtasks and executing them sequentially.
+
+        Streams progress updates for each subtask.
+
+        Yields:
+            SSE events for subtask progress and completion
+        """
+        logger.info(
+            f"[AutonomousAgent] 🔀 Starting task decomposition for: {request[:100]}..."
+        )
+
+        # Send decomposition start event
+        yield {
+            "type": "decomposition_start",
+            "message": "Analyzing task and breaking it into subtasks...",
+            "timestamp": time.time(),
+        }
+
+        try:
+            # Initialize task decomposer with same provider/model
+            decomposer = TaskDecomposer(
+                provider=self.provider,
+                model=self.model,
+                api_key=self.api_key,
+                temperature=0.3,
+            )
+
+            # Decompose the task
+            decomposition = await decomposer.decompose_goal(
+                goal=request,
+                context={
+                    "workspace_path": self.workspace_path,
+                    "project_type": self.project_type,
+                    "framework": self.framework,
+                },
+                min_tasks=10,
+                max_tasks=50,  # Start with reasonable subtask count
+            )
+
+            logger.info(
+                f"[AutonomousAgent] ✅ Decomposed into {len(decomposition.tasks)} subtasks "
+                f"across {len(decomposition.phases)} phases"
+            )
+
+            # Send decomposition complete event
+            yield {
+                "type": "decomposition_complete",
+                "task_count": len(decomposition.tasks),
+                "phase_count": len(decomposition.phases),
+                "phases": decomposition.phases,
+                "estimated_hours": decomposition.estimated_total_hours,
+                "timestamp": time.time(),
+            }
+
+            # Execute subtasks in dependency order
+            completed_tasks = set()
+            failed_tasks = set()
+
+            for idx, task in enumerate(decomposition.tasks):
+                # Check if dependencies are met
+                unmet_deps = [
+                    dep for dep in task.dependencies if dep not in completed_tasks
+                ]
+
+                if unmet_deps:
+                    logger.warning(
+                        f"[AutonomousAgent] ⚠️ Skipping task {task.id} - "
+                        f"unmet dependencies: {unmet_deps}"
+                    )
+                    failed_tasks.add(task.id)
+                    continue
+
+                # Send subtask start event
+                yield {
+                    "type": "subtask_start",
+                    "task_id": task.id,
+                    "title": task.title,
+                    "description": task.description,
+                    "phase": task.phase,
+                    "progress": f"{idx + 1}/{len(decomposition.tasks)}",
+                    "timestamp": time.time(),
+                }
+
+                try:
+                    # Execute the subtask using regular execute flow
+                    subtask_request = f"{task.title}\n\n{task.description}"
+
+                    # Create subtask context (currently not used directly but kept
+                    # for future execution flow integration)
+                    TaskContext.with_adaptive_limits(
+                        complexity=TaskComplexity.SIMPLE,  # Subtasks should be simple
+                        task_id=task.id,
+                        original_request=subtask_request,
+                        workspace_path=self.workspace_path,
+                    )
+
+                    # Execute subtask (this will use the regular LLM execution flow)
+                    # TODO: Actually execute the subtask - for now just simulate
+                    await asyncio.sleep(0.1)  # Simulate execution
+
+                    logger.info(
+                        f"[AutonomousAgent] ✅ Completed subtask {task.id}: {task.title}"
+                    )
+
+                    completed_tasks.add(task.id)
+
+                    # Send subtask complete event
+                    yield {
+                        "type": "subtask_complete",
+                        "task_id": task.id,
+                        "title": task.title,
+                        "success": True,
+                        "progress": f"{idx + 1}/{len(decomposition.tasks)}",
+                        "timestamp": time.time(),
+                    }
+
+                except Exception as e:
+                    logger.error(
+                        f"[AutonomousAgent] ❌ Failed subtask {task.id}: {str(e)}"
+                    )
+                    failed_tasks.add(task.id)
+
+                    # Send subtask failed event
+                    yield {
+                        "type": "subtask_failed",
+                        "task_id": task.id,
+                        "title": task.title,
+                        "error": str(e),
+                        "timestamp": time.time(),
+                    }
+
+            # Send final completion event
+            yield {
+                "type": "decomposition_finished",
+                "total_tasks": len(decomposition.tasks),
+                "completed": len(completed_tasks),
+                "failed": len(failed_tasks),
+                "success_rate": len(completed_tasks) / len(decomposition.tasks),
+                "timestamp": time.time(),
+            }
+
+        except Exception as e:
+            logger.error(f"[AutonomousAgent] ❌ Decomposition failed: {str(e)}")
+            yield {
+                "type": "decomposition_error",
+                "error": str(e),
+                "timestamp": time.time(),
+            }
+            raise
 
     def _extract_error_signatures(
         self, results: List[VerificationResult], iteration: int
@@ -1480,10 +2217,340 @@ class AutonomousAgent:
         # If it has action patterns or is not purely a question, treat as fix request
         return has_action_intent or not is_question_only
 
-    def _build_system_prompt(self, context: TaskContext) -> str:
-        """Build system prompt with current context."""
-        # No longer including iteration/error info in prompt to keep responses clean
-        return AUTONOMOUS_SYSTEM_PROMPT
+    def _is_run_start_request(self, request: str) -> bool:
+        request_lower = (request or "").lower().strip()
+
+        if not request_lower:
+            return False
+
+        config = self._load_run_start_config()
+
+        # Direct phrase matches (high confidence)
+        run_patterns = [
+            "run the app",
+            "start the app",
+            "start the server",
+            "run the server",
+            "launch the app",
+            "launch the server",
+            "boot the app",
+            "boot the server",
+            "bring up the app",
+            "bring up the server",
+            "spin up the app",
+            "spin up the server",
+            "fire up the app",
+            "fire up the server",
+            "start dev server",
+            "run dev server",
+            "start the dev server",
+            "run the dev server",
+            "check if it’s running",
+            "check if it's running",
+            "is it running",
+            "is the server running",
+            "is the app running",
+            "start locally",
+            "run locally",
+            "start frontend",
+            "start backend",
+            "run frontend",
+            "run backend",
+            "serve the app",
+            "serve the site",
+            "dev server",
+            "health check",
+            "status check",
+            "is it up",
+            "is it online",
+            "is it alive",
+            "check status",
+            "check health",
+        ]
+        if any(p in request_lower for p in run_patterns):
+            return True
+        if any(p in request_lower for p in config["phrases"]):
+            return True
+
+        # Command/tech signals (medium confidence)
+        command_tokens = [
+            "npm ",
+            "pnpm ",
+            "yarn ",
+            "bun ",
+            "node ",
+            "python ",
+            "python3 ",
+            "uvicorn",
+            "gunicorn",
+            "flask run",
+            "django runserver",
+            "rails s",
+            "rails server",
+            "vite",
+            "next ",
+            "nuxt ",
+            "sveltekit",
+            "astro ",
+            "docker ",
+            "docker-compose",
+            "docker compose",
+            "kubectl ",
+            "helm ",
+        ]
+        if any(tok in request_lower for tok in command_tokens):
+            return True
+        if any(tok in request_lower for tok in config["command_tokens"]):
+            return True
+
+        # URL/port signals (medium confidence)
+        if "localhost" in request_lower or "127.0.0.1" in request_lower:
+            return True
+        if re.search(r":\d{2,5}\b", request_lower):
+            return True
+        if re.search(r"https?://", request_lower):
+            return True
+
+        # Short status questions (low-to-medium confidence)
+        status_questions = [
+            "running?",
+            "up?",
+            "alive?",
+            "online?",
+            "working?",
+            "works?",
+        ]
+        if len(request_lower.split()) <= 6 and any(
+            q in request_lower for q in status_questions
+        ):
+            return True
+        if len(request_lower.split()) <= 6 and any(
+            q in request_lower for q in config["status_questions"]
+        ):
+            return True
+
+        # Verb+noun pattern (broad coverage)
+        verbs = {"run", "start", "launch", "boot", "spin", "fire", "bring", "serve"}
+        nouns = {"app", "server", "service", "site", "frontend", "backend"}
+        verbs |= set(config["verbs"])
+        nouns |= set(config["nouns"])
+
+        if any(v in request_lower for v in verbs) and any(
+            n in request_lower for n in nouns
+        ):
+            return True
+
+        return False
+
+    def _is_run_start_command(self, command: str) -> bool:
+        if not command:
+            return False
+        cmd = command.lower()
+        # Long-running dev/server patterns
+        if re.search(r"\b(run|start|serve|dev)\b", cmd):
+            if re.search(r"\b(npm|pnpm|yarn|bun)\s+run\s+(dev|start|serve)\b", cmd):
+                return True
+            if re.search(r"\b(node|python|python3)\b", cmd) and re.search(
+                r"\b(app\.py|main\.py|server\.py|manage\.py)\b", cmd
+            ):
+                return True
+            if re.search(
+                r"\b(uvicorn|gunicorn|flask|django|rails|vite|next|nuxt|astro|sveltekit)\b",
+                cmd,
+            ):
+                return True
+            if re.search(r"\bdocker(\s+compose)?\s+up\b", cmd):
+                return True
+        return False
+
+    def _load_run_start_config(self) -> Dict[str, List[str]]:
+        defaults = {
+            "phrases": [],
+            "command_tokens": [],
+            "verbs": [],
+            "nouns": [],
+            "status_questions": [],
+        }
+        try:
+            config_path = os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "..",
+                "config",
+                "run_start_detection.json",
+            )
+            config_path = os.path.abspath(config_path)
+            if not os.path.exists(config_path):
+                return defaults
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            merged = {**defaults, **(data or {})}
+            # Normalize to lists of strings
+            for key in defaults.keys():
+                value = merged.get(key, [])
+                if not isinstance(value, list):
+                    merged[key] = []
+                else:
+                    merged[key] = [str(v).lower() for v in value if str(v).strip()]
+            return merged
+        except Exception:
+            return defaults
+
+    def _should_suppress_iteration_banner(self, context: TaskContext) -> bool:
+        # Suppress noisy iteration banners for pure run/start tasks with no code changes
+        if context.files_modified or context.files_created:
+            return False
+        if self._is_fix_request(context.original_request):
+            return False
+        if self._is_run_start_request(context.original_request):
+            return True
+        # Tool-based detection: if latest command is a run/start command, suppress
+        if context.commands_run:
+            last_cmd = context.commands_run[-1].get("command", "")
+            if self._is_run_start_command(last_cmd):
+                return True
+        return False
+
+    def _calculate_llm_cost(
+        self, model: str, input_tokens: int, output_tokens: int
+    ) -> float:
+        """Calculate LLM API cost in USD based on model and token usage."""
+        # Pricing as of 2024-2026 (per million tokens)
+        pricing = {
+            # Anthropic Claude models
+            "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
+            "claude-3-5-sonnet-20240620": {"input": 3.00, "output": 15.00},
+            "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
+            "claude-3-sonnet-20240229": {"input": 3.00, "output": 15.00},
+            "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
+            # OpenAI GPT models
+            "gpt-4o": {"input": 2.50, "output": 10.00},
+            "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+            "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+            "gpt-4": {"input": 30.00, "output": 60.00},
+            "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
+        }
+
+        # Default pricing if model not found
+        default = {"input": 3.00, "output": 15.00}
+        rates = pricing.get(model, default)
+
+        # Calculate cost (price is per million tokens)
+        input_cost = (input_tokens / 1_000_000) * rates["input"]
+        output_cost = (output_tokens / 1_000_000) * rates["output"]
+
+        return input_cost + output_cost
+
+    async def _persist_llm_metrics(
+        self,
+        model: str,
+        provider: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float,
+        latency_ms: Optional[int] = None,
+        task_type: str = "autonomous",
+        status: str = "success",
+        error_message: Optional[str] = None,
+    ) -> None:
+        """Persist LLM metrics to database for historical analysis."""
+        if not self.db_session:
+            return  # No database session available
+
+        try:
+            from backend.models.llm_metrics import LlmMetric
+
+            metric = LlmMetric(
+                org_id=str(self.org_id) if self.org_id else None,
+                user_id=str(self.user_id) if self.user_id else None,
+                model=model,
+                provider=provider,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=input_tokens + output_tokens,
+                input_cost=(
+                    (input_tokens / 1_000_000) * cost_usd if input_tokens > 0 else 0.0
+                ),
+                output_cost=(
+                    (output_tokens / 1_000_000) * cost_usd if output_tokens > 0 else 0.0
+                ),
+                total_cost=cost_usd,
+                latency_ms=latency_ms,
+                task_type=task_type,
+                status=status,
+                error_message=error_message,
+            )
+
+            self.db_session.add(metric)
+            await self.db_session.commit()
+            logger.debug("[AutonomousAgent] 💾 Persisted LLM metrics to database")
+        except Exception as e:
+            logger.warning(f"[AutonomousAgent] Failed to persist LLM metrics: {e}")
+            pass
+
+    def _build_system_prompt(
+        self, context: TaskContext, rag_context: Optional[str] = None
+    ) -> str:
+        """Build system prompt with current context and optional RAG context."""
+        base_prompt = AUTONOMOUS_SYSTEM_PROMPT
+
+        # Inject RAG context if available
+        if rag_context and rag_context.strip():
+            base_prompt = f"""{base_prompt}
+
+## CODEBASE CONTEXT
+
+You have access to relevant codebase context retrieved via semantic search:
+
+{rag_context}
+
+Use this context to understand existing patterns, dependencies, and architecture when completing the task.
+"""
+
+        return base_prompt
+
+    async def _log_generation(self, context: TaskContext, prompt: str) -> Optional[int]:
+        """Log LLM generation to database for feedback tracking. Returns gen_id."""
+        if not self.db_session or not self.user_id or not self.org_id:
+            # Cannot log without database session and user context
+            return None
+
+        try:
+            feedback_service = FeedbackService(self.db_session)
+            gen_id = await feedback_service.log_generation(
+                org_key=self.org_id,
+                user_sub=self.user_id,
+                task_type="chat",  # or "codegen" for code generation tasks
+                model=self.model,
+                temperature=0.0,  # Autonomous agent uses 0 temperature
+                params={"provider": self.provider, "task_id": context.task_id},
+                prompt=prompt[:1000],  # Truncate prompt for storage
+                input_fingerprint=None,
+                result_ref=context.task_id,
+            )
+            logger.info(f"[AutonomousAgent] 📝 Logged generation: gen_id={gen_id}")
+
+            # Also track suggestion in learning system
+            try:
+                learning_manager = get_feedback_manager()
+                learning_manager.track_suggestion(
+                    suggestion_id=str(gen_id),
+                    category=SuggestionCategory.EXPLANATION,  # Default category
+                    content="",  # Content tracked separately
+                    context=context.original_request[:500],  # User's request
+                    org_id=self.org_id,
+                    user_id=self.user_id,
+                )
+                logger.info(
+                    f"[AutonomousAgent] 🎯 Tracked suggestion in learning system: gen_id={gen_id}"
+                )
+            except Exception as le:
+                logger.warning(f"[AutonomousAgent] Failed to track suggestion: {le}")
+
+            return gen_id
+        except Exception as e:
+            logger.warning(f"[AutonomousAgent] Failed to log generation: {e}")
+            return None
 
     async def _diagnose_environment(self) -> str:
         """
@@ -1664,12 +2731,60 @@ class AutonomousAgent:
             elif "explain" in request_lower:
                 label = "Explain code"
                 desc = "Providing explanation of the code"
+            elif (
+                "npm install" in request_lower
+                or "yarn install" in request_lower
+                or "pnpm install" in request_lower
+            ):
+                # Package installation commands
+                pm = (
+                    "npm"
+                    if "npm" in request_lower
+                    else "yarn" if "yarn" in request_lower else "pnpm"
+                )
+                label = f"Install dependencies with {pm}"
+                desc = f"Running {pm} install to install project dependencies"
+            elif any(
+                cmd in request_lower
+                for cmd in ["npm start", "npm run", "npm dev", "yarn start", "yarn dev"]
+            ):
+                # Run/start commands
+                if "dev" in request_lower:
+                    label = "Start development server"
+                    desc = "Running dev script to start the development server"
+                elif "build" in request_lower:
+                    label = "Build project"
+                    desc = "Running build script to create production build"
+                else:
+                    label = "Run npm script"
+                    desc = "Executing the requested npm/yarn script"
+            elif "run" in request_lower and any(
+                word in request_lower for word in ["command", "script", "execute"]
+            ):
+                # Generic command execution
+                label = "Execute command"
+                desc = "Running the requested command"
             else:
                 # Extract first meaningful verb/noun phrase from request
-                words = request.split()[:6]
-                label = " ".join(words)[:30].strip()
-                if not label:
+                # Skip question words like "can you", "could you", "please"
+                words = request.replace("?", "").split()
+                # Remove question words from the beginning
+                while words and words[0].lower() in [
+                    "can",
+                    "could",
+                    "would",
+                    "will",
+                    "please",
+                    "you",
+                ]:
+                    words = words[1:]
+
+                label = " ".join(words[:4])[:40].strip()
+                if not label or len(label) < 3:
                     label = "Process request"
+                # Capitalize first letter if not already
+                if label and not label[0].isupper():
+                    label = label[0].upper() + label[1:]
                 desc = request[:100] if len(request) > 100 else request
 
             # Emit plan_start event in the format the frontend expects
@@ -1970,46 +3085,42 @@ Return ONLY the JSON, no markdown or explanations."""
         self, context: TaskContext, tool_name: str
     ) -> Optional[Dict]:
         """
-        Calculate step progress based on tool activity and emit step_update if needed.
+        Calculate step progress based on tool usage and overall execution state.
 
-        Maps tool activities to plan steps:
-        - Step 0 (Check dependencies/Analyze): read_file, search_files, list_directory
-        - Step 1 (Create/Implement): write_file, edit_file
-        - Step 2 (Update/Finalize): run_command, additional writes
+        Uses heuristics to map tool activity to execution plan steps.
         """
+        # Check if we have a plan to track
         if not context.plan_id or context.step_count == 0:
             return None
 
         # Determine which step we should be on based on activities
-        len(context.files_read) > 0
         has_writes = len(context.files_modified) + len(context.files_created) > 0
         has_commands = len(context.commands_run) > 0
 
-        # Map tool types to step phases
-        write_tools = {"write_file", "edit_file", "create_file"}
-        command_tools = {
-            "run_command",
-            "run_dangerous_command",
-            "run_interactive_command",
-        }
+        # Map tool types to step phases (kept for future routing logic)
 
         # Determine target step based on current tool and overall progress
+        # Be conservative - don't jump ahead too quickly
         if context.step_count == 1:
             # Single step plan - always on step 0
             target_step = 0
         elif context.step_count == 2:
-            # Two step plan: analysis -> implementation
-            if tool_name in write_tools or has_writes:
+            # Two step plan: only advance when we have substantial progress
+            if has_writes and has_commands:
                 target_step = 1
             else:
                 target_step = 0
         else:
-            # 3+ step plan: analysis -> implementation -> finalize
-            if tool_name in command_tools or has_commands:
-                target_step = min(2, context.step_count - 1)
-            elif tool_name in write_tools or has_writes:
+            # 3+ step plan: advance gradually based on overall progress
+            # Only move to final step when we have writes AND commands (substantial work done)
+            if has_writes and has_commands:
+                # We've done both implementation and commands - move to final step
+                target_step = min(context.step_count - 1, 2)
+            elif has_writes or (has_commands and context.iteration > 3):
+                # We've started implementation OR we've been running commands for a while
                 target_step = 1
             else:
+                # Still in analysis/setup phase
                 target_step = 0
 
         # Only emit if we're advancing or haven't emitted this step yet
@@ -2018,20 +3129,22 @@ Return ONLY the JSON, no markdown or explanations."""
         # Mark previous steps as completed if we're advancing
         events = []
         if target_step > context.current_step_index:
-            # Complete previous steps
-            for i in range(context.current_step_index, target_step):
-                if context.step_progress_emitted.get(i) != "completed":
+            # Complete all steps from current to target (except target itself)
+            for step_idx in range(context.current_step_index, target_step):
+                step_status = context.step_progress_emitted.get(step_idx)
+                # Only mark as completed if it was running or pending (not already completed)
+                if step_status != "completed":
                     events.append(
                         {
                             "type": "step_update",
                             "data": {
                                 "plan_id": context.plan_id,
-                                "step_index": i,
+                                "step_index": step_idx,
                                 "status": "completed",
                             },
                         }
                     )
-                    context.step_progress_emitted[i] = "completed"
+                    context.step_progress_emitted[step_idx] = "completed"
 
             # Mark new step as running
             context.current_step_index = target_step
@@ -2180,51 +3293,138 @@ Return ONLY the JSON, no markdown or explanations."""
                     cwd = os.path.join(self.workspace_path, arguments["cwd"])
 
                 command = arguments["command"]
+                command_raw = command
 
-                # Set up environment with npm_config_prefix removed (conflicts with nvm)
-                env = os.environ.copy()
-                env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
-                env["SHELL"] = env.get("SHELL", "/bin/bash")
+                def _is_background_command(cmd: str) -> bool:
+                    stripped = cmd.strip()
+                    if stripped.endswith("&"):
+                        return True
+                    bg_tokens = ("nohup ", "pm2 ", "forever ", "daemon ", "disown")
+                    return any(token in stripped for token in bg_tokens)
+
+                def _extract_port_from_command(cmd: str) -> Optional[int]:
+                    port_match = re.search(
+                        r"--port[=\s]+(\d+)|-p[=\s]+(\d+)|PORT=(\d+)", cmd
+                    )
+                    if not port_match:
+                        return None
+                    for group in port_match.groups():
+                        if group:
+                            try:
+                                return int(group)
+                            except ValueError:
+                                return None
+                    return None
+
+                def _determine_server_port(workdir: str) -> Optional[int]:
+                    port = _extract_port_from_command(command_raw)
+                    if port:
+                        return port
+                    try:
+                        from backend.services.navi_brain import (
+                            SelfHealingEngine,
+                            NaviConfig,
+                            ProjectAnalyzer,
+                        )
+
+                        configured = SelfHealingEngine._get_configured_port(workdir)
+                        if configured:
+                            return configured
+                        project_info = ProjectAnalyzer.analyze(workdir)
+                        return NaviConfig.get_preferred_port(project_info)
+                    except Exception:
+                        return None
+
+                # Check if this is a dangerous command that requires consent
+                cmd_info = get_command_info(command)
+                if cmd_info is not None and cmd_info.requires_confirmation:
+                    # Check if consent has already been granted for this command
+                    consent_id = arguments.get("consent_id")
+
+                    # Check global consent approvals first (protected by lock)
+                    consent_denied = False
+                    with _consent_lock:
+                        if consent_id and consent_id in _consent_approvals:
+                            approval = _consent_approvals[consent_id]
+                            if approval.get("approved"):
+                                # Consent was approved, proceed with execution
+                                logger.info(
+                                    f"[AutonomousAgent] ✅ Consent approved for command: {command}"
+                                )
+                                # Clean up the approval to prevent reuse
+                                del _consent_approvals[consent_id]
+                            else:
+                                # Consent was denied
+                                logger.info(
+                                    f"[AutonomousAgent] ❌ Consent denied for command: {command}"
+                                )
+                                consent_denied = True
+
+                    # Handle consent decision outside lock to avoid holding it during return
+                    if consent_denied:
+                        return {
+                            "success": False,
+                            "error": "User denied consent for this command",
+                            "consent_denied": True,
+                        }
+                    elif not consent_id or consent_id not in self.pending_consents:
+                        # Generate new consent request
+                        consent_id = str(uuid.uuid4())
+                        permission_request = format_permission_request(
+                            command, cmd_info, cwd
+                        )
+
+                        # Store pending consent in both locations
+                        consent_data = {
+                            "command": command,
+                            "cwd": cwd,
+                            "cmd_info": cmd_info,
+                            "permission_request": permission_request,
+                            "timestamp": int(__import__("time").time()),
+                            "user_id": self.user_id,
+                            "org_id": self.org_id,
+                        }
+                        self.pending_consents[consent_id] = consent_data
+                        with _consent_lock:
+                            _consent_approvals[consent_id] = {
+                                "approved": False,
+                                "command": command,
+                                "timestamp": int(__import__("time").time()),
+                                "pending": True,
+                                "user_id": self.user_id,
+                                "org_id": self.org_id,
+                            }
+
+                        # Return consent required response
+                        return {
+                            "success": False,
+                            "requires_consent": True,
+                            "consent_id": consent_id,
+                            "command": command,
+                            "danger_level": cmd_info.risk_level.value,
+                            "warning": permission_request["warning_message"],
+                            "consequences": cmd_info.consequences,
+                            "alternatives": cmd_info.alternatives,
+                            "rollback_possible": cmd_info.rollback_possible,
+                            "error": f"⚠️ CONSENT REQUIRED: This command requires user approval. A consent dialog has been shown to the user. DO NOT retry this command until the user has approved it. The consent_id is: {consent_id}",
+                        }
+
+                env = get_command_env()
 
                 # Detect if this is a Node.js command that needs nvm setup
-                node_commands = [
-                    "npm",
-                    "npx",
-                    "node",
-                    "yarn",
-                    "pnpm",
-                    "bun",
-                    "tsc",
-                    "next",
-                ]
-                cmd_parts = command.split()
-                is_node_cmd = cmd_parts and any(
-                    cmd_parts[0] == nc or cmd_parts[0].endswith(f"/{nc}")
-                    for nc in node_commands
-                )
+                is_node_cmd = is_node_command(command)
 
                 # If it's a node command and doesn't already source nvm, add the setup
                 if is_node_cmd and "nvm.sh" not in command:
-                    home = os.environ.get("HOME", os.path.expanduser("~"))
-                    nvm_dir = env.get("NVM_DIR", os.path.join(home, ".nvm"))
-                    if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
-                        # Check for .nvmrc in workspace
-                        nvmrc_path = os.path.join(cwd, ".nvmrc")
-                        node_version_path = os.path.join(cwd, ".node-version")
-                        if os.path.exists(nvmrc_path) or os.path.exists(
-                            node_version_path
-                        ):
-                            nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
-                        else:
-                            nvm_use = "nvm use default 2>/dev/null || true"
-
-                        # Prepend nvm setup to command
-                        command = (
-                            f'export NVM_DIR="{nvm_dir}" && '
-                            f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-                            f"{nvm_use} && {command}"
-                        )
-                        logger.info("[AutonomousAgent] Added nvm setup to command")
+                    env_setup = get_node_env_setup(
+                        cwd=cwd,
+                        include_project_bins=False,
+                        include_common_paths=True,
+                        fnm_use_on_cd=False,
+                    )
+                    if env_setup:
+                        command = f"{env_setup} && {command}"
+                        logger.info("[AutonomousAgent] Added node env setup to command")
 
                 # If command is already wrapped in bash -c, extract the inner command
                 # to avoid double-wrapping issues
@@ -2240,32 +3440,327 @@ Return ONLY the JSON, no markdown or explanations."""
                     except Exception:
                         pass  # Keep original if parsing fails
 
-                # Use bash explicitly to support 'source' command for nvm/pyenv
-                result = subprocess.run(
-                    command,
-                    shell=True,
-                    executable="/bin/bash",
-                    cwd=cwd,
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    env=env,
+                # Determine timeout - use parameter or default (5 minutes)
+                cmd_timeout = arguments.get("timeout_seconds", 300)
+
+                # Cap timeout at 30 minutes for safety
+                cmd_timeout = min(cmd_timeout, 1800)
+
+                # Auto-extend timeout for known long-running commands
+                long_running_patterns = [
+                    "npm install",
+                    "npm ci",
+                    "yarn install",
+                    "pnpm install",
+                    "bun install",
+                    "pip install",
+                    "poetry install",
+                    "pipenv install",
+                    "bundle install",
+                    "gem install",
+                    "composer install",
+                    "composer update",
+                    "cargo build",
+                    "cargo install",
+                    "mvn install",
+                    "mvn package",
+                    "mvn compile",
+                    "gradle build",
+                    "gradle assemble",
+                    "docker build",
+                    "docker-compose build",
+                    "npm run build",
+                    "yarn build",
+                    "pnpm build",
+                    "npm test",
+                    "yarn test",
+                    "pytest",
+                    "jest --",
+                ]
+
+                if any(pattern in command for pattern in long_running_patterns):
+                    cmd_timeout = max(
+                        cmd_timeout, 1200
+                    )  # 20 minutes minimum for complex operations
+                    logger.info(
+                        f"[AutonomousAgent] Extended timeout to {cmd_timeout}s for long-running command"
+                    )
+                elif cmd_timeout != 300:
+                    logger.info(
+                        f"[AutonomousAgent] Using custom timeout: {cmd_timeout}s"
+                    )
+
+                # ==== INTELLIGENT PORT CONFLICT HANDLING ====
+                # Check if this is a dev server command that might have port conflicts
+                dev_server_patterns = [
+                    "npm run dev",
+                    "npm run start",
+                    "npm start",
+                    "yarn dev",
+                    "yarn start",
+                    "pnpm dev",
+                    "pnpm start",
+                    "bun dev",
+                    "bun start",
+                    "vite",
+                    "next dev",
+                    "next start",
+                    "uvicorn",
+                    "python -m uvicorn",
+                    "fastapi",
+                    "flask run",
+                    "python app.py",
+                    "python main.py",
+                    "rails server",
+                    "rails s",
+                ]
+
+                is_dev_server_cmd = any(
+                    pattern in command for pattern in dev_server_patterns
                 )
+
+                if is_dev_server_cmd and not _is_background_command(command):
+                    server_port = _determine_server_port(cwd)
+                    if server_port:
+                        logger.info(
+                            "[AutonomousAgent] Detected dev server command; using start_server tool for background start and verification"
+                        )
+                        return await self._execute_tool(
+                            "start_server",
+                            {"command": command, "port": server_port},
+                            context,
+                        )
+
+                if is_dev_server_cmd and cwd:
+                    from backend.services.navi_brain import SelfHealingEngine
+                    import asyncio
+
+                    # Get configured port from project config files
+                    configured_port = SelfHealingEngine._get_configured_port(cwd)
+
+                    # Remember this port for future use
+                    if configured_port:
+                        SelfHealingEngine._port_memory[cwd] = configured_port
+                        logger.info(
+                            f"[AutonomousAgent] Found configured port {configured_port} for project"
+                        )
+                    else:
+                        # Try to remember from previous runs
+                        configured_port = SelfHealingEngine._port_memory.get(cwd)
+                        if configured_port:
+                            logger.info(
+                                f"[AutonomousAgent] Using remembered port {configured_port} for project"
+                            )
+
+                    # Check if the configured port is in use
+                    if configured_port:
+                        from backend.services.navi_brain import PortManager
+
+                        # Check port status
+                        port_status = await PortManager.check_port(configured_port)
+
+                        if not port_status.is_available:
+                            # Port is busy - identify the process
+                            process_owner = (
+                                await SelfHealingEngine._identify_process_owner(
+                                    configured_port, cwd
+                                )
+                            )
+
+                            if process_owner["is_same_project"]:
+                                # Server is already running for this project!
+                                logger.info(
+                                    f"[AutonomousAgent] Port {configured_port} already running for this project - reporting success"
+                                )
+                                return {
+                                    "success": True,
+                                    "result": f"✅ Development server is already running on port {configured_port}\nAccess it at: http://localhost:{configured_port}",
+                                    "exit_code": 0,
+                                    "reason": "Server already running on configured port",
+                                }
+
+                            elif not process_owner["is_related"]:
+                                # Different project - this is a real conflict
+                                process_name = (
+                                    port_status.process_name or "Unknown process"
+                                )
+
+                                # Find alternative port
+                                alt_port = await PortManager.find_available_port(
+                                    configured_port, configured_port + 100
+                                )
+
+                                logger.info(
+                                    f"[AutonomousAgent] Port {configured_port} occupied by different project. "
+                                    f"Will use port {alt_port} instead."
+                                )
+
+                                # Modify command to use alternative port
+                                command = PortManager.modify_command_for_port(
+                                    command, alt_port
+                                )
+
+                                # Update port memory
+                                SelfHealingEngine._port_memory[cwd] = alt_port
+
+                                # Add info message (will be shown to user)
+                                logger.info(
+                                    f"[AutonomousAgent] Modified command to use port {alt_port} "
+                                    f"(original port {configured_port} in use by {process_name})"
+                                )
+
+                # Use async subprocess for real-time streaming output
+                import asyncio
+
+                logger.info(
+                    f"[AutonomousAgent] Executing command with streaming output: {command[:100]}..."
+                )
+
+                # Create async subprocess
+                process = await asyncio.create_subprocess_shell(
+                    command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=cwd,
+                    env=env,
+                    executable="/bin/bash",
+                )
+
+                stdout_lines = []
+                stderr_lines = []
+
+                async def read_stream(stream, output_list, stream_name):
+                    """Read from stream line by line."""
+                    while True:
+                        line = await stream.readline()
+                        if not line:
+                            break
+
+                        line_text = line.decode("utf-8", errors="replace").rstrip()
+                        output_list.append(line_text)
+
+                # Read stdout and stderr concurrently
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(
+                            read_stream(process.stdout, stdout_lines, "stdout"),
+                            read_stream(process.stderr, stderr_lines, "stderr"),
+                        ),
+                        timeout=cmd_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    process.kill()
+                    await process.wait()
+                    return {
+                        "success": False,
+                        "exit_code": -1,
+                        "stdout": "\n".join(stdout_lines),
+                        "stderr": f"Command timed out after {cmd_timeout} seconds",
+                        "error": f"Command execution exceeded timeout of {cmd_timeout} seconds",
+                    }
+
+                # Wait for process to complete
+                exit_code = await process.wait()
+
+                stdout_text = "\n".join(stdout_lines)
+                stderr_text = "\n".join(stderr_lines)
 
                 context.commands_run.append(
                     {
                         "command": arguments["command"],
-                        "exit_code": result.returncode,
-                        "success": result.returncode == 0,
+                        "exit_code": exit_code,
+                        "success": exit_code == 0,
                     }
                 )
 
-                return {
-                    "success": result.returncode == 0,
-                    "exit_code": result.returncode,
-                    "stdout": result.stdout[:3000] if result.stdout else "",
-                    "stderr": result.stderr[:3000] if result.stderr else "",
+                # If command failed, analyze the error and suggest alternatives
+                error_analysis = ""
+                if exit_code != 0:
+                    error_analysis = analyze_command_error(
+                        command=arguments["command"],
+                        stderr=stderr_text,
+                        stdout=stdout_text,
+                        exit_code=exit_code,
+                    )
+                    logger.info(
+                        f"[AutonomousAgent] Command failed - error analysis:\n{error_analysis}"
+                    )
+
+                response = {
+                    "success": exit_code == 0,
+                    "exit_code": exit_code,
+                    "stdout": stdout_text[:3000] if stdout_text else "",
+                    "stderr": stderr_text[:3000] if stderr_text else "",
                 }
+
+                # Add error analysis to help the agent try a different approach
+                if error_analysis:
+                    response["error_analysis"] = error_analysis
+
+                # If this was a dev server command, verify the server is responding
+                if is_dev_server_cmd:
+                    server_port = _determine_server_port(cwd)
+                    if server_port:
+                        import urllib.request
+                        import urllib.error
+
+                        url = f"http://localhost:{server_port}/"
+                        verified = False
+                        last_error = ""
+                        for _ in range(6):  # up to ~6 seconds total
+                            try:
+                                req = urllib.request.Request(url, method="HEAD")
+                                with urllib.request.urlopen(req, timeout=2) as resp:
+                                    if resp.status < 500:
+                                        verified = True
+                                        break
+                            except urllib.error.HTTPError as e:
+                                if e.code < 500:
+                                    verified = True
+                                    break
+                                last_error = f"HTTP {e.code}"
+                            except Exception as e:
+                                last_error = str(e)
+
+                        # Fallback: check port listener if HTTP check failed
+                        if not verified:
+                            try:
+                                check = subprocess.run(
+                                    ["lsof", "-i", f":{server_port}"],
+                                    cwd=cwd,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=5,
+                                )
+                                if check.stdout.strip():
+                                    verified = True
+                            except Exception as e:
+                                last_error = last_error or str(e)
+
+                        response.update(
+                            {
+                                "server_verified": verified,
+                                "server_url": url,
+                                "server_port": server_port,
+                                "server_check_error": (
+                                    last_error if not verified else ""
+                                ),
+                            }
+                        )
+
+                response["message"] = format_command_message(
+                    arguments["command"],
+                    response.get("success", False),
+                    response.get("stdout", ""),
+                    response.get("stderr", ""),
+                )
+
+                if response.get("server_verified"):
+                    response[
+                        "message"
+                    ] += f" | Server responding at {response.get('server_url')}"
+
+                return response
 
             elif tool_name == "search_files":
                 import glob as glob_module
@@ -2324,10 +3819,7 @@ Return ONLY the JSON, no markdown or explanations."""
                 health_path = arguments.get("health_path", "/")
                 startup_time = arguments.get("startup_time", 10)
 
-                # Set up environment with npm_config_prefix removed (conflicts with nvm)
-                env = os.environ.copy()
-                env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
-                env["SHELL"] = env.get("SHELL", "/bin/bash")
+                env = get_command_env()
 
                 # First, kill any existing process on the port
                 try:
@@ -2352,39 +3844,21 @@ Return ONLY the JSON, no markdown or explanations."""
                     pass
 
                 # Detect if this is a Node.js command that needs nvm setup
-                node_commands = ["npm", "npx", "node", "yarn", "pnpm", "bun", "next"]
-                cmd_parts = command.split()
-                is_node_cmd = cmd_parts and any(
-                    cmd_parts[0] == nc or cmd_parts[0].endswith(f"/{nc}")
-                    for nc in node_commands
-                )
+                is_node_cmd = is_node_command(command)
 
                 # If it's a node command and doesn't already source nvm, add the setup
                 server_command = command
                 if is_node_cmd and "nvm.sh" not in command:
-                    home = os.environ.get("HOME", os.path.expanduser("~"))
-                    nvm_dir = env.get("NVM_DIR", os.path.join(home, ".nvm"))
-                    if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
-                        # Check for .nvmrc in workspace
-                        nvmrc_path = os.path.join(self.workspace_path, ".nvmrc")
-                        node_version_path = os.path.join(
-                            self.workspace_path, ".node-version"
-                        )
-                        if os.path.exists(nvmrc_path) or os.path.exists(
-                            node_version_path
-                        ):
-                            nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
-                        else:
-                            nvm_use = "nvm use default 2>/dev/null || true"
-
-                        # Prepend nvm setup to command
-                        server_command = (
-                            f'export NVM_DIR="{nvm_dir}" && '
-                            f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-                            f"{nvm_use} && {command}"
-                        )
+                    env_setup = get_node_env_setup(
+                        cwd=self.workspace_path,
+                        include_project_bins=False,
+                        include_common_paths=True,
+                        fnm_use_on_cd=False,
+                    )
+                    if env_setup:
+                        server_command = f"{env_setup} && {command}"
                         logger.info(
-                            "[AutonomousAgent] Added nvm setup to start_server command"
+                            "[AutonomousAgent] Added node env setup to start_server command"
                         )
 
                 # Start the server in background using nohup
@@ -2670,11 +4144,14 @@ Return ONLY the JSON, no markdown or explanations."""
         return processed
 
     async def _call_llm_with_tools(
-        self, messages: List[Dict[str, Any]], context: TaskContext
+        self,
+        messages: List[Dict[str, Any]],
+        context: TaskContext,
+        rag_context: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Call LLM with tools and stream the response."""
 
-        system_prompt = self._build_system_prompt(context)
+        system_prompt = self._build_system_prompt(context, rag_context=rag_context)
 
         if self.provider == "anthropic":
             async for event in self._call_anthropic(messages, system_prompt, context):
@@ -2706,11 +4183,29 @@ Return ONLY the JSON, no markdown or explanations."""
             logger.info(f"[AutonomousAgent] Last Message Preview: {last_content}...")
         logger.info("=" * 60)
 
+        # Dynamic token allocation based on task complexity
+        # Extract user request from first user message
+        user_request = ""
+        for msg in messages:
+            if msg.get("role") == "user":
+                user_request = str(msg.get("content", ""))
+                break
+
+        # Estimate required tokens dynamically
+        max_tokens = self._estimate_required_tokens(
+            user_request, context, context.complexity
+        )
+
+        logger.info(
+            f"[AutonomousAgent] 💡 Dynamic token allocation: {max_tokens} tokens "
+            f"(Complexity: {context.complexity.value})"
+        )
+
         async with aiohttp.ClientSession() as session:
             while True:
                 payload = {
                     "model": self.model,
-                    "max_tokens": 4096,
+                    "max_tokens": max_tokens,
                     "system": system_prompt,
                     "messages": messages,
                     "tools": NAVI_TOOLS,
@@ -2725,6 +4220,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
                 logger.info("[AutonomousAgent] 📡 Sending request to Anthropic...")
 
+                # === METRICS: Start LLM call timer ===
+                call_start_time = time.time()
+
                 async with session.post(
                     "https://api.anthropic.com/v1/messages",
                     headers=headers,
@@ -2738,6 +4236,15 @@ Return ONLY the JSON, no markdown or explanations."""
                     )
 
                     if response.status != 200:
+                        # === METRICS: Record failed LLM call ===
+                        call_duration_ms = (time.time() - call_start_time) * 1000
+                        LLM_CALLS.labels(
+                            phase="autonomous", model=self.model, status="error"
+                        ).inc()
+                        LLM_LATENCY.labels(
+                            phase="autonomous", model=self.model
+                        ).observe(call_duration_ms)
+
                         error = await response.text()
                         logger.error(f"[AutonomousAgent] ❌ API Error: {error[:500]}")
                         yield {"type": "error", "error": error}
@@ -2749,6 +4256,8 @@ Return ONLY the JSON, no markdown or explanations."""
                     tool_calls = []
                     current_tool = None
                     stop_reason = None
+                    input_tokens = 0
+                    output_tokens = 0
 
                     async for line in response.content:
                         line = line.decode("utf-8").strip()
@@ -2763,6 +4272,24 @@ Return ONLY the JSON, no markdown or explanations."""
                             data = json.loads(data_str)
                             event_type = data.get("type", "")
 
+                            # Capture token usage from message_start event
+                            if event_type == "message_start":
+                                usage = data.get("message", {}).get("usage", {})
+                                input_tokens = usage.get("input_tokens", 0)
+                                logger.info(
+                                    f"[AutonomousAgent] 📊 Input tokens: {input_tokens}"
+                                )
+
+                            # Capture output tokens from message_delta event
+                            elif event_type == "message_delta":
+                                usage = data.get("usage", {})
+                                if usage:
+                                    output_tokens = usage.get("output_tokens", 0)
+                                    logger.info(
+                                        f"[AutonomousAgent] 📊 Output tokens: {output_tokens}"
+                                    )
+                                stop_reason = data.get("delta", {}).get("stop_reason")
+
                             if event_type == "content_block_start":
                                 block = data.get("content_block", {})
                                 if block.get("type") == "tool_use":
@@ -2775,7 +4302,11 @@ Return ONLY the JSON, no markdown or explanations."""
                                         "input": "",
                                     }
                                     if text_buffer:
-                                        yield {"type": "text", "text": text_buffer}
+                                        yield {
+                                            "type": "text",
+                                            "text": text_buffer,
+                                            "timestamp": get_event_timestamp(),
+                                        }
                                         text_buffer = ""
 
                             elif event_type == "content_block_delta":
@@ -2805,7 +4336,11 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if len(text_buffer) >= 30 or text.endswith(
                                         (".", "!", "?", "\n")
                                     ):
-                                        yield {"type": "text", "text": text_buffer}
+                                        yield {
+                                            "type": "text",
+                                            "text": text_buffer,
+                                            "timestamp": get_event_timestamp(),
+                                        }
                                         text_buffer = ""
                                 elif (
                                     delta.get("type") == "input_json_delta"
@@ -2833,6 +4368,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                             "name": current_tool["name"],
                                             "arguments": args,
                                         },
+                                        "timestamp": get_event_timestamp(),
                                     }
 
                                     # Execute the tool
@@ -2845,6 +4381,43 @@ Return ONLY the JSON, no markdown or explanations."""
                                     logger.info(
                                         f"[AutonomousAgent] ✅ Tool result: success={result.get('success', 'N/A')}"
                                     )
+
+                                    # Check if consent is required for this command
+                                    if result.get("requires_consent"):
+                                        logger.info(
+                                            f"[AutonomousAgent] 🔐 Consent required for command: {result.get('command')}"
+                                        )
+                                        # Emit consent event to frontend
+                                        yield {
+                                            "type": "command.consent_required",
+                                            "data": {
+                                                "consent_id": result.get("consent_id"),
+                                                "command": result.get("command"),
+                                                "shell": "bash",
+                                                "cwd": args.get(
+                                                    "cwd", self.workspace_path
+                                                ),
+                                                "danger_level": result.get(
+                                                    "danger_level", "medium"
+                                                ),
+                                                "warning": result.get("warning", ""),
+                                                "consequences": result.get(
+                                                    "consequences", []
+                                                ),
+                                                "alternatives": result.get(
+                                                    "alternatives", []
+                                                ),
+                                                "rollback_possible": result.get(
+                                                    "rollback_possible", False
+                                                ),
+                                            },
+                                            "timestamp": get_event_timestamp(),
+                                        }
+                                        # Don't yield tool_result yet - wait for consent
+                                        # Skip adding to tool_calls array for now
+                                        current_tool = None
+                                        continue
+
                                     if not result.get("success"):
                                         logger.warning(
                                             f"[AutonomousAgent] ⚠️ Tool error: {result.get('error', 'Unknown error')}"
@@ -2855,6 +4428,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                             "id": current_tool["id"],
                                             "result": result,
                                         },
+                                        "timestamp": get_event_timestamp(),
                                     }
 
                                     tool_calls.append(
@@ -2881,14 +4455,21 @@ Return ONLY the JSON, no markdown or explanations."""
                                     )
                                     current_tool = None
 
-                            elif event_type == "message_delta":
-                                stop_reason = data.get("delta", {}).get("stop_reason")
-
                         except json.JSONDecodeError:
                             continue
 
                     if text_buffer:
-                        yield {"type": "text", "text": text_buffer}
+                        yield {
+                            "type": "text",
+                            "text": text_buffer,
+                            "timestamp": get_event_timestamp(),
+                        }
+
+                    # === METRICS: Record successful LLM call latency ===
+                    call_duration_ms = (time.time() - call_start_time) * 1000
+                    LLM_LATENCY.labels(phase="autonomous", model=self.model).observe(
+                        call_duration_ms
+                    )
 
                     # Log stop reason
                     logger.info(f"[AutonomousAgent] 🛑 LLM Stop Reason: {stop_reason}")
@@ -2931,6 +4512,53 @@ Return ONLY the JSON, no markdown or explanations."""
                         tool_calls = []
                         continue
                     else:
+                        # === METRICS: Record successful LLM call ===
+                        LLM_CALLS.labels(
+                            phase="autonomous", model=self.model, status="success"
+                        ).inc()
+
+                        # === METRICS: Record token usage ===
+                        total_tokens = input_tokens + output_tokens
+                        if total_tokens > 0:
+                            LLM_TOKENS.labels(phase="autonomous", model=self.model).inc(
+                                total_tokens
+                            )
+
+                            # Calculate and record cost
+                            cost_usd = self._calculate_llm_cost(
+                                self.model, input_tokens, output_tokens
+                            )
+                            LLM_COST.labels(phase="autonomous", model=self.model).inc(
+                                cost_usd
+                            )
+
+                            logger.info(
+                                f"[AutonomousAgent] 💰 Tokens: {input_tokens} in + {output_tokens} out = {total_tokens} total"
+                            )
+                            logger.info(
+                                f"[AutonomousAgent] 💵 Cost: ${cost_usd:.6f} USD"
+                            )
+
+                            # Persist metrics to database
+                            await self._persist_llm_metrics(
+                                model=self.model,
+                                provider=self.provider,
+                                input_tokens=input_tokens,
+                                output_tokens=output_tokens,
+                                cost_usd=cost_usd,
+                                task_type="autonomous",
+                                status="success",
+                            )
+
+                        # === FEEDBACK: Log generation for feedback tracking ===
+                        gen_id = await self._log_generation(context, system_prompt)
+                        if gen_id:
+                            yield {
+                                "type": "generation_logged",
+                                "gen_id": gen_id,
+                                "timestamp": int(time.time() * 1000),
+                            }
+
                         logger.info(
                             "[AutonomousAgent] ✅ LLM turn complete - stop_reason: end_turn"
                         )
@@ -2964,6 +4592,9 @@ Return ONLY the JSON, no markdown or explanations."""
                     "messages": full_messages,
                     "tools": NAVI_FUNCTIONS_OPENAI,
                     "stream": True,
+                    "stream_options": {
+                        "include_usage": True
+                    },  # Enable token usage in stream
                 }
 
                 headers = {
@@ -2985,6 +4616,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
                 logger.info(f"[AutonomousAgent] 📡 Sending request to {base_url}...")
 
+                # === METRICS: Start LLM call timer ===
+                call_start_time = time.time()
+
                 async with session.post(
                     f"{base_url}/chat/completions",
                     headers=headers,
@@ -2998,6 +4632,15 @@ Return ONLY the JSON, no markdown or explanations."""
                     )
 
                     if response.status != 200:
+                        # === METRICS: Record failed LLM call ===
+                        call_duration_ms = (time.time() - call_start_time) * 1000
+                        LLM_CALLS.labels(
+                            phase="autonomous", model=self.model, status="error"
+                        ).inc()
+                        LLM_LATENCY.labels(
+                            phase="autonomous", model=self.model
+                        ).observe(call_duration_ms)
+
                         error = await response.text()
                         logger.error(f"[AutonomousAgent] ❌ API Error: {error[:500]}")
                         yield {"type": "error", "error": error}
@@ -3008,6 +4651,8 @@ Return ONLY the JSON, no markdown or explanations."""
                     detected_plan = None  # Track if we've detected a plan
                     tool_calls: Dict[int, Dict[str, Any]] = {}
                     finish_reason = None
+                    prompt_tokens = 0
+                    completion_tokens = 0
 
                     async for line in response.content:
                         line = line.decode("utf-8").strip()
@@ -3020,7 +4665,26 @@ Return ONLY the JSON, no markdown or explanations."""
 
                         try:
                             data = json.loads(data_str)
-                            choice = data.get("choices", [{}])[0]
+
+                            # Capture usage if available (some providers include it)
+                            usage = data.get("usage", {})
+                            if usage:
+                                prompt_tokens = usage.get(
+                                    "prompt_tokens", prompt_tokens
+                                )
+                                completion_tokens = usage.get(
+                                    "completion_tokens", completion_tokens
+                                )
+                                logger.info(
+                                    f"[AutonomousAgent] 📊 Usage received: prompt={prompt_tokens}, completion={completion_tokens}"
+                                )
+
+                            # Some chunks (like the final usage chunk) may not have choices
+                            choices = data.get("choices", [])
+                            if not choices:
+                                continue  # Skip chunks without choices (e.g., final usage chunk)
+
+                            choice = choices[0]
                             delta = choice.get("delta", {})
                             finish_reason = choice.get("finish_reason")
 
@@ -3046,7 +4710,11 @@ Return ONLY the JSON, no markdown or explanations."""
                                 if len(text_buffer) >= 30 or text.endswith(
                                     (".", "!", "?", "\n")
                                 ):
-                                    yield {"type": "text", "text": text_buffer}
+                                    yield {
+                                        "type": "text",
+                                        "text": text_buffer,
+                                        "timestamp": get_event_timestamp(),
+                                    }
                                     text_buffer = ""
 
                             if delta.get("tool_calls"):
@@ -3077,7 +4745,17 @@ Return ONLY the JSON, no markdown or explanations."""
                             continue
 
                     if text_buffer:
-                        yield {"type": "text", "text": text_buffer}
+                        yield {
+                            "type": "text",
+                            "text": text_buffer,
+                            "timestamp": get_event_timestamp(),
+                        }
+
+                    # === METRICS: Record successful LLM call latency ===
+                    call_duration_ms = (time.time() - call_start_time) * 1000
+                    LLM_LATENCY.labels(phase="autonomous", model=self.model).observe(
+                        call_duration_ms
+                    )
 
                     if finish_reason == "tool_calls" and tool_calls:
                         assistant_tool_calls = []
@@ -3210,6 +4888,56 @@ Return ONLY the JSON, no markdown or explanations."""
                         tool_calls = {}
                         continue
                     else:
+                        # === METRICS: Record successful LLM call ===
+                        LLM_CALLS.labels(
+                            phase="autonomous", model=self.model, status="success"
+                        ).inc()
+
+                        # === METRICS: Record token usage ===
+                        total_tokens = prompt_tokens + completion_tokens
+                        logger.info(
+                            f"[AutonomousAgent] 📊 Final token counts: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}"
+                        )
+                        if total_tokens > 0:
+                            LLM_TOKENS.labels(phase="autonomous", model=self.model).inc(
+                                total_tokens
+                            )
+
+                            # Calculate and record cost
+                            cost_usd = self._calculate_llm_cost(
+                                self.model, prompt_tokens, completion_tokens
+                            )
+                            LLM_COST.labels(phase="autonomous", model=self.model).inc(
+                                cost_usd
+                            )
+
+                            logger.info(
+                                f"[AutonomousAgent] 💰 Tokens: {prompt_tokens} prompt + {completion_tokens} completion = {total_tokens} total"
+                            )
+                            logger.info(
+                                f"[AutonomousAgent] 💵 Cost: ${cost_usd:.6f} USD"
+                            )
+
+                            # Persist metrics to database
+                            await self._persist_llm_metrics(
+                                model=self.model,
+                                provider=self.provider,
+                                input_tokens=prompt_tokens,
+                                output_tokens=completion_tokens,
+                                cost_usd=cost_usd,
+                                task_type="autonomous",
+                                status="success",
+                            )
+
+                        # === FEEDBACK: Log generation for feedback tracking ===
+                        gen_id = await self._log_generation(context, system_prompt)
+                        if gen_id:
+                            yield {
+                                "type": "generation_logged",
+                                "gen_id": gen_id,
+                                "timestamp": int(time.time() * 1000),
+                            }
+
                         return
 
     async def execute_task(
@@ -3262,10 +4990,63 @@ Return ONLY the JSON, no markdown or explanations."""
 
         yield {"type": "status", "status": "planning", "task_id": context.task_id}
 
+        # Emit thinking progress: analyzing request
+        yield {
+            "type": "thinking_progress",
+            "message": "Analyzing your request...",
+            "timestamp": int(__import__("time").time()) * 1000,
+        }
+
         # Gather environment info ONCE at the start to avoid blind guessing
+        yield {
+            "type": "thinking_progress",
+            "message": "Checking project configuration...",
+            "timestamp": int(__import__("time").time()) * 1000,
+        }
         env_info = await self._diagnose_environment()
 
+        # Retrieve relevant codebase context via RAG
+        yield {
+            "type": "thinking_progress",
+            "message": "Searching codebase for relevant context...",
+            "timestamp": int(__import__("time").time()) * 1000,
+        }
+        rag_context = None
+        try:
+            # === METRICS: Start RAG retrieval timer ===
+            rag_start_time = time.time()
+
+            rag_context = await get_context_for_task(
+                workspace_path=self.workspace_path,
+                task_description=request,
+                max_context_tokens=4000,  # Limit context size
+            )
+
+            # === METRICS: Record RAG retrieval latency ===
+            rag_duration_ms = (time.time() - rag_start_time) * 1000
+            RAG_RETRIEVAL_LATENCY.labels(phase="autonomous").observe(rag_duration_ms)
+
+            if rag_context and rag_context.strip():
+                # Estimate number of chunks (typical chunk is ~500 chars)
+                estimated_chunks = max(1, len(rag_context) // 500)
+                RAG_CHUNKS_RETRIEVED.labels(phase="autonomous").inc(estimated_chunks)
+
+                logger.info(
+                    f"[AutonomousAgent] 🔍 Retrieved RAG context: {len(rag_context)} chars "
+                    f"(~{estimated_chunks} chunks) in {rag_duration_ms:.0f}ms"
+                )
+            else:
+                logger.info("[AutonomousAgent] No relevant RAG context found")
+        except Exception as e:
+            logger.warning(f"[AutonomousAgent] RAG retrieval failed: {e}")
+            rag_context = None
+
         # Generate and emit execution plan for complex tasks
+        yield {
+            "type": "thinking_progress",
+            "message": "Planning actions...",
+            "timestamp": int(__import__("time").time()) * 1000,
+        }
         plan_steps = []
         async for plan_event in self._generate_plan(request, env_info, context):
             yield plan_event
@@ -3297,6 +5078,30 @@ Return ONLY the JSON, no markdown or explanations."""
 --- END ENVIRONMENT INFO ---
 
 Use the tools and versions listed above. Don't guess - use what's actually available."""
+
+        # Check if task should be decomposed into subtasks
+        if self._should_decompose_task(request, complexity):
+            logger.info(
+                "[AutonomousAgent] 🔀 Task will be decomposed into subtasks for better execution"
+            )
+
+            # Execute with decomposition and stream progress directly
+            async for event in self._execute_with_decomposition_generator(
+                request=request,
+                context=context,
+            ):
+                yield event
+
+            # After decomposition completes, return
+            yield {
+                "type": "complete",
+                "summary": {
+                    "success": True,
+                    "message": "Enterprise task completed via decomposition",
+                    "total_iterations": context.iteration,
+                },
+            }
+            return
 
         messages = [{"role": "user", "content": enhanced_request}]
 
@@ -3395,6 +5200,7 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                     f"1. Fixing the issue manually\n"
                     f"2. Providing more specific instructions\n"
                     f"3. Checking if there are missing dependencies or configuration\n",
+                    "timestamp": get_event_timestamp(),
                 }
 
                 # Mark plan as failed
@@ -3432,7 +5238,9 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
 
             # Only emit iteration event for subsequent iterations (not the first one)
             # This avoids showing "Iteration 1/10" debug info to users
-            if context.iteration > 1:
+            if context.iteration > 1 and not self._should_suppress_iteration_banner(
+                context
+            ):
                 # Provide context-aware iteration reason
                 if context.consecutive_same_error_count >= 3:
                     reason = f"Loop detected ({context.consecutive_same_error_count}x same error) - forcing different strategy"
@@ -3440,8 +5248,10 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                     reason = "Same error persists - trying alternative fix"
                 elif context.failed_approaches:
                     reason = f"Previous approach failed - trying alternative ({len(context.failed_approaches)} attempts so far)"
-                else:
+                elif context.last_verification_failed:
                     reason = "Fixing verification errors..."
+                else:
+                    reason = "Trying next approach..."
 
                 yield {
                     "type": "iteration",
@@ -3461,9 +5271,14 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                     ),
                 }
 
-            # Call LLM with tools
+            # Call LLM with tools (with RAG context on first iteration)
             llm_output_text = ""
-            async for event in self._call_llm_with_tools(messages, context):
+            last_error_event = None  # Track if we got an error event
+            # Only inject RAG context on first iteration to avoid repetition
+            current_rag_context = rag_context if context.iteration == 1 else None
+            async for event in self._call_llm_with_tools(
+                messages, context, rag_context=current_rag_context
+            ):
                 yield event
 
                 # Track assistant text for conversation history and gate detection
@@ -3477,6 +5292,58 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                             {"role": "assistant", "content": ""}
                         )
                     context.conversation_history[-1]["content"] += event["text"]
+
+                # Track error events for early exit detection
+                elif event.get("type") == "error":
+                    last_error_event = event
+
+            # === EARLY EXIT: Check for non-retryable API errors ===
+            if last_error_event:
+                error_msg = last_error_event.get("error", "")
+                error_lower = error_msg.lower()
+
+                # Detect non-retryable errors (rate limits, quota, auth issues)
+                is_non_retryable = (
+                    "rate" in error_lower
+                    or "429" in error_msg
+                    or "quota" in error_lower
+                    or "billing" in error_lower
+                    or "402" in error_msg
+                    or "401" in error_msg
+                    or "unauthorized" in error_lower
+                    or ("invalid" in error_lower and "key" in error_lower)
+                    or "payment" in error_lower
+                )
+
+                if is_non_retryable:
+                    # Stop immediately - don't waste remaining iterations
+                    logger.warning(
+                        f"[AutonomousAgent] 🛑 Non-retryable API error detected, exiting early (iteration {context.iteration}/{context.max_iterations})"
+                    )
+                    yield {"type": "status", "status": "failed"}
+                    yield {
+                        "type": "text",
+                        "text": f"\n\n🛑 **Cannot continue: Non-retryable API error**\n\n"
+                        f"**Error:** {error_msg[:300]}\n\n"
+                        f"This is a non-retryable error (rate limit, quota exceeded, or authentication issue). "
+                        f"Please resolve the issue and try again later.\n\n"
+                        f"**Common solutions:**\n"
+                        f"- Rate limit: Wait and try again later\n"
+                        f"- Quota exceeded: Check your API usage limits\n"
+                        f"- Auth error: Verify your API key is valid\n",
+                    }
+                    yield {
+                        "type": "complete",
+                        "summary": {
+                            "success": False,
+                            "stopped_reason": "non_retryable_api_error",
+                            "error": error_msg[:200],
+                            "iterations_used": context.iteration,
+                            "iterations_saved": context.max_iterations
+                            - context.iteration,
+                        },
+                    }
+                    return  # Exit immediately - no more iterations
 
             # === ENTERPRISE MODE: Human Checkpoint Gate Detection ===
             if (
@@ -3570,7 +5437,8 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
 
                     yield {
                         "type": "text",
-                        "text": "\n\n🔧 **Now implementing the fix...**\n",
+                        "text": "\n\n🔧 **No actions executed yet—attempting tool run.**\n",
+                        "timestamp": get_event_timestamp(),
                     }
 
                     # Add a forceful follow-up message to make LLM actually implement
@@ -3634,51 +5502,58 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                 return
 
             # Run verification if enabled - use complexity-based strategy
-            # OPTIMIZATION: Skip verification entirely if no files were modified
-            if not (context.files_modified or context.files_created):
-                # No files changed - skip verification for info/status tasks
-                logger.info(
-                    "[AutonomousAgent] ⏭️ Skipping verification - no files modified or created"
-                )
-                yield {
-                    "type": "text",
-                    "text": "\n✅ **Task completed** (no code changes needed)\n",
-                }
-                yield {"type": "status", "status": "completed"}
-
-                # Mark plan as complete if we have one
-                if plan_steps and context.plan_id:
-                    for i in range(len(plan_steps)):
-                        yield {
-                            "type": "step_update",
-                            "data": {
-                                "plan_id": context.plan_id,
-                                "step_index": i,
-                                "status": "completed",
-                            },
-                        }
+            # OPTIMIZATION: Skip verification entirely if no files were modified or commands run
+            # Note: Commands (like npm install, starting servers) ARE valuable actions even if no files change
+            if not (
+                context.files_modified or context.files_created or context.commands_run
+            ):
+                # No files changed and no commands run - genuinely info-only task
+                if True:  # Simplified - removed failure detection due to complexity
+                    # No files changed and no failures - genuinely info-only task
+                    logger.info(
+                        "[AutonomousAgent] ⏭️ Skipping verification - no files modified or created, no failures"
+                    )
+                    context.last_verification_failed = False
                     yield {
-                        "type": "plan_complete",
-                        "data": {"plan_id": context.plan_id},
+                        "type": "text",
+                        "text": "\n✅ **Task completed** (no code changes needed)\n",
+                        "timestamp": get_event_timestamp(),
                     }
+                    yield {"type": "status", "status": "completed"}
 
-                next_steps = self._generate_next_steps(context)
-                if next_steps:
-                    yield {"type": "next_steps", "next_steps": next_steps}
+                    # Mark plan as complete if we have one
+                    if plan_steps and context.plan_id:
+                        for i in range(len(plan_steps)):
+                            yield {
+                                "type": "step_update",
+                                "data": {
+                                    "plan_id": context.plan_id,
+                                    "step_index": i,
+                                    "status": "completed",
+                                },
+                            }
+                        yield {
+                            "type": "plan_complete",
+                            "data": {"plan_id": context.plan_id},
+                        }
 
-                yield {
-                    "type": "complete",
-                    "summary": {
-                        "task_id": context.task_id,
-                        "files_read": len(context.files_read),
-                        "files_modified": 0,
-                        "files_created": 0,
-                        "iterations": context.iteration,
-                        "verification_skipped": True,
-                        "next_steps": next_steps,
-                    },
-                }
-                return
+                    next_steps = self._generate_next_steps(context)
+                    if next_steps:
+                        yield {"type": "next_steps", "next_steps": next_steps}
+
+                    yield {
+                        "type": "complete",
+                        "summary": {
+                            "task_id": context.task_id,
+                            "files_read": len(context.files_read),
+                            "files_modified": 0,
+                            "files_created": 0,
+                            "iterations": context.iteration,
+                            "verification_skipped": True,
+                            "next_steps": next_steps,
+                        },
+                    }
+                    return
 
             if run_verification and self.verification_commands:
                 context.status = TaskStatus.VERIFYING
@@ -3715,6 +5590,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     yield {
                         "type": "text",
                         "text": "\n\n**Quick validation (simple task)...**\n",
+                        "timestamp": get_event_timestamp(),
                     }
                     logger.info(
                         "[AutonomousAgent] 🚀 Using quick validation for simple task"
@@ -3729,9 +5605,11 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         logger.info(
                             "[AutonomousAgent] ✅ Quick validation passed - skipping full build"
                         )
+                        context.last_verification_failed = False
                         yield {
                             "type": "text",
                             "text": "\n✅ **Quick validation passed!**\n",
+                            "timestamp": get_event_timestamp(),
                         }
                         yield {"type": "status", "status": "completed"}
 
@@ -3772,9 +5650,11 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         return
                     else:
                         # Quick validation failed - syntax error
+                        context.last_verification_failed = True
                         yield {
                             "type": "text",
                             "text": f"\n⚠️ **Syntax error:** {error_msg}\n",
+                            "timestamp": get_event_timestamp(),
                         }
                         # Continue to retry loop - don't do full verification
                         context.error_history.append(
@@ -3796,7 +5676,8 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         continue  # Skip to next iteration
 
                 # For MEDIUM and COMPLEX tasks: run appropriate verification
-                yield {"type": "text", "text": "\n\n**Running verification...**\n"}
+                # Don't emit verification status as text - it makes responses verbose
+                # yield {"type": "text", "text": "\n\n**Running verification...**\n", "timestamp": get_event_timestamp()}
 
                 # Always run tests for MEDIUM and COMPLEX tasks (not just COMPLEX)
                 # Tests are crucial for validating changes work correctly
@@ -3833,10 +5714,13 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     logger.info(
                         "[AutonomousAgent] ✅ ALL VERIFICATIONS PASSED - TASK COMPLETE"
                     )
-                    yield {
-                        "type": "text",
-                        "text": "\n✅ **All verifications passed!**\n",
-                    }
+                    context.last_verification_failed = False
+                    # Don't emit verification success as text - it makes responses verbose
+                    # yield {
+                    #     "type": "text",
+                    #     "text": "\n✅ **All verifications passed!**\n",
+                    # "timestamp": get_event_timestamp()
+                    # }
                     yield {"type": "status", "status": "completed"}
 
                     # Mark all plan steps as completed (0-indexed for frontend)
@@ -3880,6 +5764,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                 logger.warning(
                     f"[AutonomousAgent] Failed verifications: {[r.type.value for r in results if not r.success]}"
                 )
+                context.last_verification_failed = True
                 context.status = TaskStatus.FIXING
                 yield {"type": "status", "status": "fixing"}
 
@@ -3926,6 +5811,7 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     yield {
                         "type": "text",
                         "text": f"\n🔄 **Loop detected - same error {context.consecutive_same_error_count} times.** Forcing different strategy...\n",
+                        "timestamp": get_event_timestamp(),
                     }
                     yield {
                         "type": "loop_detected",
@@ -3933,10 +5819,14 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         "count": context.consecutive_same_error_count,
                     }
                 else:
-                    yield {
-                        "type": "text",
-                        "text": f"\n❌ **Verification failed.** Analyzing errors and fixing...\n\n{error_message}\n",
-                    }
+                    # Don't emit verification failure as text - it makes responses verbose
+                    # The error will be shown via the status change to "fixing"
+                    pass
+                    # yield {
+                    #     "type": "text",
+                    #     "text": f"\n❌ **Verification failed.** Analyzing errors and fixing...\n\n{error_message}\n",
+                    #     "timestamp": get_event_timestamp()
+                    # }
 
                 # Add error context to messages for retry
                 messages.append(
@@ -4050,6 +5940,7 @@ After fixing, I'll run verification again.""",
 
             else:
                 # No verification or no commands available
+                context.last_verification_failed = False
                 yield {"type": "status", "status": "completed"}
 
                 # Mark plan as complete if we have one
@@ -4092,6 +5983,7 @@ After fixing, I'll run verification again.""",
         yield {
             "type": "text",
             "text": f"\n⚠️ **Max iterations ({context.max_iterations}) reached.** Some issues may remain.\n",
+            "timestamp": get_event_timestamp(),
         }
 
         # Mark plan as failed/incomplete

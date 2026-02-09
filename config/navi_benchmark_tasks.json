@@ -1,0 +1,56 @@
+{
+  "tasks": [
+    {
+      "id": "small",
+      "label": "Small task",
+      "description": "Lightweight file and pattern checks",
+      "timeout_seconds": 180,
+      "pytest_args": [
+        "backend/tests/test_navi_comprehensive.py::TestFileOperations::test_read_file_content",
+        "backend/tests/test_navi_comprehensive.py::TestCodeAnalysis::test_detect_python_print_statements",
+        "-q"
+      ]
+    },
+    {
+      "id": "medium",
+      "label": "Medium task",
+      "description": "Repository analysis",
+      "timeout_seconds": 180,
+      "pytest_args": [
+        "backend/tests/test_navi_comprehensive.py::TestCodeAnalysis::test_analyze_large_repository_structure",
+        "-q"
+      ]
+    },
+    {
+      "id": "semi_medium",
+      "label": "Semi‑medium task",
+      "description": "API review endpoint flow",
+      "timeout_seconds": 240,
+      "pytest_args": [
+        "backend/tests/test_navi_api_integration.py::TestCodeReviewEndpoints::test_review_working_tree_endpoint",
+        "-q"
+      ]
+    },
+    {
+      "id": "long",
+      "label": "Long task",
+      "description": "Full API integration suite",
+      "timeout_seconds": 300,
+      "pytest_args": [
+        "backend/tests/test_navi_api_integration.py",
+        "-q"
+      ]
+    },
+    {
+      "id": "complex",
+      "label": "Complex task",
+      "description": "Comprehensive + API integration suites",
+      "timeout_seconds": 300,
+      "pytest_args": [
+        "backend/tests/test_navi_comprehensive.py",
+        "backend/tests/test_navi_api_integration.py",
+        "-q"
+      ]
+    }
+  ]
+}

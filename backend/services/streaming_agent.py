@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import re
-import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -107,27 +106,15 @@ STEP_PATTERN = re.compile(
 
 def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
     """
-    Parse an execution plan from LLM text output.
-    Returns plan dict with steps if found, None otherwise.
+    Execution plan parsing is disabled.
+
+    Always returns None. Execution plans caused phantom "All steps completed" issues
+    where the LLM would list steps it didn't actually execute. We now only show
+    actual tool executions as they happen, not predicted plans.
+
+    Note: PLAN_INTRO_PATTERN and STEP_PATTERN regex patterns are preserved above
+    for potential future re-enablement via feature flag.
     """
-    match = PLAN_INTRO_PATTERN.search(text)
-    if not match:
-        return None
-
-    steps_text = match.group(1)
-    steps = []
-
-    for step_match in STEP_PATTERN.finditer(steps_text):
-        step_num = int(step_match.group(1))
-        title = step_match.group(2).strip()
-        detail = (step_match.group(3) or "").strip()
-
-        if title:  # Only add if we have a title
-            steps.append({"index": step_num, "title": title, "detail": detail})
-
-    if len(steps) >= 2:  # Only return if we have at least 2 steps
-        return {"plan_id": f"plan-{uuid.uuid4().hex[:8]}", "steps": steps}
-
     return None
 
 
@@ -769,6 +756,13 @@ NAVI_TOOLS = [
                 "cwd": {
                     "type": "string",
                     "description": "Optional: working directory relative to workspace root",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Optional: timeout in seconds (default 300, max 1800). Use longer timeouts for builds, tests, or package installs.",
+                    "default": 300,
+                    "minimum": 1,
+                    "maximum": 1800,
                 },
             },
             "required": ["command"],

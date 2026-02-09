@@ -48,3 +48,32 @@ plan_active_total = Counter(
     "Total active plan sessions",
     ["org_id"],
 )
+
+# RAG (Retrieval Augmented Generation) metrics
+RAG_RETRIEVAL_LATENCY = Histogram(
+    "aep_rag_retrieval_latency_ms",
+    "RAG context retrieval latency in milliseconds",
+    ["phase"],
+    buckets=(10, 25, 50, 100, 200, 400, 800, 1600),
+)
+
+RAG_CHUNKS_RETRIEVED = Counter(
+    "aep_rag_chunks_retrieved_total",
+    "Total number of RAG chunks retrieved",
+    ["phase"],
+)
+
+# Iteration-level tracing metrics
+TASK_ITERATIONS = Histogram(
+    "aep_task_iterations",
+    "Number of LLM iterations per task",
+    ["status"],
+    buckets=(1, 2, 3, 5, 8, 13, 21, 34),
+)
+
+TASK_COMPLETION_TIME = Histogram(
+    "aep_task_completion_time_ms",
+    "Total task completion time in milliseconds",
+    ["status"],
+    buckets=(1000, 5000, 10000, 30000, 60000, 120000, 300000),
+)

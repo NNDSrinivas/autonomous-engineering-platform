@@ -2,6 +2,7 @@
 import type { NaviChatMessage, NaviChatResponse } from "../../types/naviChat";
 import { mapChatResponseToNaviChatMessage } from "../../types/naviChat";
 import { ORG, USER_ID } from "../client";
+import { getAuthToken } from "../../utils/auth";
 
 /**
  * Resolve the backend base URL.
@@ -65,11 +66,19 @@ export async function sendNaviChat(
     console.log("[NAVI Client] Full request body JSON:", JSON.stringify(body, null, 2));
 
     try {
+        const authToken = getAuthToken();
         const res = await fetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "X-Org-Id": ORG,
+                ...(authToken
+                    ? {
+                        Authorization: authToken.startsWith("Bearer ")
+                            ? authToken
+                            : `Bearer ${authToken}`,
+                    }
+                    : {}),
             },
             body: JSON.stringify(body),
         });

@@ -60,6 +60,13 @@ patterns:
       - "make a new endpoint for auth"
       - "add API /products"
 
+  - regex: "(?:create|make|add)\\s+(?:a\\s+)?(?:new\\s+)?(?:rest\\s+)?api\\s+endpoint\\s+(?:for\\s+|to\\s+)?(.+)"
+    action: "create_api"
+    confidence: 0.92
+    examples:
+      - "create a REST API endpoint for users"
+      - "add api endpoint /users/{id}"
+
   # File Creation
   - regex: "(?:create|make|add|new)\\s+(?:a\\s+)?(?:new\\s+)?file\\s+(.+)"
     action: "create_file"
@@ -128,6 +135,21 @@ patterns:
       - "create tests for UserService"
       - "write test for login function"
 
+  - regex: "(?:generate|write|create)\\s+(?:unit\\s+|integration\\s+|e2e\\s+)?tests?\\s+for\\s+(.+)"
+    action: "create_test"
+    confidence: 0.92
+    examples:
+      - "generate unit tests for UserService"
+      - "write integration tests for payments"
+      - "create tests for the login flow"
+
+  - regex: "(?:generate|write)\\s+tests?\\b"
+    action: "create_test"
+    confidence: 0.8
+    examples:
+      - "generate tests"
+      - "write tests"
+
   - regex: "run\\s+tests?"
     action: "run_tests"
     confidence: 0.95
@@ -135,12 +157,162 @@ patterns:
       - "run tests"
       - "run test"
 
+  - regex: "(?:do\\s+a\\s+)?code\\s+review\\b"
+    action: "code_review"
+    confidence: 0.95
+    examples:
+      - "code review this"
+      - "do a code review"
+      - "review the changes"
+
+  - regex: "(?:review|analyze)\\s+the\\s+code\\b"
+    action: "code_review"
+    confidence: 0.85
+    examples:
+      - "review the code"
+      - "analyze the code for issues"
+
+  - regex: "(?:add|write|generate)\\s+documentation\\b"
+    action: "generate_docs"
+    confidence: 0.9
+    examples:
+      - "add documentation"
+      - "generate documentation"
+      - "write docs"
+
+  - regex: "(?:add|write|generate)\\s+.+\\s+documentation\\b"
+    action: "generate_docs"
+    confidence: 0.75
+    examples:
+      - "add great documentation for this code"
+      - "write detailed documentation"
+
+  - regex: "(?:add|write)\\s+(?:docstrings|comments)\\b"
+    action: "generate_docs"
+    confidence: 0.85
+    examples:
+      - "add docstrings"
+      - "write comments"
+
+  - regex: "(?:debug|troubleshoot)\\s+(.+)"
+    action: "fix_bug"
+    confidence: 0.8
+    examples:
+      - "debug the build failure"
+      - "troubleshoot the API error"
+
   - regex: "explain\\s+(.+)"
     action: "explain_code"
     confidence: 0.8
     examples:
       - "explain this code"
       - "explain the UserService"
+
+  - regex: "(?:optimize|improve)\\s+performance\\b"
+    action: "optimize_performance"
+    confidence: 0.85
+    examples:
+      - "optimize performance"
+      - "improve performance"
+
+  - regex: "optimize\\s+(.+)"
+    action: "optimize_performance"
+    confidence: 0.75
+    examples:
+      - "optimize database queries"
+      - "optimize this function"
+
+  - regex: "(?:run|start|launch|serve)\\s+(?:the\\s+)?(?:app|server|service|site|frontend|backend)\\b"
+    action: "run_app"
+    confidence: 0.85
+    examples:
+      - "run the app"
+      - "start the server"
+      - "serve the site"
+
+  - regex: "build(?:\\s+(?:the\\s+)?(?:app|project|site))?\\b"
+    action: "build"
+    confidence: 0.8
+    examples:
+      - "build the project"
+      - "build"
+
+  - regex: "run\\s+lint|lint\\s+the\\s+code|lint\\b"
+    action: "lint"
+    confidence: 0.9
+    examples:
+      - "run lint"
+      - "lint the code"
+
+  - regex: "(?:format|prettify)\\s+(?:the\\s+)?code\\b"
+    action: "format_code"
+    confidence: 0.85
+    examples:
+      - "format the code"
+      - "prettify code"
+
+  - regex: "(?:typecheck|type\\s+check)\\b"
+    action: "typecheck"
+    confidence: 0.85
+    examples:
+      - "typecheck"
+      - "run type check"
+
+  - regex: "(?:add|install)\\s+dependency\\s+(.+)"
+    action: "install_package"
+    confidence: 0.9
+    examples:
+      - "install dependency axios"
+      - "add dependency lodash"
+
+  - regex: "(?:find|search)\\s+(.+)"
+    action: "search_code"
+    confidence: 0.6
+    examples:
+      - "find usages of foo"
+      - "search for TODOs"
+
+  - regex: "(?:run|trigger)\\s+ci|check\\s+ci\\b"
+    action: "ci"
+    confidence: 0.75
+    examples:
+      - "run ci"
+      - "check ci"
+
+  - regex: "(?:deploy|release)\\s+(.+)"
+    action: "deploy"
+    confidence: 0.7
+    examples:
+      - "deploy the app"
+      - "release to staging"
+
+  - regex: "(?:run|apply)\\s+migrations?\\b"
+    action: "db_migrate"
+    confidence: 0.85
+    examples:
+      - "run migrations"
+      - "apply migration"
+
+  - regex: "(?:generate|create)\\s+migration\\b"
+    action: "db_generate_migration"
+    confidence: 0.85
+    examples:
+      - "generate migration"
+      - "create migration"
+
+  - regex: "(?:docker|compose)\\s+(?:up|down|build|ps)\\b"
+    action: "docker"
+    confidence: 0.8
+    examples:
+      - "docker compose up"
+      - "docker build"
+
+  - regex: "(?:security|vulnerability)\\s+scan\\b"
+    action: "security_scan"
+    confidence: 0.8
+    examples:
+      - "security scan"
+      - "run vulnerability scan"
 
   - regex: "add\\s+(?:a\\s+)?(.+)"
     action: "add_feature"

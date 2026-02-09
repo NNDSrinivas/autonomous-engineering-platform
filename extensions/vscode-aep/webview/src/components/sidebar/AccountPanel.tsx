@@ -572,10 +572,22 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
           background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
           border-radius: 16px;
           margin-bottom: 20px;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
         .account-signin-icon svg {
           color: white;
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .account-signin-icon:hover {
+          transform: translateY(-1px) scale(1.02);
+          box-shadow: 0 10px 26px hsl(var(--primary) / 0.35);
+        }
+
+        .account-signin-icon:hover svg {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.25));
         }
 
         .account-signin h4 {
@@ -673,6 +685,12 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
 
         .account-profile-org svg {
           color: hsl(var(--primary));
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .account-profile-org:hover svg {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .account-profile-role {
@@ -712,14 +730,20 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
         }
 
         .account-tab.active {
-          color: hsl(var(--primary));
-          background: hsl(var(--card));
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          color: hsl(var(--foreground));
+          background: hsl(var(--secondary) / 0.6);
+          box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.08);
         }
 
         .account-tab svg {
           width: 14px;
           height: 14px;
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .account-tab:hover svg {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .account-tab-content {

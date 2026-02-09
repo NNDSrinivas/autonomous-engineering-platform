@@ -11,6 +11,7 @@ import {
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { resolveBackendBase } from "../../api/navi/client";
 import { ORG, USER_ID } from "../../api/client";
+import { getAuthToken, setAuthToken, decodeAuthToken, AuthProfile } from "../../utils/auth";
 import {
   clearSessionDraft,
   clearSessionMessages,
@@ -35,6 +36,7 @@ import * as vscodeApi from "../../utils/vscodeApi";
 import "./NaviChatPanel.css";
 import Prism from 'prismjs';
 import { NaviApprovalPanel, ActionWithRisk } from './NaviApprovalPanel';
+import { EnhancedNaviMarkdown } from './EnhancedNaviMarkdown';
 // import * as Diff from 'diff';
 // Temporarily commenting out components with missing dependencies
 // import { LiveProgressDiagnostics } from '../ui/LiveProgressDiagnostics';
@@ -77,9 +79,10 @@ type ScopeMode = "this_repo" | "current_file" | "service";
 type ProviderId = "openai_navra" | "openai_byok" | "anthropic_byok";
 
 type AgentAction = {
-  type: "editFile" | "createFile" | "runCommand";
+  type: "editFile" | "createFile" | "runCommand" | "info";
   filePath?: string;
   description?: string;
+  detail?: string;
   content?: string;
   diff?: string;
   command?: string;
@@ -152,6 +155,7 @@ interface NaviChatResponse {
   };
   status?: string;
   progress_steps?: string[];
+  thinking_steps?: string[];  // Detailed reasoning steps (collapsible)
   state?: {
     repo_fast_path?: boolean;
     kind?: string;
@@ -175,6 +179,30 @@ const formatTime = (iso?: string): string => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+const ONBOARDING_STORAGE_KEY = "aep.navi.onboarding.dismissed.v1";
+
+const readOnboardingDismissed = (): boolean => {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(ONBOARDING_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const writeOnboardingDismissed = (value: boolean) => {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) {
+      window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
+    } else {
+      window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
 };
 
 const MAX_SESSION_MESSAGES = 200;
@@ -502,6 +530,13 @@ export default function NaviChatPanel() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "ok" | "error">("checking");
   const [backendError, setBackendError] = useState<string>("");
   const [coverageGate, setCoverageGate] = useState<CoverageGateState | null>(null);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [authToken, setAuthTokenState] = useState<string | null>(null);
+  const [authProfile, setAuthProfile] = useState<AuthProfile | null>(null);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authProviders, setAuthProviders] = useState<Array<{ id: string; name: string; type: string }>>([]);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   const [executionMode, setExecutionMode] =
     useState<ExecutionMode>("plan_propose");
@@ -1011,15 +1046,75 @@ export default function NaviChatPanel() {
         return;
       }
 
+      // Handle incremental text chunks during streaming
+      if (msg.type === "botMessageChunk" && (msg.chunk || msg.fullContent)) {
+        const textToAdd = msg.fullContent || msg.chunk;
+
+        setMessages((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          const isRecentAssistant =
+            lastMsg &&
+            lastMsg.role === "assistant" &&
+            (Date.now() - new Date(lastMsg.createdAt).getTime() < 5000);
+
+          if (isRecentAssistant) {
+            // Update existing message with new content
+            return prev.map((m, idx) =>
+              idx === prev.length - 1
+                ? { ...m, content: textToAdd }
+                : m
+            );
+          } else {
+            // Create new assistant message with the chunk
+            const assistantMessage: ChatMessage = {
+              id: makeMessageId("assistant"),
+              role: "assistant",
+              content: textToAdd,
+              createdAt: nowIso(),
+              actions: [],
+            };
+            return [...prev, assistantMessage];
+          }
+        });
+        return;
+      }
+
       if (msg.type === "botMessage" && msg.text) {
-        const assistantMessage: ChatMessage = {
-          id: makeMessageId("assistant"),
-          role: "assistant",
-          content: msg.text,
-          createdAt: nowIso(),
-          actions: Array.isArray(msg.actions) ? msg.actions : undefined,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => {
+          // Check if the last message is an assistant message from the last 5 seconds
+          // If so, merge with it instead of creating a new one
+          const lastMsg = prev[prev.length - 1];
+          const isRecentAssistant =
+            lastMsg &&
+            lastMsg.role === "assistant" &&
+            (Date.now() - new Date(lastMsg.createdAt).getTime() < 5000);
+
+          if (isRecentAssistant) {
+            // Merge with existing message - update content and append new actions chronologically
+            return prev.map((m, idx) =>
+              idx === prev.length - 1
+                ? {
+                    ...m,
+                    content: msg.text, // Replace with new content (it's cumulative from backend)
+                    // Append new actions to preserve chronological order
+                    actions: Array.isArray(msg.actions) && msg.actions.length > 0
+                      ? [...(m.actions || []), ...msg.actions]
+                      : m.actions,
+                  }
+                : m
+            );
+          } else {
+            // Create new assistant message
+            const assistantMessage: ChatMessage = {
+              id: makeMessageId("assistant"),
+              role: "assistant",
+              content: msg.text,
+              createdAt: nowIso(),
+              actions: Array.isArray(msg.actions) ? msg.actions : undefined,
+            };
+            return [...prev, assistantMessage];
+          }
+        });
         setSending(false);
         clearSendTimeout();
       }
@@ -1281,6 +1376,63 @@ export default function NaviChatPanel() {
           //   skipped_files: listed ? Math.max(0, total - listed) : 0,
           //   highlights: summaryHighlights,
           // });
+          return;
+        }
+
+        if (kind === 'tool_result') {
+          const action: AgentAction = {
+            type: "info",
+            description: data.label || "Result",
+            detail: data.detail || "",
+            meta: { status: data.status },
+          };
+
+          // Append action to the most recent assistant message (chronological order)
+          setMessages((prev) => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              return prev.map((m, idx) =>
+                idx === prev.length - 1
+                  ? {
+                      ...m,
+                      actions: [...(m.actions || []), action],
+                    }
+                  : m
+              );
+            }
+            return prev;
+          });
+          return;
+        }
+
+        // Handle tool call activity events (edit, create, read, command, etc.) chronologically
+        if (['edit', 'create', 'read', 'command', 'search', 'rag', 'context', 'info'].includes(kind)) {
+          const action: AgentAction = {
+            type: kind === 'edit' ? 'editFile' :
+                  kind === 'create' ? 'createFile' :
+                  kind === 'read' ? 'readFile' :
+                  kind === 'command' ? 'runCommand' :
+                  kind,
+            filePath: data.filePath || data.detail,
+            command: kind === 'command' ? data.detail : undefined,
+            description: data.label || kind,
+          };
+
+          // Append action to the most recent assistant message (chronological order)
+          setMessages((prev) => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              return prev.map((m, idx) =>
+                idx === prev.length - 1
+                  ? {
+                      ...m,
+                      actions: [...(m.actions || []), action],
+                    }
+                  : m
+              );
+            }
+            return prev;
+          });
           return;
         }
 
@@ -1657,11 +1809,123 @@ export default function NaviChatPanel() {
     return fallback;
   };
 
+  useEffect(() => {
+    setOnboardingDismissed(readOnboardingDismissed());
+  }, []);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token) {
+      setAuthTokenState(token);
+      setAuthProfile(decodeAuthToken(token));
+    }
+  }, []);
+
+  useEffect(() => {
+    const backendBase = resolveBackendBase();
+    const url = `${backendBase}/api/sso/providers`;
+    setAuthLoading(true);
+    fetch(url)
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const providers = Array.isArray(data?.providers) ? data.providers : [];
+        setAuthProviders(
+          providers
+            .filter((p: any) => p && typeof p.id === "string")
+            .map((p: any) => ({
+              id: p.id,
+              name: p.name || p.id,
+              type: p.type || "oidc",
+            }))
+        );
+        setAuthError("");
+      })
+      .catch(() => {
+        setAuthError("SSO providers unavailable.");
+      })
+      .finally(() => setAuthLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "navi.sso.success" && msg.token) {
+        setAuthToken(msg.token);
+        setAuthTokenState(msg.token);
+        setAuthProfile(decodeAuthToken(msg.token));
+        setAuthError("");
+      }
+      if (msg.type === "navi.sso.error") {
+        setAuthError(msg.error || "SSO failed.");
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const startSso = async (providerId: string) => {
+    try {
+      const backendBase = resolveBackendBase();
+      const url = `${backendBase}/api/sso/oidc/authorize-url?provider=${encodeURIComponent(providerId)}&action=${authMode}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error("Failed to start SSO");
+      }
+      const data = await res.json();
+      const authWindow = window.open(
+        data.authorize_url,
+        "navi-sso",
+        "width=520,height=640"
+      );
+      if (!authWindow) {
+        window.location.href = data.authorize_url;
+      }
+    } catch (err) {
+      setAuthError("Unable to start SSO. Please try again.");
+    }
+  };
+
+  const handleSignOut = () => {
+    setAuthToken(null);
+    setAuthTokenState(null);
+    setAuthProfile(null);
+  };
+
+  const dismissOnboarding = () => {
+    setOnboardingDismissed(true);
+    writeOnboardingDismissed(true);
+  };
+
+  const onboardingSteps = [
+    {
+      id: "scan",
+      title: `Scan ${repoName}`,
+      description: "Summarize the repo structure and highlight key areas.",
+      prompt: "scan repo",
+    },
+    {
+      id: "fix",
+      title: "Check errors and fix them",
+      description: "Find common issues and propose safe fixes.",
+      prompt: "check errors and fix them",
+    },
+    {
+      id: "review",
+      title: "Review working changes",
+      description: "Get a fast review of what has changed.",
+      prompt: "review my working tree changes and suggest improvements",
+    },
+  ];
+
   /* ---------- send ---------- */
 
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
+    if (!onboardingDismissed) {
+      dismissOnboarding();
+    }
 
     const lower = text.toLowerCase();
     const isReviewish = /review|audit|changes|working tree|diff|analy(s|z)e/.test(lower);
@@ -1993,14 +2257,40 @@ export default function NaviChatPanel() {
     const description = action.description?.trim();
     if (description) return description;
     if (action.type === "runCommand") return "Run command";
-    if (action.type === "editFile") return "Apply edit";
-    if (action.type === "createFile") return "Create file";
+    if (action.type === "editFile") return `Edit ${action.filePath || 'file'}`;
+    if (action.type === "createFile") return `Create ${action.filePath || 'file'}`;
+    if (action.type === "info") return "Result";
     return "Apply action";
   };
 
   const formatActionDetail = (action: AgentAction) => {
-    if (action.type === "runCommand") return action.command || "";
-    if (action.filePath) return action.filePath;
+    if (action.type === "runCommand") {
+      return action.command || "";
+    }
+    if (action.type === "info") {
+      return action.detail || action.description || "";
+    }
+
+    // For file actions, show diff stats if available
+    if (action.type === "editFile" || action.type === "createFile") {
+      // Extract diff stats from the diff if available
+      const diff = action.diff || "";
+      const additions = (diff.match(/^\+/gm) || []).length;
+      const deletions = (diff.match(/^-/gm) || []).length;
+
+      if (additions > 0 || deletions > 0) {
+        return (
+          <span className="navi-diff-stats">
+            {additions > 0 && <span className="navi-diff-additions">+{additions}</span>}
+            {additions > 0 && deletions > 0 && <span className="navi-diff-separator"> </span>}
+            {deletions > 0 && <span className="navi-diff-deletions">-{deletions}</span>}
+          </span>
+        );
+      }
+
+      return action.filePath || "";
+    }
+
     return action.description || "";
   };
 
@@ -2105,9 +2395,16 @@ export default function NaviChatPanel() {
         <pre className="navi-chat-command-output">{msg.content}</pre>
       );
     }
-    return msg.content.split("\n").map((line, idx) => (
-      <p key={idx}>{line}</p>
-    ));
+
+    // Extract thinking steps from response data if available
+    const thinkingSteps = msg.responseData?.thinking_steps || [];
+
+    return (
+      <EnhancedNaviMarkdown
+        content={msg.content}
+        thinking={thinkingSteps}
+      />
+    );
   };
 
   const resetConversationState = () => {
@@ -2393,6 +2690,22 @@ export default function NaviChatPanel() {
             {backendStatus === "error" && "Backend: Unreachable"}
             {backendStatus === "checking" && "Backend: Checking..."}
           </span>
+          {authToken ? (
+            <div className="navi-auth-status">
+              <span className="navi-auth-user">
+                {authProfile?.email || authProfile?.name || "Signed in"}
+              </span>
+              <button
+                type="button"
+                className="navi-pill navi-pill--ghost"
+                onClick={handleSignOut}
+              >
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <span className="navi-pill navi-pill--ghost">SSO available</span>
+          )}
           <button
             type="button"
             className="navi-pill navi-pill--primary"
@@ -2432,7 +2745,123 @@ export default function NaviChatPanel() {
       )}
 
       <div className="navi-chat-body" ref={scrollerRef} data-testid="chat-messages">
-        {messages.length === 0 && (
+        {!authToken && (
+          <div className="navi-auth-panel">
+            <div className="navi-auth-panel__header">
+              <div>
+                <div className="navi-auth-panel__title">Secure SSO access</div>
+                <div className="navi-auth-panel__subtitle">
+                  Sign in or sign up with your organization provider.
+                </div>
+              </div>
+              <div className="navi-auth-panel__toggle">
+                <button
+                  type="button"
+                  className={`navi-pill ${authMode === "signin" ? "navi-pill--primary" : "navi-pill--ghost"}`}
+                  onClick={() => setAuthMode("signin")}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  className={`navi-pill ${authMode === "signup" ? "navi-pill--primary" : "navi-pill--ghost"}`}
+                  onClick={() => setAuthMode("signup")}
+                >
+                  Sign up
+                </button>
+              </div>
+            </div>
+
+            <div className="navi-auth-panel__providers">
+              {authProviders
+                .filter((p) => p.type === "oidc")
+                .map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    className="navi-auth-provider-btn"
+                    onClick={() => void startSso(provider.id)}
+                    disabled={authLoading}
+                  >
+                    Continue with {provider.name}
+                  </button>
+                ))}
+              {authProviders.filter((p) => p.type === "oidc").length === 0 && (
+                <div className="navi-auth-panel__empty">
+                  No SSO providers configured.
+                </div>
+              )}
+            </div>
+
+            {authError && <div className="navi-auth-panel__error">{authError}</div>}
+          </div>
+        )}
+
+        {messages.length === 0 && !onboardingDismissed && (
+          <div className="navi-onboarding">
+            <div className="navi-onboarding__header">
+              <div>
+                <div className="navi-onboarding__title">
+                  First win in under 2 minutes
+                </div>
+                <div className="navi-onboarding__subtitle">
+                  Pick a starter task for {repoName}.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="navi-pill navi-pill--ghost navi-onboarding__dismiss"
+                onClick={dismissOnboarding}
+              >
+                Dismiss
+              </button>
+            </div>
+
+            <div className="navi-onboarding__steps">
+              {onboardingSteps.map((step, index) => (
+                <div className="navi-onboarding__step" key={step.id}>
+                  <div className="navi-onboarding__step-index">
+                    {index + 1}
+                  </div>
+                  <div className="navi-onboarding__step-body">
+                    <div className="navi-onboarding__step-title">
+                      {step.title}
+                    </div>
+                    <div className="navi-onboarding__step-desc">
+                      {step.description}
+                    </div>
+                    <div className="navi-onboarding__step-actions">
+                      <button
+                        type="button"
+                        className="navi-pill navi-pill--primary"
+                        onClick={() => void handleSend(step.prompt)}
+                        disabled={sending}
+                      >
+                        Run
+                      </button>
+                      <button
+                        type="button"
+                        className="navi-pill navi-pill--ghost"
+                        onClick={() => {
+                          setInput(step.prompt);
+                          setTimeout(() => inputRef.current?.focus(), 0);
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="navi-onboarding__tip">
+              Tip: try &quot;run the app&quot; or &quot;run tests&quot; when you are ready.
+            </div>
+          </div>
+        )}
+
+        {messages.length === 0 && onboardingDismissed && (
           <div className="navi-chat-empty">
             <div>Ask Navi anything about your repo, JIRA, or builds.</div>
             <div className="navi-chat-empty-example">
@@ -2443,9 +2872,28 @@ export default function NaviChatPanel() {
 
         {messages.map((m) => {
           const actionSource = Array.isArray(m.actions) ? m.actions : [];
+
+          // Deduplicate actions based on type and filePath/command
+          const seenActions = new Set<string>();
           const actionItems = actionSource
             .map((action, index) => ({ action, index }))
-            .filter(({ action }) => action && typeof action.type === "string");
+            .filter(({ action }) => {
+              if (!action || typeof action.type !== "string") return false;
+
+              // Create a unique key for deduplication
+              const key = action.type === "runCommand"
+                ? `${action.type}:${action.command}`
+                : action.type === "info"
+                  ? `${action.type}:${action.detail}`
+                  : `${action.type}:${action.filePath}`;
+
+              if (seenActions.has(key)) {
+                return false; // Skip duplicate
+              }
+
+              seenActions.add(key);
+              return true;
+            });
 
           return (
             <div
@@ -2479,6 +2927,10 @@ export default function NaviChatPanel() {
                           <div className="navi-action-detail">
                             {action.type === "runCommand" ? (
                               <code>{action.command || ""}</code>
+                            ) : action.type === "info" ? (
+                              <span className="navi-action-info-detail">
+                                {formatActionDetail(action)}
+                              </span>
                             ) : (
                               formatActionDetail(action)
                             )}
@@ -2506,7 +2958,7 @@ export default function NaviChatPanel() {
                                 Copy
                               </button>
                             </>
-                          ) : (
+                          ) : action.type === "info" ? null : (
                             <button
                               type="button"
                               className="navi-pill navi-pill--primary navi-action-btn"

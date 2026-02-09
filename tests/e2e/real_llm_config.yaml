@@ -1,0 +1,61 @@
+# Real LLM E2E Test Configuration
+# This configuration is used to run 100+ tests with actual LLM models
+# to establish performance baselines for production deployment
+
+llm_provider: openai
+model: gpt-4o
+api_key_env: OPENAI_API_KEY  # Read from environment variable
+
+# Test execution settings
+test_runs: 100
+timeout_seconds: 60  # Increased from 30s to handle complex requests
+concurrent_requests: 5  # Run 5 tests in parallel to simulate load
+circuit_breaker_timeout_seconds: 60  # Per-request timeout to prevent batch-level delays
+
+# Metrics to track
+track_metrics:
+  - latency  # End-to-end response time
+  - tokens   # Input/output tokens
+  - cost     # Estimated cost per request
+  - error_rate  # Failed requests percentage
+  - throughput  # Requests per second
+
+# Performance thresholds (updated post-optimization - Feb 2026)
+# Baseline performance after 3 optimizations (conversation history, parallel loading, caching):
+#   Normal cohort (73%): p50=5.0s, p95=9.0s, p99=12.0s
+#   With circuit breaker: Should eliminate outlier delays
+# Thresholds set with 100-150% buffer to accommodate API variability
+performance_thresholds:
+  p50_latency_ms: 10000  # 50th percentile < 10 seconds (vs baseline 5s)
+  p95_latency_ms: 20000  # 95th percentile < 20 seconds (vs baseline 9s)
+  p99_latency_ms: 30000  # 99th percentile < 30 seconds (vs baseline 12s)
+  error_rate_percent: 5  # Less than 5% errors (circuit breaker should catch timeouts)
+  avg_cost_per_request: 0.10  # Less than $0.10 per request
+
+# Test scenarios (representative real-world NAVI tasks)
+test_scenarios:
+  - name: "code_explanation"
+    weight: 30  # 30% of tests
+    description: "Explain code snippets"
+
+  - name: "code_generation"
+    weight: 25
+    description: "Generate code from requirements"
+
+  - name: "bug_analysis"
+    weight: 20
+    description: "Analyze and fix bugs"
+
+  - name: "refactoring"
+    weight: 15
+    description: "Refactor code for quality"
+
+  - name: "documentation"
+    weight: 10
+    description: "Generate documentation"
+
+# Fallback providers (if primary fails)
+fallback_providers:
+  - provider: openai
+    model: gpt-4o
+    api_key_env: OPENAI_API_KEY

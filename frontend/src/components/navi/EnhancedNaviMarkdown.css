@@ -1,0 +1,158 @@
+/* Enhanced NAVI Markdown Styling */
+
+.navi-enhanced-markdown {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.7;
+  color: #e0e0e0;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.navi-main-content {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  word-spacing: normal;
+}
+
+/* Ensure paragraphs have proper spacing */
+.navi-enhanced-markdown p {
+  margin-bottom: 0.8em;
+  line-height: 1.7;
+}
+
+.navi-enhanced-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+/* Emoji and icon styling */
+.navi-enhanced-markdown p:has(> span:first-child:only-child) {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+/* Info/Warning/Success boxes */
+.navi-enhanced-markdown p:first-of-type {
+  margin-top: 0;
+}
+
+/* Smooth transitions for collapsible sections */
+.navi-thinking-section button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem 0;
+}
+
+.navi-thinking-section button:focus {
+  outline: 2px solid #4a9eff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Thinking steps animation */
+.navi-thinking-section > div {
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Code block enhancements */
+.navi-enhanced-markdown pre {
+  position: relative;
+}
+
+.navi-enhanced-markdown code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  word-spacing: 0;
+}
+
+/* Inline code should not break or add spacing */
+.navi-enhanced-markdown p code,
+.navi-enhanced-markdown li code {
+  white-space: nowrap;
+  word-spacing: 0;
+  letter-spacing: 0;
+}
+
+/* Ensure proper spacing between elements */
+.navi-enhanced-markdown > * + * {
+  margin-top: 0.5rem;
+}
+
+/* Better table styling */
+.navi-enhanced-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/* Link hover effects */
+.navi-enhanced-markdown a {
+  transition: color 0.2s ease;
+  white-space: nowrap;
+  word-spacing: 0;
+  letter-spacing: 0;
+  word-break: keep-all;
+}
+
+/* Horizontal rules */
+.navi-enhanced-markdown hr {
+  border: none;
+  border-top: 1px solid #404040;
+  margin: 1.5rem 0;
+}
+
+/* Details/summary for native HTML details elements in markdown */
+.navi-enhanced-markdown details {
+  margin: 1rem 0;
+  padding: 0.5rem;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.navi-enhanced-markdown details summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.5rem;
+  user-select: none;
+}
+
+.navi-enhanced-markdown details summary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.navi-enhanced-markdown details[open] summary {
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid #404040;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .navi-enhanced-markdown {
+    font-size: 0.95rem;
+  }
+
+  .navi-enhanced-markdown code {
+    font-size: 0.85rem;
+  }
+
+  .navi-enhanced-markdown pre {
+    padding: 0.5rem;
+  }
+}

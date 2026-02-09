@@ -16,9 +16,20 @@ import base64
 import os
 import tempfile
 
+from tests.conftest import TEST_BASE_URL, get_auth_headers, TEST_ORG_ID
+
 # Test server URL
-BASE_URL = os.getenv("NAVI_TEST_URL", "http://localhost:8002")
+BASE_URL = os.getenv("NAVI_TEST_URL", TEST_BASE_URL or "http://localhost:8002")
 TIMEOUT = 60
+
+
+def _require_auth_headers():
+    headers = get_auth_headers()
+    if not headers:
+        pytest.skip("NAVI_TEST_TOKEN not set; set it to run planner integration tests")
+    headers.setdefault("X-Org-Id", TEST_ORG_ID)
+    return headers
+
 
 pytestmark = pytest.mark.integration
 
@@ -39,6 +50,7 @@ class TestPlanCreation:
             async with session.post(
                 f"{BASE_URL}/api/navi/plan/create",
                 json=payload,
+                headers=_require_auth_headers(),
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 assert response.status == 200
@@ -75,6 +87,7 @@ class TestPlanCreation:
             async with session.post(
                 f"{BASE_URL}/api/navi/plan/create",
                 json=payload,
+                headers=_require_auth_headers(),
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 assert response.status == 200
@@ -103,6 +116,7 @@ class TestPlanCreation:
             async with session.post(
                 f"{BASE_URL}/api/navi/plan/create",
                 json=payload,
+                headers=_require_auth_headers(),
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 assert response.status == 200
@@ -220,6 +234,7 @@ class TestPlanWithImages:
             async with session.post(
                 f"{BASE_URL}/api/navi/plan/create",
                 json=payload,
+                headers=_require_auth_headers(),
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 assert response.status == 200
@@ -254,6 +269,7 @@ class TestQuestionAnswering:
     async def test_answer_questions(self):
         """Test answering questions and getting updated plan"""
         async with aiohttp.ClientSession() as session:
+            headers = _require_auth_headers()
             workspace = tempfile.mkdtemp()
 
             # First, create a plan
@@ -265,6 +281,7 @@ class TestQuestionAnswering:
             async with session.post(
                 f"{BASE_URL}/api/navi/plan/create",
                 json=create_payload,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 assert response.status == 200
@@ -287,6 +304,7 @@ class TestQuestionAnswering:
             async with session.post(
                 f"{BASE_URL}/api/navi/plan/{plan['id']}/answer",
                 json=answer_payload,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 assert response.status == 200
@@ -308,6 +326,7 @@ class TestPlanApproval:
     async def test_approve_plan(self):
         """Test approving a ready plan"""
         async with aiohttp.ClientSession() as session:
+            headers = _require_auth_headers()
             workspace = tempfile.mkdtemp()
 
             # Create a simple plan (no questions expected for very simple requests)
@@ -319,6 +338,7 @@ class TestPlanApproval:
             async with session.post(
                 f"{BASE_URL}/api/navi/plan/create",
                 json=create_payload,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 plan = await response.json()
@@ -333,6 +353,7 @@ class TestPlanApproval:
                 async with session.post(
                     f"{BASE_URL}/api/navi/plan/{plan['id']}/answer",
                     json={"answers": answers},
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=TIMEOUT),
                 ) as response:
                     plan = await response.json()
@@ -341,6 +362,7 @@ class TestPlanApproval:
             if plan["status"] == "ready":
                 async with session.post(
                     f"{BASE_URL}/api/navi/plan/{plan['id']}/approve",
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=TIMEOUT),
                 ) as response:
                     assert response.status == 200
@@ -358,6 +380,7 @@ class TestPlanExecution:
     async def test_execute_plan(self):
         """Test executing an approved plan"""
         async with aiohttp.ClientSession() as session:
+            headers = _require_auth_headers()
             workspace = tempfile.mkdtemp()
 
             # Create and approve a plan
@@ -370,6 +393,7 @@ class TestPlanExecution:
             async with session.post(
                 f"{BASE_URL}/api/navi/plan/create",
                 json=create_payload,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 plan = await response.json()
@@ -384,6 +408,7 @@ class TestPlanExecution:
                 async with session.post(
                     f"{BASE_URL}/api/navi/plan/{plan['id']}/answer",
                     json={"answers": answers},
+                    headers=headers,
                 ) as response:
                     plan = await response.json()
 
@@ -391,6 +416,7 @@ class TestPlanExecution:
             if plan["status"] == "ready":
                 async with session.post(
                     f"{BASE_URL}/api/navi/plan/{plan['id']}/approve",
+                    headers=headers,
                 ) as response:
                     plan = await response.json()
 
@@ -398,6 +424,7 @@ class TestPlanExecution:
             if plan["status"] == "approved":
                 async with session.post(
                     f"{BASE_URL}/api/navi/plan/{plan['id']}/execute",
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=120),
                 ) as response:
                     assert response.status == 200
@@ -421,6 +448,7 @@ class TestPlanListing:
     async def test_list_workspace_plans(self):
         """Test listing plans for a workspace"""
         async with aiohttp.ClientSession() as session:
+            headers = _require_auth_headers()
             workspace = tempfile.mkdtemp()
 
             # Create a couple of plans
@@ -432,6 +460,7 @@ class TestPlanListing:
                 async with session.post(
                     f"{BASE_URL}/api/navi/plan/create",
                     json=payload,
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=TIMEOUT),
                 ) as response:
                     assert response.status == 200
@@ -439,6 +468,7 @@ class TestPlanListing:
             # List plans
             async with session.get(
                 f"{BASE_URL}/api/navi/plan/workspace/{workspace}",
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ) as response:
                 assert response.status == 200

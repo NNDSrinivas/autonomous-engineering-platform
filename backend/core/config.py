@@ -10,6 +10,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.core.security import sanitize_for_logging
+from backend.core.settings import normalize_env
 
 # Module-level constants for performance
 PUNCTUATION_SET = set(string.punctuation)
@@ -101,8 +102,10 @@ class Settings(BaseSettings):
                         f"Extra fields not permitted in app_env '{sanitize_for_logging(str(env_app_env))}': {sanitized_fields}"
                     )
             # Allow auth bypass automatically in test/ci unless explicitly configured
+            # Default to "development" if env_app_env is None to avoid normalize_env error
+            normalized_env = normalize_env(env_app_env or "development")
             if (
-                env_app_env in ("test", "ci")
+                normalized_env in ("test", "ci")
                 and "ALLOW_DEV_AUTH_BYPASS" not in os.environ
                 and "allow_dev_auth_bypass" not in values
             ):
@@ -426,6 +429,12 @@ class Settings(BaseSettings):
     mcp_transport: str = "stdio"  # Transport: stdio, http, websocket
     mcp_http_port: int = 8765  # Port for HTTP transport
     mcp_websocket_port: int = 8766  # Port for WebSocket transport
+    # External MCP server policy controls (enterprise safety)
+    mcp_require_https: bool = True  # Enforce HTTPS for external MCP servers
+    mcp_block_private_networks: bool = True  # Block localhost/private IPs
+    mcp_allowed_hosts: List[str] = Field(
+        default_factory=list
+    )  # Optional allowlist for external MCP hosts
     mcp_allowed_tools: List[str] = [  # Tools exposed via MCP
         "git_operations",
         "database_operations",

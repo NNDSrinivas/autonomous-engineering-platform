@@ -9,8 +9,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for git log to work correctly
+      - name: Ensure benchmark scorecard is fresh
+        run: |
+          if [ ! -f docs/NAVI_BENCHMARK_SCORECARD.md ]; then
+            echo "Missing docs/NAVI_BENCHMARK_SCORECARD.md"
+            exit 1
+          fi
+          last_epoch=$(git log -1 --format=%ct -- docs/NAVI_BENCHMARK_SCORECARD.md)
+          now_epoch=$(date +%s)
+          age_hours=$(( (now_epoch - last_epoch) / 3600 ))
+          if [ $age_hours -gt 48 ]; then
+            echo "Benchmark scorecard is stale: ${age_hours}h old"
+            exit 1
+          fi
+          echo "Benchmark scorecard freshness check passed (${age_hours}h old)"
+
   deploy:
     runs-on: ubuntu-latest
+    needs: gate
+    environment: production
 
     # Run only if secrets exist
     if: github.ref == 'refs/heads/main'

@@ -3,6 +3,7 @@ import { McpToolsPanel } from './McpToolsPanel';
 import { ConnectorsPanel } from './ConnectorsPanel';
 import { AccountPanel } from './AccountPanel';
 import '../../styles/futuristic.css';
+import { McpExecutionResult } from '../../api/navi/client';
 
 // Organization Rule interface
 interface OrganizationRule {
@@ -105,10 +106,11 @@ interface SidebarPanelProps {
     email?: string;
     name?: string;
     picture?: string;
+    role?: string;
   };
   onSignIn: () => void;
   onSignOut: () => void;
-  onExecuteMcpTool: (toolName: string, args: Record<string, unknown>) => Promise<void>;
+  onExecuteMcpTool: (toolName: string, args: Record<string, unknown>, serverId?: string | number) => Promise<McpExecutionResult>;
   onOpenFullPanel?: () => void;
   onOpenEnterpriseProjects?: () => void;
   externalPanelRequest?: PanelType;
@@ -395,6 +397,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
         isOpen={openPanel === 'mcp'}
         onClose={handleClosePanel}
         onExecuteTool={onExecuteMcpTool}
+        canManageServers={user?.role === 'admin'}
       />
 
       <ConnectorsPanel
@@ -731,6 +734,15 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
           border: 1px solid hsl(var(--primary) / 0.2);
         }
 
+        .navi-sidebar__header-icon svg {
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .navi-sidebar__header-content:hover .navi-sidebar__header-icon svg {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.25));
+        }
+
         .navi-sidebar__header-text {
           display: flex;
           flex-direction: column;
@@ -766,12 +778,21 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
           justify-content: center;
         }
 
+        .navi-sidebar__header-expand svg {
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
         .navi-sidebar__header-expand:hover {
           background: hsl(var(--primary) / 0.15);
           border-color: hsl(var(--primary) / 0.3);
           color: hsl(var(--primary));
           transform: scale(1.05);
           box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
+        }
+
+        .navi-sidebar__header-expand:hover svg {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .navi-sidebar__header-expand:active {
@@ -892,11 +913,12 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
         }
 
         .navi-menu-item__icon .sidebar-icon {
-          transition: transform 0.3s ease;
+          transition: transform 0.2s ease, filter 0.2s ease;
         }
 
         .navi-menu-item:hover .navi-menu-item__icon .sidebar-icon {
-          transform: scale(1.1);
+          transform: translateY(-1px) scale(1.1);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.22));
         }
 
         .navi-menu-item__icon-glow {

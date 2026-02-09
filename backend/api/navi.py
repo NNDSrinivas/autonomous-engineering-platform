@@ -48,6 +48,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from backend.core.db import get_db
+from backend.core.auth.deps import require_role
+from backend.core.auth.models import User, Role
+from backend.core.settings import settings
 from backend.agent.agent_loop import run_agent_loop
 from backend.agent.planner_v3 import PlannerV3
 from backend.agent.tool_executor import execute_tool_with_sources
@@ -180,9 +183,16 @@ MODEL_ALIASES: Dict[str, Dict[str, str]] = {
 
 
 def _resolve_model(model: Optional[str]) -> str:
-    """Resolve model alias to actual model ID."""
+    """
+    Resolve model alias to actual model ID.
+
+    Default model is environment-aware to balance cost and quality:
+    - dev/test: gpt-4o-mini (faster, cheaper)
+    - production: gpt-4o (higher quality)
+    """
     if not model:
-        return "gpt-4o-mini"  # Default model
+        # Use cheaper model for dev/test, full model for production
+        return "gpt-4o" if settings.is_production() else "gpt-4o-mini"
 
     # Check if it's an alias
     if model in MODEL_ALIASES:
@@ -1405,6 +1415,118 @@ async def auto_fix_by_id(
     except Exception as e:
         logger.error(f"Error in auto-fix by ID {fix_id}: {e}")
         return {"success": False, "error": str(e)}
+
+
+@router.post("/consent/{consent_id}")
+async def handle_consent_response(
+    consent_id: str,
+    request: Request,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """
+    Handle user consent approval/denial for dangerous commands.
+
+    The frontend sends consent responses when the user approves or denies
+    a dangerous command execution (e.g., rm, kill, chmod).
+
+    Requires authentication to prevent unauthorized consent manipulation.
+    """
+    try:
+        # Import the global consent storage from autonomous_agent
+        from backend.services.autonomous_agent import _consent_approvals, _consent_lock
+
+        body = await request.json()
+        approved = body.get("approved", False)
+        command = body.get("command", "")
+
+        logger.info(
+            f"[NAVI API] 🔐 Consent {consent_id}: {'APPROVED' if approved else 'DENIED'} for command: {command}"
+        )
+
+        # TODO: Move consent storage to DB/Redis for persistent multi-user support
+        # CRITICAL ISSUE: This async endpoint uses a synchronous threading.Lock which blocks
+        # the event loop under contention and doesn't work across multiple processes/replicas.
+        # SHORT-TERM FIX: Replace _consent_lock (threading.Lock) with asyncio.Lock and use
+        # 'async with _consent_lock:' instead of 'with _consent_lock:'.
+        # LONG-TERM FIX: Move consent state to Redis/DB for distributed, async-compatible storage.
+
+        # Derive org consistently using getattr to handle different User implementations
+        user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
+        # Update the consent approval in global storage (protected by lock for thread safety)
+        # WARNING: This synchronous lock blocks the event loop - see TODO above
+        with _consent_lock:
+            if consent_id not in _consent_approvals:
+                # Consent ID not found (might have expired or already processed)
+                # Do not create new consent record to prevent spoofing
+                logger.warning(
+                    f"[NAVI API] Consent {consent_id} not found in pending approvals"
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "success": False,
+                        "consent_id": consent_id,
+                        "error": "Consent not found or has expired",
+                    },
+                )
+
+            # Validate user/org ownership to prevent consent hijacking
+            consent_record = _consent_approvals[consent_id]
+            consent_user_id = consent_record.get("user_id")
+            consent_org_id = consent_record.get("org_id")
+
+            # Defensive attribute access for user identifier
+            current_user_id = getattr(user, "user_id", None) or getattr(
+                user, "id", None
+            )
+            if consent_user_id and consent_user_id != current_user_id:
+                logger.warning(
+                    f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "success": False,
+                        "consent_id": consent_id,
+                        "error": "Unauthorized: You do not have permission to approve this consent",
+                    },
+                )
+
+            if consent_org_id and user_org_id and consent_org_id != user_org_id:
+                logger.warning(
+                    f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "success": False,
+                        "consent_id": consent_id,
+                        "error": "Unauthorized: This consent belongs to a different organization",
+                    },
+                )
+
+            # Update existing consent
+            _consent_approvals[consent_id]["approved"] = approved
+            _consent_approvals[consent_id]["pending"] = False
+            _consent_approvals[consent_id]["response_timestamp"] = time.time()
+
+        return {
+            "success": True,
+            "consent_id": consent_id,
+            "approved": approved,
+            "message": f"Consent {'approved' if approved else 'denied'}",
+        }
+
+    except HTTPException:
+        # Re-raise HTTPException to preserve correct HTTP status codes (403/404)
+        raise
+    except Exception as e:
+        logger.error(f"[NAVI API] Error handling consent {consent_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error handling consent: {str(e)}",
+        )
 
 
 async def _apply_auto_fix(
@@ -4358,9 +4480,9 @@ class FileAttachment(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User message")
-    model: str = Field(
-        default="gpt-4o-mini",
-        description="LLM model (e.g., gpt-4o-mini, gpt-4.1, gpt-5.1)",
+    model: Optional[str] = Field(
+        default=None,
+        description="LLM model (e.g., gpt-4o, gpt-4o-mini, gpt-4.1, gpt-5.1). Defaults to environment-aware model selection.",
     )
     mode: str = Field(
         default="chat-only",
@@ -6236,6 +6358,12 @@ async def navi_chat_stream(
                                     else ""
                                 )
                             )
+                            if not output_preview:
+                                stdout_preview = tool_result.get("stdout", "")
+                                stderr_preview = tool_result.get("stderr", "")
+                                output_preview = (stderr_preview or stdout_preview)[
+                                    :200
+                                ]
                             yield f"data: {json.dumps({'activity': {'kind': 'tool_result', 'label': 'Result', 'detail': output_preview[:200], 'status': status}})}\n\n"
 
                         elif event.type == AgentEventType.VERIFICATION:
@@ -7041,14 +7169,15 @@ def _get_vision_provider_for_model(model: Optional[str]):
 async def navi_autonomous_task(
     request: AutonomousTaskRequest,
     http_request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
-    # DEBUG: Print to stdout to ensure this endpoint is being called
-    print("[NAVI Autonomous DEBUG] ========== ENDPOINT CALLED ==========")
-    print(
-        f"[NAVI Autonomous DEBUG] Message: {request.message[:100] if request.message else 'None'}..."
+    # DEBUG: Log endpoint invocation for troubleshooting
+    logger.debug(
+        "[NAVI Autonomous] Endpoint called - Message: %s, Attachments: %s",
+        request.message[:100] if request.message else "None",
+        len(request.attachments) if request.attachments else 0,
     )
-    print(f"[NAVI Autonomous DEBUG] Attachments: {request.attachments}")
-    print("[NAVI Autonomous DEBUG] =====================================")
     """
     NAVI Autonomous Task Execution
 
@@ -7073,6 +7202,36 @@ async def navi_autonomous_task(
     """
     import os
     from backend.services.autonomous_agent import AutonomousAgent
+
+    # Extract user context from authenticated user
+    # - Derive from the user dependency (authenticated via require_role)
+    # - In development/test/CI, allow overriding via DEV_* environment variables for convenience
+    # Use normalized environment checks to handle aliases (dev, Dev, DEVELOPMENT, etc.)
+    if settings.is_development() or settings.is_test():
+        # In dev-like environments, allow convenient overrides for testing
+        user_id = (
+            os.environ.get("DEV_USER_ID")
+            or getattr(user, "user_id", None)
+            or getattr(user, "id", None)
+        )
+        org_id = (
+            os.environ.get("DEV_ORG_ID")
+            or getattr(user, "org_id", None)
+            or getattr(user, "org_key", None)
+        )
+    else:
+        # In production-like environments, derive from authenticated user
+        user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+        org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+        if not user_id or not org_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Authenticated user and organization context are required for autonomous tasks",
+            )
+
+    logger.debug(
+        "[NAVI Autonomous] User context: user_id=%s, org_id=%s", user_id, org_id
+    )
 
     # Determine workspace path (support both workspace_path and workspace_root)
     workspace_path = request.workspace_path or request.workspace_root
@@ -7168,18 +7327,83 @@ async def navi_autonomous_task(
             logger.info("[NAVI Autonomous] Message augmented with image analysis")
 
     async def stream_generator():
-        """Generate SSE events from the autonomous agent."""
+        """Generate SSE events from the autonomous agent with heartbeat to prevent timeout."""
+        import asyncio
+
+        async def heartbeat_wrapper(agent_generator):
+            """Wrap agent generator with periodic heartbeat events to keep SSE connection alive."""
+            last_event_time = time.time()
+            heartbeat_interval = 10  # Send heartbeat every 10 seconds of silence (reduced from 15s for better reliability)
+            agent_task = (
+                None  # Initialize before try to avoid UnboundLocalError in finally
+            )
+
+            try:
+                # Process events from agent with heartbeat injection
+                agent_task = asyncio.create_task(agent_generator.__anext__())
+
+                while True:
+                    # Wait for either agent event or heartbeat timeout
+                    done, pending = await asyncio.wait(
+                        {agent_task}, timeout=heartbeat_interval
+                    )
+
+                    if done:
+                        # Agent sent an event
+                        try:
+                            event = await agent_task
+                            last_event_time = time.time()
+                            yield event
+                            # Create next agent task
+                            agent_task = asyncio.create_task(
+                                agent_generator.__anext__()
+                            )
+                        except StopAsyncIteration:
+                            # Agent is done
+                            break
+                    else:
+                        # Timeout reached without event - send heartbeat
+                        current_time = time.time()
+                        if current_time - last_event_time >= heartbeat_interval:
+                            yield {
+                                "type": "heartbeat",
+                                "timestamp": time.time() * 1000,
+                                "message": "Connection alive",
+                            }
+                            last_event_time = current_time
+            finally:
+                # Cleanup: cancel pending task and close generator if client disconnects
+                if agent_task is not None and not agent_task.done():
+                    agent_task.cancel()
+                    try:
+                        await agent_task
+                    except asyncio.CancelledError:
+                        pass
+
+                # Attempt to close the async generator
+                try:
+                    await agent_generator.aclose()
+                except (StopAsyncIteration, RuntimeError):
+                    # Generator already closed or not started
+                    pass
+
+        # Use request-scoped database session from dependency injection
         try:
             agent = AutonomousAgent(
                 workspace_path=workspace_path,
                 api_key=api_key,
                 provider=provider,
                 model=model,
+                db_session=db,
+                user_id=user_id,
+                org_id=org_id,
             )
 
-            async for event in agent.execute_task(
-                request=augmented_message,  # Use augmented message with image context
-                run_verification=request.run_verification,
+            async for event in heartbeat_wrapper(
+                agent.execute_task(
+                    request=augmented_message,  # Use augmented message with image context
+                    run_verification=request.run_verification,
+                )
             ):
                 yield f"data: {json.dumps(event)}\n\n"
 

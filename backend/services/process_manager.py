@@ -4528,6 +4528,10 @@ PROCESS_TOOLS = [
                 "checks": {
                     "type": "array",
                     "description": "For health_aggregate: list of checks",
+                    "items": {
+                        "type": "object",
+                        "description": "Individual health check configuration",
+                    },
                 },
             },
             "required": ["condition_type"],

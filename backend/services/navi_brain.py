@@ -26,12 +26,15 @@ import json
 import asyncio
 import aiohttp
 import uuid
+from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncGenerator, Sequence, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 import re
 import logging
+import sys
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -5230,6 +5233,32 @@ class SelfHealingEngine:
     4. Learns from failures to prevent recurrence
     """
 
+    # Port memory: workspace_path -> last_used_port
+    # Using OrderedDict with bounded size to prevent unbounded memory growth
+    _PORT_MEMORY_MAX_SIZE = 1000  # Limit to 1000 workspace entries
+    _port_memory: OrderedDict[str, int] = OrderedDict()
+    _port_memory_lock = threading.Lock()  # Protect port memory from concurrent access
+
+    @classmethod
+    def _update_port_memory(cls, workspace_path: str, port: int) -> None:
+        """
+        Update the LRU-style port memory for a workspace, enforcing the
+        _PORT_MEMORY_MAX_SIZE bound.
+
+        This helper should be used for all writes to _port_memory to
+        ensure the in-memory cache does not grow without bound.
+        """
+        with cls._port_memory_lock:
+            # Mark as most recently used (if it already exists)
+            if workspace_path in cls._port_memory:
+                cls._port_memory.move_to_end(workspace_path)
+            # Set or update the port for this workspace
+            cls._port_memory[workspace_path] = port
+            # Enforce bounded size by evicting least recently used entries
+            while len(cls._port_memory) > cls._PORT_MEMORY_MAX_SIZE:
+                # popitem(last=False) removes the oldest (least recently used) item
+                cls._port_memory.popitem(last=False)
+
     # Common error patterns and their fixes
     ERROR_PATTERNS = {
         # Dependency errors
@@ -5372,6 +5401,199 @@ class SelfHealingEngine:
         )
 
     @classmethod
+    def _get_configured_port(cls, workspace_path: str) -> Optional[int]:
+        """
+        Read project config files to find the configured port.
+        Checks: vite.config.ts, vite.config.js, next.config.js, package.json, .env
+        """
+        import json
+        import re
+
+        workspace = Path(workspace_path)
+
+        # Check Vite config (TypeScript)
+        vite_config_ts = workspace / "vite.config.ts"
+        if vite_config_ts.exists():
+            try:
+                content = vite_config_ts.read_text()
+                match = re.search(r"port:\s*(\d+)", content)
+                if match:
+                    return int(match.group(1))
+            except Exception:
+                pass
+
+        # Check Vite config (JavaScript)
+        vite_config_js = workspace / "vite.config.js"
+        if vite_config_js.exists():
+            try:
+                content = vite_config_js.read_text()
+                match = re.search(r"port:\s*(\d+)", content)
+                if match:
+                    return int(match.group(1))
+            except Exception:
+                pass
+
+        # Check Next.js config
+        next_config = workspace / "next.config.js"
+        if next_config.exists():
+            try:
+                content = next_config.read_text()
+                match = re.search(r"port:\s*(\d+)", content)
+                if match:
+                    return int(match.group(1))
+            except Exception:
+                pass
+
+        # Check package.json scripts
+        package_json = workspace / "package.json"
+        if package_json.exists():
+            try:
+                data = json.loads(package_json.read_text())
+                scripts = data.get("scripts", {})
+                # Join scripts with space to prevent token merging (e.g., "3000npm" → "3000 npm")
+                dev_script = " ".join(
+                    [scripts.get("dev", ""), scripts.get("start", "")]
+                )
+                # Look for port flags in scripts
+                match = re.search(r"--port[=\s]+(\d+)|PORT=(\d+)", dev_script)
+                if match:
+                    return int(match.group(1) or match.group(2))
+            except Exception:
+                pass
+
+        # Check .env files
+        for env_file in [".env.local", ".env.development", ".env"]:
+            env_path = workspace / env_file
+            if env_path.exists():
+                try:
+                    content = env_path.read_text()
+                    match = re.search(r"PORT=(\d+)", content)
+                    if match:
+                        return int(match.group(1))
+                except Exception:
+                    pass
+
+        return None
+
+    @classmethod
+    async def _identify_process_owner(
+        cls, port: int, workspace_path: str
+    ) -> Dict[str, Any]:
+        """
+        Identify if the process on a port belongs to this workspace or another project.
+        Returns: {
+            "is_same_project": bool,
+            "is_related": bool,  # e.g., different port of same server
+            "workspace": str,  # path to the owning workspace
+            "reason": str
+        }
+        """
+        import subprocess
+
+        # Get process info
+        port_status = await PortManager.check_port(port)
+        if port_status.is_available or not port_status.process_pid:
+            return {
+                "is_same_project": False,
+                "is_related": False,
+                "workspace": "",
+                "reason": "No process found",
+            }
+
+        try:
+            # Get process command and working directory
+            if sys.platform == "darwin":
+                # macOS: use lsof to get process cwd
+                # Run in thread pool to avoid blocking event loop
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["lsof", "-a", "-p", str(port_status.process_pid), "-d", "cwd"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                cwd_line = [
+                    line for line in result.stdout.split("\n") if "cwd" in line.lower()
+                ]
+                if cwd_line:
+                    # Extract directory path from lsof output
+                    parts = cwd_line[0].split()
+                    if len(parts) >= 9:
+                        process_cwd = parts[-1]
+                        workspace_path_resolved = str(Path(workspace_path).resolve())
+                        process_cwd_resolved = str(Path(process_cwd).resolve())
+
+                        if process_cwd_resolved == workspace_path_resolved:
+                            return {
+                                "is_same_project": True,
+                                "is_related": True,
+                                "workspace": process_cwd,
+                                "reason": "Same workspace - server already running",
+                            }
+                        # Use path-aware checks to detect parent/child relationships
+                        # This avoids false positives from substring matches (e.g., /work/app vs /work/app2)
+                        try:
+                            workspace_path_obj = Path(workspace_path_resolved)
+                            process_cwd_obj = Path(process_cwd_resolved)
+                            # Check if one path is relative to the other (parent/child relationship)
+                            is_related = False
+                            try:
+                                workspace_path_obj.relative_to(process_cwd_obj)
+                                is_related = True
+                            except ValueError:
+                                try:
+                                    process_cwd_obj.relative_to(workspace_path_obj)
+                                    is_related = True
+                                except ValueError:
+                                    pass
+                            if is_related:
+                                return {
+                                    "is_same_project": False,
+                                    "is_related": True,
+                                    "workspace": process_cwd,
+                                    "reason": "Related workspace (parent/child directory)",
+                                }
+                        except Exception:
+                            # Fallback to string comparison if path operations fail
+                            if (
+                                workspace_path_resolved in process_cwd_resolved
+                                or process_cwd_resolved in workspace_path_resolved
+                            ):
+                                return {
+                                    "is_same_project": False,
+                                    "is_related": True,
+                                    "workspace": process_cwd,
+                                    "reason": "Related workspace (parent/child directory)",
+                                }
+                        else:
+                            return {
+                                "is_same_project": False,
+                                "is_related": False,
+                                "workspace": process_cwd,
+                                "reason": "Different project entirely",
+                            }
+
+            # Fallback: just check command
+            cmd = port_status.process_command or ""
+            if workspace_path in cmd:
+                return {
+                    "is_same_project": True,
+                    "is_related": True,
+                    "workspace": workspace_path,
+                    "reason": "Workspace path in command",
+                }
+
+        except Exception as e:
+            logger.debug(f"Could not identify process owner: {e}")
+
+        return {
+            "is_same_project": False,
+            "is_related": False,
+            "workspace": "",
+            "reason": "Unknown - could not determine",
+        }
+
+    @classmethod
     def _generate_recovery_actions(
         cls,
         error_type: str,
@@ -5394,23 +5616,41 @@ class SelfHealingEngine:
             )
 
         elif error_type == "port":
-            port = captured_groups[0] if captured_groups else "3000"
+            # Port conflict handling - using backward-compatible action types
+            # Use existing action types (checkPort/killPort/findPort) that executor supports
+            port = 3000
+            if captured_groups:
+                first_group = captured_groups[0]
+                try:
+                    port = int(first_group)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Invalid port value in captured_groups[0]: %r; falling back to default port %d",
+                        first_group,
+                        port,
+                    )
+
+            # Provide sequence of actions for intelligent port recovery
+            # These actions are recognized by the existing recovery executor
             actions.extend(
                 [
                     {
                         "type": "checkPort",
                         "port": port,
                         "description": f"Check what's using port {port}",
+                        "auto_execute": False,
                     },
                     {
                         "type": "killPort",
                         "port": port,
-                        "description": f"Stop process on port {port}",
+                        "description": f"Kill process on port {port}",
+                        "auto_execute": False,  # Requires user confirmation
                     },
                     {
                         "type": "findPort",
                         "port": port,
-                        "description": "Find an available alternative port",
+                        "description": f"Find alternative port near {port}",
+                        "auto_execute": True,
                     },
                 ]
             )

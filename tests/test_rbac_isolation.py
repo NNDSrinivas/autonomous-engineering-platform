@@ -9,7 +9,12 @@ Verifies that:
 
 import pytest
 from httpx import Client
-from tests.conftest import TEST_ORG_ID, assert_response_ok
+from tests.conftest import (
+    TEST_ORG_ID,
+    TEST_BASE_URL,
+    get_auth_headers,
+    assert_response_ok,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -82,7 +87,8 @@ def test_cross_org_forbidden_query(
 def test_missing_org_header_rejected(seeded_graph):
     """Verify requests without X-Org-Id header are rejected"""
     # Client without X-Org-Id header
-    with Client(base_url="http://localhost:8000", timeout=30.0) as client:
+    headers = get_auth_headers()
+    with Client(base_url=TEST_BASE_URL, headers=headers, timeout=30.0) as client:
         response = client.get("/api/memory/graph/node/ENG-102")
 
         assert response.status_code in (

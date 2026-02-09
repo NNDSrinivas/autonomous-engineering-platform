@@ -10,6 +10,7 @@ import {
   LogOut,
   Moon,
   PanelLeft,
+  PenSquare,
   Plus,
   Settings,
   Sun,
@@ -26,6 +27,7 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle,
+  CheckCircle2,
   Database,
   Bug,
   FileText,
@@ -59,7 +61,7 @@ import {
   Activity,
   Server,
 } from "lucide-react";
-import { naviClient, McpExecutionResult } from "../../api/navi/client";
+import { naviClient, McpExecutionResult, McpServer, buildHeaders, resolveBackendBase } from "../../api/navi/client";
 import NaviChatPanel from "../navi/NaviChatPanel";
 import { HistoryPanel } from "../navi/HistoryPanel";
 import { SidebarPanel } from "../sidebar/SidebarPanel";
@@ -75,6 +77,92 @@ interface UserInfo {
   org?: string;
   role?: string;
 }
+
+interface OrgInfo {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
+}
+
+const NICKNAME_KEY = "aep.navi.nickname.v1";
+const AUTH_GATE_SKIP_KEY = "aep.navi.authGateSkipped.v1";
+const SELECTED_ORG_KEY = "aep.navi.selectedOrg.v1";
+
+const readNickname = () => {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(NICKNAME_KEY) || "";
+  } catch {
+    return "";
+  }
+};
+
+const readAuthGateSkipped = () => {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(AUTH_GATE_SKIP_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const readSelectedOrg = () => {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(SELECTED_ORG_KEY) || "";
+  } catch {
+    return "";
+  }
+};
+
+const writeSelectedOrg = (value: string) => {
+  if (typeof window === "undefined") return;
+  try {
+    if (!value) {
+      window.localStorage.removeItem(SELECTED_ORG_KEY);
+    } else {
+      window.localStorage.setItem(SELECTED_ORG_KEY, value);
+    }
+  } catch {
+    // ignore storage errors
+  }
+};
+
+const writeNickname = (value: string) => {
+  if (typeof window === "undefined") return;
+  try {
+    if (!value.trim()) {
+      window.localStorage.removeItem(NICKNAME_KEY);
+    } else {
+      window.localStorage.setItem(NICKNAME_KEY, value.trim());
+    }
+  } catch {
+    // ignore storage errors
+  }
+};
+
+const decodeJwtUser = (token?: string | null): UserInfo | undefined => {
+  if (!token) return undefined;
+  const parts = token.split(".");
+  if (parts.length !== 3) return undefined;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return {
+      email: payload.email,
+      name: payload.name,
+      org: payload.org || payload.org_id,
+      role: payload.role,
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+const firstName = (name?: string) => {
+  if (!name) return "";
+  return name.split(" ")[0]?.trim() || "";
+};
 
 type SidebarPanelType = 'mcp' | 'connectors' | 'account' | 'rules' | null;
 type CommandCenterTab = 'mcp' | 'integrations' | 'rules' | 'account';
@@ -98,6 +186,11 @@ interface McpTool {
   metadata: {
     category: string;
     requires_approval: boolean;
+    server_id?: string | number;
+    server_name?: string;
+    source?: 'builtin' | 'external';
+    transport?: string;
+    scope?: 'org' | 'user' | 'builtin';
   };
 }
 
@@ -500,6 +593,17 @@ export function CodeCompanionShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true); // Sidebar closed by default
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<UserInfo | undefined>(undefined);
+  const [nickname, setNickname] = useState(readNickname());
+  const [authGateSkipped, setAuthGateSkipped] = useState(readAuthGateSkipped());
+  const [orgOnboardingOpen, setOrgOnboardingOpen] = useState(false);
+  const [orgs, setOrgs] = useState<OrgInfo[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState(readSelectedOrg());
+  const [orgName, setOrgName] = useState("");
+  const [orgSlug, setOrgSlug] = useState("");
+  const [inviteEmails, setInviteEmails] = useState("");
+  const [inviteRole, setInviteRole] = useState("member");
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [orgError, setOrgError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activityPanelOpen, setActivityPanelOpen] = useState(false);
   const [activityJumpCommandId, setActivityJumpCommandId] = useState<string | null>(null);
@@ -520,6 +624,9 @@ export function CodeCompanionShell() {
   const [mcpResult, setMcpResult] = useState<McpExecutionResult | null>(null);
   const [expandedMcpCategories, setExpandedMcpCategories] = useState<Record<string, boolean>>({});
   const [mcpSearchQuery, setMcpSearchQuery] = useState('');
+  const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
+  const [mcpServerFilter, setMcpServerFilter] = useState<string>('all');
+  const canManageMcpServers = user?.role === 'admin';
 
   // Connectors state - initialized from comprehensive marketplace (280+ connectors)
   const [connectors, setConnectors] = useState<Connector[]>(ALL_CONNECTORS);
@@ -560,6 +667,9 @@ export function CodeCompanionShell() {
     const unsubscribe = onMessage((message: any) => {
       if (message.type === "auth.stateChange") {
         setIsAuthenticated(message.isAuthenticated);
+        if (message.isAuthenticated) {
+          setAuthGateSkipped(false);
+        }
         const currentConfig = (window as any).__AEP_CONFIG__ || {};
         if (message.isAuthenticated && message.authToken) {
           (window as any).__AEP_CONFIG__ = {
@@ -580,6 +690,18 @@ export function CodeCompanionShell() {
           setUser(undefined);
         }
       }
+      if (message.type === "navi.sso.success" && message.token) {
+        setIsAuthenticated(true);
+        const currentConfig = (window as any).__AEP_CONFIG__ || {};
+        (window as any).__AEP_CONFIG__ = {
+          ...currentConfig,
+          authToken: message.token,
+        };
+        const tokenUser = message.user || decodeJwtUser(message.token);
+        if (tokenUser) {
+          setUser(tokenUser);
+        }
+      }
       // Handle panel.openOverlay from extension
       if (message.type === "panel.openOverlay" && message.panel) {
         // Ensure sidebar is open
@@ -590,6 +712,46 @@ export function CodeCompanionShell() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const handleSkip = (event: Event) => {
+      const custom = event as CustomEvent;
+      if (typeof custom.detail === "boolean") {
+        setAuthGateSkipped(custom.detail);
+      } else {
+        setAuthGateSkipped(readAuthGateSkipped());
+      }
+    };
+    window.addEventListener("navi.auth.skip", handleSkip);
+    return () => window.removeEventListener("navi.auth.skip", handleSkip);
+  }, []);
+
+  useEffect(() => {
+    const handleSsoMessage = (event: MessageEvent) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "navi.sso.success" && msg.token) {
+        setIsAuthenticated(true);
+        const currentConfig = (window as any).__AEP_CONFIG__ || {};
+        (window as any).__AEP_CONFIG__ = {
+          ...currentConfig,
+          authToken: msg.token,
+        };
+        const tokenUser = msg.user || decodeJwtUser(msg.token);
+        if (tokenUser) {
+          setUser(tokenUser);
+        }
+      }
+    };
+    window.addEventListener("message", handleSsoMessage);
+    return () => window.removeEventListener("message", handleSsoMessage);
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      void fetchOrgs();
+    }
+  }, [isAuthenticated]);
 
   // Handle sign in/out
   const handleSignIn = () => {
@@ -612,6 +774,141 @@ export function CodeCompanionShell() {
     setChatJumpCommandId(commandId);
   }, []);
 
+  const displayName =
+    nickname ||
+    firstName(user?.name) ||
+    user?.email?.split("@")[0] ||
+    "User";
+
+  const applySelectedOrg = (org: OrgInfo | undefined) => {
+    if (!org) return;
+    setSelectedOrgId(org.id);
+    writeSelectedOrg(org.id);
+    const currentConfig = (window as any).__AEP_CONFIG__ || {};
+    (window as any).__AEP_CONFIG__ = {
+      ...currentConfig,
+      orgId: org.id,
+    };
+    setUser((prev) => ({
+      ...(prev || {}),
+      org: org.name,
+    }));
+  };
+
+  const fetchOrgs = async () => {
+    try {
+      setOrgLoading(true);
+      const base = resolveBackendBase();
+      const res = await fetch(`${base}/api/orgs`, { headers: buildHeaders() });
+      if (!res.ok) {
+        throw new Error("Failed to load organizations");
+      }
+      const data = (await res.json()) as OrgInfo[];
+      setOrgs(data);
+      if (!data.length) {
+        setOrgOnboardingOpen(true);
+        return;
+      }
+      const matched = data.find((org) => org.id === selectedOrgId) || data[0];
+      applySelectedOrg(matched);
+      setOrgOnboardingOpen(false);
+    } catch (err: any) {
+      setOrgError(err?.message || "Unable to load orgs");
+      setOrgOnboardingOpen(true);
+    } finally {
+      setOrgLoading(false);
+    }
+  };
+
+  const createOrg = async () => {
+    if (!orgName.trim()) {
+      setOrgError("Organization name required");
+      return;
+    }
+    try {
+      setOrgLoading(true);
+      const base = resolveBackendBase();
+      const res = await fetch(`${base}/api/orgs`, {
+        method: "POST",
+        headers: buildHeaders(),
+        body: JSON.stringify({ name: orgName.trim(), slug: orgSlug.trim() || undefined }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Failed to create org");
+      }
+      const org = (await res.json()) as OrgInfo;
+      setOrgs((prev) => [org, ...prev]);
+      setOrgName("");
+      setOrgSlug("");
+      applySelectedOrg(org);
+      setOrgOnboardingOpen(false);
+      setOrgError(null);
+    } catch (err: any) {
+      setOrgError(err?.message || "Unable to create org");
+    } finally {
+      setOrgLoading(false);
+    }
+  };
+
+  const selectOrg = async (orgId: string) => {
+    try {
+      setOrgLoading(true);
+      const base = resolveBackendBase();
+      const res = await fetch(`${base}/api/orgs/select`, {
+        method: "POST",
+        headers: buildHeaders(),
+        body: JSON.stringify({ org_id: orgId }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Failed to select org");
+      }
+      const org = orgs.find((o) => o.id === orgId);
+      applySelectedOrg(org);
+      setOrgOnboardingOpen(false);
+      setOrgError(null);
+    } catch (err: any) {
+      setOrgError(err?.message || "Unable to select org");
+    } finally {
+      setOrgLoading(false);
+    }
+  };
+
+  const sendInvites = async () => {
+    if (!selectedOrgId) {
+      setOrgError("Select an organization first");
+      return;
+    }
+    const emails = inviteEmails
+      .split(/[,\n\s]+/)
+      .map((e) => e.trim())
+      .filter(Boolean);
+    if (!emails.length) {
+      setOrgError("Enter at least one email");
+      return;
+    }
+    try {
+      setOrgLoading(true);
+      const base = resolveBackendBase();
+      const res = await fetch(`${base}/api/orgs/invite`, {
+        method: "POST",
+        headers: buildHeaders(),
+        body: JSON.stringify({ org_id: selectedOrgId, emails, role: inviteRole }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Failed to send invites");
+      }
+      setInviteEmails("");
+      setOrgError(null);
+    } catch (err: any) {
+      setOrgError(err?.message || "Unable to send invites");
+    } finally {
+      setOrgLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!activityJumpCommandId) return;
     const timer = window.setTimeout(() => {
@@ -629,11 +926,20 @@ export function CodeCompanionShell() {
   }, [chatJumpCommandId]);
 
   // Handle MCP tool execution
-  const handleExecuteMcpTool = useCallback(async (toolName: string, args: Record<string, unknown>): Promise<void> => {
+  const handleExecuteMcpTool = useCallback(async (
+    toolName: string,
+    args: Record<string, unknown>,
+    serverId?: string | number
+  ): Promise<McpExecutionResult> => {
     try {
-      const result = await naviClient.executeMcpTool(toolName, args, true);
+      const result = await naviClient.executeMcpTool(
+        toolName,
+        args,
+        true,
+        serverId !== undefined && serverId !== null ? String(serverId) : undefined
+      );
       console.log('MCP Tool Result:', result);
-      // Result is logged but we don't return it since the SidebarPanel handles its own state
+      return result;
     } catch (error) {
       console.error('MCP Tool Error:', error);
       throw error;
@@ -666,7 +972,16 @@ export function CodeCompanionShell() {
     try {
       const response = await naviClient.listMcpTools();
       const fetchedTools = response.tools as unknown as McpTool[];
+      const fetchedServers = response.servers as McpServer[] | undefined;
       setMcpTools(fetchedTools);
+      if (fetchedServers) {
+        setMcpServers(fetchedServers);
+        setMcpServerFilter((prev) =>
+          prev === 'all' || fetchedServers.some((s) => String(s.id) === String(prev))
+            ? prev
+            : 'all'
+        );
+      }
       if (fetchedTools.length > 0) {
         const firstCategory = fetchedTools[0].metadata.category;
         setExpandedMcpCategories({ [firstCategory]: true });
@@ -679,10 +994,10 @@ export function CodeCompanionShell() {
   }, []);
 
   useEffect(() => {
-    if (fullPanelOpen && fullPanelTab === 'mcp' && mcpTools.length === 0) {
+    if (fullPanelOpen && fullPanelTab === 'mcp') {
       fetchMcpTools();
     }
-  }, [fullPanelOpen, fullPanelTab, mcpTools.length, fetchMcpTools]);
+  }, [fullPanelOpen, fullPanelTab, fetchMcpTools]);
 
   // MCP Tool handlers
   const handleSelectMcpTool = (tool: McpTool) => {
@@ -706,7 +1021,14 @@ export function CodeCompanionShell() {
     setMcpExecuting(true);
     setMcpResult(null);
     try {
-      const result = await naviClient.executeMcpTool(selectedMcpTool.name, mcpToolArgs, true);
+      const result = await naviClient.executeMcpTool(
+        selectedMcpTool.name,
+        mcpToolArgs,
+        true,
+        selectedMcpTool.metadata.server_id !== undefined && selectedMcpTool.metadata.server_id !== null
+          ? String(selectedMcpTool.metadata.server_id)
+          : undefined
+      );
       setMcpResult(result);
     } catch (err) {
       setMcpResult({
@@ -779,13 +1101,19 @@ export function CodeCompanionShell() {
     file_operations: { label: 'File Operations', icon: <FileText className="h-5 w-5" />, description: 'Read, write, search files' },
     test_execution: { label: 'Testing', icon: <TestTube className="h-5 w-5" />, description: 'Run tests, coverage' },
     code_analysis: { label: 'Analysis', icon: <BarChart3 className="h-5 w-5" />, description: 'Complexity, dependencies' },
+    external: { label: 'External Tools', icon: <Server className="h-5 w-5" />, description: 'Tools from connected MCP servers' },
+    builtin: { label: 'Builtin Tools', icon: <Settings className="h-5 w-5" />, description: 'NAVI built-in MCP tools' },
   };
 
-  // Filter MCP tools by search
-  const filteredMcpTools = mcpTools.filter(tool =>
-    tool.name.toLowerCase().includes(mcpSearchQuery.toLowerCase()) ||
-    tool.description.toLowerCase().includes(mcpSearchQuery.toLowerCase())
-  );
+  // Filter MCP tools by search + server
+  const filteredMcpTools = mcpTools.filter((tool) => {
+    const matchesSearch =
+      tool.name.toLowerCase().includes(mcpSearchQuery.toLowerCase()) ||
+      tool.description.toLowerCase().includes(mcpSearchQuery.toLowerCase());
+    const toolServerId = String(tool.metadata.server_id ?? 'builtin');
+    const matchesServer = mcpServerFilter === 'all' || toolServerId === mcpServerFilter;
+    return matchesSearch && matchesServer;
+  });
 
   const mcpToolsByCategory = filteredMcpTools.reduce((acc, tool) => {
     const category = tool.metadata.category;
@@ -856,18 +1184,17 @@ export function CodeCompanionShell() {
             <div className="navi-header-right">
               {/* New Chat Button - Animated Icon Only */}
               <button
-                className="navi-new-chat-btn"
+                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-new-chat-btn"
                 title="Start New Chat"
                 onClick={handleNewChat}
               >
-                <span className="navi-new-chat-glow" />
-                <span className="navi-new-chat-ring" />
-                <Plus className="h-4 w-4 navi-new-chat-icon" />
+                <span className="navi-icon-glow" />
+                <PenSquare className="h-4 w-4 navi-new-chat-icon" />
               </button>
 
               {/* History Button - Animated rewind effect */}
               <button
-                className="navi-header-icon-btn navi-animated-icon navi-history-btn"
+                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-history-btn"
                 title="Chat History"
                 onClick={() => setHistoryOpen(true)}
               >
@@ -876,7 +1203,7 @@ export function CodeCompanionShell() {
               </button>
 
               {/* Notifications with Badge - Bell ring animation */}
-              <button className="navi-header-icon-btn navi-animated-icon navi-has-badge navi-bell-btn" title="Notifications">
+              <button className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-has-badge navi-bell-btn" title="Notifications">
                 <span className="navi-icon-glow" />
                 <Bell className="h-4 w-4 navi-bell-icon" />
                 <span className="navi-notification-badge">3</span>
@@ -884,7 +1211,7 @@ export function CodeCompanionShell() {
 
               {/* Theme Toggle - Animated */}
               <button
-                className="navi-header-icon-btn navi-animated-icon navi-theme-toggle"
+                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-theme-toggle"
                 title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
                 onClick={toggleTheme}
               >
@@ -900,7 +1227,7 @@ export function CodeCompanionShell() {
 
               {/* Activity Panel Toggle */}
               <button
-                className="navi-header-icon-btn navi-animated-icon navi-activity-toggle"
+                className={`navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-activity-toggle ${activityPanelOpen ? "is-active" : ""}`}
                 title={activityPanelOpen ? "Hide Activity" : "Show Activity"}
                 onClick={() => setActivityPanelOpen((prev) => !prev)}
               >
@@ -910,7 +1237,7 @@ export function CodeCompanionShell() {
 
               {/* Help - Opens documentation */}
               <button
-                className="navi-header-icon-btn navi-animated-icon navi-help-btn"
+                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-help-btn"
                 title="Help & Documentation"
                 onClick={() => {
                   postMessage({ type: "help.open" });
@@ -941,7 +1268,7 @@ export function CodeCompanionShell() {
                       </div>
                     )}
                     <span className="navi-user-name">
-                      {user?.name || user?.email?.split('@')[0] || 'User'}
+                      {displayName}
                     </span>
                     <span className="navi-auth-status">
                       <CheckCircle2 className="h-3 w-3" />
@@ -967,11 +1294,30 @@ export function CodeCompanionShell() {
                             )}
                           </div>
                           <div className="navi-dropdown-user-details">
-                            <div className="navi-dropdown-user-name">{user?.name || 'User'}</div>
+                            <div className="navi-dropdown-user-name">{displayName}</div>
                             <div className="navi-dropdown-user-email">{user?.email}</div>
                             {user?.org && (
                               <div className="navi-dropdown-user-org">{user.org}</div>
                             )}
+                          </div>
+                        </div>
+                        <div className="navi-dropdown-divider" />
+                        <div className="navi-nickname-row">
+                          <label className="navi-nickname-label">Nickname</label>
+                          <div className="navi-nickname-controls">
+                            <input
+                              className="navi-nickname-input"
+                              type="text"
+                              value={nickname}
+                              placeholder="Optional"
+                              onChange={(event) => setNickname(event.target.value)}
+                            />
+                            <button
+                              className="navi-nickname-save"
+                              onClick={() => writeNickname(nickname)}
+                            >
+                              Save
+                            </button>
                           </div>
                         </div>
                         <div className="navi-dropdown-divider" />
@@ -1009,13 +1355,17 @@ export function CodeCompanionShell() {
                 <div className="navi-auth-group">
                   {/* Settings Button */}
                   <button
-                    className="navi-header-icon-btn navi-animated-icon navi-settings-btn"
+                    className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-settings-btn"
                     title="Settings"
                     onClick={() => setExternalPanelRequest('account')}
                   >
                     <span className="navi-icon-glow" />
                     <Settings className="h-4 w-4 navi-settings-icon" />
                   </button>
+
+                  {authGateSkipped && (
+                    <span className="navi-auth-required-badge">Sign in required</span>
+                  )}
 
                   {/* Sign In Button */}
                   <button
@@ -1035,6 +1385,93 @@ export function CodeCompanionShell() {
             </div>
           </div>
         </header>
+
+        {orgOnboardingOpen && (
+          <div className="navi-org-gate">
+            <div className="navi-org-card">
+              <div className="navi-org-card__header">
+                <div>
+                  <div className="navi-org-card__title">Set up your organization</div>
+                  <div className="navi-org-card__subtitle">
+                    Create or join a workspace for team collaboration.
+                  </div>
+                </div>
+                <button
+                  className="navi-org-card__dismiss"
+                  onClick={() => setOrgOnboardingOpen(false)}
+                >
+                  Later
+                </button>
+              </div>
+
+              {orgs.length > 0 && (
+                <div className="navi-org-card__section">
+                  <div className="navi-org-card__label">Select an existing org</div>
+                  <div className="navi-org-card__orgs">
+                    {orgs.map((org) => (
+                      <button
+                        key={org.id}
+                        className={`navi-org-card__org ${selectedOrgId === org.id ? "is-active" : ""}`}
+                        onClick={() => void selectOrg(org.id)}
+                      >
+                        <div className="navi-org-card__org-name">{org.name}</div>
+                        <div className="navi-org-card__org-meta">{org.slug}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="navi-org-card__section">
+                <div className="navi-org-card__label">Create a new org</div>
+                <div className="navi-org-card__inputs">
+                  <input
+                    className="navi-org-card__input"
+                    placeholder="Organization name"
+                    value={orgName}
+                    onChange={(event) => setOrgName(event.target.value)}
+                  />
+                  <input
+                    className="navi-org-card__input"
+                    placeholder="Slug (optional)"
+                    value={orgSlug}
+                    onChange={(event) => setOrgSlug(event.target.value)}
+                  />
+                  <button className="navi-org-card__primary" onClick={() => void createOrg()}>
+                    Create org
+                  </button>
+                </div>
+              </div>
+
+              <div className="navi-org-card__section">
+                <div className="navi-org-card__label">Invite teammates</div>
+                <textarea
+                  className="navi-org-card__textarea"
+                  rows={3}
+                  placeholder="emails, separated by commas"
+                  value={inviteEmails}
+                  onChange={(event) => setInviteEmails(event.target.value)}
+                />
+                <div className="navi-org-card__invite-row">
+                  <select
+                    className="navi-org-card__select"
+                    value={inviteRole}
+                    onChange={(event) => setInviteRole(event.target.value)}
+                  >
+                    <option value="member">Member</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                  <button className="navi-org-card__secondary" onClick={() => void sendInvites()}>
+                    Send invites
+                  </button>
+                </div>
+              </div>
+
+              {orgError && <div className="navi-org-card__error">{orgError}</div>}
+              {orgLoading && <div className="navi-org-card__loading">Working…</div>}
+            </div>
+          </div>
+        )}
 
         {/* Main Content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -1086,7 +1523,7 @@ export function CodeCompanionShell() {
                     }}
                   />
                   <button
-                    className="navi-activity-close"
+                    className="navi-icon-btn navi-icon-btn--sm navi-activity-close"
                     onClick={() => setActivityPanelOpen(false)}
                     title="Close Activity Panel"
                   >
@@ -1123,7 +1560,7 @@ export function CodeCompanionShell() {
                 </div>
               </div>
               <button
-                className="navi-full-panel__close"
+                className="navi-icon-btn navi-icon-btn--sm navi-full-panel__close"
                 onClick={() => setFullPanelOpen(false)}
                 aria-label="Close"
               >
@@ -1173,13 +1610,41 @@ export function CodeCompanionShell() {
                       <h3>Model Context Protocol Tools</h3>
                       <p>Available tools for AI-powered operations • {mcpTools.length} tools</p>
                     </div>
-                    <div className="navi-cc-mcp__search">
-                      <input
-                        type="text"
-                        placeholder="Search tools..."
-                        value={mcpSearchQuery}
-                        onChange={(e) => setMcpSearchQuery(e.target.value)}
-                      />
+                    <div className="navi-cc-mcp__controls">
+                      <div className="navi-cc-mcp__server">
+                        <Server className="h-4 w-4" />
+                        <select
+                          value={mcpServerFilter}
+                          onChange={(e) => setMcpServerFilter(e.target.value)}
+                        >
+                          <option value="all">All servers</option>
+                          {mcpServers.map((server) => (
+                            <option key={String(server.id)} value={String(server.id)}>
+                              {server.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="navi-cc-mcp__search">
+                        <input
+                          type="text"
+                          placeholder="Search tools..."
+                          value={mcpSearchQuery}
+                          onChange={(e) => setMcpSearchQuery(e.target.value)}
+                        />
+                      </div>
+                      {canManageMcpServers && (
+                        <button
+                          className="navi-cc-mcp__manage"
+                          onClick={() => {
+                            setFullPanelOpen(false);
+                            setSidebarCollapsed(false);
+                            setExternalPanelRequest('mcp');
+                          }}
+                        >
+                          Manage Servers
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1226,9 +1691,15 @@ export function CodeCompanionShell() {
                                       className={`navi-cc-tool ${selectedMcpTool?.name === tool.name ? 'is-selected' : ''}`}
                                       onClick={() => handleSelectMcpTool(tool)}
                                     >
-                                      <span className="navi-cc-tool__name">
-                                        {tool.name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                                      </span>
+                                      <div className="navi-cc-tool__info">
+                                        <span className="navi-cc-tool__name">
+                                          {tool.name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                        </span>
+                                        <span className="navi-cc-tool__server">
+                                          {tool.metadata.server_name ||
+                                            (tool.metadata.source === 'external' ? 'External' : 'Builtin')}
+                                        </span>
+                                      </div>
                                       {tool.metadata.requires_approval && (
                                         <span className="navi-cc-tool__badge">Approval</span>
                                       )}
@@ -1253,7 +1724,13 @@ export function CodeCompanionShell() {
                       {selectedMcpTool && (
                         <div className="navi-cc-mcp__detail">
                           <div className="navi-cc-detail__header">
-                            <h4>{selectedMcpTool.name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</h4>
+                            <div className="navi-cc-detail__title">
+                              <h4>{selectedMcpTool.name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</h4>
+                              <span className="navi-cc-detail__server">
+                                {selectedMcpTool.metadata.server_name ||
+                                  (selectedMcpTool.metadata.source === 'external' ? 'External' : 'Builtin')}
+                              </span>
+                            </div>
                             {selectedMcpTool.metadata.requires_approval && (
                               <span className="navi-cc-detail__badge">
                                 <Shield className="h-3 w-3" /> Requires Approval
@@ -1815,14 +2292,8 @@ export function CodeCompanionShell() {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 34px;
-          height: 34px;
-          border-radius: 8px;
-          border: 1px solid hsl(var(--border) / 0.5);
-          background: hsl(var(--secondary) / 0.2);
-          color: hsl(var(--muted-foreground));
-          cursor: pointer;
-          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          --icon-btn-size: 34px;
+          border-radius: 10px;
           overflow: hidden;
         }
 
@@ -1838,14 +2309,6 @@ export function CodeCompanionShell() {
         .navi-animated-icon:hover .navi-icon-glow {
           opacity: 1;
           animation: iconPulse 1.5s ease-in-out infinite;
-        }
-
-        .navi-header-icon-btn:hover {
-          background: hsl(var(--secondary) / 0.5);
-          border-color: hsl(var(--primary) / 0.4);
-          color: hsl(var(--foreground));
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px hsl(var(--primary) / 0.15);
         }
 
         .navi-header-icon-btn:hover svg {
@@ -2083,80 +2546,13 @@ export function CodeCompanionShell() {
           gap: 6px;
         }
 
-        /* ===== NEW CHAT BUTTON - Animated Icon Only ===== */
+        /* ===== NEW CHAT BUTTON ===== */
         .navi-new-chat-btn {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          border: none;
-          background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
-          color: white;
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          overflow: hidden;
-        }
-
-        .navi-new-chat-glow {
-          position: absolute;
-          inset: -4px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, hsl(var(--primary) / 0.5), hsl(var(--accent) / 0.5));
-          opacity: 0;
-          transition: opacity 0.3s ease;
-          z-index: -1;
-          animation: newChatGlow 3s ease-in-out infinite;
-        }
-
-        @keyframes newChatGlow {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(1.15); }
-        }
-
-        .navi-new-chat-ring {
-          position: absolute;
-          inset: 0;
-          border-radius: 50%;
-          border: 2px solid transparent;
-          background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent))) border-box;
-          -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
-          mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
-          -webkit-mask-composite: xor;
-          mask-composite: exclude;
-          opacity: 0;
-          transition: opacity 0.3s ease;
+          border-radius: 8px;
         }
 
         .navi-new-chat-icon {
-          position: relative;
-          z-index: 1;
-          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .navi-new-chat-btn:hover {
-          transform: scale(1.1);
-          box-shadow: 0 4px 20px hsl(var(--primary) / 0.5);
-        }
-
-        .navi-new-chat-btn:hover .navi-new-chat-glow {
-          opacity: 1;
-        }
-
-        .navi-new-chat-btn:hover .navi-new-chat-icon {
-          animation: plusSpin 0.5s ease;
-        }
-
-        @keyframes plusSpin {
-          0% { transform: rotate(0deg) scale(1); }
-          50% { transform: rotate(180deg) scale(1.2); }
-          100% { transform: rotate(180deg) scale(1); }
-        }
-
-        .navi-new-chat-btn:active {
-          transform: scale(0.95);
+          transition: transform 0.25s ease;
         }
 
         /* ===== NOTIFICATION BADGE ===== */
@@ -2401,6 +2797,17 @@ export function CodeCompanionShell() {
           letter-spacing: 0.04em;
         }
 
+        .navi-auth-required-badge {
+          padding: 4px 8px;
+          border-radius: 999px;
+          background: hsl(var(--destructive) / 0.15);
+          color: hsl(var(--destructive));
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
         .navi-user-chevron {
           color: hsl(var(--muted-foreground));
           transition: transform 0.2s ease;
@@ -2484,6 +2891,188 @@ export function CodeCompanionShell() {
         .navi-dropdown-divider {
           height: 1px;
           background: hsl(var(--border));
+        }
+
+        .navi-nickname-row {
+          padding: 12px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          background: hsl(var(--secondary) / 0.2);
+        }
+
+        .navi-nickname-label {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: hsl(var(--muted-foreground));
+        }
+
+        .navi-nickname-controls {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+        }
+
+        .navi-nickname-input {
+          flex: 1;
+          background: hsl(var(--background));
+          border: 1px solid hsl(var(--border));
+          border-radius: 8px;
+          padding: 6px 8px;
+          font-size: 12px;
+          color: hsl(var(--foreground));
+        }
+
+        .navi-nickname-save {
+          border: 1px solid hsl(var(--primary) / 0.4);
+          background: hsl(var(--primary) / 0.15);
+          color: hsl(var(--primary-foreground));
+          padding: 6px 10px;
+          border-radius: 8px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+
+        .navi-org-gate {
+          position: fixed;
+          inset: 0;
+          background: rgba(8, 12, 24, 0.7);
+          backdrop-filter: blur(6px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 60;
+        }
+
+        .navi-org-card {
+          width: min(640px, 92vw);
+          background: hsl(var(--background));
+          border: 1px solid hsl(var(--border));
+          border-radius: 16px;
+          padding: 20px 22px;
+          box-shadow: 0 18px 44px hsl(0 0% 0% / 0.35);
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .navi-org-card__header {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .navi-org-card__title {
+          font-size: 1rem;
+          font-weight: 700;
+        }
+
+        .navi-org-card__subtitle {
+          font-size: 0.8rem;
+          color: hsl(var(--muted-foreground));
+          margin-top: 4px;
+        }
+
+        .navi-org-card__dismiss {
+          border: none;
+          background: transparent;
+          color: hsl(var(--muted-foreground));
+          cursor: pointer;
+          font-size: 0.8rem;
+        }
+
+        .navi-org-card__section {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .navi-org-card__label {
+          font-size: 0.72rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: hsl(var(--muted-foreground));
+        }
+
+        .navi-org-card__orgs {
+          display: grid;
+          gap: 8px;
+        }
+
+        .navi-org-card__org {
+          border: 1px solid hsl(var(--border));
+          background: hsl(var(--secondary) / 0.2);
+          border-radius: 12px;
+          padding: 10px 12px;
+          text-align: left;
+          cursor: pointer;
+        }
+
+        .navi-org-card__org.is-active {
+          border-color: hsl(var(--primary));
+          background: hsl(var(--primary) / 0.12);
+        }
+
+        .navi-org-card__org-name {
+          font-weight: 600;
+          font-size: 0.85rem;
+        }
+
+        .navi-org-card__org-meta {
+          font-size: 0.72rem;
+          color: hsl(var(--muted-foreground));
+        }
+
+        .navi-org-card__inputs {
+          display: grid;
+          gap: 8px;
+        }
+
+        .navi-org-card__input,
+        .navi-org-card__select,
+        .navi-org-card__textarea {
+          border: 1px solid hsl(var(--border));
+          background: hsl(var(--background));
+          border-radius: 10px;
+          padding: 8px 10px;
+          color: hsl(var(--foreground));
+          font-size: 0.85rem;
+        }
+
+        .navi-org-card__primary {
+          background: hsl(var(--primary));
+          color: hsl(var(--primary-foreground));
+          border: none;
+          border-radius: 10px;
+          padding: 8px 12px;
+          cursor: pointer;
+          font-weight: 600;
+        }
+
+        .navi-org-card__invite-row {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .navi-org-card__secondary {
+          border: 1px solid hsl(var(--border));
+          background: hsl(var(--secondary) / 0.4);
+          border-radius: 10px;
+          padding: 8px 12px;
+          cursor: pointer;
+        }
+
+        .navi-org-card__error {
+          color: hsl(var(--destructive));
+          font-size: 0.8rem;
+        }
+
+        .navi-org-card__loading {
+          font-size: 0.75rem;
+          color: hsl(var(--muted-foreground));
         }
 
         .navi-dropdown-menu-item {
@@ -2856,8 +3445,9 @@ export function CodeCompanionShell() {
           background: rgba(0, 0, 0, 0.7);
           backdrop-filter: blur(8px);
           display: flex;
-          align-items: center;
-          justify-content: center;
+          align-items: stretch;
+          justify-content: stretch;
+          padding: 16px;
           z-index: 1000;
           animation: fadeIn 0.2s ease;
         }
@@ -2868,17 +3458,18 @@ export function CodeCompanionShell() {
         }
 
         .navi-full-panel {
-          width: 90%;
-          max-width: 900px;
-          max-height: 85vh;
-          background: hsl(var(--background));
-          border: 1px solid hsl(var(--border));
-          border-radius: 16px;
+          width: 100%;
+          height: 100%;
+          max-width: none;
+          max-height: none;
+          background: linear-gradient(160deg, hsl(var(--card)) 0%, hsl(var(--background)) 65%);
+          border: 1px solid hsl(var(--border) / 0.85);
+          border-radius: 18px;
           display: flex;
           flex-direction: column;
           overflow: hidden;
           animation: slideUp 0.3s ease;
-          box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 40px hsl(var(--primary) / 0.1);
+          box-shadow: 0 25px 80px hsl(var(--background) / 0.7), 0 0 40px hsl(var(--primary) / 0.12);
         }
 
         @keyframes slideUp {
@@ -2915,8 +3506,17 @@ export function CodeCompanionShell() {
           display: flex;
           align-items: center;
           justify-content: center;
-          color: white;
+          color: hsl(var(--primary-foreground));
           box-shadow: 0 4px 15px hsl(var(--primary) / 0.3);
+        }
+
+        .navi-full-panel__logo svg {
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .navi-full-panel__header-left:hover .navi-full-panel__logo svg {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.25));
         }
 
         .navi-full-panel__title h2 {
@@ -2932,23 +3532,14 @@ export function CodeCompanionShell() {
         }
 
         .navi-full-panel__close {
-          width: 36px;
-          height: 36px;
-          border-radius: 10px;
-          background: hsl(var(--secondary) / 0.5);
-          border: 1px solid hsl(var(--border));
-          color: hsl(var(--muted-foreground));
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
+          --icon-btn-size: 32px;
         }
 
         .navi-full-panel__close:hover {
-          background: hsl(var(--destructive) / 0.15);
-          border-color: hsl(var(--destructive) / 0.3);
+          background: hsl(var(--destructive) / 0.12);
+          border-color: hsl(var(--destructive) / 0.35);
           color: hsl(var(--destructive));
+          box-shadow: 0 6px 18px hsl(var(--destructive) / 0.2);
         }
 
         .navi-full-panel__tabs {
@@ -2971,7 +3562,7 @@ export function CodeCompanionShell() {
           font-size: 13px;
           font-weight: 500;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
         }
 
         .navi-full-panel__tab:hover {
@@ -2980,10 +3571,19 @@ export function CodeCompanionShell() {
         }
 
         .navi-full-panel__tab.is-active {
-          background: hsl(var(--primary));
-          color: hsl(var(--primary-foreground));
-          border-color: hsl(var(--primary));
-          box-shadow: 0 2px 10px hsl(var(--primary) / 0.3);
+          background: hsl(var(--secondary) / 0.6);
+          color: hsl(var(--foreground));
+          border-color: hsl(var(--border) / 0.7);
+          box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.08);
+        }
+
+        .navi-full-panel__tab svg {
+          transition: transform 0.2s ease, color 0.2s ease, filter 0.2s ease;
+        }
+
+        .navi-full-panel__tab:hover svg {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .navi-full-panel__content {
@@ -3070,9 +3670,10 @@ export function CodeCompanionShell() {
 
         /* ===== COMMAND CENTER - FULL SIZE ===== */
         .navi-full-panel--large {
-          width: 95%;
-          max-width: 1200px;
-          max-height: 90vh;
+          width: 100%;
+          height: 100%;
+          max-width: none;
+          max-height: none;
         }
 
         /* ===== MCP TOOLS TAB ===== */
@@ -3102,6 +3703,48 @@ export function CodeCompanionShell() {
           color: hsl(var(--muted-foreground));
         }
 
+        .navi-cc-mcp__controls {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .navi-cc-mcp__server {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 12px;
+          background: hsl(var(--secondary) / 0.5);
+          border: 1px solid hsl(var(--border));
+          border-radius: 10px;
+          color: hsl(var(--muted-foreground));
+          transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+        }
+
+        .navi-cc-mcp__server svg {
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .navi-cc-mcp__server:hover {
+          background: hsl(var(--secondary) / 0.7);
+          border-color: hsl(var(--primary) / 0.35);
+          color: hsl(var(--foreground));
+        }
+
+        .navi-cc-mcp__server:hover svg {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
+        }
+
+        .navi-cc-mcp__server select {
+          background: transparent;
+          border: none;
+          color: inherit;
+          font-size: 13px;
+          outline: none;
+          min-width: 150px;
+        }
+
         .navi-cc-mcp__search input {
           width: 240px;
           padding: 10px 14px;
@@ -3120,6 +3763,24 @@ export function CodeCompanionShell() {
           outline: none;
           border-color: hsl(var(--primary) / 0.5);
           box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
+        }
+
+        .navi-cc-mcp__manage {
+          padding: 10px 14px;
+          background: hsl(var(--secondary) / 0.6);
+          border: 1px solid hsl(var(--border));
+          border-radius: 10px;
+          color: hsl(var(--foreground));
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .navi-cc-mcp__manage:hover {
+          background: hsl(var(--secondary) / 0.8);
+          border-color: hsl(var(--primary) / 0.35);
+          box-shadow: 0 8px 18px hsl(var(--primary) / 0.12);
         }
 
         .navi-cc-loading, .navi-cc-error, .navi-cc-empty {
@@ -3281,6 +3942,19 @@ export function CodeCompanionShell() {
           color: hsl(var(--foreground));
         }
 
+        .navi-cc-tool__info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .navi-cc-tool__server {
+          font-size: 10px;
+          color: hsl(var(--muted-foreground));
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
         .navi-cc-tool__badge {
           padding: 2px 6px;
           background: hsl(var(--status-warning) / 0.15);
@@ -3306,11 +3980,24 @@ export function CodeCompanionShell() {
           margin-bottom: 12px;
         }
 
+        .navi-cc-detail__title {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
         .navi-cc-detail__header h4 {
           margin: 0;
           font-size: 18px;
           font-weight: 600;
           color: hsl(var(--foreground));
+        }
+
+        .navi-cc-detail__server {
+          font-size: 10px;
+          color: hsl(var(--muted-foreground));
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
         }
 
         .navi-cc-detail__badge {
@@ -3322,6 +4009,7 @@ export function CodeCompanionShell() {
           color: hsl(var(--status-warning));
           font-size: 11px;
           font-weight: 600;
+          margin-left: auto;
           border-radius: 6px;
         }
 
@@ -3765,6 +4453,12 @@ export function CodeCompanionShell() {
         .navi-cc-integrations__search svg {
           color: hsl(var(--muted-foreground));
           flex-shrink: 0;
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .navi-cc-integrations__search:focus-within svg {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .navi-cc-integrations__search input {
@@ -3794,9 +4488,18 @@ export function CodeCompanionShell() {
           transition: all 0.15s ease;
         }
 
+        .navi-cc-integrations__search-clear svg {
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
         .navi-cc-integrations__search-clear:hover {
           background: hsl(var(--muted-foreground) / 0.3);
           color: hsl(var(--foreground));
+        }
+
+        .navi-cc-integrations__search-clear:hover svg {
+          transform: translateY(-1px) scale(1.05);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         /* ===== INTEGRATIONS CATEGORIES ===== */
@@ -3832,14 +4535,21 @@ export function CodeCompanionShell() {
         }
 
         .navi-cc-integrations__category.is-active {
-          background: hsl(var(--primary));
-          border-color: hsl(var(--primary));
-          color: white;
+          background: hsl(var(--secondary) / 0.7);
+          border-color: hsl(var(--border) / 0.7);
+          color: hsl(var(--foreground));
+          box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.08);
         }
 
         .navi-cc-integrations__category svg {
           width: 14px;
           height: 14px;
+          transition: transform 0.2s ease, filter 0.2s ease, color 0.2s ease;
+        }
+
+        .navi-cc-integrations__category:hover svg {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
         .navi-cc-integrations__category span {
@@ -4152,15 +4862,24 @@ export function CodeCompanionShell() {
           transition: all 0.2s ease;
         }
 
+        .navi-cc-account__tab svg {
+          transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .navi-cc-account__tab:hover svg {
+          transform: translateY(-1px) scale(1.06);
+          filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
+        }
+
         .navi-cc-account__tab:hover {
           color: hsl(var(--foreground));
           background: hsl(var(--secondary) / 0.5);
         }
 
         .navi-cc-account__tab.is-active {
-          color: hsl(var(--primary));
-          background: hsl(var(--card));
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          color: hsl(var(--foreground));
+          background: hsl(var(--secondary) / 0.6);
+          box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.08);
         }
 
         .navi-cc-account__content {
@@ -4265,9 +4984,10 @@ export function CodeCompanionShell() {
         }
 
         .navi-cc-pref__options button.is-active {
-          background: hsl(var(--primary) / 0.15);
-          border-color: hsl(var(--primary));
-          color: hsl(var(--primary));
+          background: hsl(var(--secondary) / 0.65);
+          border-color: hsl(var(--border) / 0.7);
+          color: hsl(var(--foreground));
+          box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.08);
         }
 
         .navi-cc-shortcuts {

@@ -144,6 +144,18 @@
   overflow: hidden;
 }
 
+/* Continuation of previous assistant message - compact spacing */
+.navi-chat-bubble-row--continuation {
+  margin-top: -8px;
+  margin-bottom: 8px;
+  animation: none; /* Disable animation for continuations */
+}
+
+.navi-chat-bubble-row--continuation .navi-chat-avatar {
+  opacity: 0.2; /* Fade out avatar for continuation messages */
+  pointer-events: none;
+}
+
 .navi-chat-bubble-row--user {
   margin-left: auto;
   flex-direction: row-reverse;
@@ -356,17 +368,23 @@ html.light .navi-status-text--done {
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  /* Fix letter spacing */
+  letter-spacing: 0;
+  word-spacing: normal;
   /* CRITICAL: Prevent text overflow - break long URLs */
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   word-wrap: break-word;
-  word-break: break-word;
-  overflow: hidden;
+  word-break: normal;
+  overflow: visible; /* Changed from hidden to visible - allow text to display fully */
 }
 
-/* Ensure links break properly */
+/* Ensure links don't break mid-word but wrap properly */
 .navi-chat-bubble a {
-  word-break: break-all;
-  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  overflow-wrap: break-word;
+  letter-spacing: 0;
+  word-spacing: 0;
 }
 
 .navi-chat-bubble--user {
@@ -380,6 +398,8 @@ html.light .navi-status-text--done {
 .navi-chat-bubble p {
   margin: 0;
   padding: 2px 0;
+  letter-spacing: 0;
+  word-spacing: normal;
 }
 
 .navi-chat-bubble code {
@@ -387,6 +407,10 @@ html.light .navi-status-text--done {
   padding: 1px 4px;
   border-radius: 3px;
   font-size: 11px;
+  letter-spacing: 0;
+  word-spacing: 0;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .navi-chat-command-output {
@@ -470,18 +494,25 @@ html.light .navi-status-text--done {
 }
 
 
-/* Legacy icon button style */
+/* Icon button with polish styling */
 .navi-icon-btn {
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   color: #9ca3af;
   font-size: 12px;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 4px;
+  border-radius: 6px;
+  transition: color 0.15s ease, transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .navi-icon-btn:hover {
   color: #e5e7eb;
+  background: rgba(75, 85, 99, 0.2);
+  border-color: rgba(75, 85, 99, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: navi-icon-hover 0.2s ease;
 }
 
 .navi-icon-btn--active {
@@ -730,6 +761,18 @@ html.light .navi-status-text--done {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+@keyframes navi-icon-hover {
+  0% { transform: translateY(0) scale(1); }
+  70% { transform: translateY(-2px) scale(1.05); }
+  100% { transform: translateY(-1px) scale(1.02); }
+}
+
+@keyframes nic-caret-nudge {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
 }
 
 .navi-pill--secondary:hover {
@@ -5862,9 +5905,10 @@ html.light .navi-files-changed-item-path {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 8px;
+  padding: 7px 10px;
   border-radius: 6px;
-  font-size: 12px;
+  font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
   transition: all 0.15s ease;
   position: relative;
 }
@@ -6033,14 +6077,19 @@ html.light .navi-files-changed-item-path {
 }
 
 .navi-inline-activity-label {
+  font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   font-weight: 500;
+  font-size: 13px;
   color: hsl(var(--foreground));
+  letter-spacing: -0.01em;
 }
 
 .navi-inline-activity-detail {
   color: hsl(var(--muted-foreground));
-  font-family: "SFMono-Regular", "Menlo", "Monaco", "Consolas", monospace;
-  font-size: 11px;
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6073,6 +6122,77 @@ html.light .navi-inline-activity-detail--clickable {
 html.light .navi-inline-activity-detail--clickable:hover {
   color: #1d4ed8 !important;
   background: rgba(37, 99, 235, 0.1);
+}
+
+/* Clickable file path in activity rows */
+.navi-clickable-file {
+  cursor: pointer;
+  color: #60a5fa;
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  transition: all 0.15s ease;
+  letter-spacing: -0.01em;
+}
+
+.navi-clickable-file:hover {
+  color: #93c5fd;
+  text-decoration-style: solid;
+  background: rgba(96, 165, 250, 0.1);
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin: -1px -4px;
+}
+
+.light .navi-clickable-file,
+:root.light .navi-clickable-file,
+html.light .navi-clickable-file {
+  color: #2563eb;
+}
+
+.light .navi-clickable-file:hover,
+:root.light .navi-clickable-file:hover,
+html.light .navi-clickable-file:hover {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.1);
+}
+
+/* Activity stats (additions/deletions) */
+.navi-activity-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 10px;
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.navi-stat-additions {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.navi-stat-deletions {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+/* Light theme stats */
+.light .navi-stat-additions,
+:root.light .navi-stat-additions,
+html.light .navi-stat-additions {
+  color: #16a34a;
+}
+
+.light .navi-stat-deletions,
+:root.light .navi-stat-deletions,
+html.light .navi-stat-deletions {
+  color: #dc2626;
 }
 
 /* ========================================================================
@@ -6683,7 +6803,7 @@ html.light .navi-inline-activity-detail--clickable:hover {
   word-wrap: break-word;
   /* Don't break words aggressively - only break at natural points */
   word-break: normal;
-  overflow-x: hidden;
+  overflow-x: visible; /* Changed from hidden to allow URLs to display fully */
 }
 
 /* Collapsible long message styles */
@@ -6768,7 +6888,7 @@ html.light .navi-inline-activity-detail--clickable:hover {
 .navi-link {
   color: #60a5fa;
   text-decoration: none;
-  border-bottom: 1px solid rgba(96, 165, 250, 0.3);
+  border-bottom: none;
   transition: all 0.15s ease;
   word-break: break-word; /* Don't break mid-word, only at word boundaries */
   overflow-wrap: anywhere; /* Allow breaking at any point only if necessary */
@@ -6776,11 +6896,10 @@ html.light .navi-inline-activity-detail--clickable:hover {
 
 .navi-link:hover {
   color: #93c5fd;
-  border-bottom-color: rgba(147, 197, 253, 0.6);
-  background: rgba(96, 165, 250, 0.08);
+  background: rgba(96, 165, 250, 0.12);
   padding: 0 2px;
   margin: 0 -2px;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
 .navi-link:active {
@@ -6807,23 +6926,24 @@ html.light .navi-link:hover {
    FILE LINKS - Clickable file paths in chat messages
    ======================================================================== */
 .navi-file-link {
-  color: #34d399;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
+  color: #60a5fa;
+  text-decoration: none;
   cursor: pointer;
   position: relative;
-  padding: 0 2px;
-  border-radius: 3px;
+  padding: 1px 4px;
+  border-radius: 4px;
   transition: all 0.15s ease;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.9em;
+  background: rgba(96, 165, 250, 0.08);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .navi-file-link:hover {
-  color: #6ee7b7;
-  background: rgba(52, 211, 153, 0.12);
-  text-decoration-style: solid;
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.18);
 }
 
 .navi-file-link:active {
@@ -6949,6 +7069,31 @@ h4.navi-heading {
   padding-bottom: 0;
 }
 
+/* Narrative markdown headings */
+.navi-heading-1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 16px 0 12px;
+  color: #f1f5f9;
+  display: block;
+}
+
+.navi-heading-2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 14px 0 10px;
+  color: #e0e7ff;
+  display: block;
+}
+
+.navi-heading-3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 12px 0 8px;
+  color: #c7d2fe;
+  display: block;
+}
+
 /* Lists - proper spacing and bullet styling */
 .navi-list-item {
   margin-left: 20px;
@@ -7047,6 +7192,8 @@ h4.navi-heading {
   font-size: 0.9em;
   white-space: nowrap; /* Prevent code/file names from wrapping */
   word-break: keep-all; /* Keep words together */
+  letter-spacing: 0;
+  word-spacing: 0;
 }
 
 /* Clickable file link styling */
@@ -7055,11 +7202,12 @@ h4.navi-heading {
   color: #60a5fa;
   text-decoration: none;
   transition: all 0.15s ease;
+  letter-spacing: 0;
+  word-spacing: 0;
 }
 
 .navi-file-link:hover {
   color: #93c5fd;
-  text-decoration: underline;
   background: rgba(96, 165, 250, 0.2);
 }
 
@@ -7070,18 +7218,25 @@ h4.navi-heading {
   transition: all 0.15s ease;
   border-radius: 2px;
   padding: 0 2px;
+  letter-spacing: 0;
+  word-spacing: 0;
 }
 
 .navi-link--url {
   color: #60a5fa;
-  white-space: nowrap; /* Prevent URLs from breaking across lines */
-  word-break: keep-all;
+  white-space: normal; /* Allow URLs to wrap if needed */
+  word-break: break-all; /* Break long URLs to prevent overflow */
+  overflow-wrap: break-word;
+  letter-spacing: 0;
+  word-spacing: 0;
+  display: inline;
+  max-width: 100%;
 }
 
 .navi-link--url:hover {
   color: #93c5fd;
-  text-decoration: underline;
   background: rgba(96, 165, 250, 0.15);
+  border-radius: 3px;
 }
 
 /* File link wrapper with icon */
@@ -7653,6 +7808,22 @@ html.light .navi-diff-line--header {
 .light .navi-message-content strong,
 :root.light .navi-message-content strong {
   color: #1e293b;
+}
+
+/* Light mode narrative headings */
+.light .navi-heading-1,
+:root.light .navi-heading-1 {
+  color: #1e293b;
+}
+
+.light .navi-heading-2,
+:root.light .navi-heading-2 {
+  color: #334155;
+}
+
+.light .navi-heading-3,
+:root.light .navi-heading-3 {
+  color: #475569;
 }
 
 /* Light theme text formatting */
@@ -9604,11 +9775,13 @@ html.light .navi-delete-confirm-no:hover {
 }
 
 .navi-activity-change-add {
-  color: #4ade80; /* Green for additions */
+  color: #22c55e;
+  font-weight: 600;
 }
 
 .navi-activity-change-del {
-  color: #f87171; /* Red for deletions */
+  color: #ef4444;
+  font-weight: 600;
 }
 
 /* Total change summary at group level */
@@ -10904,35 +11077,33 @@ html.light .navi-activity-item-detail--file {
 /* Clickable file names in activities - use !important to override global cursor: text */
 .navi-clickable-file {
   cursor: pointer !important;
-  text-decoration: underline !important;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
+  text-decoration: none !important;
   color: #60a5fa !important;
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
 }
 
 .navi-clickable-file:hover {
   color: #93c5fd !important;
-  text-decoration-style: solid;
-  background: rgba(96, 165, 250, 0.1);
-  border-radius: 2px;
+  background: rgba(96, 165, 250, 0.12);
 }
 
 /* Inline links in narrative text - use !important to override global cursor: text */
 .navi-inline-link {
   color: #60a5fa !important;
-  text-decoration: underline !important;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
+  text-decoration: none !important;
   cursor: pointer !important;
   white-space: nowrap; /* Prevent URLs from breaking across lines */
   word-break: keep-all;
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
 }
 
 .navi-inline-link:hover {
   color: #93c5fd !important;
-  text-decoration-style: solid;
-  background: rgba(96, 165, 250, 0.1);
-  border-radius: 2px;
+  background: rgba(96, 165, 250, 0.15);
 }
 
 /* Light theme variants for clickable elements */
@@ -11165,8 +11336,12 @@ html.light .navi-activity-item-detail--file {
   /* Fill full width and wrap properly at word boundaries */
   width: 100%;
   max-width: 100%;
+  /* Fix letter/word spacing */
+  letter-spacing: 0;
+  word-spacing: normal;
+  /* Wrapping */
   word-wrap: break-word;
-  overflow-wrap: anywhere; /* Better wrapping that respects word boundaries */
+  overflow-wrap: break-word; /* Better wrapping that respects word boundaries */
   word-break: normal; /* Don't break words - let them wrap naturally */
   hyphens: auto; /* Enable hyphenation for long words */
   white-space: pre-wrap; /* Preserve intentional whitespace but wrap */
@@ -12050,38 +12225,54 @@ html.light .navi-progress-chevron {
 
 .navi-plan-stepper {
   margin: 12px 0;
-  border: 1px solid rgba(96, 165, 250, 0.25);
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.92));
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(17, 24, 39, 0.95), rgba(10, 15, 28, 0.98));
   overflow: hidden;
+  font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
 }
 
 .navi-plan-stepper--completed {
-  border-color: rgba(74, 222, 128, 0.3);
+  border-color: rgba(74, 222, 128, 0.25);
+  box-shadow:
+    0 8px 32px rgba(74, 222, 128, 0.1),
+    0 0 0 1px rgba(74, 222, 128, 0.1),
+    inset 0 1px 0 rgba(74, 222, 128, 0.1);
 }
 
 .navi-plan-stepper--error {
-  border-color: rgba(248, 113, 113, 0.3);
+  border-color: rgba(248, 113, 113, 0.25);
+  box-shadow:
+    0 8px 32px rgba(248, 113, 113, 0.1),
+    0 0 0 1px rgba(248, 113, 113, 0.1),
+    inset 0 1px 0 rgba(248, 113, 113, 0.1);
 }
 
 .navi-plan-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   width: 100%;
   border: none;
   background: transparent;
   cursor: pointer;
-  color: #e2e8f0;
+  color: #f1f5f9;
   font-size: 13px;
   font-weight: 600;
   text-align: left;
   font-family: inherit;
+  letter-spacing: -0.015em;
+  transition: background 0.2s ease;
 }
 
 .navi-plan-header:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .navi-plan-icon {
@@ -12107,11 +12298,31 @@ html.light .navi-progress-chevron {
 }
 
 .navi-plan-progress-badge {
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", Consolas, monospace;
   font-size: 11px;
-  padding: 2px 8px;
-  background: rgba(255, 255, 255, 0.1);
+  font-weight: 700;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(139, 92, 246, 0.16));
   border-radius: 999px;
-  color: rgba(255, 255, 255, 0.7);
+  color: #e0e7ff;
+  letter-spacing: 0.03em;
+  border: 1.5px solid rgba(99, 102, 241, 0.35);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+  transition: all 0.3s ease;
+}
+
+.navi-plan-stepper--completed .navi-plan-progress-badge {
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.22), rgba(34, 197, 94, 0.16));
+  border-color: rgba(74, 222, 128, 0.4);
+  color: #d1fae5;
+  box-shadow: 0 2px 12px rgba(74, 222, 128, 0.25);
+}
+
+.navi-plan-stepper--error .navi-plan-progress-badge {
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.22), rgba(239, 68, 68, 0.16));
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fee2e2;
+  box-shadow: 0 2px 12px rgba(248, 113, 113, 0.25);
 }
 
 .navi-plan-chevron {
@@ -12127,21 +12338,26 @@ html.light .navi-progress-chevron {
 
 .navi-plan-progress-track {
   height: 3px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
 }
 
 .navi-plan-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4ade80, #60a5fa);
-  transition: width 0.4s ease;
+  background: linear-gradient(90deg, #22c55e 0%, #4ade80 30%, #60a5fa 100%);
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.4);
+  border-radius: 2px;
 }
 
 .navi-plan-progress-fill.has-error {
-  background: linear-gradient(90deg, #4ade80, #f87171);
+  background: linear-gradient(90deg, #22c55e 0%, #f59e0b 50%, #ef4444 100%);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
 }
 
 .navi-plan-steps {
-  padding: 8px 16px 16px;
+  padding: 8px 14px 12px;
 }
 
 .navi-plan-stepper--collapsed .navi-plan-steps {
@@ -12150,74 +12366,93 @@ html.light .navi-progress-chevron {
 
 .navi-plan-step {
   display: flex;
-  gap: 12px;
-  padding: 8px 0;
+  gap: 10px;
+  padding: 6px 0;
   position: relative;
+  transition: all 0.2s ease;
+}
+
+.navi-plan-step:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+}
+
+.navi-plan-step--running {
+  background: rgba(96, 165, 250, 0.06);
+  margin: 0 -8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border-left: 2px solid rgba(96, 165, 250, 0.5);
 }
 
 /* Connector line between steps */
 .navi-plan-step:not(:last-child)::after {
   content: '';
   position: absolute;
-  left: 11px;
-  top: 32px;
-  bottom: -8px;
-  width: 2px;
-  background: rgba(255, 255, 255, 0.1);
+  left: 10px;
+  top: 28px;
+  bottom: -6px;
+  width: 1.5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 1px;
 }
 
 .navi-plan-step--completed:not(:last-child)::after {
-  background: #4ade80;
+  background: linear-gradient(180deg, rgba(74, 222, 128, 0.6), rgba(74, 222, 128, 0.3));
 }
 
 .navi-plan-step--running:not(:last-child)::after {
-  background: linear-gradient(180deg, #60a5fa, rgba(255, 255, 255, 0.1));
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.6), rgba(255, 255, 255, 0.08));
 }
 
 .navi-plan-step-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   flex-shrink: 0;
+  transition: all 0.3s ease;
 }
 
 .navi-plan-step--pending .navi-plan-step-icon {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.35);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
 }
 
 .navi-plan-step--running .navi-plan-step-icon {
-  background: rgba(96, 165, 250, 0.2);
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.25), rgba(59, 130, 246, 0.2));
   color: #60a5fa;
-  border: 1px solid rgba(96, 165, 250, 0.4);
-  animation: step-pulse 1.5s ease-in-out infinite;
+  border: 1.5px solid rgba(96, 165, 250, 0.5);
+  animation: step-pulse 2s ease-in-out infinite;
+  box-shadow: 0 0 16px rgba(96, 165, 250, 0.3);
 }
 
 @keyframes step-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.4);
+    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.4), 0 0 16px rgba(96, 165, 250, 0.3);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(96, 165, 250, 0);
+    box-shadow: 0 0 0 8px rgba(96, 165, 250, 0), 0 0 24px rgba(96, 165, 250, 0.4);
   }
 }
 
 .navi-plan-step--completed .navi-plan-step-icon {
-  background: rgba(74, 222, 128, 0.2);
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.25), rgba(34, 197, 94, 0.2));
   color: #4ade80;
-  border: 1px solid rgba(74, 222, 128, 0.4);
+  border: 1.5px solid rgba(74, 222, 128, 0.5);
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.2);
 }
 
 .navi-plan-step--error .navi-plan-step-icon {
-  background: rgba(248, 113, 113, 0.2);
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.25), rgba(239, 68, 68, 0.2));
   color: #f87171;
-  border: 1px solid rgba(248, 113, 113, 0.4);
+  border: 1.5px solid rgba(248, 113, 113, 0.5);
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.2);
 }
 
 .navi-plan-step-content {
@@ -12226,8 +12461,9 @@ html.light .navi-progress-chevron {
 }
 
 .navi-plan-step-title {
-  font-size: 13px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.9);
+  line-height: 1.4;
 }
 
 .navi-plan-step--pending .navi-plan-step-title {
@@ -12248,9 +12484,10 @@ html.light .navi-progress-chevron {
 }
 
 .navi-plan-step-detail {
-  font-size: 12px;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.5);
   margin-top: 2px;
+  line-height: 1.3;
 }
 
 .navi-plan-step-output {
@@ -12823,12 +13060,28 @@ html.light .navi-persistent-status {
    ============================================ */
 
 .navi-task-complete-panel {
-  margin: 12px 16px;
-  padding: 16px;
-  background: linear-gradient(135deg, rgba(74, 222, 128, 0.08) 0%, rgba(74, 222, 128, 0.03) 100%);
-  border: 1px solid rgba(74, 222, 128, 0.2);
-  border-radius: 12px;
-  animation: fadeInUp 0.3s ease-out;
+  margin: 16px 18px;
+  padding: 18px 20px;
+  background: linear-gradient(145deg, rgba(17, 24, 39, 0.95), rgba(10, 15, 28, 0.98));
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  border-radius: 16px;
+  animation: taskCompleteFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    0 8px 32px rgba(74, 222, 128, 0.1),
+    0 0 0 1px rgba(74, 222, 128, 0.08),
+    inset 0 1px 0 rgba(74, 222, 128, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+@keyframes taskCompleteFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Error state styling for task stopped/failed */
@@ -12902,16 +13155,23 @@ html.light .navi-persistent-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(74, 222, 128, 0.1);
 }
 
 .navi-task-complete-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 10px;
+  font-size: 15px;
   font-weight: 600;
   color: #4ade80;
+  letter-spacing: -0.01em;
+}
+
+.navi-task-complete-title svg {
+  filter: drop-shadow(0 0 6px rgba(74, 222, 128, 0.4));
 }
 
 .navi-task-complete-close {
@@ -12950,21 +13210,20 @@ html.light .navi-persistent-status {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.2);
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.15);
   border: none;
-  color: rgba(148, 163, 184, 0.9);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: rgba(148, 163, 184, 0.85);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: all 0.15s ease;
 }
 
 .navi-task-complete-files-header:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.25);
 }
 
 /* Claude Code-style files summary header */
@@ -12973,48 +13232,53 @@ html.light .navi-persistent-status {
   align-items: center;
   gap: 6px;
   flex: 1;
-  text-transform: none;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
 }
 
 .navi-task-complete-files-count {
   font-weight: 600;
   color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .navi-task-complete-files-label {
   color: rgba(148, 163, 184, 0.9);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .navi-task-complete-files-stats {
   display: flex;
-  gap: 8px;
-  margin-left: 8px;
-  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
-  font-size: 12px;
-  font-weight: 500;
+  gap: 6px;
+  margin-left: auto;
+  font-family: ui-monospace, 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
 }
 
-/* +/- stats colors in file summary */
+/* +/- stats colors in file summary - vibrant green/red */
 .navi-files-add {
-  color: #4ade80;
+  color: #22c55e;
+  font-weight: 600;
 }
 
 .navi-files-del {
-  color: #f87171;
+  color: #ef4444;
+  font-weight: 600;
 }
 
 .light .navi-files-add,
 :root.light .navi-files-add,
 html.light .navi-files-add {
   color: #16a34a;
+  font-weight: 600;
 }
 
 .light .navi-files-del,
 :root.light .navi-files-del,
 html.light .navi-files-del {
   color: #dc2626;
+  font-weight: 600;
 }
 
 .navi-task-complete-files-list {

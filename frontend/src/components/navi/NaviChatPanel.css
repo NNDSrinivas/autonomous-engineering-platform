@@ -88,6 +88,171 @@
   color: #a5b4fc;
 }
 
+.navi-onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.72));
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  animation: floatIn 260ms ease-out;
+}
+
+.navi-onboarding__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.navi-onboarding__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.navi-onboarding__subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.navi-onboarding__dismiss {
+  align-self: flex-start;
+}
+
+.navi-onboarding__steps {
+  display: grid;
+  gap: 10px;
+}
+
+.navi-onboarding__step {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.navi-onboarding__step-index {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.navi-onboarding__step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.navi-onboarding__step-desc {
+  font-size: 11px;
+  color: #a5b4fc;
+  margin-top: 3px;
+}
+
+.navi-onboarding__step-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.navi-onboarding__tip {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.navi-auth-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navi-auth-user {
+  font-size: 11px;
+  color: #e2e8f0;
+}
+
+.navi-auth-panel {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-radius: 14px;
+  background: linear-gradient(150deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.85));
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.3);
+}
+
+.navi-auth-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.navi-auth-panel__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.navi-auth-panel__subtitle {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #a5b4fc;
+}
+
+.navi-auth-panel__toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.navi-auth-panel__providers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.navi-auth-provider-btn {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.8);
+  color: #e2e8f0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.navi-auth-provider-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(30, 41, 59, 0.9);
+}
+
+.navi-auth-panel__empty {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.navi-auth-panel__error {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #fca5a5;
+}
+
 /* Message bubbles */
 .navi-chat-bubble-row {
   display: flex;
@@ -1330,4 +1495,53 @@
   border-radius: 12px;
   font-size: 10px;
   font-weight: 500;
+}
+
+/* Diff Stats Styling - Sleek classic style */
+.navi-diff-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.navi-diff-separator {
+  margin: 0 4px;
+  color: #666;
+}
+
+.navi-diff-additions {
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.navi-diff-deletions {
+  color: #f87171;
+  font-weight: 600;
+}
+
+/* Better action card styling */
+.navi-action-card {
+  margin: 8px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.navi-action-title {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 6px;
+}
+
+.navi-action-detail {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  color: #a0a0a0;
 }

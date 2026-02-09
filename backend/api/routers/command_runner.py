@@ -12,79 +12,17 @@ from sqlalchemy import text
 
 from backend.core.db import get_db
 from backend.core.auth.deps import get_current_user_optional
+from backend.services.command_utils import (
+    compute_timeout,
+    format_command_message,
+    get_command_env,
+    get_shell_executable,
+    prepare_command,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/run", tags=["command-runner"])
-
-
-def _get_command_env(workdir: Optional[str] = None) -> dict:
-    """
-    Get environment for command execution with nvm compatibility fixes.
-    Removes npm_config_prefix which conflicts with nvm.
-    """
-    env = os.environ.copy()
-    env.pop("npm_config_prefix", None)  # Remove to fix nvm compatibility
-    env["SHELL"] = env.get("SHELL", "/bin/bash")
-    return env
-
-
-def _is_node_command(command: str) -> bool:
-    """Check if command requires Node.js environment."""
-    node_commands = ["npm", "npx", "node", "yarn", "pnpm", "bun", "tsc", "next"]
-    cmd_parts = command.split()
-    return bool(cmd_parts and cmd_parts[0] in node_commands)
-
-
-def _get_node_env_setup(workdir: Optional[str] = None) -> str:
-    """Get Node.js environment setup commands for nvm/fnm/volta."""
-    home = os.environ.get("HOME", os.path.expanduser("~"))
-    setup_parts = []
-
-    # Check for nvm
-    nvm_dir = os.environ.get("NVM_DIR", os.path.join(home, ".nvm"))
-    if os.path.exists(os.path.join(nvm_dir, "nvm.sh")):
-        # Check for .nvmrc in workspace
-        if workdir:
-            nvmrc_path = os.path.join(workdir, ".nvmrc")
-            node_version_path = os.path.join(workdir, ".node-version")
-            if os.path.exists(nvmrc_path) or os.path.exists(node_version_path):
-                nvm_use = "nvm use 2>/dev/null || nvm install 2>/dev/null"
-            else:
-                nvm_use = "nvm use default 2>/dev/null || true"
-        else:
-            nvm_use = "nvm use default 2>/dev/null || true"
-
-        setup_parts.append(
-            f'export NVM_DIR="{nvm_dir}" && '
-            f'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null && '
-            f"{nvm_use}"
-        )
-
-    # Check for fnm
-    fnm_path = os.path.join(home, ".fnm")
-    if os.path.exists(fnm_path):
-        setup_parts.append(
-            f'export PATH="{fnm_path}:$PATH" && eval "$(fnm env 2>/dev/null)" 2>/dev/null || true'
-        )
-
-    # Check for volta
-    volta_home = os.environ.get("VOLTA_HOME", os.path.join(home, ".volta"))
-    if os.path.exists(volta_home):
-        setup_parts.append(
-            f'export VOLTA_HOME="{volta_home}" && export PATH="$VOLTA_HOME/bin:$PATH"'
-        )
-
-    return " && ".join(setup_parts) if setup_parts else ""
-
-
-def _prepare_command(cmd: str, workdir: Optional[str] = None) -> str:
-    """Prepare command with environment setup if needed."""
-    if _is_node_command(cmd):
-        env_setup = _get_node_env_setup(workdir)
-        if env_setup:
-            return f"unset npm_config_prefix 2>/dev/null; {env_setup} && {cmd}"
-    return cmd
 
 
 class RunRequest(BaseModel):
@@ -96,6 +34,9 @@ class RunRequest(BaseModel):
     background: bool = Field(
         False, description="If true, start command in background and return immediately"
     )
+    timeout: Optional[int] = Field(
+        None, description="Timeout in seconds (default: 300)"
+    )
 
 
 class RunResponse(BaseModel):
@@ -103,6 +44,7 @@ class RunResponse(BaseModel):
     stdout: str = ""
     stderr: str = ""
     returncode: int = 0
+    message: Optional[str] = None
     audit_id: Optional[str] = None
 
 
@@ -264,9 +206,10 @@ def run_command(
     try:
         audit_id = f"{user_id}-{datetime.now(timezone.utc).isoformat()}"
 
-        # Prepare environment and command with node setup if needed
-        env = _get_command_env(workdir)
-        prepared_cmd = _prepare_command(cmd, workdir)
+        # Prepare environment and command with node setup if needed (consistent preparation for both paths)
+        prepared_cmd = prepare_command(cmd, workdir)
+        base_timeout = req.timeout if req.timeout is not None else 300
+        timeout = compute_timeout(prepared_cmd, timeout=base_timeout)
 
         # Background mode for long-running servers (e.g., npm run dev)
         if req.background:
@@ -278,8 +221,8 @@ def run_command(
                 stderr=subprocess.PIPE,
                 text=True,
                 start_new_session=True,  # detach from parent
-                env=env,
-                executable="/bin/bash",
+                env=get_command_env(),
+                executable=get_shell_executable(),
             )
             logger.info(
                 "[CMD] (background) user=%s cmd=%s workdir=%s pid=%s",
@@ -296,19 +239,28 @@ def run_command(
                 audit_id=f"{audit_id}-bg-pid-{proc.pid}",
             )
 
-        proc = subprocess.run(
-            prepared_cmd,
-            shell=True,
-            cwd=workdir,
-            text=True,
-            capture_output=True,
-            check=False,
-            env=env,
-            executable="/bin/bash",
-        )
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-        rc = proc.returncode
+        # Foreground execution - run prepared command directly to avoid double-preparation in run_subprocess
+        try:
+            proc = subprocess.run(
+                prepared_cmd,
+                shell=True,
+                cwd=workdir,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=timeout,
+                env=get_command_env(),
+                executable=get_shell_executable(),
+            )
+            stdout = proc.stdout or ""
+            stderr = proc.stderr or ""
+            success = proc.returncode == 0
+            rc = proc.returncode
+        except subprocess.TimeoutExpired:
+            stdout = ""
+            stderr = f"Command timed out after {timeout}s"
+            success = False
+            rc = -1
 
         logger.info(
             "[CMD] user=%s cmd=%s workdir=%s rc=%s stdout_len=%s stderr_len=%s",
@@ -321,7 +273,12 @@ def run_command(
         )
 
         return RunResponse(
-            ok=(rc == 0), stdout=stdout, stderr=stderr, returncode=rc, audit_id=audit_id
+            ok=success,
+            stdout=stdout,
+            stderr=stderr,
+            returncode=rc,
+            message=format_command_message(cmd, success, stdout, stderr),
+            audit_id=audit_id,
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("[CMD] Failed to run command: %s", exc, exc_info=True)

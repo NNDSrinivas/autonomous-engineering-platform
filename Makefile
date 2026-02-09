@@ -56,11 +56,44 @@ config: frontend-config
 test:
 	pytest -q
 
+redis-test:
+	REDIS_URL=redis://localhost:6379/0 pytest -q tests/test_broadcast_redis.py
+
 e2e-smoke:
 	python3 scripts/smoke_navi_v2_e2e.py --runs 1
 
 e2e-gate:
 	python3 scripts/smoke_navi_v2_e2e.py --runs 20
+
+# Real LLM E2E validation (production readiness)
+e2e-validation-quick:
+	python3 scripts/e2e_real_llm_validation.py --suite quick --report-md --report-html
+
+e2e-validation-medium:
+	python3 scripts/e2e_real_llm_validation.py --suite medium --report-md --report-html
+
+e2e-validation-full:
+	python3 scripts/e2e_real_llm_validation.py --suite full --report-md --report-html --max-concurrent 3
+
+e2e-validation-benchmark:
+	python3 scripts/e2e_real_llm_validation.py --suite full --count 100 --report-md --report-html --max-concurrent 3
+
+# Grafana dashboard management
+grafana-import:
+	./scripts/import_dashboards.sh
+
+grafana-open:
+	@grafana_url="http://localhost:3001/d/navi-llm/navi-llm-performance-metrics"; \
+	if command -v xdg-open >/dev/null 2>&1; then \
+	  xdg-open "$$grafana_url"; \
+	elif command -v open >/dev/null 2>&1; then \
+	  open "$$grafana_url"; \
+	else \
+	  echo "Visit: http://localhost:3001"; \
+	fi
+
+grafana-status:
+	@docker ps | grep grafana && echo "✅ Grafana is running at http://localhost:3001" || echo "❌ Grafana is not running"
 
 # Memory graph utilities
 CORE ?= http://localhost:8000

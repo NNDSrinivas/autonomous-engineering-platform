@@ -1,38 +1,48 @@
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  const parts = token.split('.')
-  if (parts.length < 2) return null
+const AUTH_TOKEN_KEY = "aep.navi.authToken.v1";
+
+export type AuthProfile = {
+  sub?: string;
+  email?: string;
+  name?: string;
+  org?: string;
+};
+
+export const getAuthToken = (): string | null => {
+  if (typeof window === "undefined") return null;
   try {
-    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const padded = payload.padEnd(payload.length + ((4 - (payload.length % 4)) % 4), '=')
-    const decoded = atob(padded)
-    return JSON.parse(decoded)
+    return window.localStorage.getItem(AUTH_TOKEN_KEY);
   } catch {
-    return null
+    return null;
   }
-}
+};
 
-export function getAuthToken(): string | null {
-  return localStorage.getItem('access_token')
-}
-
-export function getUserRole(): string {
-  const token = getAuthToken()
-  if (token) {
-    const payload = decodeJwtPayload(token)
-    const role = typeof payload?.role === 'string' ? payload?.role : undefined
-    if (role && role.trim()) {
-      return role.trim()
+export const setAuthToken = (token: string | null) => {
+  if (typeof window === "undefined") return;
+  try {
+    if (!token) {
+      window.localStorage.removeItem(AUTH_TOKEN_KEY);
+    } else {
+      window.localStorage.setItem(AUTH_TOKEN_KEY, token);
     }
+  } catch {
+    // ignore storage errors
   }
+};
 
-  const envRole = import.meta.env.VITE_USER_ROLE
-  if (envRole && envRole.trim()) {
-    return envRole.trim()
+export const decodeAuthToken = (token: string | null): AuthProfile | null => {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return {
+      sub: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      org: payload.org || payload.org_id,
+    };
+  } catch {
+    return null;
   }
+};
 
-  return 'viewer'
-}
-
-export function isAdminUser(): boolean {
-  return getUserRole().toLowerCase() === 'admin'
-}

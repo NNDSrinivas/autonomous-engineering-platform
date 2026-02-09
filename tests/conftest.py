@@ -7,13 +7,18 @@ Provides:
 """
 
 import os
-import pytest
-import subprocess
-import sys
-from pathlib import Path
-from httpx import Client
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+
+os.environ.setdefault("TOKENIZER_FALLBACK_ENABLED", "true")
+os.environ.setdefault("REDIS_URL", "")
+os.environ.setdefault("NAVI_DISABLE_LLM", "true")
+
+import pytest  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+from httpx import Client  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker, Session  # noqa: E402
 
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -40,7 +45,24 @@ def reset_jwt_settings(monkeypatch):
 
 # Test configuration
 TEST_ORG_ID = "default"
-TEST_BASE_URL = "http://localhost:8000"
+TEST_BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:8000")
+NAVI_TEST_TOKEN = os.getenv("NAVI_TEST_TOKEN")
+
+
+def get_auth_headers() -> dict:
+    """Return Authorization header if NAVI_TEST_TOKEN is set."""
+    if NAVI_TEST_TOKEN:
+        return {"Authorization": f"Bearer {NAVI_TEST_TOKEN}"}
+    return {}
+
+
+def get_default_headers(org_id: str = TEST_ORG_ID) -> dict:
+    """Default headers for API tests."""
+    headers = {"X-Org-Id": org_id}
+    headers.update(get_auth_headers())
+    return headers
+
+
 FIXTURE_PATH = "data/seed/memory_graph_fixture.json"
 
 
@@ -125,7 +147,7 @@ def api_client(seeded_graph):
     to ensure data is present.
     """
     with Client(
-        base_url=TEST_BASE_URL, headers={"X-Org-Id": TEST_ORG_ID}, timeout=30.0
+        base_url=TEST_BASE_URL, headers=get_default_headers(), timeout=30.0
     ) as client:
         yield client
 
@@ -148,7 +170,9 @@ def test_db(test_db_session, seeded_graph):
 def other_org_client():
     """HTTP client with different org for cross-org testing"""
     with Client(
-        base_url=TEST_BASE_URL, headers={"X-Org-Id": "other_org"}, timeout=30.0
+        base_url=TEST_BASE_URL,
+        headers=get_default_headers("other_org"),
+        timeout=30.0,
     ) as client:
         yield client
 

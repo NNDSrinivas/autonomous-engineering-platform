@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from backend.ai.llm_router import LLMRouter, LLMResponse, ToolCall
+from backend.services.command_utils import format_command_message
 
 logger = logging.getLogger(__name__)
 
@@ -609,6 +610,10 @@ NAVI_TOOLS = [
                 "checks": {
                     "type": "array",
                     "description": "For health_aggregate: list of checks to run",
+                    "items": {
+                        "type": "object",
+                        "description": "Individual health check configuration",
+                    },
                 },
             },
             "required": ["condition_type"],
@@ -1205,12 +1210,16 @@ class ToolExecutor:
                     + f"\n... (truncated, {len(stderr_text)} total chars)"
                 )
 
+            success = process.returncode == 0
+            message = format_command_message(command, success, stdout_text, stderr_text)
+
             return {
                 "command": command,
                 "exit_code": process.returncode,
                 "stdout": stdout_text,
                 "stderr": stderr_text,
-                "success": process.returncode == 0,
+                "success": success,
+                "message": message,
             }
         except Exception as e:
             return {"error": f"Error running command: {e}", "success": False}

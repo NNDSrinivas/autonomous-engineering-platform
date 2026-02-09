@@ -61,6 +61,10 @@ chroma_db/
 .DS_Store
 Thumbs.db
 
+# Grafana production secrets and TLS
+grafana/production/secrets/*.txt
+grafana/production/tls/*.pem
+
 # Logs
 logs/
 *.log

@@ -14,6 +14,7 @@ export type ChatSessionSummary = {
   lastMessagePreview?: string;
   repoName?: string;
   workspaceRoot?: string;
+  backendConversationId?: string;
   isStarred?: boolean;
   isArchived?: boolean;
   isPinned?: boolean;
@@ -81,6 +82,8 @@ const normalizeSession = (entry: any): ChatSessionSummary | null => {
       typeof entry.lastMessagePreview === "string" ? entry.lastMessagePreview : undefined,
     repoName: typeof entry.repoName === "string" ? entry.repoName : undefined,
     workspaceRoot: typeof entry.workspaceRoot === "string" ? entry.workspaceRoot : undefined,
+    backendConversationId:
+      typeof entry.backendConversationId === "string" ? entry.backendConversationId : undefined,
     isStarred: typeof entry.isStarred === "boolean" ? entry.isStarred : false,
     isArchived: typeof entry.isArchived === "boolean" ? entry.isArchived : false,
     isPinned: typeof entry.isPinned === "boolean" ? entry.isPinned : false,
@@ -148,6 +151,7 @@ export const createSession = (
     lastMessagePreview: seed.lastMessagePreview,
     repoName: seed.repoName,
     workspaceRoot: seed.workspaceRoot,
+    backendConversationId: seed.backendConversationId,
   };
   const sessions = readSessionsRaw();
   sessions.unshift(session);

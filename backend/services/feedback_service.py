@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+import logging
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,8 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.utils.hashing import sha256_hash
 from backend.models.ai_feedback import AiFeedback, AiGenerationLog, TaskType
 
+# Learning system integration
+from backend.services.feedback_learning import (
+    get_feedback_manager,
+    FeedbackType,
+    SuggestionCategory,
+)
+
 # Cache valid task type values for performance
 VALID_TASK_TYPES = frozenset(t.value for t in TaskType)
+
+logger = logging.getLogger(__name__)
 
 
 class FeedbackService:
@@ -108,7 +118,110 @@ class FeedbackService:
 
         self.session.add(feedback)
         await self.session.commit()
+
+        # Bridge to learning system: Convert rating to feedback type
+        try:
+            await self._bridge_to_learning_system(
+                gen_id, gen_log, rating, reason, comment
+            )
+        except Exception as e:
+            logger.warning("Failed to bridge feedback to learning system: %s", e)
+
         return True
+
+    async def _bridge_to_learning_system(
+        self,
+        gen_id: int,
+        gen_log: AiGenerationLog,
+        rating: int,
+        reason: Optional[str] = None,
+        comment: Optional[str] = None,
+    ) -> None:
+        """
+        Bridge rating-based feedback to the learning system.
+        Converts 1-5 star ratings into accept/reject feedback.
+        """
+        # Convert rating to feedback type
+        if rating >= 4:
+            feedback_type = FeedbackType.ACCEPTED
+        elif rating == 3:
+            feedback_type = FeedbackType.ACCEPTED_MODIFIED
+        else:  # rating <= 2
+            feedback_type = FeedbackType.REJECTED
+
+        # Map task type to suggestion category
+        category_map = {
+            "chat": SuggestionCategory.EXPLANATION,
+            "code_generation": SuggestionCategory.FILE_CREATE,
+            "code_edit": SuggestionCategory.FILE_EDIT,
+            "code_review": SuggestionCategory.REFACTOR,
+            "debug": SuggestionCategory.FIX,
+            "test": SuggestionCategory.TEST,
+            "documentation": SuggestionCategory.DOCUMENTATION,
+        }
+        category = category_map.get(gen_log.task_type, SuggestionCategory.EXPLANATION)
+
+        # Get the learning manager
+        learning_manager = get_feedback_manager()
+
+        # Compute effective reason (prefer reason, fallback to comment) for consistent use
+        effective_reason = reason or comment
+
+        # Record the feedback to the learning system
+        learning_manager.record_user_feedback(
+            suggestion_id=str(gen_id),
+            feedback_type=feedback_type,
+            original_content="",  # Not tracked in current system
+            reason=effective_reason,
+            org_id=gen_log.org_key,
+            user_id=gen_log.user_sub,
+        )
+
+        logger.info(
+            "[FeedbackService] Bridged feedback to learning system: "
+            "gen_id=%s, rating=%s → %s",
+            gen_id,
+            rating,
+            feedback_type.value,
+        )
+
+        # Also persist to database for v1 analytics and history
+        try:
+            from backend.models.learning_data import LearningSuggestion
+
+            # Persist raw org/user identifiers so non-numeric IDs (OIDC sub, UUIDs, etc.)
+            # are not dropped for learning analytics
+            suggestion = LearningSuggestion(
+                org_id=gen_log.org_key,
+                user_id=gen_log.user_sub,
+                category=category.value,
+                suggestion_text=f"AI generation (task_type: {gen_log.task_type})",
+                context=gen_log.params if gen_log.params else {},
+                feedback_type=feedback_type.value,
+                rating=rating,
+                reason=effective_reason[:256] if effective_reason else None,
+                comment=comment,
+                model_used=gen_log.model,
+                gen_id=gen_id,
+            )
+
+            self.session.add(suggestion)
+            await self.session.commit()
+            logger.debug(
+                "[FeedbackService] 💾 Persisted learning suggestion to database"
+            )
+        except Exception as e:
+            logger.warning("Failed to persist learning suggestion to database: %s", e)
+            # Rollback to keep session usable after failed commit
+            try:
+                await self.session.rollback()
+            except Exception as rollback_error:
+                logger.error(
+                    "Failed to rollback after persist error: %s",
+                    rollback_error,
+                    exc_info=True,
+                )
+            # Don't fail the feedback submission if DB persistence fails
 
     async def get_feedback_stats(
         self,

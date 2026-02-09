@@ -33,6 +33,23 @@ const SearchIcon = () => (
   </svg>
 );
 
+const ServerIcon = ({ className, size = 16 }: { className?: string; size?: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    className={className}
+  >
+    <rect x="3" y="3" width="18" height="6" rx="2" />
+    <rect x="3" y="9" width="18" height="6" rx="2" />
+    <rect x="3" y="15" width="18" height="6" rx="2" />
+    <path d="M7 6h.01M7 12h.01M7 18h.01" />
+  </svg>
+);
+
 const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
   <svg
     width="16"
@@ -176,13 +193,19 @@ interface McpTool {
   metadata: {
     category: string;
     requires_approval: boolean;
+    server_id?: string | number;
+    server_name?: string;
+    source?: 'builtin' | 'external';
+    transport?: string;
+    scope?: 'org' | 'user' | 'builtin';
   };
 }
 
 interface McpToolsPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  onExecuteTool: (toolName: string, args: Record<string, unknown>) => Promise<void>;
+  onExecuteTool: (toolName: string, args: Record<string, unknown>, serverId?: string | number) => Promise<McpExecutionResult>;
+  canManageServers?: boolean;
 }
 
 const categoryConfig: Record<string, { label: string; icon: React.ReactNode; description: string }> = {
@@ -192,24 +215,52 @@ const categoryConfig: Record<string, { label: string; icon: React.ReactNode; des
   file_operations: { label: 'File Operations', icon: <FileIcon />, description: 'Read, write, search files' },
   test_execution: { label: 'Testing', icon: <TestIcon />, description: 'Run tests, coverage' },
   code_analysis: { label: 'Analysis', icon: <AnalysisIcon />, description: 'Complexity, dependencies' },
+  builtin: { label: 'Builtin Tools', icon: <ToolsIcon />, description: 'Local MCP capabilities' },
+  external: { label: 'External Tools', icon: <ServerIcon size={20} />, description: 'Connected MCP servers' },
 };
 
 // Custom MCP Server interface
 interface CustomMcpServer {
-  id: string;
+  id: string | number;
   name: string;
   url: string;
-  transport: 'http' | 'websocket' | 'stdio';
-  apiKey?: string;
+  transport: string;
+  auth_type: string;
   enabled: boolean;
-  status: 'connected' | 'disconnected' | 'error';
-  toolCount?: number;
+  status: 'connected' | 'disconnected' | 'error' | 'unknown';
+  tool_count?: number | null;
+  last_checked_at?: string | null;
+  last_error?: string | null;
+  scope?: 'org' | 'user' | 'builtin';
+  config?: {
+    auth_header_name?: string | null;
+    headers?: Record<string, string>;
+    username?: string | null;
+  };
+}
+
+interface NewMcpServer {
+  name: string;
+  url: string;
+  transport: string;
+  auth_type: string;
+  auth_header_name: string;
+  username: string;
+  token: string;
+  password: string;
+  enabled: boolean;
+}
+
+interface EditMcpServer extends NewMcpServer {
+  id: string | number;
+  clear_secrets: boolean;
 }
 
 export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
   isOpen,
   onClose,
   onExecuteTool,
+  canManageServers = true,
 }) => {
   const [tools, setTools] = useState<McpTool[]>([]);
   const [loading, setLoading] = useState(false);
@@ -220,18 +271,26 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
   const [executing, setExecuting] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [serverFilter, setServerFilter] = useState<string>('all');
 
   // Custom MCP Server state
   const [showAddServerModal, setShowAddServerModal] = useState(false);
+  const [showEditServerModal, setShowEditServerModal] = useState(false);
   const [customServers, setCustomServers] = useState<CustomMcpServer[]>([]);
-  const [newServer, setNewServer] = useState<Partial<CustomMcpServer>>({
+  const [newServer, setNewServer] = useState<NewMcpServer>({
     name: '',
     url: '',
-    transport: 'http',
-    apiKey: '',
+    transport: 'streamable_http',
+    auth_type: 'none',
+    auth_header_name: 'X-API-Key',
+    username: '',
+    token: '',
+    password: '',
     enabled: true,
   });
   const [addingServer, setAddingServer] = useState(false);
+  const [editingServer, setEditingServer] = useState<EditMcpServer | null>(null);
+  const [serverFormError, setServerFormError] = useState<string | null>(null);
 
   const fetchTools = useCallback(async () => {
     setLoading(true);
@@ -240,6 +299,10 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
       const response = await naviClient.listMcpTools();
       const fetchedTools = response.tools as unknown as McpTool[];
       setTools(fetchedTools);
+      if (response.servers) {
+        const externalServers = (response.servers || []).filter((s) => s.source !== 'builtin');
+        setCustomServers(externalServers as CustomMcpServer[]);
+      }
       if (fetchedTools.length > 0) {
         const firstCategory = fetchedTools[0].metadata.category;
         setExpandedCategories({ [firstCategory]: true });
@@ -252,15 +315,59 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isOpen && tools.length === 0) {
+    if (isOpen) {
       fetchTools();
     }
-  }, [isOpen, fetchTools, tools.length]);
+  }, [isOpen, fetchTools]);
 
-  const filteredTools = tools.filter(tool =>
-    tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    tool.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const isValidUrl = (value: string) => {
+    try {
+      const url = new URL(value);
+      return Boolean(url.protocol && url.host);
+    } catch {
+      return false;
+    }
+  };
+
+  const validateServer = (name: string, url: string) => {
+    if (!name.trim()) {
+      return 'Server name is required';
+    }
+    if (!url.trim()) {
+      return 'Server URL is required';
+    }
+    if (!isValidUrl(url.trim())) {
+      return 'Server URL must include protocol (e.g., https://)';
+    }
+    return null;
+  };
+
+  const openEditServer = (server: CustomMcpServer) => {
+    setServerFormError(null);
+    setEditingServer({
+      id: server.id,
+      name: server.name,
+      url: server.url,
+      transport: server.transport,
+      auth_type: server.auth_type,
+      auth_header_name: server.config?.auth_header_name || 'X-API-Key',
+      username: server.config?.username || '',
+      token: '',
+      password: '',
+      enabled: server.enabled,
+      clear_secrets: false,
+    });
+    setShowEditServerModal(true);
+  };
+
+  const filteredTools = tools.filter((tool) => {
+    const matchesSearch =
+      tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tool.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const toolServerId = String(tool.metadata.server_id ?? 'builtin');
+    const matchesServer = serverFilter === 'all' || toolServerId === serverFilter;
+    return matchesSearch && matchesServer;
+  });
 
   const toolsByCategory = filteredTools.reduce((acc, tool) => {
     const category = tool.metadata.category;
@@ -294,9 +401,12 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
     setExecuting(true);
     setExecutionResult(null);
     try {
-      const result = await naviClient.executeMcpTool(selectedTool.name, toolArgs, true);
+      const result = await onExecuteTool(
+        selectedTool.name,
+        toolArgs,
+        selectedTool.metadata.server_id
+      );
       setExecutionResult(result);
-      await onExecuteTool(selectedTool.name, toolArgs);
     } catch (err) {
       setExecutionResult({
         success: false,
@@ -317,42 +427,91 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
 
   // Custom MCP Server handlers
   const handleAddServer = async () => {
-    if (!newServer.name || !newServer.url) return;
+    const errorMessage = validateServer(newServer.name, newServer.url);
+    if (errorMessage) {
+      setServerFormError(errorMessage);
+      return;
+    }
 
     setAddingServer(true);
-
-    // Simulate server connection test
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    const server: CustomMcpServer = {
-      id: `custom-${Date.now()}`,
-      name: newServer.name,
-      url: newServer.url,
-      transport: newServer.transport || 'http',
-      apiKey: newServer.apiKey,
-      enabled: true,
-      status: 'connected',
-      toolCount: Math.floor(Math.random() * 10) + 1, // Simulated
-    };
-
-    setCustomServers(prev => [...prev, server]);
-    setNewServer({ name: '', url: '', transport: 'http', apiKey: '', enabled: true });
-    setShowAddServerModal(false);
-    setAddingServer(false);
+    setServerFormError(null);
+    try {
+      await naviClient.createMcpServer({
+        name: newServer.name,
+        url: newServer.url.trim(),
+        transport: newServer.transport,
+        auth_type: newServer.auth_type,
+        auth_header_name: newServer.auth_header_name || undefined,
+        username: newServer.username || undefined,
+        token: newServer.token || undefined,
+        password: newServer.password || undefined,
+        enabled: newServer.enabled,
+      });
+      setNewServer({
+        name: '',
+        url: '',
+        transport: 'streamable_http',
+        auth_type: 'none',
+        auth_header_name: 'X-API-Key',
+        username: '',
+        token: '',
+        password: '',
+        enabled: true,
+      });
+      await fetchTools();
+      setShowAddServerModal(false);
+    } catch (err) {
+      setServerFormError(err instanceof Error ? err.message : 'Unable to add server');
+    } finally {
+      setAddingServer(false);
+    }
   };
 
-  const handleRemoveServer = (serverId: string) => {
-    setCustomServers(prev => prev.filter(s => s.id !== serverId));
+  const handleUpdateServer = async () => {
+    if (!editingServer) return;
+    const errorMessage = validateServer(editingServer.name, editingServer.url);
+    if (errorMessage) {
+      setServerFormError(errorMessage);
+      return;
+    }
+    setAddingServer(true);
+    setServerFormError(null);
+    try {
+      await naviClient.updateMcpServer(Number(editingServer.id), {
+        name: editingServer.name,
+        url: editingServer.url.trim(),
+        transport: editingServer.transport,
+        auth_type: editingServer.auth_type,
+        auth_header_name: editingServer.auth_header_name || undefined,
+        username: editingServer.username || undefined,
+        token: editingServer.token || undefined,
+        password: editingServer.password || undefined,
+        enabled: editingServer.enabled,
+        clear_secrets: editingServer.clear_secrets || undefined,
+      });
+      await fetchTools();
+      setShowEditServerModal(false);
+      setEditingServer(null);
+    } catch (err) {
+      setServerFormError(err instanceof Error ? err.message : 'Unable to update server');
+    } finally {
+      setAddingServer(false);
+    }
   };
 
-  const handleToggleServer = (serverId: string) => {
-    setCustomServers(prev =>
-      prev.map(s =>
-        s.id === serverId
-          ? { ...s, enabled: !s.enabled, status: s.enabled ? 'disconnected' : 'connected' }
-          : s
-      )
-    );
+  const handleRemoveServer = async (serverId: string | number) => {
+    await naviClient.deleteMcpServer(Number(serverId));
+    await fetchTools();
+  };
+
+  const handleToggleServer = async (serverId: string | number, enabled: boolean) => {
+    await naviClient.updateMcpServer(Number(serverId), { enabled });
+    await fetchTools();
+  };
+
+  const handleTestServer = async (serverId: string | number) => {
+    await naviClient.testMcpServer(Number(serverId));
+    await fetchTools();
   };
 
   if (!isOpen) return null;
@@ -392,6 +551,21 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
               onChange={(e) => setSearchQuery(e.target.value)}
               className="mcp-search__input"
             />
+          </div>
+          <div className="mcp-search__server">
+            <ServerIcon className="mcp-search__server-icon" />
+            <select
+              value={serverFilter}
+              onChange={(e) => setServerFilter(e.target.value)}
+            >
+              <option value="all">All servers</option>
+              <option value="builtin">Builtin</option>
+              {customServers.map((server) => (
+                <option key={String(server.id)} value={String(server.id)}>
+                  {server.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -445,9 +619,15 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
                               onClick={() => handleSelectTool(tool)}
                             >
                               <div className="mcp-tool-item__content">
-                                <span className="mcp-tool-item__name">
-                                  {tool.name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                                </span>
+                                <div className="mcp-tool-item__text">
+                                  <span className="mcp-tool-item__name">
+                                    {tool.name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                  </span>
+                                  <span className="mcp-tool-item__server">
+                                    {tool.metadata.server_name ||
+                                      (tool.metadata.source === 'external' ? 'External' : 'Builtin')}
+                                  </span>
+                                </div>
                                 {tool.metadata.requires_approval && (
                                   <span className="mcp-tool-item__badge">Approval</span>
                                 )}
@@ -474,6 +654,11 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
                     )}
                   </div>
                   <p className="mcp-tool-detail__desc">{selectedTool.description}</p>
+                  <div className="mcp-tool-detail__server">
+                    Server:{' '}
+                    {selectedTool.metadata.server_name ||
+                      (selectedTool.metadata.source === 'external' ? 'External' : 'Builtin')}
+                  </div>
 
                   {/* Parameters */}
                   <div className="mcp-params">
@@ -561,45 +746,86 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
               {customServers.length > 0 && (
                 <div className="mcp-custom-servers">
                   <h4 className="mcp-custom-servers__title">Custom Servers</h4>
+                  {!canManageServers && (
+                    <p className="mcp-custom-servers__note">
+                      Organization-managed. Contact an admin to add or edit servers.
+                    </p>
+                  )}
                   <div className="mcp-custom-servers__list">
                     {customServers.map((server) => (
                       <div key={server.id} className={`mcp-server-card ${!server.enabled ? 'mcp-server-card--disabled' : ''}`}>
                         <div className="mcp-server-card__header">
                           <div className={`mcp-server-card__status mcp-server-card__status--${server.status}`} />
                           <span className="mcp-server-card__name">{server.name}</span>
-                          <span className="mcp-server-card__transport">{server.transport.toUpperCase()}</span>
+                          {server.scope && server.scope !== 'builtin' && (
+                            <span className="mcp-server-card__scope">
+                              {server.scope === 'org' ? 'ORG' : 'USER'}
+                            </span>
+                          )}
+                          <span className="mcp-server-card__transport">
+                            {server.transport === 'streamable_http' ? 'HTTP' : server.transport.toUpperCase()}
+                          </span>
                         </div>
                         <div className="mcp-server-card__url">{server.url}</div>
+                        {server.last_error && (
+                          <div className="mcp-server-card__error">{server.last_error}</div>
+                        )}
                         <div className="mcp-server-card__footer">
-                          <span className="mcp-server-card__tools">{server.toolCount} tools</span>
-                          <div className="mcp-server-card__actions">
-                            <button
-                              className="mcp-server-card__btn"
-                              onClick={() => handleToggleServer(server.id)}
-                              title={server.enabled ? 'Disable' : 'Enable'}
-                            >
-                              {server.enabled ? (
+                          <span className="mcp-server-card__tools">
+                            {typeof server.tool_count === 'number' ? `${server.tool_count} tools` : 'Tools unknown'}
+                          </span>
+                          {canManageServers ? (
+                            <div className="mcp-server-card__actions">
+                              <button
+                                className="mcp-server-card__btn"
+                                onClick={() => handleToggleServer(server.id, !server.enabled)}
+                                title={server.enabled ? 'Disable' : 'Enable'}
+                              >
+                                {server.enabled ? (
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <rect x="1" y="5" width="22" height="14" rx="7" ry="7" />
+                                    <circle cx="16" cy="12" r="3" fill="currentColor" />
+                                  </svg>
+                                ) : (
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <rect x="1" y="5" width="22" height="14" rx="7" ry="7" />
+                                    <circle cx="8" cy="12" r="3" />
+                                  </svg>
+                                )}
+                              </button>
+                              <button
+                                className="mcp-server-card__btn"
+                                onClick={() => openEditServer(server)}
+                                title="Edit server"
+                              >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <rect x="1" y="5" width="22" height="14" rx="7" ry="7" />
-                                  <circle cx="16" cy="12" r="3" fill="currentColor" />
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                                 </svg>
-                              ) : (
+                              </button>
+                              <button
+                                className="mcp-server-card__btn"
+                                onClick={() => handleTestServer(server.id)}
+                                title="Test connection"
+                              >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <rect x="1" y="5" width="22" height="14" rx="7" ry="7" />
-                                  <circle cx="8" cy="12" r="3" />
+                                  <path d="M21 12a9 9 0 1 1-3-6.7" />
+                                  <path d="M21 3v6h-6" />
                                 </svg>
-                              )}
-                            </button>
-                            <button
-                              className="mcp-server-card__btn mcp-server-card__btn--danger"
-                              onClick={() => handleRemoveServer(server.id)}
-                              title="Remove"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                              </svg>
-                            </button>
-                          </div>
+                              </button>
+                              <button
+                                className="mcp-server-card__btn mcp-server-card__btn--danger"
+                                onClick={() => handleRemoveServer(server.id)}
+                                title="Remove"
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                                </svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="mcp-server-card__readonly">Managed by org admin</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -608,21 +834,41 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
               )}
 
               {/* Add Custom Server */}
-              <button className="mcp-add-server" onClick={() => setShowAddServerModal(true)}>
-                <PlusIcon />
-                <span>Add Custom MCP Server</span>
-              </button>
+              {canManageServers && (
+                <button
+                  className="mcp-add-server"
+                  onClick={() => {
+                    setServerFormError(null);
+                    setShowAddServerModal(true);
+                  }}
+                >
+                  <PlusIcon />
+                  <span>Add Custom MCP Server</span>
+                </button>
+              )}
             </div>
           )}
         </div>
 
         {/* Add Server Modal */}
         {showAddServerModal && (
-          <div className="mcp-modal-overlay" onClick={() => setShowAddServerModal(false)}>
+          <div
+            className="mcp-modal-overlay"
+            onClick={() => {
+              setShowAddServerModal(false);
+              setServerFormError(null);
+            }}
+          >
             <div className="mcp-modal" onClick={e => e.stopPropagation()}>
               <div className="mcp-modal__header">
                 <h3>Add Custom MCP Server</h3>
-                <button className="mcp-modal__close" onClick={() => setShowAddServerModal(false)}>
+                <button
+                  className="mcp-modal__close"
+                  onClick={() => {
+                    setShowAddServerModal(false);
+                    setServerFormError(null);
+                  }}
+                >
                   <CloseIcon />
                 </button>
               </div>
@@ -630,6 +876,7 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
                 <p className="mcp-modal__description">
                   Connect to an external MCP server to extend NAVI's capabilities with custom tools.
                 </p>
+                {serverFormError && <div className="mcp-modal__error">{serverFormError}</div>}
 
                 <div className="mcp-modal__field">
                   <label>Server Name *</label>
@@ -655,23 +902,65 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
                   <label>Transport Protocol</label>
                   <select
                     value={newServer.transport}
-                    onChange={(e) => setNewServer(prev => ({ ...prev, transport: e.target.value as 'http' | 'websocket' | 'stdio' }))}
+                    onChange={(e) => setNewServer(prev => ({ ...prev, transport: e.target.value }))}
                   >
-                    <option value="http">HTTP</option>
-                    <option value="websocket">WebSocket</option>
-                    <option value="stdio">Standard I/O</option>
+                    <option value="streamable_http">Streamable HTTP</option>
                   </select>
                 </div>
 
                 <div className="mcp-modal__field">
-                  <label>API Key (Optional)</label>
-                  <input
-                    type="password"
-                    placeholder="Enter API key for authentication"
-                    value={newServer.apiKey}
-                    onChange={(e) => setNewServer(prev => ({ ...prev, apiKey: e.target.value }))}
-                  />
+                  <label>Authentication</label>
+                  <select
+                    value={newServer.auth_type}
+                    onChange={(e) => setNewServer(prev => ({ ...prev, auth_type: e.target.value }))}
+                  >
+                    <option value="none">None</option>
+                    <option value="bearer">Bearer Token</option>
+                    <option value="header">API Key Header</option>
+                    <option value="basic">Basic Auth</option>
+                  </select>
                 </div>
+
+                {newServer.auth_type === 'header' && (
+                  <div className="mcp-modal__field">
+                    <label>Header Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., X-API-Key"
+                      value={newServer.auth_header_name}
+                      onChange={(e) => setNewServer(prev => ({ ...prev, auth_header_name: e.target.value }))}
+                    />
+                  </div>
+                )}
+
+                {newServer.auth_type === 'basic' && (
+                  <div className="mcp-modal__field">
+                    <label>Username</label>
+                    <input
+                      type="text"
+                      placeholder="username"
+                      value={newServer.username}
+                      onChange={(e) => setNewServer(prev => ({ ...prev, username: e.target.value }))}
+                    />
+                  </div>
+                )}
+
+                {newServer.auth_type !== 'none' && (
+                  <div className="mcp-modal__field">
+                    <label>{newServer.auth_type === 'basic' ? 'Password' : 'Token'}</label>
+                    <input
+                      type="password"
+                      placeholder={newServer.auth_type === 'basic' ? 'Enter password' : 'Enter token'}
+                      value={newServer.auth_type === 'basic' ? newServer.password : newServer.token}
+                      onChange={(e) =>
+                        setNewServer(prev => ({
+                          ...prev,
+                          ...(prev.auth_type === 'basic' ? { password: e.target.value } : { token: e.target.value }),
+                        }))
+                      }
+                    />
+                  </div>
+                )}
 
                 <div className="mcp-modal__info">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -679,13 +968,19 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
                     <path d="M12 16v-4M12 8h.01" />
                   </svg>
                   <span>
-                    The server must implement the Model Context Protocol (MCP) specification.
+                    The server must implement MCP tools over Streamable HTTP.
                     <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer"> Learn more</a>
                   </span>
                 </div>
               </div>
               <div className="mcp-modal__footer">
-                <button className="mcp-modal__btn mcp-modal__btn--secondary" onClick={() => setShowAddServerModal(false)}>
+                <button
+                  className="mcp-modal__btn mcp-modal__btn--secondary"
+                  onClick={() => {
+                    setShowAddServerModal(false);
+                    setServerFormError(null);
+                  }}
+                >
                   Cancel
                 </button>
                 <button
@@ -707,6 +1002,182 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
           </div>
         )}
 
+        {/* Edit Server Modal */}
+        {showEditServerModal && editingServer && (
+          <div
+            className="mcp-modal-overlay"
+            onClick={() => {
+              setShowEditServerModal(false);
+              setEditingServer(null);
+              setServerFormError(null);
+            }}
+          >
+            <div className="mcp-modal" onClick={e => e.stopPropagation()}>
+              <div className="mcp-modal__header">
+                <h3>Edit MCP Server</h3>
+                <button
+                  className="mcp-modal__close"
+                  onClick={() => {
+                    setShowEditServerModal(false);
+                    setEditingServer(null);
+                    setServerFormError(null);
+                  }}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+              <div className="mcp-modal__content">
+                <p className="mcp-modal__description">
+                  Update server details and credentials. Leave token/password empty to keep existing secrets.
+                </p>
+                {serverFormError && <div className="mcp-modal__error">{serverFormError}</div>}
+
+                <div className="mcp-modal__field">
+                  <label>Server Name *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Internal Tools Server"
+                    value={editingServer.name}
+                    onChange={(e) =>
+                      setEditingServer(prev => (prev ? { ...prev, name: e.target.value } : prev))
+                    }
+                  />
+                </div>
+
+                <div className="mcp-modal__field">
+                  <label>Server URL *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., https://mcp.yourcompany.com"
+                    value={editingServer.url}
+                    onChange={(e) =>
+                      setEditingServer(prev => (prev ? { ...prev, url: e.target.value } : prev))
+                    }
+                  />
+                </div>
+
+                <div className="mcp-modal__field">
+                  <label>Transport Protocol</label>
+                  <select
+                    value={editingServer.transport}
+                    onChange={(e) =>
+                      setEditingServer(prev => (prev ? { ...prev, transport: e.target.value } : prev))
+                    }
+                  >
+                    <option value="streamable_http">Streamable HTTP</option>
+                  </select>
+                </div>
+
+                <div className="mcp-modal__field">
+                  <label>Authentication</label>
+                  <select
+                    value={editingServer.auth_type}
+                    onChange={(e) =>
+                      setEditingServer(prev => (prev ? { ...prev, auth_type: e.target.value } : prev))
+                    }
+                  >
+                    <option value="none">None</option>
+                    <option value="bearer">Bearer Token</option>
+                    <option value="header">API Key Header</option>
+                    <option value="basic">Basic Auth</option>
+                  </select>
+                </div>
+
+                {editingServer.auth_type === 'header' && (
+                  <div className="mcp-modal__field">
+                    <label>Header Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., X-API-Key"
+                      value={editingServer.auth_header_name}
+                      onChange={(e) =>
+                        setEditingServer(prev => (prev ? { ...prev, auth_header_name: e.target.value } : prev))
+                      }
+                    />
+                  </div>
+                )}
+
+                {editingServer.auth_type === 'basic' && (
+                  <div className="mcp-modal__field">
+                    <label>Username</label>
+                    <input
+                      type="text"
+                      placeholder="username"
+                      value={editingServer.username}
+                      onChange={(e) =>
+                        setEditingServer(prev => (prev ? { ...prev, username: e.target.value } : prev))
+                      }
+                    />
+                  </div>
+                )}
+
+                {editingServer.auth_type !== 'none' && (
+                  <div className="mcp-modal__field">
+                    <label>{editingServer.auth_type === 'basic' ? 'Password' : 'Token'}</label>
+                    <input
+                      type="password"
+                      placeholder={editingServer.auth_type === 'basic' ? 'Enter password' : 'Enter token'}
+                      value={editingServer.auth_type === 'basic' ? editingServer.password : editingServer.token}
+                      onChange={(e) =>
+                        setEditingServer(prev =>
+                          prev
+                            ? {
+                                ...prev,
+                                ...(prev.auth_type === 'basic'
+                                  ? { password: e.target.value }
+                                  : { token: e.target.value }),
+                              }
+                            : prev
+                        )
+                      }
+                    />
+                  </div>
+                )}
+
+                <div className="mcp-modal__field mcp-modal__field--row">
+                  <label className="mcp-modal__checkbox">
+                    <input
+                      type="checkbox"
+                      checked={editingServer.clear_secrets}
+                      onChange={(e) =>
+                        setEditingServer(prev => (prev ? { ...prev, clear_secrets: e.target.checked } : prev))
+                      }
+                    />
+                    Clear stored credentials
+                  </label>
+                  <span className="mcp-modal__hint">Keep unchecked to retain existing secrets.</span>
+                </div>
+              </div>
+              <div className="mcp-modal__footer">
+                <button
+                  className="mcp-modal__btn mcp-modal__btn--secondary"
+                  onClick={() => {
+                    setShowEditServerModal(false);
+                    setEditingServer(null);
+                    setServerFormError(null);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="mcp-modal__btn mcp-modal__btn--primary"
+                  onClick={handleUpdateServer}
+                  disabled={addingServer}
+                >
+                  {addingServer ? (
+                    <>
+                      <div className="mcp-modal__spinner" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <style>{`
           /* ============================================
              MCP TOOLS PANEL - Premium Design
@@ -718,8 +1189,9 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
             background: hsl(var(--background) / 0.85);
             backdrop-filter: blur(12px);
             display: flex;
-            align-items: center;
-            justify-content: center;
+            align-items: stretch;
+            justify-content: stretch;
+            padding: 16px;
             z-index: 1000;
             animation: mcp-fade-in 0.2s ease;
           }
@@ -730,24 +1202,24 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
           }
 
           .mcp-panel {
-            width: 94%;
-            max-width: 720px;
-            max-height: 88vh;
+            width: 100%;
+            height: 100%;
+            max-width: none;
+            max-height: none;
             background: linear-gradient(
-              165deg,
+              180deg,
               hsl(var(--card)) 0%,
               hsl(var(--background)) 100%
             );
             border: 1px solid hsl(var(--border) / 0.4);
-            border-radius: 24px;
+            border-radius: 20px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
             animation: mcp-slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             box-shadow:
-              0 0 0 1px hsl(var(--primary) / 0.1),
-              0 25px 80px -12px hsl(0 0% 0% / 0.5),
-              0 0 120px hsl(var(--primary) / 0.08);
+              0 0 0 1px hsl(var(--primary) / 0.08),
+              0 25px 80px -12px hsl(0 0% 0% / 0.5);
           }
 
           @keyframes mcp-slide-up {
@@ -787,10 +1259,29 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--accent) / 0.15));
-            border: 1px solid hsl(var(--primary) / 0.2);
+            background: hsl(var(--secondary) / 0.6);
+            border: 1px solid hsl(var(--border) / 0.5);
             border-radius: 14px;
-            box-shadow: 0 0 30px hsl(var(--primary) / 0.2);
+            box-shadow:
+              0 0 0 1px hsl(var(--primary) / 0.08),
+              0 12px 24px hsl(var(--background) / 0.6);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+          }
+
+          .mcp-header__left:hover .mcp-header__icon {
+            transform: translateY(-1px);
+            box-shadow:
+              0 0 0 1px hsl(var(--primary) / 0.12),
+              0 16px 28px hsl(var(--background) / 0.65);
+          }
+
+          .mcp-header__icon svg {
+            transition: transform 0.2s ease, filter 0.2s ease;
+          }
+
+          .mcp-header__left:hover .mcp-header__icon svg {
+            transform: translateY(-1px) scale(1.05);
+            filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
           }
 
           .mcp-header__title h2 {
@@ -819,7 +1310,7 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
-            color: hsl(var(--primary));
+            color: hsl(var(--muted-foreground));
           }
 
           .mcp-close {
@@ -847,12 +1338,16 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
           .mcp-search {
             padding: 16px 24px;
             border-bottom: 1px solid hsl(var(--border) / 0.2);
+            display: flex;
+            align-items: center;
+            gap: 12px;
           }
 
           .mcp-search__input-wrapper {
             position: relative;
             display: flex;
             align-items: center;
+            flex: 1;
           }
 
           .mcp-search__input-wrapper svg {
@@ -882,6 +1377,44 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
 
           .mcp-search__input::placeholder {
             color: hsl(var(--muted-foreground));
+          }
+
+          .mcp-search__server {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            background: hsl(var(--secondary) / 0.35);
+            border: 1px solid hsl(var(--border) / 0.4);
+            border-radius: 12px;
+            color: hsl(var(--muted-foreground));
+            transition: all 0.2s ease;
+          }
+
+          .mcp-search__server:hover {
+            background: hsl(var(--secondary) / 0.55);
+            border-color: hsl(var(--primary) / 0.35);
+            color: hsl(var(--foreground));
+          }
+
+          .mcp-search__server-icon {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.2s ease, filter 0.2s ease;
+          }
+
+          .mcp-search__server:hover .mcp-search__server-icon {
+            transform: translateY(-1px) scale(1.05);
+            filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
+          }
+
+          .mcp-search__server select {
+            background: transparent;
+            border: none;
+            color: inherit;
+            font-size: 13px;
+            outline: none;
+            min-width: 140px;
           }
 
           /* Content */
@@ -1005,7 +1538,8 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
 
           .mcp-category--expanded {
             background: hsl(var(--card) / 0.8);
-            border-color: hsl(var(--primary) / 0.2);
+            border-color: hsl(var(--border) / 0.6);
+            box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.06);
           }
 
           .mcp-category__header {
@@ -1037,6 +1571,24 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
 
           .mcp-category:hover .mcp-category__icon-wrapper {
             transform: scale(1.05);
+          }
+
+          .mcp-category__icon-wrapper svg {
+            transition: transform 0.2s ease, filter 0.2s ease;
+          }
+
+          .mcp-category__header:hover .mcp-category__icon-wrapper svg {
+            transform: translateY(-1px) scale(1.06);
+            filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.18));
+          }
+
+          .mcp-category__meta svg {
+            transition: transform 0.2s ease, color 0.2s ease;
+          }
+
+          .mcp-category__header:hover .mcp-category__meta svg {
+            transform: translateY(-1px) scale(1.06);
+            color: hsl(var(--foreground));
           }
 
           .mcp-category__info {
@@ -1074,8 +1626,8 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
           }
 
           .mcp-category--expanded .mcp-category__count {
-            background: hsl(var(--primary) / 0.15);
-            color: hsl(var(--primary));
+            background: hsl(var(--secondary) / 0.6);
+            color: hsl(var(--foreground));
           }
 
           /* Tool Items */
@@ -1104,8 +1656,9 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
           }
 
           .mcp-tool-item--selected {
-            background: hsl(var(--primary) / 0.1);
-            border-color: hsl(var(--primary) / 0.3);
+            background: hsl(var(--secondary) / 0.55);
+            border-color: hsl(var(--border) / 0.6);
+            box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.08);
           }
 
           .mcp-tool-item__content {
@@ -1114,9 +1667,22 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
             gap: 10px;
           }
 
+          .mcp-tool-item__text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+          }
+
           .mcp-tool-item__name {
             font-size: 13px;
             color: hsl(var(--foreground));
+          }
+
+          .mcp-tool-item__server {
+            font-size: 9px;
+            color: hsl(var(--muted-foreground));
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
           }
 
           .mcp-tool-item__badge {
@@ -1144,7 +1710,7 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
           }
 
           .mcp-tool-item--selected .mcp-tool-item__arrow {
-            color: hsl(var(--primary));
+            color: hsl(var(--foreground));
           }
 
           /* Tool Detail Panel */
@@ -1185,6 +1751,14 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
             font-size: 13px;
             line-height: 1.6;
             color: hsl(var(--muted-foreground));
+          }
+
+          .mcp-tool-detail__server {
+            margin: 0 0 18px;
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
           }
 
           /* Parameters */
@@ -1401,6 +1975,12 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
             letter-spacing: 0.05em;
           }
 
+          .mcp-custom-servers__note {
+            margin: -6px 0 12px;
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+          }
+
           .mcp-custom-servers__list {
             display: flex;
             flex-direction: column;
@@ -1455,11 +2035,27 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
             box-shadow: 0 0 8px hsl(var(--destructive) / 0.6);
           }
 
+          .mcp-server-card__status--unknown {
+            background: hsl(var(--primary) / 0.5);
+            box-shadow: 0 0 6px hsl(var(--primary) / 0.25);
+          }
+
           .mcp-server-card__name {
             flex: 1;
             font-size: 14px;
             font-weight: 600;
             color: hsl(var(--foreground));
+          }
+
+          .mcp-server-card__scope {
+            padding: 3px 6px;
+            background: hsl(var(--primary) / 0.12);
+            border: 1px solid hsl(var(--primary) / 0.25);
+            border-radius: 6px;
+            font-size: 9px;
+            font-weight: 700;
+            color: hsl(var(--primary));
+            letter-spacing: 0.04em;
           }
 
           .mcp-server-card__transport {
@@ -1479,6 +2075,14 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
             word-break: break-all;
           }
 
+          .mcp-server-card__error {
+            font-size: 11px;
+            color: hsl(var(--destructive));
+            margin-top: -4px;
+            margin-bottom: 10px;
+            word-break: break-word;
+          }
+
           .mcp-server-card__footer {
             display: flex;
             align-items: center;
@@ -1493,6 +2097,13 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
           .mcp-server-card__actions {
             display: flex;
             gap: 6px;
+          }
+
+          .mcp-server-card__readonly {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
           }
 
           .mcp-server-card__btn {
@@ -1592,6 +2203,16 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
             line-height: 1.5;
           }
 
+          .mcp-modal__error {
+            margin: 0 0 16px;
+            padding: 10px 12px;
+            background: hsl(var(--destructive) / 0.12);
+            border: 1px solid hsl(var(--destructive) / 0.25);
+            border-radius: 10px;
+            color: hsl(var(--destructive));
+            font-size: 12px;
+          }
+
           .mcp-modal__field {
             margin-bottom: 16px;
           }
@@ -1634,6 +2255,33 @@ export const McpToolsPanel: React.FC<McpToolsPanelProps> = ({
 
           .mcp-modal__field select {
             cursor: pointer;
+          }
+
+          .mcp-modal__field--row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+          }
+
+          .mcp-modal__checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: hsl(var(--foreground));
+          }
+
+          .mcp-modal__checkbox input {
+            width: 14px;
+            height: 14px;
+            margin: 0;
+            accent-color: hsl(var(--primary));
+          }
+
+          .mcp-modal__hint {
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
           }
 
           .mcp-modal__info {

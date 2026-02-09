@@ -445,8 +445,7 @@ async def stream_plan_updates(
                 return
 
             # Stream live updates from broadcaster
-            subscription = await bc.subscribe(channel)
-            async for msg in subscription:
+            async for msg in bc.subscribe(channel):
                 try:
                     # Parse message using helper function to consolidate parsing logic
                     data = parse_broadcaster_message(msg)

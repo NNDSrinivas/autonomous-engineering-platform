@@ -5,6 +5,16 @@ Prevents infinite loops by detecting repetitive failing actions, while allowing
 NAVI to continue trying different approaches to solve problems.
 
 Key principle: Block repeating the SAME failing action, not solving the problem.
+
+TODO: Add comprehensive unit tests (backend/tests/test_retry_limiter.py)
+Required test coverage:
+1. First failure allowed: should_allow_action() returns (True, None) on first error
+2. Blocks after MAX_TOTAL_ATTEMPTS: returns (False, suggestion) after limit reached
+3. Resets after TRACKING_WINDOW: allows retry after window expires
+4. Cleanup after MEMORY_WINDOW: _cleanup_old_attempts() removes stale entries
+5. Success clearing: record_success() clears all failures for matching action signature
+6. Threading safety: Concurrent calls to should_allow_action/record_attempt don't corrupt state
+7. Deterministic suggestions: _generate_alternative_suggestion() consistent for same inputs
 """
 
 from typing import Dict, Tuple, Optional, List

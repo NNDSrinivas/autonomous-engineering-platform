@@ -98,6 +98,8 @@ class NaviMemoryIntegration:
         Returns:
             Dictionary containing memory context for NAVI
         """
+        import asyncio
+
         context = {
             "retrieved_at": datetime.utcnow().isoformat(),
             "user_context": {},
@@ -110,45 +112,73 @@ class NaviMemoryIntegration:
         }
 
         try:
-            # 1. Get user context (preferences, patterns)
+            # 1. Get user context (preferences, patterns) - synchronous
             context["user_context"] = self.user_memory.build_user_context(user_id)
 
-            # 2. Get organization context if available
-            if org_id:
-                context["org_context"] = await self._get_org_context(org_id, query)
-
-            # 3. Get conversation context if in a conversation
+            # 2. Get conversation context if in a conversation - synchronous
             if conversation_id:
-                context[
-                    "conversation_context"
-                ] = self.conversation_memory.build_conversation_context(
-                    conversation_id,
-                    max_messages=20,
-                    include_summary=True,
+                context["conversation_context"] = (
+                    self.conversation_memory.build_conversation_context(
+                        conversation_id,
+                        max_messages=20,
+                        include_summary=True,
+                    )
                 )
 
-            # 4. Search for relevant code context
-            context["code_context"] = await self._get_code_context(
-                query, user_id, workspace_path, current_file
+            # 3. Get personalization context - synchronous
+            context["personalization"] = (
+                self.response_personalizer.build_personalization_context(
+                    user_id, org_id
+                )
             )
 
-            # 5. Semantic search across all memory
-            context["semantic_matches"] = await self._semantic_search(
-                query, user_id, org_id, max_items
-            )
+            # 4-7. Run all async operations in parallel for maximum speed
+            async_tasks = []
+            task_names = []
 
-            # 6. Get personalization context
-            context[
-                "personalization"
-            ] = self.response_personalizer.build_personalization_context(
-                user_id, org_id
-            )
+            # Organization context
+            if org_id:
+                async_tasks.append(self._get_org_context(org_id, query))
+                task_names.append("org_context")
 
-            # 7. Predict additional relevant context
-            predictions = await self.context_predictor.predict_context(
-                query, user_id, org_id, workspace_path, current_file
+            # Code context
+            async_tasks.append(
+                self._get_code_context(query, user_id, workspace_path, current_file)
             )
-            context["predictions"] = predictions.get("predictions", [])
+            task_names.append("code_context")
+
+            # Semantic search
+            async_tasks.append(self._semantic_search(query, user_id, org_id, max_items))
+            task_names.append("semantic_matches")
+
+            # Context predictions
+            async_tasks.append(
+                self.context_predictor.predict_context(
+                    query, user_id, org_id, workspace_path, current_file
+                )
+            )
+            task_names.append("predictions")
+
+            # Execute all async operations in parallel
+            if async_tasks:
+                results = await asyncio.gather(*async_tasks, return_exceptions=True)
+
+                # Map results back to context
+                for task_name, result in zip(task_names, results):
+                    if isinstance(result, Exception):
+                        logger.warning(
+                            f"Error retrieving {task_name}: {result}", exc_info=result
+                        )
+                    else:
+                        if task_name == "predictions":
+                            # Extract predictions from the result dict
+                            context[task_name] = (
+                                result.get("predictions", [])
+                                if isinstance(result, dict)
+                                else []
+                            )
+                        else:
+                            context[task_name] = result
 
         except Exception as e:
             logger.error(f"Error retrieving memory context: {e}")

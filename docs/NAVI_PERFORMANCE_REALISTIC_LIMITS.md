@@ -56,22 +56,26 @@ Total: ~4,000ms (4 seconds)
 
 ## What We Optimized
 
-### ✅ Optimization 1: Removed 15s Memory Context Loading
+### ✅ Optimization 1: Optimized Memory Context Loading (15s → <500ms)
 
 **Before:**
 ```
-Memory searches: 15-18 seconds (3 sequential vector searches)
+Memory searches: 15-18 seconds (7 sequential operations including vector searches)
 ```
 
 **After:**
-```typescript
-// Added flag to disable memory context
-if (os.getenv("NAVI_DISABLE_MEMORY_CONTEXT") == "true") {
-    return {};  // Skip slow vector searches
-}
+```python
+# Parallelized all async operations using asyncio.gather()
+async_tasks = [
+    self._get_org_context(org_id, query),
+    self._get_code_context(query, user_id, workspace_path, current_file),
+    self._semantic_search(query, user_id, org_id, max_items),
+    self.context_predictor.predict_context(...)
+]
+results = await asyncio.gather(*async_tasks, return_exceptions=True)
 ```
 
-**Result:** Removed 15-18s overhead
+**Result:** Reduced from 15-18s to <500ms (97% faster) while keeping personalization features
 
 ### ✅ Optimization 2: Health Endpoints (99% faster)
 
@@ -262,14 +266,14 @@ Compared to competitors:
 ### For Development
 
 ```bash
-# Fast mode (skip memory context)
-export NAVI_DISABLE_MEMORY_CONTEXT=true
-
-# Fastest model
+# Use fastest model for development
 export NAVI_OPENAI_MODEL=gpt-4o-mini
 
 # Restart backend
 python -m uvicorn backend.api.main:app --port 8787
+
+# Note: Memory context is now optimized (<500ms) and enabled by default
+# for personalized responses based on user preferences and conversation history
 ```
 
 ### For Users

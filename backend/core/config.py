@@ -1,5 +1,25 @@
 """
 Configuration management for Autonomous Engineering Intelligence Platform
+
+ARCHITECTURAL DEBT WARNING (P1 - High Priority):
+================================================================================
+This module (backend/core/config.py) duplicates functionality with
+backend/core/settings.py, creating confusion and maintenance overhead.
+
+Issue: Two separate Settings classes exist:
+- backend/core/settings.py (27 files importing) - Simple settings
+- backend/core/config.py (75 files importing) - Complex settings with validation
+
+Impact: 102 files affected, developers confused about which to use.
+
+Action Required: Consolidate into single Settings class.
+Tracking: See docs/SETTINGS_CONSOLIDATION_TODO.md for detailed refactoring plan.
+
+Estimated Effort: 3.5 days (28 hours)
+Timeline: After current production deployment (post Feb 26, 2026)
+
+DO NOT extend either Settings class without consulting the consolidation plan.
+================================================================================
 """
 
 import os

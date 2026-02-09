@@ -122,7 +122,7 @@ async def oidc_callback(
     code: str = Query(...),
     state: str = Query(...),
     provider: str = Query(...),
-    format: str = Query("html", pattern="^(html|json)$"),
+    response_format: str = Query("html", pattern="^(html|json)$", alias="format"),
 ):
     stored = await pop_state(state)
     if not stored or stored.get("provider_id") != provider:
@@ -157,8 +157,26 @@ async def oidc_callback(
 
     sub = email = name = None
     if id_token:
+        # TODO: SECURITY - Implement full ID token validation per OIDC spec
+        # Required validations:
+        # 1. Verify signature using JWKS from provider's .well-known/jwks.json
+        # 2. Validate issuer (iss) matches expected provider issuer
+        # 3. Validate audience (aud) matches our client_id
+        # 4. Validate expiration (exp) and not-before (nbf) timestamps
+        # 5. Validate nonce if used (PKCE flow)
+        # Current state: Signature verification disabled - INSECURE but functional for development
+        # Reference: https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
         try:
+            # Decode without verification (INSECURE - see TODO above)
             claims = jwt.decode(id_token, options={"verify_signature": False})
+
+            # Basic validation: Check expiration even without signature verification
+            import time
+
+            exp = claims.get("exp")
+            if exp and time.time() > exp:
+                raise ValueError("ID token expired")
+
             sub = claims.get("sub")
             email = claims.get("email")
             name = claims.get("name")
@@ -192,12 +210,23 @@ async def oidc_callback(
         "user": {"sub": sub, "email": email, "name": name, "org": org},
     }
 
-    if format == "json":
+    if response_format == "json":
         return {
             "access_token": session_token,
             "provider": provider,
             "user": payload["user"],
         }
+
+    # SECURITY: Determine allowed target origin for postMessage
+    # TODO: Make this configurable via environment variable (SSO_ALLOWED_ORIGINS)
+    # For now, use redirect_uri origin as a reasonable default
+    from urllib.parse import urlparse
+
+    redirect_origin = (
+        urlparse(cfg["redirect_uri"]).scheme
+        + "://"
+        + urlparse(cfg["redirect_uri"]).netloc
+    )
 
     html = f"""
 <!doctype html>
@@ -220,8 +249,10 @@ async def oidc_callback(
     <script>
       (function() {{
         const payload = {json.dumps(payload)};
+        const targetOrigin = {json.dumps(redirect_origin)};
         if (window.opener) {{
-          window.opener.postMessage(payload, "*");
+          // SECURITY: Use explicit target origin instead of "*" to prevent token exfiltration
+          window.opener.postMessage(payload, targetOrigin);
           window.close();
         }}
       }})();

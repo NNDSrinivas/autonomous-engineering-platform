@@ -56,13 +56,16 @@ class FeedbackAnalyzerTask:
                     )
                 except Exception as e:
                     logger.error(
-                        "[FeedbackAnalyzer] Failed to analyze org %s: %s", org_id, e
+                        "[FeedbackAnalyzer] Failed to analyze org %s: %s",
+                        org_id,
+                        e,
+                        exc_info=True,
                     )
 
             logger.info("[FeedbackAnalyzer] ✅ Analysis complete")
 
         except Exception as e:
-            logger.error("[FeedbackAnalyzer] Analysis failed: %s", e)
+            logger.error("[FeedbackAnalyzer] Analysis failed: %s", e, exc_info=True)
 
     async def run(self):
         """Run the analysis task periodically."""
@@ -75,7 +78,9 @@ class FeedbackAnalyzerTask:
             try:
                 await self.analyze_all_orgs()
             except Exception as e:
-                logger.error("[FeedbackAnalyzer] Unexpected error: %s", e)
+                logger.error(
+                    "[FeedbackAnalyzer] Unexpected error: %s", e, exc_info=True
+                )
 
             # Wait for next interval
             await asyncio.sleep(self.interval_minutes * 60)

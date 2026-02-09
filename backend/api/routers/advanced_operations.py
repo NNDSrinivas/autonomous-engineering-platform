@@ -8,7 +8,7 @@ for frontend integration.
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from sqlalchemy.orm import Session
@@ -667,7 +667,7 @@ async def execute_mcp_tool(
                 "server_name": server.get("name"),
                 "source": "external",
                 "scope": server.get("scope"),
-                "executed_at": datetime.utcnow().isoformat(),
+                "executed_at": datetime.now(timezone.utc).isoformat(),
             },
         }
 

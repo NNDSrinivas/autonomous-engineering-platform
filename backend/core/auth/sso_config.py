@@ -37,7 +37,8 @@ def _load_providers_from_env() -> list[dict[str, Any]]:
         providers = json.loads(raw)
     except json.JSONDecodeError as e:
         logger.warning(
-            f"Failed to parse SSO_PROVIDERS_JSON: {e}. Check environment variable format."
+            "Failed to parse SSO_PROVIDERS_JSON: %s. Check environment variable format.",
+            e,
         )
         return []
     if isinstance(providers, dict):

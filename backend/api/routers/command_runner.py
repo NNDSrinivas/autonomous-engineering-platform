@@ -18,7 +18,6 @@ from backend.services.command_utils import (
     get_command_env,
     get_shell_executable,
     prepare_command,
-    run_subprocess,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,13 +206,13 @@ def run_command(
     try:
         audit_id = f"{user_id}-{datetime.now(timezone.utc).isoformat()}"
 
-        # Prepare environment and command with node setup if needed
+        # Prepare environment and command with node setup if needed (consistent preparation for both paths)
+        prepared_cmd = prepare_command(cmd, workdir)
         base_timeout = req.timeout if req.timeout is not None else 300
-        timeout = compute_timeout(cmd, timeout=base_timeout)
+        timeout = compute_timeout(prepared_cmd, timeout=base_timeout)
 
         # Background mode for long-running servers (e.g., npm run dev)
         if req.background:
-            prepared_cmd = prepare_command(cmd, workdir)
             proc = subprocess.Popen(
                 prepared_cmd,
                 shell=True,
@@ -240,9 +239,28 @@ def run_command(
                 audit_id=f"{audit_id}-bg-pid-{proc.pid}",
             )
 
-        success, stdout, stderr, rc = run_subprocess(
-            cmd, cwd=workdir, timeout=timeout, merge_stderr=False
-        )
+        # Foreground execution - run prepared command directly to avoid double-preparation in run_subprocess
+        try:
+            proc = subprocess.run(
+                prepared_cmd,
+                shell=True,
+                cwd=workdir,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=timeout,
+                env=get_command_env(),
+                executable=get_shell_executable(),
+            )
+            stdout = proc.stdout or ""
+            stderr = proc.stderr or ""
+            success = proc.returncode == 0
+            rc = proc.returncode
+        except subprocess.TimeoutExpired:
+            stdout = ""
+            stderr = f"Command timed out after {timeout}s"
+            success = False
+            rc = -1
 
         logger.info(
             "[CMD] user=%s cmd=%s workdir=%s rc=%s stdout_len=%s stderr_len=%s",

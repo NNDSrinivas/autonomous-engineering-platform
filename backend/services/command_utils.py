@@ -88,16 +88,28 @@ def is_node_command(command: str, extra_cmds: Optional[Iterable[str]] = None) ->
     if not cmd_parts:
         return False
 
-    # Skip leading environment variable assignments (e.g., PORT=3001 npm run dev)
-    # Also skip 'env' command (e.g., env NODE_ENV=production npm start)
+    # Skip common wrappers and environment variable assignments
+    # Examples:
+    #   - sudo npm install
+    #   - /usr/bin/env npm install
+    #   - env -i NODE_ENV=prod npm install
+    #   - command npm install
+    #   - PORT=3001 npm run dev
+    common_wrappers = {"sudo", "env", "command", "/usr/bin/env", "/bin/env"}
     executable_index = 0
+
     for i, part in enumerate(cmd_parts):
-        if part == "env":
-            # Skip 'env' command itself
+        # Skip common command wrappers
+        if part in common_wrappers or part.endswith("/env"):
             executable_index = i + 1
             continue
-        if "=" in part:
-            # Skip KEY=VALUE assignments
+        # Skip env flags (e.g., -i, -u, --ignore-environment)
+        if executable_index > 0 and cmd_parts[executable_index - 1] in common_wrappers:
+            if part.startswith("-"):
+                executable_index = i + 1
+                continue
+        # Skip KEY=VALUE environment variable assignments
+        if "=" in part and not part.startswith("-"):
             executable_index = i + 1
             continue
         # Found the actual executable

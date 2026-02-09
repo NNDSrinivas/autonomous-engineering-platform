@@ -115,7 +115,7 @@ class Settings(BaseSettings):
     DEFER_OPTIONAL_ROUTERS: bool = True
 
     # Audit logging configuration
-    enable_audit_logging: bool = True
+    ENABLE_AUDIT_LOGGING: bool = True
     AUDIT_RETENTION_ENABLED: bool = True
     AUDIT_RETENTION_DAYS: int = 90
     AUDIT_ENCRYPTION_KEY: str | None = None
@@ -227,7 +227,7 @@ def validate_production_settings(settings_obj: "Settings | None" = None) -> None
         settings_obj = settings
 
     # Validate audit encryption: encryption key is REQUIRED in production/staging
-    if settings_obj.is_production_like() and settings_obj.enable_audit_logging:
+    if settings_obj.is_production_like() and settings_obj.ENABLE_AUDIT_LOGGING:
         if not settings_obj.AUDIT_ENCRYPTION_KEY:
             raise ValueError(
                 f"AUDIT_ENCRYPTION_KEY is REQUIRED when app_env={settings_obj.app_env} "

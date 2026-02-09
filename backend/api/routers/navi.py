@@ -278,10 +278,11 @@ async def process_navi_request_stream(request: NaviRequest):
                 return
 
             # Send initial status
-            yield f"data: {json.dumps({'type': 'status', 'message': '🎯 Analyzing your request...'})}\n\n"
-            await asyncio.sleep(0.1)
+            yield f"data: {json.dumps({'type': 'status', 'message': '🎯 Analyzing your request...', 'step': 1, 'total': 6})}\n\n"
+            await asyncio.sleep(0.05)
 
             # Extract context
+            yield f"data: {json.dumps({'type': 'status', 'message': '📋 Loading workspace context...', 'step': 2, 'total': 6})}\n\n"
             context = request.context or {}
             current_file = context.get("currentFile") or context.get("current_file")
             current_file_content = context.get("currentFileContent") or context.get(
@@ -295,9 +296,16 @@ async def process_navi_request_stream(request: NaviRequest):
                 or context.get("conversationHistory")
                 or context.get("conversation_history")
             )
+            await asyncio.sleep(0.05)
 
             # Send status update
-            yield f"data: {json.dumps({'type': 'status', 'message': '🤖 Generating response...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': '🔍 Understanding your code...', 'step': 3, 'total': 6})}\n\n"
+            await asyncio.sleep(0.05)
+
+            yield f"data: {json.dumps({'type': 'status', 'message': '🤖 Connecting to AI model...', 'step': 4, 'total': 6})}\n\n"
+            await asyncio.sleep(0.05)
+
+            yield f"data: {json.dumps({'type': 'status', 'message': '✨ Generating response...', 'step': 5, 'total': 6})}\n\n"
 
             # Import streaming function
             from backend.services.navi_brain import (
@@ -320,7 +328,7 @@ async def process_navi_request_stream(request: NaviRequest):
             )
 
             # Send final result
-            yield f"data: {json.dumps({'type': 'status', 'message': '✅ Complete!'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': '✅ Complete!', 'step': 6, 'total': 6})}\n\n"
             await asyncio.sleep(0.05)
             yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"

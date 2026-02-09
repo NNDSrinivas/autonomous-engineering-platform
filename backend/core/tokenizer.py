@@ -27,7 +27,11 @@ def _should_allow_fallback() -> bool:
     settings = get_settings()
     if getattr(settings, "tokenizer_fallback_enabled", False):
         return True
-    return settings.is_test()
+    # Defensive check: settings might not have is_test() method depending on config source
+    is_test_fn = getattr(settings, "is_test", None)
+    if callable(is_test_fn):
+        return is_test_fn()
+    return False
 
 
 def get_tokenizer(model_name: Optional[str] = None):

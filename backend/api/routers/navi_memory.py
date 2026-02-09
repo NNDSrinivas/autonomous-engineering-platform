@@ -560,7 +560,8 @@ async def update_conversation(
         current_user, "org_key", None
     )
 
-    if conversation.user_id != user_id:
+    # Normalize both user IDs to strings to avoid type mismatch (UUID/int vs string) causing false 403s
+    if str(conversation.user_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to modify this conversation"
         )

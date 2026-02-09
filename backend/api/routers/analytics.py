@@ -176,11 +176,13 @@ def usage_dashboard(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     # TODO: Add tests for multi-tenant scoping and dialect-dependent date truncation
+    # Test scope: API-level integration tests or unit tests for _summarize_llm_metrics helper
     # Required coverage:
-    # 1. Verify org_id/user_id filtering prevents cross-tenant data leakage
-    # 2. Test daily grouping output for both Postgres (date_trunc) and SQLite (date)
-    # 3. Validate date string parsing for SQLite mode
+    # 1. Verify org_id/user_id filtering prevents cross-tenant data leakage (SECURITY CRITICAL)
+    # 2. Test daily grouping output for both PostgreSQL (date_trunc) and SQLite (date)
+    # 3. Validate date string parsing differs by dialect (datetime vs string)
     # 4. Test edge cases: empty data, single day, year boundary
+    # 5. Verify aggregations (total_tokens, total_cost, avg_latency) compute correctly
     range_info = _compute_range(days)
     # Defensive attribute access for user identifier (support both user_id and id)
     user_id = getattr(user, "user_id", None) or getattr(user, "id", None)

@@ -106,11 +106,15 @@ class Cache:
             The parsed JSON value if found, None otherwise
 
         TODO: Add comprehensive test coverage for atomic get+delete behavior
+        CRITICAL: This method is used for OAuth state management in backend/core/auth/sso_store.py
+        where atomic pop semantics prevent replay attacks. Test failures here create security risks.
+
         Required tests:
         1. GETDEL path: Verify atomic read+delete with Redis 6.2+
         2. Lua fallback: Test fallback when GETDEL raises AttributeError or "unknown command"
         3. In-memory fallback: Ensure atomicity via lock and correct expiration handling
-        4. Edge cases: expired keys, missing keys, concurrent access
+        4. Concurrent consumers: Verify only one consumer gets the value (OAuth state replay protection)
+        5. Edge cases: expired keys, missing keys, race conditions
         """
         r = await self._ensure()
         if r:

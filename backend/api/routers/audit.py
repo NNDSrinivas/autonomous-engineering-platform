@@ -222,6 +222,14 @@ def export_audit_logs(
             ]
 
         output = io.StringIO()
+        # TODO: Consider streaming CSV export to reduce memory usage
+        # Current implementation buffers entire CSV (up to 10,000 rows + optional payloads) in memory
+        # via StringIO before returning. This can consume significant memory for large exports.
+        # Recommended: Use FastAPI StreamingResponse with a generator that yields CSV rows incrementally.
+        # Benefits: Lower peak memory usage, faster time-to-first-byte, better UX for large exports.
+        # Example: def generate_csv_rows() -> Iterator[str]: yield header, yield data rows...
+        # return StreamingResponse(generate_csv_rows(), media_type="text/csv", headers={...})
+
         fieldnames = [
             "id",
             "route",

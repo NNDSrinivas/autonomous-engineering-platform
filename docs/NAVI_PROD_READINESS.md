@@ -31,6 +31,8 @@ NAVI has strong technical foundations and is **production-ready for pilot deploy
 
 **Status:** ✅ **ALL RESOLVED** (Updated Feb 9, 2026)
 
+**Note:** All critical security fixes have been verified in the codebase. One operational improvement remains: the consent handler uses a synchronous lock (`threading.Lock`) in an async endpoint, which could block the event loop under contention. This is tracked as a **P2 enhancement** (not a security blocker) and should be addressed by migrating to `asyncio.Lock` or Redis-backed storage for multi-process deployments.
+
 The following issues were identified during Copilot code review (PR #64) and have been addressed:
 
 ### 1. Authentication Context Not Used (CRITICAL) ✅ RESOLVED
@@ -205,13 +207,25 @@ The application uses a safe-by-design approach:
    - No `alembic upgrade head` in startup events
    - Prevents race conditions in multi-worker deployments
 
-2. **Kubernetes init containers** (already documented in `kubernetes/deployments/backend-staging.yaml`)
+2. **Kubernetes init containers** (see `kubernetes/deployments/backend-staging.yaml`)
    ```yaml
    initContainers:
-   - name: migrations
-     image: backend:latest
-     command: ["alembic", "upgrade", "head"]
-     # Only one init container runs per deployment
+     - name: db-migrate
+       image: your-registry/navi-backend:staging
+       imagePullPolicy: Always
+       command:
+         - /bin/sh
+         - -c
+         - |
+           echo "Running database migrations..."
+           alembic upgrade head
+           echo "Migrations completed successfully"
+       envFrom:
+         - secretRef:
+             name: navi-database-staging
+         - configMapRef:
+             name: navi-database-config-staging
+   # Only one init container runs per deployment
    ```
 
 3. **Manual migration for production** (recommended approach)

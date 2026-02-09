@@ -1247,55 +1247,45 @@ Please debug this issue and continue with the original task. The user's new mess
                 # who happen to have the same workspace_path + message + history.
                 # TODO: Re-enable caching when proper per-client scoping is available
                 # (e.g., authenticated org/user, extension session ID, or anonymous token).
-                cached_result = None
 
-                if cached_result is not None:
-                    # Cache HIT - return immediately without LLM call!
-                    logger.info(
-                        "🚀 Cache HIT - serving cached response (latency saved!)"
-                    )
-                    yield f"data: {json.dumps({'activity': {'kind': 'cache_hit', 'label': 'Cache', 'detail': 'Serving cached response', 'status': 'done'}})}\n\n"
-                    navi_result = cached_result
-                    # Skip to result processing
-                else:
-                    # Cache MISS - proceed with LLM call
-                    async for event in process_navi_request_streaming(
-                        message=actual_message,
-                        workspace_path=workspace_path,
-                        llm_provider=llm_provider,
-                        llm_model=llm_model,
-                        api_key=None,
-                        current_file=current_file,
-                        current_file_content=current_file_content,
-                        selection=selection,
-                        open_files=None,
-                        errors=errors,
-                        conversation_history=conversation_history,
-                    ):
-                        # Stream activity events directly to the frontend
-                        if "activity" in event:
-                            activity = event["activity"]
-                            # Track files read to avoid duplicates
-                            if activity.get("kind") == "file_read":
-                                files_read_live.append(activity.get("detail", ""))
-                            yield f"data: {json.dumps({'activity': activity})}\n\n"
+                # Cache MISS - proceed with LLM call (caching disabled for security)
+                async for event in process_navi_request_streaming(
+                    message=actual_message,
+                    workspace_path=workspace_path,
+                    llm_provider=llm_provider,
+                    llm_model=llm_model,
+                    api_key=None,
+                    current_file=current_file,
+                    current_file_content=current_file_content,
+                    selection=selection,
+                    open_files=None,
+                    errors=errors,
+                    conversation_history=conversation_history,
+                ):
+                    # Stream activity events directly to the frontend
+                    if "activity" in event:
+                        activity = event["activity"]
+                        # Track files read to avoid duplicates
+                        if activity.get("kind") == "file_read":
+                            files_read_live.append(activity.get("detail", ""))
+                        yield f"data: {json.dumps({'activity': activity})}\n\n"
 
-                        # Stream thinking content in real-time (LLM inner monologue)
-                        elif "thinking" in event:
-                            thinking_text = event["thinking"]
-                            yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+                    # Stream thinking content in real-time (LLM inner monologue)
+                    elif "thinking" in event:
+                        thinking_text = event["thinking"]
+                        yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
 
-                        # Stream narrative text for interleaved display (Claude Code style)
-                        elif "narrative" in event:
-                            narrative_text = event["narrative"]
-                            yield f"data: {json.dumps({'type': 'navi.narrative', 'text': narrative_text})}\n\n"
+                    # Stream narrative text for interleaved display (Claude Code style)
+                    elif "narrative" in event:
+                        narrative_text = event["narrative"]
+                        yield f"data: {json.dumps({'type': 'navi.narrative', 'text': narrative_text})}\n\n"
 
-                        # Capture the final result
-                        elif "result" in event:
-                            navi_result = event["result"]
+                    # Capture the final result
+                    elif "result" in event:
+                        navi_result = event["result"]
 
-                    # Note: Caching disabled for security (see above)
-                    # TODO: Re-enable when proper per-client scoping is available
+                # Note: Caching disabled for security (see above)
+                # TODO: Re-enable when proper per-client scoping is available
 
                 # Process the final result
                 if navi_result:

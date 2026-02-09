@@ -70,7 +70,19 @@ def generate_cache_key(
         # Hash each message individually and combine
         message_hashes = []
         for msg in conversation_history:
-            msg_str = f"{msg.get('role')}:{msg.get('content', '')}"
+            # Support both dict-like messages and objects (e.g., ChatMessage instances)
+            if isinstance(msg, dict):
+                role = msg.get("role")
+                content = msg.get("content", "")
+            else:
+                role = getattr(msg, "role", None)
+                content = getattr(msg, "content", "")
+
+            # Ensure content is a string
+            if not isinstance(content, str):
+                content = str(content)
+
+            msg_str = f"{role}:{content}"
             msg_hash = hashlib.sha256(msg_str.encode()).hexdigest()
             message_hashes.append(msg_hash)
         # Combine all message hashes into one history hash

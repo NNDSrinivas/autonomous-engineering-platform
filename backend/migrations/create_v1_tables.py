@@ -18,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from sqlalchemy import create_engine, inspect  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
 from backend.core.db import Base  # noqa: E402
 from backend.core.config import settings  # noqa: E402
 
@@ -32,26 +33,34 @@ def main():
     print("=" * 60)
     print()
 
-    # Get database URL (redact credentials for security)
-    database_url = settings.sqlalchemy_url
+    # Get database URL and convert async URL to sync if needed
+    raw_url = settings.sqlalchemy_url
+    url_obj = make_url(raw_url)
+
+    # Convert async drivers to sync equivalents
+    driver_mapping = {
+        "postgresql+asyncpg": "postgresql+psycopg2",
+        "sqlite+aiosqlite": "sqlite",
+        "mysql+aiomysql": "mysql+pymysql",
+    }
+
+    # Check if URL uses an async driver
+    original_drivername = url_obj.drivername
+    if original_drivername in driver_mapping:
+        sync_driver = driver_mapping[original_drivername]
+        database_url = str(url_obj.set(drivername=sync_driver))
+        print(
+            f"⚠️  Converted async driver '{original_drivername}' to sync driver '{sync_driver}'"
+        )
+    else:
+        database_url = raw_url
+
     # Mask password in URL for logging
-    safe_url = database_url
-    if "://" in database_url and "@" in database_url:
-        # Extract scheme and rest
-        scheme, rest = database_url.split("://", 1)
-        # If auth is present, mask it
-        if "@" in rest:
-            auth_and_rest = rest.split("@", 1)
-            # Keep only the username, mask password
-            if ":" in auth_and_rest[0]:
-                user = auth_and_rest[0].split(":")[0]
-                safe_url = f"{scheme}://{user}:****@{auth_and_rest[1]}"
-            else:
-                safe_url = f"{scheme}://****@{auth_and_rest[1]}"
+    safe_url = str(url_obj.set(password="****" if url_obj.password else None))
     print(f"Database URL: {safe_url}")
     print()
 
-    # Create engine
+    # Create engine with sync URL
     engine = create_engine(database_url)
     inspector = inspect(engine)
 

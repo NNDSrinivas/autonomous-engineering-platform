@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -72,20 +72,48 @@ def _ensure_tables(db: Session) -> None:
         # In production/staging, verify tables exist instead of creating them
         # This prevents multi-worker DDL race conditions and provides clear errors
         if settings.is_production_like():
+            bind = db.get_bind()
+            dialect_name = bind.dialect.name
+
             logger.info(
-                f"[OrgOnboarding] Verifying tables exist in {settings.app_env} environment; "
-                "tables must be managed via Alembic migrations."
+                f"[OrgOnboarding] Verifying tables exist in {settings.app_env} environment "
+                f"using {dialect_name} dialect; tables must be managed via Alembic migrations."
             )
-            # Verify required tables exist
-            result = db.execute(
-                text(
-                    """
-                    SELECT table_name FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_name IN ('navi_orgs', 'navi_org_members', 'navi_org_invites')
-                    """
+
+            # Verify required tables exist using dialect-appropriate query
+            if dialect_name == "postgresql":
+                result = db.execute(
+                    text(
+                        """
+                        SELECT table_name FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name IN ('navi_orgs', 'navi_org_members', 'navi_org_invites')
+                        """
+                    )
                 )
-            )
+            elif dialect_name in ("sqlite", "sqlite3"):
+                # SQLite does not support information_schema; use sqlite_master instead
+                result = db.execute(
+                    text(
+                        """
+                        SELECT name AS table_name
+                        FROM sqlite_master
+                        WHERE type = 'table'
+                        AND name IN ('navi_orgs', 'navi_org_members', 'navi_org_invites')
+                        """
+                    )
+                )
+            else:
+                # Explicitly fail for unsupported dialects to avoid confusing runtime errors
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "Org onboarding table verification is only implemented for PostgreSQL and SQLite; "
+                        f"current SQLAlchemy dialect is '{dialect_name}'. Please configure a supported "
+                        "database and run Alembic migrations."
+                    ),
+                )
+
             existing_tables = {row[0] for row in result}
             required_tables = {"navi_orgs", "navi_org_members", "navi_org_invites"}
             missing_tables = required_tables - existing_tables
@@ -102,27 +130,34 @@ def _ensure_tables(db: Session) -> None:
             _tables_initialized = True
             return
 
+        # Use dialect-aware DDL for development/test environments
+        bind = db.get_bind()
+        dialect_name = bind.dialect.name
+
+        # Determine timestamp type based on dialect
+        timestamp_type = "TIMESTAMPTZ" if dialect_name == "postgresql" else "TEXT"
+
         db.execute(
             text(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS navi_orgs (
                   id TEXT PRIMARY KEY,
                   name TEXT NOT NULL,
                   slug TEXT NOT NULL UNIQUE,
                   owner_user_id TEXT NOT NULL,
-                  created_at TIMESTAMPTZ NOT NULL
+                  created_at {timestamp_type} NOT NULL
                 )
                 """
             )
         )
         db.execute(
             text(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS navi_org_members (
                   org_id TEXT NOT NULL,
                   user_id TEXT NOT NULL,
                   role TEXT NOT NULL,
-                  created_at TIMESTAMPTZ NOT NULL,
+                  created_at {timestamp_type} NOT NULL,
                   PRIMARY KEY (org_id, user_id)
                 )
                 """
@@ -130,14 +165,14 @@ def _ensure_tables(db: Session) -> None:
         )
         db.execute(
             text(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS navi_org_invites (
                   id TEXT PRIMARY KEY,
                   org_id TEXT NOT NULL,
                   email TEXT NOT NULL,
                   role TEXT NOT NULL,
                   invited_by TEXT NOT NULL,
-                  created_at TIMESTAMPTZ NOT NULL,
+                  created_at {timestamp_type} NOT NULL,
                   status TEXT NOT NULL
                 )
                 """
@@ -274,7 +309,7 @@ ALLOWED_INVITE_ROLES = {"member", "viewer", "admin"}
 
 class OrgInviteRequest(BaseModel):
     org_id: str
-    emails: list[str] = Field(..., min_length=1)
+    emails: list[EmailStr] = Field(..., min_length=1)
     role: str = Field(default="member")
 
 
@@ -312,8 +347,11 @@ def invite_users(
             status_code=403, detail="Only owners and admins can invite users"
         )
 
+    # Dedupe normalized emails to avoid repeated inserts
+    normalized_emails = list(dict.fromkeys(email.lower() for email in req.emails))
+
     invites = []
-    for email in req.emails:
+    for email in normalized_emails:
         invite_id = uuid.uuid4().hex
         db.execute(
             text(
@@ -325,15 +363,13 @@ def invite_users(
             {
                 "id": invite_id,
                 "org_id": req.org_id,
-                "email": email.strip().lower(),
+                "email": email,
                 "role": req.role,
                 "invited_by": user.user_id,
                 "created_at": _now(),
                 "status": "pending",
             },
         )
-        invites.append(
-            {"id": invite_id, "email": email.strip().lower(), "role": req.role}
-        )
+        invites.append({"id": invite_id, "email": email, "role": req.role})
     db.commit()
     return {"invited": invites}

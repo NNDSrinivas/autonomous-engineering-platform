@@ -218,6 +218,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
 
+# Ultra-fast health endpoints (registered before middleware for minimal latency)
+from backend.api.fast_health import router as fast_health_router
+
+app.include_router(fast_health_router)
+
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):

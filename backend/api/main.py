@@ -104,6 +104,7 @@ from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
 from .routers.memory import router as memory_router
 from .routers.memory_graph import router as memory_graph_router
+from .routers.navi_memory import router as navi_memory_router
 from .routers.saas import router as saas_router
 from .routers.plan import router as live_plan_router
 from .apply_fix import router as apply_fix_router  # Batch 6: Auto-Fix Engine
@@ -548,6 +549,7 @@ app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(memory_graph_router)  # Memory graph queries (/api/memory/*)
+app.include_router(navi_memory_router)  # NAVI memory endpoints (/api/navi-memory/*)
 app.include_router(saas_router)  # SaaS management endpoints (/saas/*)
 app.include_router(events_router, prefix="/api")  # Universal event ingestion
 app.include_router(internal_router, prefix="/api")  # System info and diagnostics

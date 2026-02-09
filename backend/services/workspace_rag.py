@@ -24,6 +24,9 @@ import fnmatch
 
 logger = logging.getLogger(__name__)
 
+# Track in-flight background indexing tasks to prevent duplicate indexers
+_indexing_in_progress: set[str] = set()
+
 
 # ============================================================
 # CONFIGURATION
@@ -1065,11 +1068,17 @@ async def search_codebase(
         if allow_background_indexing:
             import asyncio
 
-            logger.info(
-                f"[RAG] No index found for {workspace_path} - scheduling background indexing"
-            )
-            # Fire and forget - don't await
-            asyncio.create_task(_background_index_workspace(workspace_path))
+            # Only start background indexing if not already in progress
+            if workspace_path not in _indexing_in_progress:
+                logger.info(
+                    f"[RAG] No index found for {workspace_path} - scheduling background indexing"
+                )
+                # Fire and forget - don't await
+                asyncio.create_task(_background_index_workspace(workspace_path))
+            else:
+                logger.debug(
+                    f"[RAG] Background indexing already in progress for {workspace_path}"
+                )
 
         # Return empty for now - next request will have index ready
         return []
@@ -1098,6 +1107,9 @@ async def _background_index_workspace(workspace_path: str) -> None:
     This allows the FIRST request to return quickly (without RAG),
     while subsequent requests will have the index ready.
     """
+    # Mark as in progress to prevent duplicate indexers
+    _indexing_in_progress.add(workspace_path)
+
     try:
         logger.info(f"[RAG] Starting background indexing for {workspace_path}")
         start_time = __import__("time").time()
@@ -1111,6 +1123,9 @@ async def _background_index_workspace(workspace_path: str) -> None:
         )
     except Exception as e:
         logger.error(f"[RAG] Background indexing failed for {workspace_path}: {e}")
+    finally:
+        # Always remove from in-progress set, even if indexing failed
+        _indexing_in_progress.discard(workspace_path)
 
 
 async def get_context_for_task(

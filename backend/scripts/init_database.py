@@ -90,17 +90,27 @@ def main():
     print()
 
     # Check if running in production-like environment
-    # Skip production check in development mode (settings.is_production_like() not available)
-    # if settings.is_production_like():
-    #     print("🚨 PRODUCTION ENVIRONMENT DETECTED!")
-    #     print("🚨 Running this script in production requires explicit confirmation.")
-    #     response = input(
-    #         "Type 'CREATE TABLES' (all caps) to proceed, or anything else to abort: "
-    #     )
-    #     if response != "CREATE TABLES":
-    #         print("❌ Aborted by user. No changes made.")
-    #         sys.exit(0)
-    #     print()
+    # Require explicit environment variable to proceed in production
+    if settings.is_production_like():
+        print("🚨 PRODUCTION ENVIRONMENT DETECTED!")
+        print("🚨 Running this script in production requires explicit confirmation.")
+
+        # Check for explicit environment variable
+        if os.environ.get("ALLOW_DB_INIT") != "1":
+            print("❌ ALLOW_DB_INIT=1 environment variable required for production.")
+            print("❌ Example: ALLOW_DB_INIT=1 python scripts/init_database.py")
+            print("❌ Aborted for safety. No changes made.")
+            sys.exit(1)
+
+        # Double confirmation via interactive prompt
+        print("⚠️  ALLOW_DB_INIT is set. Requesting final confirmation...")
+        response = input(
+            "Type 'CREATE TABLES' (all caps) to proceed, or anything else to abort: "
+        )
+        if response != "CREATE TABLES":
+            print("❌ Aborted by user. No changes made.")
+            sys.exit(0)
+        print("✅ Production confirmation received. Proceeding...")
     print()
 
     # Get database URL and convert async URL to sync if needed

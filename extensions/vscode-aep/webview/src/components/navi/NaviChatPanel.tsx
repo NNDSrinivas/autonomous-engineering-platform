@@ -1340,11 +1340,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
   const [attachments, setAttachments] = useState<AttachmentChipData[]>([]);
   const [sending, setSending] = useState(false);
   const [sendTimedOut, setSendTimedOut] = useState(false);
-
-  // Streaming state
-  const [streamingStatus, setStreamingStatus] = useState<string>("");
-  const [streamingProgress, setStreamingProgress] = useState<{ step: number; total: number } | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [backendStatus, setBackendStatus] = useState<"checking" | "ok" | "error">("checking");
   const [backendError, setBackendError] = useState<string>("");
   const [coverageGate, setCoverageGate] = useState<CoverageGateState | null>(null);
@@ -4257,6 +4252,10 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                       label: activityLabel,
                       detail: activityDetail,
                       status: "done",
+                      filePath: action.filePath ?? event.filePath,
+                      additions,
+                      deletions,
+                      diff: diffUnified,
                       timestamp: nowIso(),
                     }
                     : event
@@ -4270,7 +4269,17 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                   const existing = next.get(actionIndex) || [];
                   const updatedActivities = existing.map((evt) =>
                     evt.id === activityId
-                      ? { ...evt, label: activityLabel, detail: activityDetail, status: "done" as const, timestamp: nowIso() }
+                      ? {
+                        ...evt,
+                        label: activityLabel,
+                        detail: activityDetail,
+                        status: "done" as const,
+                        filePath: action.filePath ?? evt.filePath,
+                        additions,
+                        deletions,
+                        diff: diffUnified,
+                        timestamp: nowIso(),
+                      }
                       : evt
                   );
                   next.set(actionIndex, updatedActivities);
@@ -4292,6 +4301,9 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                 detail: activityDetail,
                 filePath: action.filePath,
                 status: "done",
+                additions,
+                deletions,
+                diff: diffUnified,
                 timestamp: nowIso(),
               };
               pushActivityEvent(newActivity);
@@ -5358,13 +5370,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
     const { effectiveRoot } = getEffectiveWorkspace();
     const workspaceRootToSend = effectiveRoot;
 
-    const conversationHistory = messages.slice(-MAX_CONVERSATION_HISTORY).map((msg) => ({
-      id: msg.id,
-      type: msg.role,
-      content: msg.content,
-      timestamp: msg.createdAt,
-    }));
-
     const body = {
       message,
       workspace: workspaceRootToSend,
@@ -5378,10 +5383,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
     const backendBase = resolveBackendBase();
     const url = `${backendBase}/api/navi/process/stream`;
-
-    setIsStreaming(true);
-    setStreamingStatus("Preparing request...");
-    setStreamingProgress(null);
 
     return new Promise((resolve, reject) => {
       let finalResult: NaviChatResponse | null = null;
@@ -5397,12 +5398,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
             switch (data.type) {
               case "status":
-                // Update status message and progress
-                setStreamingStatus(data.message);
-                if (data.step && data.total) {
-                  setStreamingProgress({ step: data.step, total: data.total });
-                }
-
                 // Update placeholder assistant message with status
                 if (placeholderAssistantId) {
                   setMessages((prev) =>
@@ -5417,10 +5412,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
               case "result":
                 // Handle the final result
-                setIsStreaming(false);
-                setStreamingStatus("");
-                setStreamingProgress(null);
-
                 finalResult = data.data;
 
                 // Update placeholder with final content
@@ -5438,10 +5429,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
               case "done":
                 // Stream finished
-                setIsStreaming(false);
-                setStreamingStatus("");
-                setStreamingProgress(null);
-
                 if (finalResult) {
                   resolve(finalResult);
                 } else {
@@ -5451,9 +5438,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
               case "error":
                 // Handle error
-                setIsStreaming(false);
-                setStreamingStatus("");
-                setStreamingProgress(null);
                 console.error("Streaming error:", data.message);
                 reject(new Error(data.message));
                 break;
@@ -5465,9 +5449,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
         onerror(err) {
           console.error("Stream connection error:", err);
-          setIsStreaming(false);
-          setStreamingStatus("");
-          setStreamingProgress(null);
           reject(err);
           throw err; // Stop retrying
         },
@@ -5488,13 +5469,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
     }
 
     const workspaceRootToSend = effectiveRoot;
-
-    const conversationHistory = messages.slice(-MAX_CONVERSATION_HISTORY).map((msg) => ({
-      id: msg.id,
-      type: msg.role,
-      content: msg.content,
-      timestamp: msg.createdAt,
-    }));
 
     const body = {
       message,
@@ -7941,20 +7915,14 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
       );
     }
 
-    // If still no match, just try to open the file directly
-    if (match) {
-      vscodeApi.postMessage({
-        type: "openDiff",
-        path: match.path,
-        scope: match.scope,
-      });
-    } else {
-      // Fallback: open the file directly (without diff)
-      vscodeApi.postMessage({
-        type: "openFile",
-        filePath: path,
-      });
-    }
+    // Open diff even if we don't have detailed diff data yet.
+    // The extension will resolve the diff from git if possible.
+    const diffPath = match ? match.path : path;
+    vscodeApi.postMessage({
+      type: "openDiff",
+      path: toWorkspaceRelativePath(diffPath),
+      scope: match?.scope,
+    });
   };
 
   /**

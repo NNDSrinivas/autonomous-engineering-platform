@@ -3533,7 +3533,6 @@ Return ONLY the JSON, no markdown or explanations."""
 
                 if is_dev_server_cmd and cwd:
                     from backend.services.navi_brain import SelfHealingEngine
-                    import asyncio
 
                     # Get configured port from project config files
                     configured_port = SelfHealingEngine._get_configured_port(cwd)
@@ -3610,8 +3609,6 @@ Return ONLY the JSON, no markdown or explanations."""
                                 )
 
                 # Use async subprocess for real-time streaming output
-                import asyncio
-
                 logger.info(
                     f"[AutonomousAgent] Executing command with streaming output: {command[:100]}..."
                 )
@@ -5018,8 +5015,6 @@ Return ONLY the JSON, no markdown or explanations."""
 
             # Add timeout to prevent RAG from blocking for minutes
             # RAG now triggers background indexing on first request, so timeout is less critical
-            import asyncio
-
             try:
                 rag_context = await asyncio.wait_for(
                     get_context_for_task(

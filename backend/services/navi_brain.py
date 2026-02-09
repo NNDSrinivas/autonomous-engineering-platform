@@ -5530,16 +5530,41 @@ class SelfHealingEngine:
                                 "workspace": process_cwd,
                                 "reason": "Same workspace - server already running",
                             }
-                        elif (
-                            workspace_path_resolved in process_cwd_resolved
-                            or process_cwd_resolved in workspace_path_resolved
-                        ):
-                            return {
-                                "is_same_project": False,
-                                "is_related": True,
-                                "workspace": process_cwd,
-                                "reason": "Related workspace (parent/child directory)",
-                            }
+                        # Use path-aware checks to detect parent/child relationships
+                        # This avoids false positives from substring matches (e.g., /work/app vs /work/app2)
+                        try:
+                            workspace_path_obj = Path(workspace_path_resolved)
+                            process_cwd_obj = Path(process_cwd_resolved)
+                            # Check if one path is relative to the other (parent/child relationship)
+                            is_related = False
+                            try:
+                                workspace_path_obj.relative_to(process_cwd_obj)
+                                is_related = True
+                            except ValueError:
+                                try:
+                                    process_cwd_obj.relative_to(workspace_path_obj)
+                                    is_related = True
+                                except ValueError:
+                                    pass
+                            if is_related:
+                                return {
+                                    "is_same_project": False,
+                                    "is_related": True,
+                                    "workspace": process_cwd,
+                                    "reason": "Related workspace (parent/child directory)",
+                                }
+                        except Exception:
+                            # Fallback to string comparison if path operations fail
+                            if (
+                                workspace_path_resolved in process_cwd_resolved
+                                or process_cwd_resolved in workspace_path_resolved
+                            ):
+                                return {
+                                    "is_same_project": False,
+                                    "is_related": True,
+                                    "workspace": process_cwd,
+                                    "reason": "Related workspace (parent/child directory)",
+                                }
                         else:
                             return {
                                 "is_same_project": False,

@@ -177,6 +177,18 @@ class Settings(BaseSettings):
         """Check if running in test/CI environment."""
         return self._normalize_env() in ("test", "ci")
 
+    @property
+    def enable_audit_logging(self) -> bool:
+        """
+        Backwards-compatible alias for ENABLE_AUDIT_LOGGING.
+        Deprecated: prefer using ENABLE_AUDIT_LOGGING directly.
+        """
+        return self.ENABLE_AUDIT_LOGGING
+
+    @enable_audit_logging.setter
+    def enable_audit_logging(self, value: bool) -> None:
+        self.ENABLE_AUDIT_LOGGING = value
+
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures
     # or set environment variables explicitly in test configuration instead of

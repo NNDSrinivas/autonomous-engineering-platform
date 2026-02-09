@@ -323,6 +323,7 @@ def _audit_row_to_dict(row: AuditLog, include_payload: bool = False) -> dict:
     }
     if include_payload:
         # Serialize payload safely for JSON export (handle bytes and other non-JSON types)
+        # Always include payload_encoding when include_payload=true for consistent schema
         if isinstance(row.payload, bytes):
             import base64
 
@@ -330,15 +331,18 @@ def _audit_row_to_dict(row: AuditLog, include_payload: bool = False) -> dict:
             data["payload_encoding"] = "base64"
         elif row.payload is None:
             data["payload"] = None
+            data["payload_encoding"] = None
         else:
             # For dicts/lists/other JSON-serializable types, return native object
             # This avoids forcing consumers to double-parse JSON strings
             try:
                 json.dumps(row.payload)  # Validate serializability
                 data["payload"] = row.payload  # Return as-is
+                data["payload_encoding"] = "json"
             except (TypeError, ValueError):
                 # Fallback: convert to string for non-serializable types
                 data["payload"] = str(row.payload)
+                data["payload_encoding"] = "plain"
     return data
 
 

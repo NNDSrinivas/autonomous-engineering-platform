@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for git log to work correctly
       - name: Ensure benchmark scorecard is fresh
         run: |
           if [ ! -f docs/NAVI_BENCHMARK_SCORECARD.md ]; then

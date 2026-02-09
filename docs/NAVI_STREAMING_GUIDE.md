@@ -67,10 +67,18 @@ The streaming endpoint sends **Server-Sent Events (SSE)** with different message
 
 ## Frontend Integration
 
-### Option 1: Native EventSource API
+### Option 1: fetch-event-source (Recommended for POST)
+
+**Note:** Native EventSource only supports GET requests. For POST with SSE, use `@microsoft/fetch-event-source`:
+
+```bash
+npm install @microsoft/fetch-event-source
+```
 
 ```typescript
 // extensions/vscode-aep/webview/src/api/navi.ts
+
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 export async function processNaviStreaming(
   message: string,
@@ -81,7 +89,7 @@ export async function processNaviStreaming(
 ) {
   const url = `http://localhost:8787/api/navi/process/stream`;
 
-  const eventSource = new EventSource(url, {
+  await fetchEventSource(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -91,35 +99,26 @@ export async function processNaviStreaming(
       workspace,
       llm_provider: 'openai',
     }),
+    onmessage(event) {
+      const data = JSON.parse(event.data);
+
+      switch (data.type) {
+        case 'status':
+          onStatus(data.message);
+          break;
+        case 'result':
+          onComplete(data.data);
+          break;
+        case 'error':
+          onError(data.message);
+          break;
+      }
+    },
+    onerror(err) {
+      onError('Connection error');
+      throw err; // Stop retry
+    },
   });
-
-  eventSource.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-
-    switch (data.type) {
-      case 'status':
-        onStatus(data.message);
-        break;
-      case 'result':
-        onComplete(data.data);
-        eventSource.close();
-        break;
-      case 'done':
-        eventSource.close();
-        break;
-      case 'error':
-        onError(data.message);
-        eventSource.close();
-        break;
-    }
-  };
-
-  eventSource.onerror = (error) => {
-    onError('Connection error');
-    eventSource.close();
-  };
-
-  return eventSource;
 }
 ```
 

@@ -755,6 +755,23 @@ export function CodeCompanionShell() {
     }
   }, [isAuthenticated]);
 
+  // Keyboard handler: close "More" menu on Escape key
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && headerMoreOpen) {
+        setHeaderMoreOpen(false);
+      }
+    };
+
+    if (headerMoreOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [headerMoreOpen]);
+
   // Handle sign in/out
   const handleSignIn = () => {
     postMessage({ type: "auth.signIn" });
@@ -1219,6 +1236,8 @@ export function CodeCompanionShell() {
                 <button
                   className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-more-btn"
                   title="More"
+                  aria-expanded={headerMoreOpen}
+                  aria-controls="navi-more-menu"
                   onClick={() => {
                     setHeaderMoreOpen((prev) => !prev);
                     if (userMenuOpen) {
@@ -1236,7 +1255,7 @@ export function CodeCompanionShell() {
                       className="fixed inset-0 z-40"
                       onClick={() => setHeaderMoreOpen(false)}
                     />
-                    <div className="navi-header-more-dropdown">
+                    <div id="navi-more-menu" role="menu" className="navi-header-more-dropdown">
                       <button
                         className="navi-dropdown-menu-item"
                         onClick={() => setHeaderMoreOpen(false)}

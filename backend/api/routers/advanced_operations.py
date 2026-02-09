@@ -546,6 +546,10 @@ async def list_mcp_tools(
     db: Session = Depends(get_db),
 ):
     """List all available MCP tools (builtin + external)."""
+    # Defensive attribute access for user identifiers (support mixed User implementations)
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
     if scope and scope not in {"auto", "org", "user", "all"}:
         raise HTTPException(status_code=400, detail="Invalid scope value")
     from backend.services.mcp_server import get_mcp_server
@@ -573,8 +577,8 @@ async def list_mcp_tools(
     servers = (
         mcp_registry.list_servers(
             db,
-            user_id=user.user_id,
-            org_id=user.org_id,
+            user_id=user_id,
+            org_id=org_id,
             scope=scope or "auto",
         )
         if include_external
@@ -583,8 +587,8 @@ async def list_mcp_tools(
     external_tools = (
         await mcp_registry.list_external_tools(
             db,
-            user_id=user.user_id,
-            org_id=user.org_id,
+            user_id=user_id,
+            org_id=org_id,
             servers=servers,
         )
         if include_external
@@ -626,6 +630,10 @@ async def execute_mcp_tool(
     db: Session = Depends(get_db),
 ):
     """Execute an MCP tool (builtin or external)."""
+    # Defensive attribute access for user identifiers (support mixed User implementations)
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
     from backend.services.mcp_server import get_mcp_server
 
     if server_id and server_id != "builtin":
@@ -638,8 +646,8 @@ async def execute_mcp_tool(
             )
         server = mcp_registry.get_server(
             db,
-            user_id=user.user_id,
-            org_id=user.org_id,
+            user_id=user_id,
+            org_id=org_id,
             server_id=server_int_id,
         )
         if not server:
@@ -700,12 +708,16 @@ def list_mcp_servers(
     user: User = Depends(_viewer_user),
     db: Session = Depends(get_db),
 ) -> McpServerListResponse:
+    # Defensive attribute access for user identifiers (support mixed User implementations)
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
     if scope and scope not in {"auto", "org", "user", "all"}:
         raise HTTPException(status_code=400, detail="Invalid scope value")
     items = mcp_registry.list_servers(
         db,
-        user_id=user.user_id,
-        org_id=user.org_id,
+        user_id=user_id,
+        org_id=org_id,
         scope=scope or "auto",
     )
     return McpServerListResponse(items=items)
@@ -721,11 +733,15 @@ def create_mcp_server(
     user: User = Depends(_admin_user),
     db: Session = Depends(get_db),
 ) -> McpServerResponse:
+    # Defensive attribute access for user identifiers (support mixed User implementations)
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
     try:
         item = mcp_registry.create_server(
             db=db,
-            user_id=user.user_id,
-            org_id=user.org_id,
+            user_id=user_id,
+            org_id=org_id,
             name=payload.name,
             url=payload.url,
             transport=payload.transport,
@@ -753,6 +769,10 @@ def update_mcp_server(
     user: User = Depends(_admin_user),
     db: Session = Depends(get_db),
 ) -> McpServerResponse:
+    # Defensive attribute access for user identifiers (support mixed User implementations)
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
     updates: Dict[str, Any] = payload.model_dump(exclude_unset=True)
     secrets: Dict[str, str] = {}
     if payload.token:
@@ -764,9 +784,7 @@ def update_mcp_server(
     if payload.clear_secrets:
         updates["clear_secrets"] = True
     try:
-        item = mcp_registry.update_server(
-            db, user.user_id, user.org_id, server_id, updates
-        )
+        item = mcp_registry.update_server(db, user_id, org_id, server_id, updates)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if not item:
@@ -783,7 +801,11 @@ def delete_mcp_server(
     user: User = Depends(_admin_user),
     db: Session = Depends(get_db),
 ):
-    deleted = mcp_registry.delete_server(db, user.user_id, user.org_id, server_id)
+    # Defensive attribute access for user identifiers (support mixed User implementations)
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
+    deleted = mcp_registry.delete_server(db, user_id, org_id, server_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="MCP server not found")
     return {"ok": True}
@@ -799,7 +821,11 @@ async def test_mcp_server(
     user: User = Depends(_admin_user),
     db: Session = Depends(get_db),
 ) -> McpServerTestResponse:
-    result = await mcp_registry.test_server(db, user.user_id, user.org_id, server_id)
+    # Defensive attribute access for user identifiers (support mixed User implementations)
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
+    result = await mcp_registry.test_server(db, user_id, org_id, server_id)
     return McpServerTestResponse(**result)
 
 

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import hashlib
 import re
+import threading
 
 
 @dataclass
@@ -59,6 +60,7 @@ class IntelligentRetryLimiter:
     def __init__(self):
         self._action_attempts: Dict[str, ActionAttempt] = {}
         self._successful_approaches: Dict[str, datetime] = {}
+        self._lock = threading.RLock()  # Reentrant lock for nested calls
 
     def _generate_action_signature(
         self, action: str, target: str, approach: Optional[str] = None
@@ -113,39 +115,42 @@ class IntelligentRetryLimiter:
             - should_allow: True if NAVI should try this action
             - suggestion: If False, provides alternative approach suggestion
         """
-        self._cleanup_old_attempts()
+        with self._lock:
+            self._cleanup_old_attempts()
 
-        # If no error provided, this is a check before attempting - allow it
-        if not error:
+            # If no error provided, this is a check before attempting - allow it
+            if not error:
+                return True, None
+
+            action_sig = self._generate_action_signature(action, target, approach)
+            error_sig = self._generate_error_signature(error)
+            key = self._get_attempt_key(action_sig, error_sig)
+
+            attempt = self._action_attempts.get(key)
+
+            if not attempt:
+                # First time seeing this action + error combination - allow it
+                return True, None
+
+            # Check if we're within the tracking window
+            if datetime.now() - attempt.last_attempt > self.TRACKING_WINDOW:
+                # It's been a while - reset and allow trying again
+                del self._action_attempts[key]
+                return True, None
+
+            # Check if we've hit the limit for this specific failing action
+            # Note: attempt_count is incremented AFTER each failure, so this check
+            # happens before the increment. With MAX_TOTAL_ATTEMPTS=2, we block when
+            # attempt_count reaches 2 (meaning 2 failures have already occurred).
+            if attempt.attempt_count >= self.MAX_TOTAL_ATTEMPTS:
+                # We've tried this exact action too many times with the same error
+                suggestion = self._generate_alternative_suggestion(
+                    action, target, error
+                )
+                return False, suggestion
+
+            # Still below limit - allow it
             return True, None
-
-        action_sig = self._generate_action_signature(action, target, approach)
-        error_sig = self._generate_error_signature(error)
-        key = self._get_attempt_key(action_sig, error_sig)
-
-        attempt = self._action_attempts.get(key)
-
-        if not attempt:
-            # First time seeing this action + error combination - allow it
-            return True, None
-
-        # Check if we're within the tracking window
-        if datetime.now() - attempt.last_attempt > self.TRACKING_WINDOW:
-            # It's been a while - reset and allow trying again
-            del self._action_attempts[key]
-            return True, None
-
-        # Check if we've hit the limit for this specific failing action
-        # Note: attempt_count is incremented AFTER each failure, so this check
-        # happens before the increment. With MAX_TOTAL_ATTEMPTS=2, we block when
-        # attempt_count reaches 2 (meaning 2 failures have already occurred).
-        if attempt.attempt_count >= self.MAX_TOTAL_ATTEMPTS:
-            # We've tried this exact action too many times with the same error
-            suggestion = self._generate_alternative_suggestion(action, target, error)
-            return False, suggestion
-
-        # Still below limit - allow it
-        return True, None
 
     def record_attempt(
         self, action: str, target: str, error: str, approach: Optional[str] = None
@@ -159,19 +164,20 @@ class IntelligentRetryLimiter:
             error: The error that resulted
             approach: Optional description of approach used
         """
-        action_sig = self._generate_action_signature(action, target, approach)
-        error_sig = self._generate_error_signature(error)
-        key = self._get_attempt_key(action_sig, error_sig)
+        with self._lock:
+            action_sig = self._generate_action_signature(action, target, approach)
+            error_sig = self._generate_error_signature(error)
+            key = self._get_attempt_key(action_sig, error_sig)
 
-        if key not in self._action_attempts:
-            self._action_attempts[key] = ActionAttempt(
-                action_signature=action_sig, error_signature=error_sig
-            )
+            if key not in self._action_attempts:
+                self._action_attempts[key] = ActionAttempt(
+                    action_signature=action_sig, error_signature=error_sig
+                )
 
-        attempt = self._action_attempts[key]
-        attempt.attempt_count += 1
-        attempt.last_attempt = datetime.now()
-        attempt.error_messages.append(error[:200])  # Store truncated error
+            attempt = self._action_attempts[key]
+            attempt.attempt_count += 1
+            attempt.last_attempt = datetime.now()
+            attempt.error_messages.append(error[:200])  # Store truncated error
 
     def record_success(self, action: str, target: str, approach: Optional[str] = None):
         """
@@ -183,17 +189,18 @@ class IntelligentRetryLimiter:
             target: What was targeted
             approach: Optional description of approach used
         """
-        action_sig = self._generate_action_signature(action, target, approach)
-        self._successful_approaches[action_sig] = datetime.now()
+        with self._lock:
+            action_sig = self._generate_action_signature(action, target, approach)
+            self._successful_approaches[action_sig] = datetime.now()
 
-        # Clear any failed attempts for this action
-        to_remove = [
-            key
-            for key, attempt in self._action_attempts.items()
-            if attempt.action_signature == action_sig
-        ]
-        for key in to_remove:
-            del self._action_attempts[key]
+            # Clear any failed attempts for this action
+            to_remove = [
+                key
+                for key, attempt in self._action_attempts.items()
+                if attempt.action_signature == action_sig
+            ]
+            for key in to_remove:
+                del self._action_attempts[key]
 
     def _generate_alternative_suggestion(
         self, action: str, target: str, error: str
@@ -261,23 +268,24 @@ class IntelligentRetryLimiter:
 
     def get_repeated_failures(self) -> List[Dict]:
         """Get list of actions that have been failing repeatedly"""
-        failures = []
-        for key, attempt in self._action_attempts.items():
-            if attempt.attempt_count >= self.MAX_TOTAL_ATTEMPTS:
-                failures.append(
-                    {
-                        "action_signature": attempt.action_signature,
-                        "attempts": attempt.attempt_count,
-                        "last_error": (
-                            attempt.error_messages[-1]
-                            if attempt.error_messages
-                            else None
-                        ),
-                        "first_attempted": attempt.first_attempt.isoformat(),
-                        "last_attempted": attempt.last_attempt.isoformat(),
-                    }
-                )
-        return failures
+        with self._lock:
+            failures = []
+            for key, attempt in self._action_attempts.items():
+                if attempt.attempt_count >= self.MAX_TOTAL_ATTEMPTS:
+                    failures.append(
+                        {
+                            "action_signature": attempt.action_signature,
+                            "attempts": attempt.attempt_count,
+                            "last_error": (
+                                attempt.error_messages[-1]
+                                if attempt.error_messages
+                                else None
+                            ),
+                            "first_attempted": attempt.first_attempt.isoformat(),
+                            "last_attempted": attempt.last_attempt.isoformat(),
+                        }
+                    )
+            return failures
 
     def _cleanup_old_attempts(self):
         """Remove attempts outside the memory window"""
@@ -301,19 +309,21 @@ class IntelligentRetryLimiter:
 
     def reset(self):
         """Clear all tracked attempts (useful for starting fresh)"""
-        self._action_attempts.clear()
-        self._successful_approaches.clear()
+        with self._lock:
+            self._action_attempts.clear()
+            self._successful_approaches.clear()
 
     def get_summary(self) -> Dict:
         """Get summary of current retry state"""
-        return {
-            "active_failed_attempts": len(self._action_attempts),
-            "successful_approaches": len(self._successful_approaches),
-            "max_identical_retries": self.MAX_TOTAL_ATTEMPTS,
-            "tracking_window_minutes": self.TRACKING_WINDOW.total_seconds() / 60,
-            "memory_window_minutes": self.MEMORY_WINDOW.total_seconds() / 60,
-            "repeated_failures": self.get_repeated_failures(),
-        }
+        with self._lock:
+            return {
+                "active_failed_attempts": len(self._action_attempts),
+                "successful_approaches": len(self._successful_approaches),
+                "max_identical_retries": self.MAX_TOTAL_ATTEMPTS,
+                "tracking_window_minutes": self.TRACKING_WINDOW.total_seconds() / 60,
+                "memory_window_minutes": self.MEMORY_WINDOW.total_seconds() / 60,
+                "repeated_failures": self.get_repeated_failures(),
+            }
 
 
 # Global intelligent retry limiter instance

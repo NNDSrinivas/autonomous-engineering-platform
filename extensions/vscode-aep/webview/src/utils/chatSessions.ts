@@ -1,4 +1,5 @@
-import { buildHeaders } from '../api/navi/client';
+import { buildHeaders, resolveBackendBase } from '../api/navi/client';
+import { USER_ID, ORG } from '../api/client';
 
 export type ChatSessionTag = {
   label: string;
@@ -957,4 +958,311 @@ export const loadCheckpointWithFallback = async (
 
   // Fall back to local storage
   return loadCheckpoint(sessionId);
+};
+
+// ============================================================================
+// BACKEND CONVERSATION PERSISTENCE (FIX FOR DATA LOSS BUG)
+// ============================================================================
+
+/**
+ * Backend API configuration
+ */
+let backendApiBase: string | null = null;
+
+const getBackendApiBase = (): string => {
+  if (!backendApiBase) {
+    backendApiBase = resolveBackendBase();
+  }
+  return backendApiBase;
+};
+
+/**
+ * Create a conversation in the backend database
+ */
+export const createBackendConversation = async (
+  session: ChatSessionSummary
+): Promise<string | null> => {
+  try {
+    const response = await fetch(
+      `${getBackendApiBase()}/api/navi-memory/conversations?user_id=${USER_ID}`,
+      {
+        method: 'POST',
+        headers: {
+          ...buildHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: session.title || 'New chat',
+          workspace_path: session.workspaceRoot,
+          initial_context: {
+            repoName: session.repoName,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error('[Chat Persistence] Failed to create backend conversation:', response.statusText);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.id;
+  } catch (error) {
+    console.error('[Chat Persistence] Error creating backend conversation:', error);
+    return null;
+  }
+};
+
+/**
+ * Save a message to the backend database
+ */
+export const saveMessageToBackend = async (
+  conversationId: string,
+  message: { role: string; content: string; metadata?: any }
+): Promise<boolean> => {
+  try {
+    const response = await fetch(
+      `${getBackendApiBase()}/api/navi-memory/conversations/${conversationId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          ...buildHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          role: message.role,
+          content: message.content,
+          metadata: message.metadata || {},
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error('[Chat Persistence] Failed to save message to backend:', response.statusText);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[Chat Persistence] Error saving message to backend:', error);
+    return false;
+  }
+};
+
+/**
+ * Load all conversations from the backend database
+ */
+export const loadConversationsFromBackend = async (): Promise<ChatSessionSummary[]> => {
+  try {
+    const response = await fetch(
+      `${getBackendApiBase()}/api/navi-memory/conversations?user_id=${USER_ID}&limit=100`,
+      {
+        method: 'GET',
+        headers: buildHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      console.error('[Chat Persistence] Failed to load conversations from backend:', response.statusText);
+      return [];
+    }
+
+    const conversations = await response.json();
+
+    // Convert backend format to frontend format
+    return conversations.map((conv: any) => ({
+      id: `session-${conv.id}`, // Prefix to distinguish from localStorage-only sessions
+      backendConversationId: conv.id,
+      title: conv.title || DEFAULT_TITLE,
+      createdAt: conv.created_at,
+      updatedAt: conv.updated_at,
+      messageCount: 0, // Will be populated when messages are loaded
+      repoName: conv.initial_context?.repoName,
+      workspaceRoot: conv.workspace_path,
+      isStarred: conv.is_starred || false,
+      isPinned: conv.is_pinned || false,
+      isArchived: conv.status === 'archived',
+    }));
+  } catch (error) {
+    console.error('[Chat Persistence] Error loading conversations from backend:', error);
+    return [];
+  }
+};
+
+/**
+ * Load messages for a specific conversation from backend
+ */
+export const loadMessagesFromBackend = async (
+  conversationId: string
+): Promise<any[]> => {
+  try {
+    const response = await fetch(
+      `${getBackendApiBase()}/api/navi-memory/conversations/${conversationId}?include_messages=true&message_limit=200`,
+      {
+        method: 'GET',
+        headers: buildHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      console.error('[Chat Persistence] Failed to load messages from backend:', response.statusText);
+      return [];
+    }
+
+    const data = await response.json();
+    return data.messages || [];
+  } catch (error) {
+    console.error('[Chat Persistence] Error loading messages from backend:', error);
+    return [];
+  }
+};
+
+/**
+ * Sync session metadata (star, pin, archive) to backend
+ */
+export const syncSessionMetadataToBackend = async (
+  conversationId: string,
+  updates: {
+    isStarred?: boolean;
+    isPinned?: boolean;
+    isArchived?: boolean;
+    title?: string;
+  }
+): Promise<boolean> => {
+  try {
+    const body: any = {};
+    if (updates.isStarred !== undefined) body.is_starred = updates.isStarred;
+    if (updates.isPinned !== undefined) body.is_pinned = updates.isPinned;
+    if (updates.isArchived !== undefined) body.status = updates.isArchived ? 'archived' : 'active';
+    if (updates.title !== undefined) body.title = updates.title;
+
+    const response = await fetch(
+      `${getBackendApiBase()}/api/navi-memory/conversations/${conversationId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          ...buildHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!response.ok) {
+      console.error('[Chat Persistence] Failed to sync metadata to backend:', response.statusText);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[Chat Persistence] Error syncing metadata to backend:', error);
+    return false;
+  }
+};
+
+/**
+ * Enhanced createSession that creates backend conversation
+ */
+export const createSessionWithBackend = async (
+  seed: Partial<ChatSessionSummary> = {}
+): Promise<ChatSessionSummary> => {
+  // Create session locally first
+  const session = createSession(seed);
+
+  // Create backend conversation asynchronously
+  const backendId = await createBackendConversation(session);
+
+  if (backendId) {
+    // Update session with backend conversation ID
+    const updated = updateSession(session.id, { backendConversationId: backendId });
+    console.log(`[Chat Persistence] ✅ Created backend conversation: ${backendId}`);
+    return updated || session;
+  } else {
+    console.warn('[Chat Persistence] ⚠️ Failed to create backend conversation, using localStorage only');
+    return session;
+  }
+};
+
+/**
+ * Enhanced toggleSessionStar that syncs to backend
+ */
+export const toggleSessionStarWithBackend = async (id: string): Promise<boolean> => {
+  const newValue = toggleSessionStar(id);
+  const session = getSession(id);
+
+  if (session?.backendConversationId) {
+    await syncSessionMetadataToBackend(session.backendConversationId, { isStarred: newValue });
+  }
+
+  return newValue;
+};
+
+/**
+ * Enhanced toggleSessionArchive that syncs to backend
+ */
+export const toggleSessionArchiveWithBackend = async (id: string): Promise<boolean> => {
+  const newValue = toggleSessionArchive(id);
+  const session = getSession(id);
+
+  if (session?.backendConversationId) {
+    await syncSessionMetadataToBackend(session.backendConversationId, { isArchived: newValue });
+  }
+
+  return newValue;
+};
+
+/**
+ * Enhanced toggleSessionPin that syncs to backend
+ */
+export const toggleSessionPinWithBackend = async (id: string): Promise<boolean> => {
+  const newValue = toggleSessionPin(id);
+  const session = getSession(id);
+
+  if (session?.backendConversationId) {
+    await syncSessionMetadataToBackend(session.backendConversationId, { isPinned: newValue });
+  }
+
+  return newValue;
+};
+
+/**
+ * Initialize chat persistence by loading conversations from backend
+ * Call this on webview startup!
+ */
+export const initializeChatPersistence = async (): Promise<void> => {
+  console.log('[Chat Persistence] 🔄 Initializing chat persistence...');
+
+  try {
+    // Load conversations from backend
+    const backendSessions = await loadConversationsFromBackend();
+
+    if (backendSessions.length > 0) {
+      console.log(`[Chat Persistence] ✅ Loaded ${backendSessions.length} conversations from backend`);
+
+      // Merge with localStorage (backend is source of truth)
+      const localSessions = readSessionsRaw();
+      const mergedSessions = [...backendSessions];
+
+      // Add any localStorage-only sessions that don't have backend IDs
+      for (const localSession of localSessions) {
+        const existsInBackend = backendSessions.some(
+          bs => bs.backendConversationId === localSession.backendConversationId
+        );
+
+        if (!existsInBackend && !localSession.backendConversationId) {
+          mergedSessions.push(localSession);
+        }
+      }
+
+      // Save merged sessions to localStorage (as cache)
+      writeSessions(mergedSessions);
+
+      console.log(`[Chat Persistence] ✅ Chat persistence initialized successfully`);
+    } else {
+      console.log('[Chat Persistence] ℹ️ No backend conversations found, using localStorage only');
+    }
+  } catch (error) {
+    console.error('[Chat Persistence] ❌ Failed to initialize chat persistence:', error);
+  }
 };

@@ -101,6 +101,13 @@ import {
   formatRelativeTime,
   updateSession,
   type ChatSessionTag,
+  // Backend persistence functions (FIX FOR DATA LOSS BUG)
+  initializeChatPersistence,
+  createSessionWithBackend,
+  saveMessageToBackend,
+  toggleSessionStarWithBackend,
+  toggleSessionArchiveWithBackend,
+  toggleSessionPinWithBackend,
 } from "../../utils/chatSessions";
 import { QuickActionsBar, type QuickAction } from "./QuickActionsBar";
 import { AttachmentToolbar } from "./AttachmentToolbar";
@@ -547,6 +554,60 @@ type ActivityFile = {
   lastTouched?: string;
 };
 
+type PanelStateSnapshot = {
+  terminalEntries: TerminalEntry[];
+  activityEvents: ActivityEvent[];
+  activityFiles: ActivityFile[];
+  expandedActivityGroups: string[];
+  expandedActivityFiles: string[];
+  activityFilesOpen: boolean;
+};
+
+const readPanelState = (sessionId: string): PanelStateSnapshot | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(`${PANEL_STATE_PREFIX}${sessionId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PanelStateSnapshot>;
+    return {
+      terminalEntries: Array.isArray(parsed.terminalEntries)
+        ? parsed.terminalEntries.slice(-MAX_TERMINAL_ENTRIES)
+        : [],
+      activityEvents: Array.isArray(parsed.activityEvents)
+        ? parsed.activityEvents.slice(-MAX_ACTIVITY_EVENTS)
+        : [],
+      activityFiles: Array.isArray(parsed.activityFiles) ? parsed.activityFiles : [],
+      expandedActivityGroups: Array.isArray(parsed.expandedActivityGroups)
+        ? parsed.expandedActivityGroups
+        : [],
+      expandedActivityFiles: Array.isArray(parsed.expandedActivityFiles)
+        ? parsed.expandedActivityFiles
+        : [],
+      activityFilesOpen: Boolean(parsed.activityFilesOpen),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const writePanelState = (sessionId: string, snapshot: PanelStateSnapshot) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(`${PANEL_STATE_PREFIX}${sessionId}`, JSON.stringify(snapshot));
+  } catch {
+    // ignore storage errors
+  }
+};
+
+const clearPanelState = (sessionId: string) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(`${PANEL_STATE_PREFIX}${sessionId}`);
+  } catch {
+    // ignore storage errors
+  }
+};
+
 type ActionSummaryEntry = {
   type: AgentAction["type"];
   filePath?: string;
@@ -923,6 +984,7 @@ const MAX_SESSION_MESSAGES = 200;
 const MAX_CONVERSATION_HISTORY = 25;
 const MAX_TERMINAL_ENTRIES = 6;
 const MAX_ACTIVITY_EVENTS = 60;
+const PANEL_STATE_PREFIX = "aep.navi.panelState.v1.";
 
 type GreetingKind = "simple" | "how_are_you" | "whats_up" | "time_of_day";
 
@@ -1377,6 +1439,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const activityEventsRef = useRef<ActivityEvent[]>([]); // Ref to get latest activities in closures
+  const panelStateSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activityFiles, setActivityFiles] = useState<ActivityFile[]>([]);
   const [activityFilesOpen, setActivityFilesOpen] = useState(false);
   const [expandedActivityGroups, setExpandedActivityGroups] = useState<Set<string>>(new Set());
@@ -1461,6 +1524,20 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
         cmd.description.toLowerCase().includes(filter)
     );
   }, [slashFilter]);
+
+  // ============================================================================
+  // Initialize chat persistence on mount (FIX FOR DATA LOSS BUG)
+  // ============================================================================
+  useEffect(() => {
+    console.log('[NaviChatPanel] 🚀 Initializing chat persistence from backend...');
+    initializeChatPersistence()
+      .then(() => {
+        console.log('[NaviChatPanel] ✅ Chat persistence initialized successfully');
+      })
+      .catch((error) => {
+        console.error('[NaviChatPanel] ❌ Failed to initialize chat persistence:', error);
+      });
+  }, []); // Run once on mount
 
   // Keep refs in sync with state for closure access in botMessageEnd
   // IMPORTANT: We sync refs both via useEffect AND directly in state setters
@@ -2145,6 +2222,19 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
     }
   }, [activeSessionId]);
 
+  // Restore panel activity/command state for this session
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const snapshot = readPanelState(activeSessionId);
+    if (!snapshot) return;
+    setTerminalEntries(snapshot.terminalEntries);
+    setActivityEventsWithRef(snapshot.activityEvents);
+    setActivityFiles(snapshot.activityFiles);
+    setExpandedActivityGroups(new Set(snapshot.expandedActivityGroups));
+    setExpandedActivityFiles(new Set(snapshot.expandedActivityFiles));
+    setActivityFilesOpen(snapshot.activityFilesOpen);
+  }, [activeSessionId, setActivityEventsWithRef]);
+
   // Backend status check
   useEffect(() => {
     let cancelled = false;
@@ -2189,7 +2279,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
     };
   }, []);
 
-  // Persist chat history per-session
+  // Persist chat history per-session (FIX FOR DATA LOSS BUG: Now saves to backend!)
   useEffect(() => {
     if (!activeSessionId) return;
     if (messages.length > MAX_SESSION_MESSAGES) {
@@ -2197,9 +2287,33 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
       return;
     }
     try {
+      // Save to localStorage (cache)
       saveSessionMessages(activeSessionId, messages);
-      const preview = derivePreview(messages);
+
+      // Save to backend database (source of truth)
       const existing = getSession(activeSessionId);
+      if (existing?.backendConversationId && messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        // Only save if this is a new message (not already saved)
+        saveMessageToBackend(existing.backendConversationId, {
+          role: lastMessage.role,
+          content: lastMessage.content,
+          metadata: {
+            id: lastMessage.id,
+            createdAt: lastMessage.createdAt,
+            responseData: lastMessage.responseData,
+            actions: lastMessage.actions,
+          },
+        }).then((success) => {
+          if (success) {
+            console.log(`[NaviChatPanel] ✅ Saved message to backend: ${lastMessage.id}`);
+          } else {
+            console.warn(`[NaviChatPanel] ⚠️ Failed to save message to backend: ${lastMessage.id}`);
+          }
+        });
+      }
+
+      const preview = derivePreview(messages);
       const title = deriveSessionTitle(messages, existing?.title);
       const { effectiveRoot, effectiveRepoName } = getEffectiveWorkspace();
       updateSession(activeSessionId, {
@@ -2213,6 +2327,34 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
       console.warn("[NaviChatPanel] Failed to persist chat history:", err);
     }
   }, [messages, activeSessionId, workspaceRoot, repoName]);
+
+  // Persist activity + command panel state per-session (debounced)
+  useEffect(() => {
+    if (!activeSessionId) return;
+    if (panelStateSaveRef.current) {
+      clearTimeout(panelStateSaveRef.current);
+      panelStateSaveRef.current = null;
+    }
+    panelStateSaveRef.current = setTimeout(() => {
+      writePanelState(activeSessionId, {
+        terminalEntries: terminalEntries.slice(-MAX_TERMINAL_ENTRIES),
+        activityEvents: activityEvents.slice(-MAX_ACTIVITY_EVENTS),
+        activityFiles,
+        expandedActivityGroups: Array.from(expandedActivityGroups),
+        expandedActivityFiles: Array.from(expandedActivityFiles),
+        activityFilesOpen,
+      });
+      panelStateSaveRef.current = null;
+    }, 400);
+  }, [
+    activeSessionId,
+    terminalEntries,
+    activityEvents,
+    activityFiles,
+    expandedActivityGroups,
+    expandedActivityFiles,
+    activityFilesOpen,
+  ]);
 
   // Persist draft input per-session
   useEffect(() => {
@@ -7194,12 +7336,14 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
     }, 1500);
   };
 
-  const startNewSession = (seed?: { repoName?: string; workspaceRoot?: string }) => {
-    const session = createSession(seed);
+  const startNewSession = async (seed?: { repoName?: string; workspaceRoot?: string }) => {
+    // Create session with backend persistence (FIX FOR DATA LOSS BUG)
+    const session = await createSessionWithBackend(seed);
     persistActiveSessionId(session.id);
     setActiveSessionId(session.id);
     resetConversationState();
     setTimeout(() => inputRef.current?.focus(), 10);
+    console.log(`[NaviChatPanel] ✅ Created session with backend: ${session.backendConversationId}`);
   };
 
   /* ---------- clear chat ---------- */
@@ -7209,6 +7353,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
     if (activeSessionId) {
       clearSessionMessages(activeSessionId);
       clearSessionDraft(activeSessionId);
+      clearPanelState(activeSessionId);
       updateSession(activeSessionId, {
         title: "New chat",
         messageCount: 0,
@@ -8036,7 +8181,8 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                       className={`navi-history-action-btn navi-action-pin ${session.isPinned ? "is-active" : ""}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleSessionPin(session.id);
+                        // Use backend-enabled toggle (FIX FOR DATA LOSS BUG)
+                        toggleSessionPinWithBackend(session.id);
                         setHistoryRefreshTrigger((n) => n + 1);
                       }}
                       title={session.isPinned ? "Unpin" : "Pin"}
@@ -8046,9 +8192,10 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                     <button
                       type="button"
                       className={`navi-history-action-btn navi-action-star ${session.isStarred ? "is-active" : ""}`}
-                      onClick={(e) => {
+                      onClick=(e) => {
                         e.stopPropagation();
-                        toggleSessionStar(session.id);
+                        // Use backend-enabled toggle (FIX FOR DATA LOSS BUG)
+                        toggleSessionStarWithBackend(session.id);
                         setHistoryRefreshTrigger((n) => n + 1);
                       }}
                       title={session.isStarred ? "Unstar" : "Star"}
@@ -8060,7 +8207,8 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                       className={`navi-history-action-btn navi-action-archive ${session.isArchived ? "is-active" : ""}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleSessionArchive(session.id);
+                        // Use backend-enabled toggle (FIX FOR DATA LOSS BUG)
+                        toggleSessionArchiveWithBackend(session.id);
                         setHistoryRefreshTrigger((n) => n + 1);
                       }}
                       title={session.isArchived ? "Unarchive" : "Archive"}

@@ -242,6 +242,96 @@ async def process_navi_request(request: NaviRequest):
         raise HTTPException(status_code=500, detail=f"NAVI processing failed: {str(e)}")
 
 
+@router.post("/process/stream")
+async def process_navi_request_stream(request: NaviRequest):
+    """
+    Process a NAVI request with streaming response (SSE).
+
+    Streams progress updates and LLM response chunks in real-time:
+    - "status" events: "analyzing", "generating", "complete"
+    - "chunk" events: LLM response chunks as they're generated
+    - "result" event: Final structured response
+
+    This makes the response feel instant even though it takes 3-5s total.
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+    import asyncio
+
+    async def event_stream():
+        try:
+            # Get API key
+            api_key = request.api_key
+            if not api_key:
+                env_vars = {
+                    "anthropic": "ANTHROPIC_API_KEY",
+                    "openai": "OPENAI_API_KEY",
+                    "google": "GOOGLE_API_KEY",
+                    "groq": "GROQ_API_KEY",
+                    "mistral": "MISTRAL_API_KEY",
+                    "openrouter": "OPENROUTER_API_KEY",
+                }
+                api_key = os.getenv(env_vars.get(request.llm_provider, ""))
+
+            if not api_key and request.llm_provider != "ollama":
+                yield f"data: {json.dumps({'type': 'error', 'message': f'API key required for {request.llm_provider}'})}\n\n"
+                return
+
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'message': '🎯 Analyzing your request...'})}\n\n"
+            await asyncio.sleep(0.1)
+
+            # Extract context
+            context = request.context or {}
+            current_file = context.get("currentFile") or context.get("current_file")
+            current_file_content = context.get("currentFileContent") or context.get(
+                "current_file_content"
+            )
+            selection = context.get("selection")
+            open_files = context.get("openFiles") or context.get("open_files")
+            errors = context.get("errors")
+            conversation_history = (
+                request.conversation_history
+                or context.get("conversationHistory")
+                or context.get("conversation_history")
+            )
+
+            # Send status update
+            yield f"data: {json.dumps({'type': 'status', 'message': '🤖 Generating response...'})}\n\n"
+
+            # Import streaming function
+            from backend.services.navi_brain import (
+                process_navi_request as process_llm_request,
+            )
+
+            # Process request
+            result = await process_llm_request(
+                message=request.message,
+                workspace_path=request.workspace,
+                llm_provider=request.llm_provider,
+                llm_model=request.llm_model,
+                api_key=api_key,
+                current_file=current_file,
+                current_file_content=current_file_content,
+                selection=selection,
+                open_files=open_files,
+                errors=errors,
+                conversation_history=conversation_history,
+            )
+
+            # Send final result
+            yield f"data: {json.dumps({'type': 'status', 'message': '✅ Complete!'})}\n\n"
+            await asyncio.sleep(0.05)
+            yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except Exception as e:
+            logger.error(f"❌ Streaming NAVI failed: {str(e)}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 # ==================== NAVI V2: APPROVAL FLOW ENDPOINTS ====================
 
 

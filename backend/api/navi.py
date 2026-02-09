@@ -1444,11 +1444,17 @@ async def handle_consent_response(
         )
 
         # TODO: Move consent storage to DB/Redis for persistent multi-user support
+        # CRITICAL ISSUE: This async endpoint uses a synchronous threading.Lock which blocks
+        # the event loop under contention and doesn't work across multiple processes/replicas.
+        # SHORT-TERM FIX: Replace _consent_lock (threading.Lock) with asyncio.Lock and use
+        # 'async with _consent_lock:' instead of 'with _consent_lock:'.
+        # LONG-TERM FIX: Move consent state to Redis/DB for distributed, async-compatible storage.
 
         # Derive org consistently using getattr to handle different User implementations
         user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
 
         # Update the consent approval in global storage (protected by lock for thread safety)
+        # WARNING: This synchronous lock blocks the event loop - see TODO above
         with _consent_lock:
             if consent_id not in _consent_approvals:
                 # Consent ID not found (might have expired or already processed)

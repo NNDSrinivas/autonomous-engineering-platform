@@ -60,7 +60,18 @@ def generate_cache_key(
 
     Returns:
         SHA256 hash of normalized inputs
+
+    Raises:
+        ValueError: If org_id is None (fail closed to prevent cross-tenant cache pollution)
     """
+    # SECURITY: Fail closed when org_id is missing to prevent cross-tenant cache pollution
+    # This ensures we don't accidentally serve cached responses to the wrong tenant
+    if org_id is None:
+        raise ValueError(
+            "org_id is required for cache key generation to prevent cross-tenant cache pollution. "
+            "Either provide org_id or disable caching for this request."
+        )
+
     # Normalize inputs for consistent hashing
     # Include all scoping fields that affect output to prevent cache pollution
     # Note: Preserve original message case to avoid collisions where case matters

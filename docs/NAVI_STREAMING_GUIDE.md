@@ -1,7 +1,9 @@
 # NAVI Streaming Response Guide
 
 **Status:** ✅ Ready to use
-**Endpoint:** `POST /api/navi/process/stream`
+**Endpoints:**
+- `POST /api/navi/process/stream` - Regular chat streaming
+- `POST /api/navi/chat/autonomous` - Autonomous mode streaming (agent)
 
 ---
 
@@ -62,6 +64,177 @@ The streaming endpoint sends **Server-Sent Events (SSE)** with different message
      "message": "Error details..."
    }
    ```
+
+---
+
+## Autonomous Mode Streaming
+
+**Endpoint:** `POST /api/navi/chat/autonomous`
+
+The autonomous mode uses a **different streaming format** with more detailed event types for real-time task execution feedback.
+
+### Autonomous Event Types
+
+1. **`status`** - Execution phase updates
+   ```json
+   {
+     "type": "status",
+     "status": "planning",
+     "message": "Analyzing task requirements..."
+   }
+   ```
+
+   Phases: `planning` | `executing` | `verifying` | `fixing` | `completed` | `failed`
+
+2. **`text`** - Narrative explanations
+   ```json
+   {
+     "type": "text",
+     "text": "I'll help you list all Python files in the backend directory..."
+   }
+   ```
+
+3. **`tool_call`** - Tool invocations
+   ```json
+   {
+     "type": "tool_call",
+     "tool": "list_files",
+     "description": "Listing files in backend/",
+     "input": {"path": "backend/", "pattern": "*.py"}
+   }
+   ```
+
+4. **`tool_result`** - Tool execution results
+   ```json
+   {
+     "type": "tool_result",
+     "tool": "list_files",
+     "summary": "Found 45 Python files",
+     "output": "backend/api/navi.py\nbackend/services/..."
+   }
+   ```
+
+5. **`verification`** - Test/validation results
+   ```json
+   {
+     "type": "verification",
+     "status": "passed",
+     "message": "All tests passed successfully"
+   }
+   ```
+
+6. **`iteration`** - Retry information
+   ```json
+   {
+     "type": "iteration",
+     "current": 2,
+     "max": 5,
+     "reason": "Tests failed, attempting fix..."
+   }
+   ```
+
+7. **`complete`** - Final summary
+   ```json
+   {
+     "type": "complete",
+     "summary": "Successfully listed 45 Python files",
+     "success": true
+   }
+   ```
+
+8. **`heartbeat`** - Keep-alive (every 10 seconds)
+   ```json
+   {
+     "type": "heartbeat",
+     "timestamp": "2026-02-09T10:30:00Z"
+   }
+   ```
+
+9. **`error`** - Errors
+   ```json
+   {
+     "type": "error",
+     "message": "Failed to access directory",
+     "error": "Permission denied"
+   }
+   ```
+
+10. **`[DONE]`** - Stream complete
+    ```
+    data: [DONE]
+    ```
+
+### Autonomous Request Format
+
+```typescript
+const response = await fetch('/api/navi/chat/autonomous', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    message: 'List all Python files in the backend directory',
+    model: 'openai/gpt-4o',
+    workspace_root: '/path/to/workspace',
+    run_verification: true,
+    max_iterations: 5,
+  }),
+});
+```
+
+### Autonomous Event Handler Example
+
+```typescript
+// extensions/vscode-aep/webview/src/hooks/useNaviChat.ts
+
+const parsed = JSON.parse(data);
+
+switch (parsed.type) {
+  case 'status':
+    onDelta(`\n**${parsed.status}**${parsed.message ? ': ' + parsed.message : ''}\n`);
+    break;
+
+  case 'text':
+    onDelta(parsed.text || '');
+    break;
+
+  case 'tool_call':
+    onDelta(`\n🔧 ${parsed.tool}: ${parsed.description || ''}\n`);
+    break;
+
+  case 'tool_result':
+    const summary = parsed.summary || parsed.output?.substring(0, 100) + '...';
+    if (summary) onDelta(`✓ ${summary}\n`);
+    break;
+
+  case 'verification':
+    onDelta(`\n✅ Verification: ${parsed.message || parsed.status}\n`);
+    break;
+
+  case 'complete':
+    if (parsed.summary) onDelta(`\n${parsed.summary}\n`);
+    break;
+
+  case 'error':
+    throw new Error(parsed.message || parsed.error);
+
+  case 'heartbeat':
+    console.debug('[NAVI] Heartbeat received');
+    break;
+}
+```
+
+### Visual Example
+
+```
+**planning**: Analyzing task requirements...
+I'll help you list all Python files in the backend directory...
+
+🔧 list_files: Listing files in backend/
+✓ Found 45 Python files
+
+✅ Verification: All checks passed
+
+Successfully listed 45 Python files in the backend directory.
+```
 
 ---
 
@@ -485,8 +658,24 @@ const connect = () => {
 
 ---
 
+## Endpoint Comparison
+
+| Feature | Regular Chat | Autonomous Mode |
+|---------|-------------|-----------------|
+| **Endpoint** | `/api/navi/process/stream` | `/api/navi/chat/autonomous` |
+| **Mode** | `ask` \| `plan` \| `edit` | `agent` (autonomous) |
+| **Event Types** | 4 (status, result, done, error) | 10 (status, text, tool_call, tool_result, verification, iteration, complete, heartbeat, error, [DONE]) |
+| **Use Case** | Q&A, planning, simple edits | End-to-end task execution with verification |
+| **Real-time Feedback** | Progress updates | Detailed step-by-step execution |
+| **Tool Visibility** | Hidden | Visible (🔧 icons) |
+| **Verification** | Not included | Built-in test execution |
+| **Heartbeat** | No | Yes (every 10s) |
+| **Iteration Support** | No | Yes (retry on failure) |
+| **Request Fields** | `message`, `conversationHistory`, `currentTask`, `teamContext`, `model`, `mode` | `message`, `model`, `workspace_root`, `run_verification`, `max_iterations` |
+
 ## Related Documents
 
+- [AUTONOMOUS_MODE_FIX.md](AUTONOMOUS_MODE_FIX.md) - Autonomous mode streaming fix
 - [NAVI_PERFORMANCE_REALISTIC_LIMITS.md](NAVI_PERFORMANCE_REALISTIC_LIMITS.md) - Performance analysis
 - [PERFORMANCE_OPTIMIZATION_RESULTS.md](PERFORMANCE_OPTIMIZATION_RESULTS.md) - All optimizations
 

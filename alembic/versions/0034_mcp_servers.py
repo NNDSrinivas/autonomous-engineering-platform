@@ -32,7 +32,15 @@ def upgrade() -> None:
             "auth_type", sa.String(length=40), nullable=False, server_default="none"
         ),
         sa.Column("config_json", sa.Text(), nullable=True),
-        sa.Column("secret_json", sa.LargeBinary(), nullable=True),
+        sa.Column(
+            "secret_json",
+            sa.LargeBinary(),
+            nullable=True,
+            comment=(
+                "Encrypted JSON secret payload. IMPORTANT: Store only encrypted ciphertext bytes here, "
+                "never plaintext secrets. Use backend.core.crypto.encrypt_token() for encryption."
+            ),
+        ),
         sa.Column(
             "enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")
         ),

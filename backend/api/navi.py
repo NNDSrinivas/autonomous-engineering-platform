@@ -4457,9 +4457,9 @@ class FileAttachment(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User message")
-    model: str = Field(
-        default="gpt-4o",
-        description="LLM model (e.g., gpt-4o, gpt-4o-mini, gpt-4.1, gpt-5.1)",
+    model: Optional[str] = Field(
+        default=None,
+        description="LLM model (e.g., gpt-4o, gpt-4o-mini, gpt-4.1, gpt-5.1). Defaults to environment-aware model selection.",
     )
     mode: str = Field(
         default="chat-only",

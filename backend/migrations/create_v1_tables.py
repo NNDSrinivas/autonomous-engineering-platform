@@ -44,19 +44,25 @@ def main():
         "mysql+aiomysql": "mysql+pymysql",
     }
 
+    # Track the effective URL object used to build the engine
+    effective_url_obj = url_obj
+
     # Check if URL uses an async driver
     original_drivername = url_obj.drivername
     if original_drivername in driver_mapping:
         sync_driver = driver_mapping[original_drivername]
-        database_url = str(url_obj.set(drivername=sync_driver))
+        effective_url_obj = url_obj.set(drivername=sync_driver)
+        database_url = str(effective_url_obj)
         print(
             f"⚠️  Converted async driver '{original_drivername}' to sync driver '{sync_driver}'"
         )
     else:
         database_url = raw_url
 
-    # Mask password in URL for logging
-    safe_url = str(url_obj.set(password="****" if url_obj.password else None))
+    # Mask password in URL for logging, using the effective URL (with any driver swap)
+    safe_url = str(
+        effective_url_obj.set(password="****" if effective_url_obj.password else None)
+    )
     print(f"Database URL: {safe_url}")
     print()
 

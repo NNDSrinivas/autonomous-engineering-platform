@@ -135,25 +135,49 @@ with _consent_lock:
         logger.warning(f"[NAVI API] Consent {consent_id} not found in pending approvals")
         raise HTTPException(
             status_code=404,
-            detail={"success": False, "consent_id": consent_id,
-                   "error": "Consent not found or has expired"},
+            detail={
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Consent not found or has expired",
+            },
         )
 
     # Validate user/org ownership to prevent consent hijacking
     consent_record = _consent_approvals[consent_id]
+    consent_user_id = consent_record.get("user_id")
+    consent_org_id = consent_record.get("org_id")
+
     current_user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    user_org_id = (
+        getattr(getattr(user, "org", None), "id", None)
+        or getattr(user, "org_id", None)
+    )
 
     if consent_user_id and consent_user_id != current_user_id:
-        logger.warning(f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve
-                       consent {consent_id} owned by {consent_user_id}")
-        raise HTTPException(status_code=403,
-                          detail={"success": False, "error": "Unauthorized: You do not have permission"})
+        logger.warning(
+            f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve consent "
+            f"{consent_id} owned by {consent_user_id}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "error": "Unauthorized: You do not have permission",
+            },
+        )
 
     if consent_org_id and user_org_id and consent_org_id != user_org_id:
-        logger.warning(f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve
-                       consent {consent_id} owned by org {consent_org_id}")
-        raise HTTPException(status_code=403,
-                          detail={"success": False, "error": "This consent belongs to a different organization"})
+        logger.warning(
+            f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent "
+            f"{consent_id} owned by org {consent_org_id}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "error": "This consent belongs to a different organization",
+            },
+        )
 ```
 
 **Verification:**

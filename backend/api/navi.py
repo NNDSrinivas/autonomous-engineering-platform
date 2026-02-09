@@ -191,8 +191,6 @@ def _resolve_model(model: Optional[str]) -> str:
     - production: gpt-4o (higher quality)
     """
     if not model:
-        from backend.core.settings import settings
-
         # Use cheaper model for dev/test, full model for production
         return "gpt-4o" if settings.is_production() else "gpt-4o-mini"
 
@@ -1458,11 +1456,14 @@ async def handle_consent_response(
                 logger.warning(
                     f"[NAVI API] Consent {consent_id} not found in pending approvals"
                 )
-                return {
-                    "success": False,
-                    "consent_id": consent_id,
-                    "error": "Consent not found or has expired",
-                }
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "success": False,
+                        "consent_id": consent_id,
+                        "error": "Consent not found or has expired",
+                    },
+                )
 
             # Validate user/org ownership to prevent consent hijacking
             consent_record = _consent_approvals[consent_id]
@@ -1473,21 +1474,27 @@ async def handle_consent_response(
                 logger.warning(
                     f"[NAVI API] ⚠️ Security: User {user.user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
                 )
-                return {
-                    "success": False,
-                    "consent_id": consent_id,
-                    "error": "Unauthorized: You do not have permission to approve this consent",
-                }
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "success": False,
+                        "consent_id": consent_id,
+                        "error": "Unauthorized: You do not have permission to approve this consent",
+                    },
+                )
 
             if consent_org_id and user_org_id and consent_org_id != user_org_id:
                 logger.warning(
                     f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
                 )
-                return {
-                    "success": False,
-                    "consent_id": consent_id,
-                    "error": "Unauthorized: This consent belongs to a different organization",
-                }
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "success": False,
+                        "consent_id": consent_id,
+                        "error": "Unauthorized: This consent belongs to a different organization",
+                    },
+                )
 
             # Update existing consent
             _consent_approvals[consent_id]["approved"] = approved

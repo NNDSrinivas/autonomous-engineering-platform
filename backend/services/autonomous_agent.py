@@ -5018,6 +5018,7 @@ Return ONLY the JSON, no markdown or explanations."""
 
             # Add timeout to prevent RAG from blocking for minutes
             import asyncio
+
             try:
                 rag_context = await asyncio.wait_for(
                     get_context_for_task(
@@ -5025,10 +5026,12 @@ Return ONLY the JSON, no markdown or explanations."""
                         task_description=request,
                         max_context_tokens=4000,  # Limit context size
                     ),
-                    timeout=5.0  # 5 second timeout - fail fast if RAG is slow
+                    timeout=5.0,  # 5 second timeout - fail fast if RAG is slow
                 )
             except asyncio.TimeoutError:
-                logger.warning(f"[AutonomousAgent] RAG context retrieval timed out after 5s - continuing without RAG context")
+                logger.warning(
+                    "[AutonomousAgent] RAG context retrieval timed out after 5s - continuing without RAG context"
+                )
                 rag_context = None
 
             # === METRICS: Record RAG retrieval latency ===

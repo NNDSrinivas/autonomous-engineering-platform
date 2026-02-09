@@ -1470,9 +1470,13 @@ async def handle_consent_response(
             consent_user_id = consent_record.get("user_id")
             consent_org_id = consent_record.get("org_id")
 
-            if consent_user_id and consent_user_id != user.user_id:
+            # Defensive attribute access for user identifier
+            current_user_id = getattr(user, "user_id", None) or getattr(
+                user, "id", None
+            )
+            if consent_user_id and consent_user_id != current_user_id:
                 logger.warning(
-                    f"[NAVI API] ⚠️ Security: User {user.user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
+                    f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
                 )
                 raise HTTPException(
                     status_code=403,

@@ -579,6 +579,66 @@ export class NaviAPIClient {
   async advancedHealthCheck(): Promise<AdvancedHealthResponse> {
     return this.request('/api/advanced/health');
   }
+
+  /**
+   * Stream NAVI responses with Server-Sent Events for better UX
+   * Shows real-time progress updates instead of waiting for full response
+   */
+  async streamNaviChat(request: {
+    message: string;
+    workspace?: string;
+    llm_provider?: string;
+    onStatus?: (status: string) => void;
+    onResult?: (result: any) => void;
+    onError?: (error: string) => void;
+    onDone?: () => void;
+  }): Promise<void> {
+    // Import fetch-event-source dynamically
+    const { fetchEventSource } = await import('@microsoft/fetch-event-source');
+
+    const url = `${this.baseUrl}/api/navi/process/stream`;
+
+    return fetchEventSource(url, {
+      method: 'POST',
+      headers: {
+        ...buildHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: request.message,
+        workspace: request.workspace,
+        llm_provider: request.llm_provider || 'openai',
+      }),
+      onmessage(event) {
+        try {
+          const data = JSON.parse(event.data);
+
+          switch (data.type) {
+            case 'status':
+              request.onStatus?.(data.message);
+              break;
+            case 'result':
+              request.onResult?.(data.data);
+              break;
+            case 'error':
+              request.onError?.(data.message);
+              break;
+            case 'done':
+              request.onDone?.();
+              break;
+          }
+        } catch (error) {
+          console.error('[NaviClient] Failed to parse SSE message:', error);
+          request.onError?.('Failed to parse server response');
+        }
+      },
+      onerror(err) {
+        console.error('[NaviClient] SSE connection error:', err);
+        request.onError?.('Connection error');
+        throw err; // Stop retry
+      },
+    });
+  }
 }
 
 // ========================================================================

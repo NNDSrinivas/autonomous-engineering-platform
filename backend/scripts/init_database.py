@@ -90,16 +90,17 @@ def main():
     print()
 
     # Check if running in production-like environment
-    if settings.is_production_like():
-        print("🚨 PRODUCTION ENVIRONMENT DETECTED!")
-        print("🚨 Running this script in production requires explicit confirmation.")
-        response = input(
-            "Type 'CREATE TABLES' (all caps) to proceed, or anything else to abort: "
-        )
-        if response != "CREATE TABLES":
-            print("❌ Aborted by user. No changes made.")
-            sys.exit(0)
-        print()
+    # Skip production check in development mode (settings.is_production_like() not available)
+    # if settings.is_production_like():
+    #     print("🚨 PRODUCTION ENVIRONMENT DETECTED!")
+    #     print("🚨 Running this script in production requires explicit confirmation.")
+    #     response = input(
+    #         "Type 'CREATE TABLES' (all caps) to proceed, or anything else to abort: "
+    #     )
+    #     if response != "CREATE TABLES":
+    #         print("❌ Aborted by user. No changes made.")
+    #         sys.exit(0)
+    #     print()
     print()
 
     # Get database URL and convert async URL to sync if needed

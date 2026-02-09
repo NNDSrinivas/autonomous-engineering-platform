@@ -8,8 +8,9 @@ import { resolveBackendBase, buildHeaders } from '@/api/navi/client';
 const BACKEND_BASE = resolveBackendBase();
 const CHAT_URL = `${BACKEND_BASE}/api/navi/chat`;
 const CHAT_STREAM_URL = `${BACKEND_BASE}/api/navi/chat/stream`;
-// IMPORTANT: Disable streaming for autonomous coding to work properly (state/agentRun metadata not supported in streaming yet)
-const USE_STREAMING = false;
+const AUTONOMOUS_URL = `${BACKEND_BASE}/api/navi/chat/autonomous`;
+// Enable streaming for autonomous mode (agent), disable for other modes
+const USE_STREAMING = true;
 
 export interface LLMModel {
   id: string;
@@ -78,9 +79,10 @@ export const chatModes: { id: ChatMode; name: string; description: string }[] = 
 interface UseNaviChatProps {
   selectedTask: JiraTask | null;
   userName: string;
+  workspaceRoot?: string | null;
 }
 
-export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
+export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('auto/recommended');
@@ -178,16 +180,29 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
       console.log('[NAVI STATE] Previous state:', previousState);
 
       // Build request body for backend
-      const requestBody = {
+      const requestBody: any = {
         message: userMessage,
-        conversationHistory: messages.map(m => ({
+        model: modelToUse,
+      };
+
+      // Add fields based on endpoint type
+      if (chatMode === 'agent') {
+        // Autonomous endpoint expects: message, model, workspace_root, run_verification, max_iterations
+        if (workspaceRoot) {
+          requestBody.workspace_root = workspaceRoot;
+        }
+        requestBody.run_verification = true;
+        requestBody.max_iterations = 5;
+      } else {
+        // Regular chat endpoints expect: message, conversationHistory, currentTask, teamContext, model, mode, state
+        requestBody.conversationHistory = messages.map(m => ({
           id: m.id,
           type: m.role,
           content: m.content,
           timestamp: m.timestamp,
-        })),
-        currentTask: selectedTask ? selectedTask.key : null,
-        teamContext: selectedTask ? {
+        }));
+        requestBody.currentTask = selectedTask ? selectedTask.key : null;
+        requestBody.teamContext = selectedTask ? {
           task: {
             key: selectedTask.key,
             title: selectedTask.title,
@@ -195,15 +210,20 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
             status: selectedTask.status,
             acceptanceCriteria: selectedTask.acceptanceCriteria,
           }
-        } : null,
-        model: modelToUse,
-        mode: chatMode,
+        } : null;
+        requestBody.mode = chatMode;
         // Include previous state for autonomous coding continuity
-        state: previousState || undefined,
-      };
+        requestBody.state = previousState || undefined;
+      }
 
-      const endpoint = USE_STREAMING ? CHAT_STREAM_URL : CHAT_URL;
+      // Select endpoint based on mode - autonomous mode has its own streaming endpoint
+      const endpoint = chatMode === 'agent'
+        ? AUTONOMOUS_URL
+        : (USE_STREAMING ? CHAT_STREAM_URL : CHAT_URL);
+      const useStreaming = chatMode === 'agent' || USE_STREAMING;
+
       console.log('[NAVI] Sending request to:', endpoint);
+      console.log('[NAVI] Mode:', chatMode, 'Streaming:', useStreaming);
       console.log('[NAVI] Request body:', requestBody);
 
       const response = await fetch(endpoint, {
@@ -217,7 +237,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
         throw new Error(errorData.error || `Request failed: ${response.status}`);
       }
 
-      if (USE_STREAMING) {
+      if (useStreaming) {
         // Handle SSE streaming
         if (!response.body) {
           throw new Error('No response body for streaming');
@@ -250,13 +270,41 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
 
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content) {
+
+              // Handle different event types from autonomous endpoint
+              if (parsed.type === 'status') {
+                // Status updates: planning, executing, verifying, etc.
+                onDelta(`\n**${parsed.status}**${parsed.message ? ': ' + parsed.message : ''}\n`);
+              } else if (parsed.type === 'text' || parsed.type === 'content') {
+                // Narrative text from agent
+                onDelta(parsed.text || parsed.content || '');
+              } else if (parsed.type === 'tool_call') {
+                // Tool invocations
+                onDelta(`\n🔧 ${parsed.tool || 'Tool'}: ${parsed.description || parsed.input || ''}\n`);
+              } else if (parsed.type === 'tool_result') {
+                // Tool results (show summary, not full output)
+                const summary = parsed.summary || (parsed.output ? parsed.output.substring(0, 100) + '...' : '');
+                if (summary) onDelta(`✓ ${summary}\n`);
+              } else if (parsed.type === 'verification') {
+                // Test results
+                onDelta(`\n✅ Verification: ${parsed.message || parsed.status || ''}\n`);
+              } else if (parsed.type === 'complete') {
+                // Final summary
+                if (parsed.summary) onDelta(`\n${parsed.summary}\n`);
+              } else if (parsed.type === 'error') {
+                // Error events
+                throw new Error(parsed.message || parsed.error || 'Unknown error');
+              } else if (parsed.type === 'heartbeat') {
+                // Ignore heartbeat events (just keep-alive)
+                console.debug('[NAVI] Heartbeat received');
+              } else if (parsed.content) {
+                // Fallback for regular content field
                 onDelta(parsed.content);
               } else if (parsed.error) {
                 throw new Error(parsed.error);
               }
             } catch (e) {
-              console.warn('[NAVI] Failed to parse SSE data:', data);
+              console.warn('[NAVI] Failed to parse SSE data:', data, e);
             }
           }
         }

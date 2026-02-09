@@ -214,7 +214,9 @@ class FeedbackService:
                 await self.session.rollback()
             except Exception as rollback_error:
                 logger.error(
-                    f"Failed to rollback after persist error: {rollback_error}"
+                    "Failed to rollback after persist error: %s",
+                    rollback_error,
+                    exc_info=True,
                 )
             # Don't fail the feedback submission if DB persistence fails
 

@@ -136,6 +136,9 @@ class DebugAutoFixRequest(BaseModel):
 class ApprovalWrapper(BaseModel):
     """Wrapper for requests that require approval."""
 
+    request: Dict[str, Any] = Field(
+        ..., description="Wrapped operation request payload"
+    )
     approved: bool = Field(False, description="User approval for operation")
 
 
@@ -622,11 +625,18 @@ async def execute_mcp_tool(
     from backend.services.mcp_server import get_mcp_server
 
     if server_id and server_id != "builtin":
+        try:
+            server_int_id = int(server_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="server_id must be 'builtin' or a valid integer",
+            )
         server = mcp_registry.get_server(
             db,
             user_id=user.user_id,
             org_id=user.org_id,
-            server_id=int(server_id),
+            server_id=server_int_id,
         )
         if not server:
             raise HTTPException(status_code=404, detail="MCP server not found")
@@ -739,7 +749,7 @@ def update_mcp_server(
     user: User = Depends(_admin_user),
     db: Session = Depends(get_db),
 ) -> McpServerResponse:
-    updates: Dict[str, Any] = payload.dict(exclude_unset=True)
+    updates: Dict[str, Any] = payload.model_dump(exclude_unset=True)
     secrets: Dict[str, str] = {}
     if payload.token:
         secrets["token"] = payload.token

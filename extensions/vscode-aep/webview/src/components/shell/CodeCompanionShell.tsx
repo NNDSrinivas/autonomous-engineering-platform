@@ -2261,7 +2261,7 @@ export function CodeCompanionShell() {
           position: sticky;
           top: 0;
           z-index: 50;
-          height: 52px;
+          height: 44px;
           background: linear-gradient(180deg,
             hsl(var(--background)) 0%,
             hsl(var(--background) / 0.98) 100%
@@ -2275,15 +2275,15 @@ export function CodeCompanionShell() {
           align-items: center;
           justify-content: space-between;
           height: 100%;
-          padding: 0 16px;
-          gap: 16px;
+          padding: 0 12px;
+          gap: 12px;
         }
 
         /* ===== LEFT SECTION ===== */
         .navi-header-left {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 8px;
         }
 
         /* ===== ANIMATED ICON BUTTON ===== */
@@ -2292,8 +2292,10 @@ export function CodeCompanionShell() {
           display: flex;
           align-items: center;
           justify-content: center;
-          --icon-btn-size: 34px;
-          border-radius: 10px;
+          --icon-btn-size: 30px;
+          width: var(--icon-btn-size);
+          height: var(--icon-btn-size);
+          border-radius: 8px;
           overflow: hidden;
         }
 
@@ -2329,20 +2331,20 @@ export function CodeCompanionShell() {
         .navi-header-brand {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
         }
 
         .navi-logo-container {
           position: relative;
-          width: 36px;
-          height: 36px;
+          width: 28px;
+          height: 28px;
         }
 
         .navi-logo-glow {
           position: absolute;
-          inset: -4px;
+          inset: -3px;
           background: radial-gradient(circle, hsl(var(--primary) / 0.4), transparent 70%);
-          border-radius: 12px;
+          border-radius: 10px;
           animation: logoGlow 3s ease-in-out infinite;
         }
 
@@ -2353,13 +2355,13 @@ export function CodeCompanionShell() {
 
         .navi-logo-icon {
           position: relative;
-          width: 36px;
-          height: 36px;
+          width: 28px;
+          height: 28px;
           display: flex;
           align-items: center;
           justify-content: center;
           background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
-          border-radius: 10px;
+          border-radius: 8px;
           color: hsl(var(--primary-foreground));
           box-shadow: 0 2px 12px hsl(var(--primary) / 0.3);
         }
@@ -2370,7 +2372,7 @@ export function CodeCompanionShell() {
         }
 
         .navi-brand-name {
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 700;
           background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
           -webkit-background-clip: text;
@@ -2379,9 +2381,10 @@ export function CodeCompanionShell() {
         }
 
         .navi-brand-tagline {
-          font-size: 10px;
+          font-size: 9px;
           color: hsl(var(--muted-foreground));
           letter-spacing: 0.02em;
+          line-height: 1.1;
         }
 
         /* ===== COLLABORATORS BADGE ===== */
@@ -2543,7 +2546,7 @@ export function CodeCompanionShell() {
         .navi-header-right {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
         }
 
         /* ===== NEW CHAT BUTTON ===== */
@@ -2671,8 +2674,8 @@ export function CodeCompanionShell() {
           display: flex;
           align-items: center;
           gap: 6px;
-          padding: 6px 12px;
-          border-radius: 10px;
+          padding: 4px 10px;
+          border-radius: 8px;
           border: 1px solid hsl(var(--primary) / 0.3);
           background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--accent) / 0.05));
           color: hsl(var(--primary));
@@ -2707,7 +2710,7 @@ export function CodeCompanionShell() {
 
         .navi-sidebar-toggle-hint {
           position: relative;
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 600;
           letter-spacing: 0.02em;
           text-transform: uppercase;
@@ -3234,8 +3237,8 @@ export function CodeCompanionShell() {
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 8px 16px;
-          border-radius: 10px;
+          padding: 6px 12px;
+          border-radius: 8px;
           border: 1px solid hsl(var(--primary) / 0.4);
           background: hsl(var(--primary) / 0.08);
           cursor: pointer;
@@ -3246,7 +3249,7 @@ export function CodeCompanionShell() {
         .navi-signin-border-glow {
           position: absolute;
           inset: -1px;
-          border-radius: 11px;
+          border-radius: 9px;
           background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)), hsl(var(--primary)));
           background-size: 200% 200%;
           animation: borderRotate 4s linear infinite;
@@ -3268,7 +3271,7 @@ export function CodeCompanionShell() {
         .navi-signin-bg {
           position: absolute;
           inset: 1px;
-          border-radius: 9px;
+          border-radius: 7px;
           background: hsl(var(--background));
           z-index: 0;
         }
@@ -3278,7 +3281,7 @@ export function CodeCompanionShell() {
           z-index: 2;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
         }
 
         .navi-signin-icon {
@@ -3287,7 +3290,7 @@ export function CodeCompanionShell() {
         }
 
         .navi-signin-text {
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 600;
           color: hsl(var(--primary));
           transition: all 0.3s ease;

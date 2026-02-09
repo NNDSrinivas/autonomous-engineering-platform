@@ -145,12 +145,12 @@ class ChangeDetector:
 
     def __init__(self):
         self.file_hashes: Dict[str, str] = {}
-        self.function_hashes: Dict[str, Dict[str, str]] = (
-            {}
-        )  # file_path -> function_name -> hash
-        self.class_hashes: Dict[str, Dict[str, str]] = (
-            {}
-        )  # file_path -> class_name -> hash
+        self.function_hashes: Dict[
+            str, Dict[str, str]
+        ] = {}  # file_path -> function_name -> hash
+        self.class_hashes: Dict[
+            str, Dict[str, str]
+        ] = {}  # file_path -> class_name -> hash
 
     def detect_file_changes(
         self, file_path: str, new_content: str, old_content: Optional[str] = None
@@ -604,13 +604,13 @@ class IncrementalStaticAnalyzer:
         self.llm_router = LLMRouter()
 
         # Cache management
-        self.analysis_cache: Dict[str, Dict[str, AnalysisResult]] = (
-            {}
-        )  # file_hash -> analysis_type -> result
+        self.analysis_cache: Dict[
+            str, Dict[str, AnalysisResult]
+        ] = {}  # file_hash -> analysis_type -> result
         self.dependency_graph: Dict[str, Set[str]] = {}  # file_path -> dependent_files
-        self.file_signatures: Dict[str, Dict[str, str]] = (
-            {}
-        )  # file_path -> function_name -> signature_hash
+        self.file_signatures: Dict[
+            str, Dict[str, str]
+        ] = {}  # file_path -> function_name -> signature_hash
 
         # Configuration
         self.config = {

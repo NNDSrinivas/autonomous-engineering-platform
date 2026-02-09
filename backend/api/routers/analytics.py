@@ -187,8 +187,8 @@ def usage_dashboard(
     if user_id is None:
         raise HTTPException(status_code=500, detail="User identifier is not available")
 
-    # Extract org_id for multi-tenant data isolation
-    org_id = getattr(user, "org_id", None)
+    # Extract org identifier for multi-tenant data isolation (support org_id and org_key)
+    org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
 
     llm = _summarize_llm_metrics(db, range_info["start"], org_id, user_id)
     tasks = _summarize_tasks(db, range_info["start"], org_id, user_id)

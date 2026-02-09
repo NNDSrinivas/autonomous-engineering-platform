@@ -104,6 +104,13 @@ class Cache:
 
         Returns:
             The parsed JSON value if found, None otherwise
+
+        TODO: Add comprehensive test coverage for atomic get+delete behavior
+        Required tests:
+        1. GETDEL path: Verify atomic read+delete with Redis 6.2+
+        2. Lua fallback: Test fallback when GETDEL raises AttributeError or "unknown command"
+        3. In-memory fallback: Ensure atomicity via lock and correct expiration handling
+        4. Edge cases: expired keys, missing keys, concurrent access
         """
         r = await self._ensure()
         if r:

@@ -38,7 +38,7 @@ jobs:
             exit 0
           fi
           git commit -m "chore: update NAVI benchmark scorecard"
-          git push
+          git push origin HEAD:${{ github.ref_name }}
       - name: Post results to GitHub Issue
         uses: actions/github-script@v7
         with:

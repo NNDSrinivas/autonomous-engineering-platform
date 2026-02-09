@@ -1508,9 +1508,15 @@ async def handle_consent_response(
             "message": f"Consent {'approved' if approved else 'denied'}",
         }
 
+    except HTTPException:
+        # Re-raise HTTPException to preserve correct HTTP status codes (403/404)
+        raise
     except Exception as e:
         logger.error(f"[NAVI API] Error handling consent {consent_id}: {e}")
-        return {"success": False, "error": str(e)}
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error handling consent: {str(e)}",
+        )
 
 
 async def _apply_auto_fix(

@@ -417,10 +417,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # If fallback is enabled (dev/test/ci), keep the system available.
             # Use normalized environment checks to handle aliases (dev, Dev, DEVELOPMENT, etc.)
             # Note: is_test() includes both "test" and "ci" environments
+            is_dev = getattr(settings, "is_development", lambda: False)
+            is_test = getattr(settings, "is_test", lambda: False)
             if (
                 settings.RATE_LIMITING_FALLBACK_ENABLED
-                or settings.is_development()
-                or settings.is_test()
+                or (callable(is_dev) and is_dev())
+                or (callable(is_test) and is_test())
             ):
                 return await call_next(request)
             return JSONResponse(

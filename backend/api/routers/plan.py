@@ -440,7 +440,8 @@ async def stream_plan_updates(
             yield f"data: {json.dumps({'seq': None, 'type': 'connected', 'payload': {'plan_id': plan_id}})}\n\n"
 
             # In test/CI environments, return immediately after initial handshake to avoid hanging connections
-            if settings.is_test():
+            is_test = getattr(settings, "is_test", None)
+            if callable(is_test) and is_test():
                 return
 
             # Stream live updates from broadcaster

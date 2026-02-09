@@ -565,11 +565,12 @@ async def update_conversation(
         raise HTTPException(
             status_code=403, detail="Not authorized to modify this conversation"
         )
+    # Normalize org IDs to strings for same reason (mixed auth backends can have different types)
     if (
         org_id
         and hasattr(conversation, "org_id")
         and conversation.org_id
-        and conversation.org_id != org_id
+        and str(conversation.org_id) != str(org_id)
     ):
         raise HTTPException(
             status_code=403, detail="Not authorized to modify this conversation"

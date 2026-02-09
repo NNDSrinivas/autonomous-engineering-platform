@@ -21,23 +21,31 @@ class McpServer(Base):
     transport = Column(String(40), nullable=False, default="streamable_http")
     auth_type = Column(String(40), nullable=False, default="none")
     config_json = Column(Text, nullable=True)
-    # SECURITY CRITICAL: secret_json field requires encryption enforcement
-    # Current risk: No enforcement at model/service layer - plaintext secrets could be stored if write path forgets encryption
+    # SECURITY CRITICAL: secret_json field requires encryption enforcement at type/system boundary
+    # Current risk: No enforcement prevents accidental plaintext writes via ORM or direct scripts
     #
-    # Required implementation (before any CRUD API is built):
-    # 1. Rename column: secret_json → secret_ciphertext (explicit intent, prevents accidental plaintext writes)
-    # 2. Create service layer: MCP server repository/service that enforces encryption on all writes
-    #    - Use backend.core.crypto.encrypt_token() for encryption (Fernet-based, similar to audit logs)
-    #    - Reject non-bytes values at write time (validation)
-    #    - Auto-decrypt on read (transparent to consumers)
-    # 3. Migration strategy: Create Alembic migration to rename column when service layer is ready
-    # 4. Documentation: Add docstring explaining this is ciphertext-only, never accepts plaintext
+    # RECOMMENDED: Use SQLAlchemy TypeDecorator for automatic encryption/decryption at ORM layer
+    # This prevents accidental plaintext persistence and makes encryption transparent:
     #
-    # Implementation reference: backend/api/routers/audit.py (encrypted payload handling)
+    #   class EncryptedBinary(TypeDecorator):
+    #       impl = LargeBinary
+    #       def process_bind_param(self, value, dialect):
+    #           if value is None: return None
+    #           return encrypt_token(value)  # Auto-encrypt on write
+    #       def process_result_value(self, value, dialect):
+    #           if value is None: return None
+    #           return decrypt_token(value)  # Auto-decrypt on read
+    #
+    # Alternative: Service layer enforcement (if TypeDecorator not feasible):
+    # 1. Repository/service that is the only allowed write path (enforced via linting/code review)
+    # 2. Reject non-bytes at write time + validate ciphertext format
+    # 3. Consider renaming to secret_ciphertext for clarity
+    #
+    # Implementation reference: backend.core.crypto.encrypt_token() (Fernet-based, similar to audit logs)
     secret_json = Column(
         LargeBinary,
         nullable=True,
-        comment="MUST be encrypted ciphertext (Fernet). Use service layer for encryption.",
+        comment="MUST be encrypted ciphertext (Fernet). TODO: Use TypeDecorator for enforcement.",
     )
     enabled = Column(Boolean, default=True, nullable=False)
     status = Column(String(32), nullable=False, default="unknown")

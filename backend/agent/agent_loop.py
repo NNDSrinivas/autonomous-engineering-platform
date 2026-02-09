@@ -1788,6 +1788,31 @@ async def run_agent_loop(
             )
             org_ctx = await retrieve_org_context(user_id, message, db=db)
             memory_ctx = await retrieve_memories(user_id, message, db=db)
+
+            # Retrieve RAG context for greetings/simple queries too
+            rag_context_text = ""
+            if workspace_root and isinstance(workspace_root, str):
+                try:
+                    from backend.services.workspace_rag import search_codebase
+                    import asyncio
+
+                    rag_results = await asyncio.wait_for(
+                        search_codebase(
+                            workspace_path=workspace_root,
+                            query=message,
+                            top_k=5,
+                            allow_background_indexing=True,
+                        ),
+                        timeout=10.0,
+                    )
+
+                    if rag_results:
+                        rag_context_text = "\n\n## Relevant Code Context:\n"
+                        for result in rag_results[:3]:
+                            rag_context_text += f"\n- {result.get('file_path', 'unknown')}\n"
+                except (asyncio.TimeoutError, Exception) as e:
+                    logger.warning(f"[AGENT] RAG retrieval failed in greeting path: {e}")
+
             full_context = build_context(
                 workspace_ctx,
                 org_ctx,
@@ -1795,6 +1820,13 @@ async def run_agent_loop(
                 previous_state,
                 message,
             )
+
+            # Add RAG context
+            if rag_context_text:
+                full_context["combined"] = (
+                    full_context.get("combined", "") + rag_context_text
+                )
+
             answer = await call_llm(message, full_context, model=model, mode=mode)
             clear_user_state(user_id)
             elapsed_ms = int((time.monotonic() - started) * 1000)
@@ -1823,6 +1855,52 @@ async def run_agent_loop(
         org_ctx = await retrieve_org_context(user_id, message, db=db)
         memory_ctx = await retrieve_memories(user_id, message, db=db)
 
+        # ---------------------------------------------------------
+        # STAGE 2.2: Retrieve RAG context from codebase
+        # ---------------------------------------------------------
+        rag_context_text = ""
+        if workspace and isinstance(workspace, dict):
+            workspace_root = workspace.get("workspace_root")
+            if workspace_root and isinstance(workspace_root, str):
+                try:
+                    logger.info("[AGENT] Retrieving RAG context from workspace...")
+                    from backend.services.workspace_rag import search_codebase
+                    import asyncio
+
+                    # Use Phase 1 background indexing (non-blocking)
+                    # First request returns empty, triggers indexing
+                    # Subsequent requests use cached index
+                    rag_results = await asyncio.wait_for(
+                        search_codebase(
+                            workspace_path=workspace_root,
+                            query=message,
+                            top_k=10,
+                            allow_background_indexing=True,
+                        ),
+                        timeout=10.0,  # 10 second timeout
+                    )
+
+                    if rag_results:
+                        logger.info(
+                            "[AGENT] Retrieved %d RAG chunks from codebase",
+                            len(rag_results),
+                        )
+                        rag_context_text = "\n\n## Relevant Code Context (RAG):\n"
+                        for i, result in enumerate(rag_results[:5], 1):  # Top 5 chunks
+                            file_path = result.get("file_path", "unknown")
+                            content = result.get("content", "")[:500]  # Truncate long chunks
+                            rag_context_text += f"\n### {i}. {file_path}\n```\n{content}\n```\n"
+                    else:
+                        logger.info(
+                            "[AGENT] No RAG index available (background indexing may be in progress)"
+                        )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "[AGENT] RAG context retrieval timed out after 10s - continuing without RAG"
+                    )
+                except Exception as e:
+                    logger.warning(f"[AGENT] RAG retrieval failed: {e} - continuing without RAG")
+
         full_context = build_context(
             workspace_ctx,
             org_ctx,
@@ -1830,9 +1908,19 @@ async def run_agent_loop(
             previous_state,
             message,
         )
+
+        # Add RAG context to combined context
+        if rag_context_text:
+            full_context["combined"] = (
+                full_context.get("combined", "") + rag_context_text
+            )
+            full_context["has_rag"] = True
+            logger.info("[AGENT] Added RAG context to full_context")
+
         logger.info(
-            "[AGENT] Context built: %d chars",
+            "[AGENT] Context built: %d chars (RAG: %s)",
             len(full_context.get("combined", "")),
+            "enabled" if rag_context_text else "not available",
         )
 
         # ---------------------------------------------------------

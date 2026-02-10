@@ -2607,6 +2607,8 @@ export function CodeCompanionShell() {
           right: 0;
           top: calc(100% + 8px);
           width: 220px;
+          min-width: 220px;
+          max-width: 220px;
           background: hsl(var(--popover));
           border: 1px solid hsl(var(--border));
           border-radius: 12px;
@@ -2615,6 +2617,9 @@ export function CodeCompanionShell() {
           max-height: 320px;
           overflow: hidden;
           z-index: 60;
+          box-sizing: border-box;
+          writing-mode: horizontal-tb;
+          text-orientation: mixed;
           animation: dropdownSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
@@ -2633,6 +2638,9 @@ export function CodeCompanionShell() {
           cursor: pointer;
           text-align: left;
           transition: background 0.15s ease, color 0.15s ease;
+          white-space: nowrap;
+          writing-mode: horizontal-tb;
+          text-orientation: mixed;
         }
 
         .navi-header-more-menu-item:hover {

@@ -18,9 +18,13 @@ NC='\033[0m' # No Color
 FAILED=0
 
 # Get list of changed Python files FIRST to determine what checks to run
-CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep "\.py$" || true)
+# Use array to handle filenames with spaces/newlines properly
+CHANGED_FILES=()
+while IFS= read -r file; do
+    CHANGED_FILES+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR | grep "\.py$" || true)
 HAS_PYTHON_CHANGES=false
-if [ -n "$CHANGED_FILES" ]; then
+if [ ${#CHANGED_FILES[@]} -gt 0 ]; then
     HAS_PYTHON_CHANGES=true
 fi
 
@@ -61,7 +65,7 @@ echo "🚨 Checking for common anti-patterns in changed files..."
 
 # Check for bare except in changed files only
 BARE_EXCEPT_COUNT=0
-for file in $CHANGED_FILES; do
+for file in "${CHANGED_FILES[@]}"; do
     if [ -f "$file" ]; then
         if grep -n "except.*:$" "$file" | grep -v "except.*Error" | grep -v "#" > /dev/null; then
             echo -e "${YELLOW}⚠ $file has bare except clauses${NC}"
@@ -78,7 +82,7 @@ fi
 
 # Check for list membership in hot paths
 LIST_CHECK_COUNT=0
-for file in $CHANGED_FILES; do
+for file in "${CHANGED_FILES[@]}"; do
     if [[ "$file" == *"backend/api/"* ]] && [ -f "$file" ]; then
         if grep -n "if .* in \[" "$file" > /dev/null; then
             echo -e "${YELLOW}⚠ $file: Consider using sets instead of lists for membership checks${NC}"

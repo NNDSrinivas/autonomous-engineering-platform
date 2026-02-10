@@ -7378,6 +7378,7 @@ async def navi_autonomous_task(
                     logger.warning(
                         f"[NAVI Autonomous] Cannot persist conversation: invalid user_id '{user_id}' (must be numeric)"
                     )
+                    conv_uuid = None  # Clear conv_uuid to prevent FK failures in background persistence
                 else:
                     from sqlalchemy import text
 

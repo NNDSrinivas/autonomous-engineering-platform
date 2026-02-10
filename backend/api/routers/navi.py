@@ -280,7 +280,6 @@ async def process_navi_request_stream(request: NaviRequest):
 
             # Send initial status
             yield f"data: {json.dumps({'type': 'status', 'message': '🎯 Analyzing your request...', 'step': 1, 'total': 6})}\n\n"
-            await asyncio.sleep(0.05)
 
             # Extract context
             yield f"data: {json.dumps({'type': 'status', 'message': '📋 Loading workspace context...', 'step': 2, 'total': 6})}\n\n"
@@ -297,14 +296,11 @@ async def process_navi_request_stream(request: NaviRequest):
                 or context.get("conversationHistory")
                 or context.get("conversation_history")
             )
-            await asyncio.sleep(0.05)
 
             # Send status update
             yield f"data: {json.dumps({'type': 'status', 'message': '🔍 Understanding your code...', 'step': 3, 'total': 6})}\n\n"
-            await asyncio.sleep(0.05)
 
             yield f"data: {json.dumps({'type': 'status', 'message': '🤖 Connecting to AI model...', 'step': 4, 'total': 6})}\n\n"
-            await asyncio.sleep(0.05)
 
             yield f"data: {json.dumps({'type': 'status', 'message': '✨ Generating response...', 'step': 5, 'total': 6})}\n\n"
 

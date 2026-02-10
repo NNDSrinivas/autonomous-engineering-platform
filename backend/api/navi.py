@@ -7333,16 +7333,21 @@ async def navi_autonomous_task(
     import hashlib
     from backend.services.memory.conversation_memory import ConversationMemoryService
 
-    def _stable_user_id_hash(user_id: str) -> int:
-        """Generate stable integer hash from user_id string for database storage.
+    def _get_user_id_int(user_id: str) -> int | None:
+        """Extract integer user_id from string or numeric value.
 
-        Uses SHA-256 for deterministic hashing (not for security, just for stable conversion).
-        Uses 64 bits (16 hex chars) to significantly reduce collision risk compared to 32 bits.
-        This ensures the same user_id always maps to the same integer across restarts.
+        Returns the numeric user_id if valid, None otherwise.
+        This ensures user_id matches real users.id (FK constraint).
         """
-        digest = hashlib.sha256(str(user_id).encode("utf-8")).hexdigest()
-        # Use first 16 hex characters (64 bits) for much lower collision probability
-        return int(digest[:16], 16)
+        try:
+            # Try to convert to integer (handles numeric strings)
+            uid = int(user_id)
+            # Ensure it's a positive integer (valid user ID)
+            return uid if uid > 0 else None
+        except (ValueError, TypeError):
+            # user_id is not numeric (e.g., "default_user")
+            # Cannot persist without a real user ID due to FK constraint
+            return None
 
     memory_service = ConversationMemoryService(db)
     conv_uuid = None
@@ -7369,41 +7374,51 @@ async def navi_autonomous_task(
             else:
                 # Conversation ID provided but doesn't exist - create it
                 logger.info(f"[NAVI Autonomous] Creating conversation {conv_uuid}")
-                user_id_int = _stable_user_id_hash(user_id)
-                from sqlalchemy import text
+                user_id_int = _get_user_id_int(user_id)
+                if user_id_int is None:
+                    logger.warning(
+                        f"[NAVI Autonomous] Cannot persist conversation: invalid user_id '{user_id}' (must be numeric)"
+                    )
+                else:
+                    from sqlalchemy import text
 
-                memory_service.db.execute(
-                    text(
-                        """
-                        INSERT INTO navi_conversations (id, user_id, org_id, workspace_path, status, created_at, updated_at)
-                        VALUES (:id, :user_id, :org_id, :workspace_path, 'active', NOW(), NOW())
-                        ON CONFLICT (id) DO NOTHING
-                        """
-                    ),
-                    {
-                        "id": str(conv_uuid),
-                        "user_id": user_id_int,
-                        "org_id": _stable_user_id_hash(org_id) if org_id else None,
-                        "workspace_path": workspace_path,
-                    },
-                )
-                memory_service.db.commit()
+                    memory_service.db.execute(
+                        text(
+                            """
+                            INSERT INTO navi_conversations (id, user_id, org_id, workspace_path, status, created_at, updated_at)
+                            VALUES (:id, :user_id, :org_id, :workspace_path, 'active', NOW(), NOW())
+                            ON CONFLICT (id) DO NOTHING
+                            """
+                        ),
+                        {
+                            "id": str(conv_uuid),
+                            "user_id": user_id_int,
+                            "org_id": _get_user_id_int(org_id) if org_id else None,
+                            "workspace_path": workspace_path,
+                        },
+                    )
+                    memory_service.db.commit()
         except Exception as conv_err:
             logger.warning(f"[NAVI Autonomous] Failed to load conversation: {conv_err}")
     else:
         # No conversation ID - create a new conversation
         try:
             logger.info("[NAVI Autonomous] Creating new conversation")
-            user_id_int = _stable_user_id_hash(user_id)
-            conversation = memory_service.create_conversation(
-                user_id=user_id_int,
-                org_id=_stable_user_id_hash(org_id) if org_id else None,
-                workspace_path=workspace_path,
-                title=request.message[:50]
-                + ("..." if len(request.message) > 50 else ""),
-            )
-            conv_uuid = conversation.id
-            logger.info(f"[NAVI Autonomous] Created new conversation {conv_uuid}")
+            user_id_int = _get_user_id_int(user_id)
+            if user_id_int is None:
+                logger.warning(
+                    f"[NAVI Autonomous] Cannot persist conversation: invalid user_id '{user_id}' (must be numeric)"
+                )
+            else:
+                conversation = memory_service.create_conversation(
+                    user_id=user_id_int,
+                    org_id=_get_user_id_int(org_id) if org_id else None,
+                    workspace_path=workspace_path,
+                    title=request.message[:50]
+                    + ("..." if len(request.message) > 50 else ""),
+                )
+                conv_uuid = conversation.id
+                logger.info(f"[NAVI Autonomous] Created new conversation {conv_uuid}")
         except Exception as conv_err:
             logger.warning(
                 f"[NAVI Autonomous] Failed to create conversation: {conv_err}"
@@ -7427,34 +7442,40 @@ async def navi_autonomous_task(
         from backend.services.memory.semantic_search import get_semantic_search_service
 
         search_service = get_semantic_search_service(db)
-        user_id_int = _stable_user_id_hash(user_id)
-        org_id_int = _stable_user_id_hash(org_id) if org_id else None
+        user_id_int = _get_user_id_int(user_id)
+        org_id_int = _get_user_id_int(org_id) if org_id else None
 
-        # Search for relevant context from past conversations
-        context_data = await search_service.get_context_for_query(
-            query=request.message,
-            user_id=user_id_int,
-            org_id=org_id_int,
-            max_context_items=5,
-        )
+        # Skip semantic search if user_id is invalid
+        if user_id_int is None:
+            logger.warning(
+                f"[NAVI Autonomous] Skipping semantic search: invalid user_id '{user_id}'"
+            )
+        else:
+            # Search for relevant context from past conversations
+            context_data = await search_service.get_context_for_query(
+                query=request.message,
+                user_id=user_id_int,
+                org_id=org_id_int,
+                max_context_items=5,
+            )
 
-        # Build context string from search results
-        if context_data and context_data.get("conversations"):
-            relevant_conversations = context_data["conversations"]
-            if relevant_conversations:
-                relevant_past_context = (
-                    "\n\n=== RELEVANT INFORMATION FROM PAST CONVERSATIONS ===\n"
-                )
-                for idx, conv_item in enumerate(
-                    relevant_conversations[:3], 1
-                ):  # Top 3 most relevant
-                    relevant_past_context += f"\n{idx}. From '{conv_item.get('title', 'Previous conversation')}':\n"
-                    relevant_past_context += (
-                        f"   {conv_item.get('content', '')[:200]}...\n"
+            # Build context string from search results
+            if context_data and context_data.get("conversations"):
+                relevant_conversations = context_data["conversations"]
+                if relevant_conversations:
+                    relevant_past_context = (
+                        "\n\n=== RELEVANT INFORMATION FROM PAST CONVERSATIONS ===\n"
                     )
-                logger.info(
-                    f"[NAVI Autonomous] Found {len(relevant_conversations)} relevant past conversations"
-                )
+                    for idx, conv_item in enumerate(
+                        relevant_conversations[:3], 1
+                    ):  # Top 3 most relevant
+                        relevant_past_context += f"\n{idx}. From '{conv_item.get('title', 'Previous conversation')}':\n"
+                        relevant_past_context += (
+                            f"   {conv_item.get('content', '')[:200]}...\n"
+                        )
+                    logger.info(
+                        f"[NAVI Autonomous] Found {len(relevant_conversations)} relevant past conversations"
+                    )
     except Exception as search_err:
         logger.warning(
             f"[NAVI Autonomous] Semantic search failed (non-blocking): {search_err}"

@@ -977,30 +977,12 @@ const getBackendApiBase = (): string => {
 };
 
 /**
- * Validate and convert USER_ID to numeric format
- * Returns null if USER_ID is invalid (non-numeric or default fallback)
- */
-const getValidUserId = (): number | null => {
-  const numericUserId = Number(USER_ID);
-  if (!Number.isInteger(numericUserId) || numericUserId <= 0) {
-    console.warn(
-      '[Chat Persistence] Backend persistence disabled: invalid USER_ID. Using local-only chat sessions.'
-    );
-    return null;
-  }
-  return numericUserId;
-};
-
-/**
  * Create a conversation in the backend database
- * Note: user_id is derived from authenticated user, not sent in request
+ * Note: user_id is derived from authenticated user via auth headers, not from USER_ID constant
  */
 export const createBackendConversation = async (
   session: ChatSessionSummary
 ): Promise<string | null> => {
-  const userId = getValidUserId();
-  if (userId === null) return null;
-
   try {
     const response = await fetch(
       `${getBackendApiBase()}/api/navi-memory/conversations`,
@@ -1071,12 +1053,9 @@ export const saveMessageToBackend = async (
 
 /**
  * Load all conversations from the backend database
- * Note: user_id is derived from authenticated user, not sent in request
+ * Note: user_id is derived from authenticated user via auth headers, not from USER_ID constant
  */
 export const loadConversationsFromBackend = async (): Promise<ChatSessionSummary[]> => {
-  const userId = getValidUserId();
-  if (userId === null) return [];
-
   try {
     const response = await fetch(
       `${getBackendApiBase()}/api/navi-memory/conversations?limit=100`,

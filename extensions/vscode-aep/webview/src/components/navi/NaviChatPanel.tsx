@@ -4104,8 +4104,6 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
         if (action.type !== "runCommand") {
           const actionIndexKey = msg.actionIndex !== undefined ? String(msg.actionIndex) : undefined;
           const actionKey = String(action.id || actionIndexKey || `${action.type}-${Date.now()}`);
-          const activityId = makeActivityId();
-          actionActivityRef.current.set(actionKey, activityId);
           const activityKind =
             action.type === "createFile"
               ? "create"
@@ -4113,29 +4111,53 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                 ? "edit"
                 : "info";
 
+          const existingActivity = activityEventsRef.current.find(
+            (evt) => evt.kind === activityKind && (evt.filePath === action.filePath || evt.detail === action.filePath)
+          );
+          const activityId = existingActivity?.id ?? makeActivityId();
+          actionActivityRef.current.set(actionKey, activityId);
+
           const newActivity: ActivityEvent = {
             id: activityId,
             kind: activityKind,
             label:
               activityKind === "create"
-                ? "Creating file"
-                : activityKind === "edit"
-                  ? "Editing file"
-                  : "Running action",
-            detail: detail || actionType,
+                ? "Create"
+              : activityKind === "edit"
+                ? "Edit"
+                : "Action",
+            detail: action.filePath || detail || actionType,
             filePath: action.filePath,
             status: "running",
             timestamp: nowIso(),
           };
 
-          pushActivityEvent(newActivity);
+          if (existingActivity) {
+            setActivityEvents((prev) =>
+              prev.map((evt) =>
+                evt.id === activityId
+                  ? {
+                    ...evt,
+                    label: newActivity.label,
+                    detail: newActivity.detail,
+                    filePath: action.filePath ?? evt.filePath,
+                    status: "running",
+                    timestamp: newActivity.timestamp,
+                  }
+                  : evt
+              )
+            );
+          } else {
+            pushActivityEvent(newActivity);
+          }
 
           // Also track in per-action activities for inline display
           if (actionIndex !== null) {
             setPerActionActivities((prev) => {
               const next = new Map(prev);
               const existing = next.get(actionIndex) || [];
-              next.set(actionIndex, [...existing, newActivity]);
+              const hasActivity = existing.some((evt) => evt.id === activityId);
+              next.set(actionIndex, hasActivity ? existing : [...existing, newActivity]);
               return next;
             });
           }
@@ -4234,15 +4256,11 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
             const activityId = actionActivityRef.current.get(actionKey);
             const activityLabel =
               action.type === "createFile"
-                ? "File created"
+                ? "Created"
                 : action.type === "editFile"
-                  ? "File edited"
-                  : "Action completed";
-            const diffStat =
-              action.type === "editFile" && (typeof additions === "number" || typeof deletions === "number")
-                ? ` (+${additions ?? 0} / -${deletions ?? 0})`
-                : "";
-            const activityDetail = action.command || (action.filePath ? `${action.filePath}${diffStat}` : "") || action.description || "";
+                  ? "Edited"
+                  : "Completed";
+            const activityDetail = action.filePath || action.command || action.description || "";
             if (activityId) {
               setActivityEvents((prev) =>
                 prev.map((event) =>
@@ -4689,87 +4707,75 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
 
         // Handle edit activity events
         if (kind === 'edit') {
-          const label = data.label || 'Editing';
           const detail = data.detail || data.filePath || '';
           const status = data.status || 'done';
           const toolId = data.toolId;
+          const runningLabel = 'Edit';
+          const doneLabel = 'Edited';
+          const filePath = data.filePath || detail;
 
-          if (status === 'done') {
-            setActivityEvents((prev) => {
-              const existingIdx = prev.findIndex(
-                (evt) => evt.kind === 'edit' && evt.status === 'running' &&
-                  (toolId ? (evt as any).toolId === toolId : evt.detail === detail)
-              );
-              if (existingIdx >= 0) {
-                const updated = [...prev];
-                updated[existingIdx] = { ...updated[existingIdx], status: 'done' };
-                return updated;
-              }
-              return [...prev, {
-                id: makeActivityId(),
-                kind: "edit" as const,
-                label,
-                detail,
-                filePath: data.filePath || detail,
-                status: "done" as const,
+          setActivityEvents((prev) => {
+            const existingIdx = prev.findIndex(
+              (evt) => evt.kind === 'edit' && (evt.filePath === filePath || evt.detail === filePath)
+            );
+            if (existingIdx >= 0) {
+              const updated = [...prev];
+              updated[existingIdx] = {
+                ...updated[existingIdx],
+                status: status === 'done' ? 'done' : 'running',
                 timestamp: msg.timestamp || nowIso(),
-              }];
-            });
-          } else {
-            pushActivityEvent({
+              };
+              return updated;
+            }
+            const newEvent: ActivityEvent = {
               id: makeActivityId(),
               kind: "edit",
-              label,
-              detail,
-              filePath: data.filePath || detail,
-              status: "running",
+              label: status === 'done' ? doneLabel : runningLabel,
+              detail: filePath,
+              filePath,
+              status: status === 'done' ? 'done' : 'running',
               timestamp: msg.timestamp || nowIso(),
               ...(toolId ? { toolId } : {}),
-            } as any);
-          }
+            } as any;
+            return [...prev, newEvent];
+          });
           return;
         }
 
         // Handle create activity events
         if (kind === 'create') {
-          const label = data.label || 'Creating';
           const detail = data.detail || data.filePath || '';
           const status = data.status || 'done';
           const toolId = data.toolId;
+          const runningLabel = 'Create';
+          const doneLabel = 'Created';
+          const filePath = data.filePath || detail;
 
-          if (status === 'done') {
-            setActivityEvents((prev) => {
-              const existingIdx = prev.findIndex(
-                (evt) => evt.kind === 'create' && evt.status === 'running' &&
-                  (toolId ? (evt as any).toolId === toolId : evt.detail === detail)
-              );
-              if (existingIdx >= 0) {
-                const updated = [...prev];
-                updated[existingIdx] = { ...updated[existingIdx], status: 'done' };
-                return updated;
-              }
-              return [...prev, {
-                id: makeActivityId(),
-                kind: "create" as const,
-                label,
-                detail,
-                filePath: data.filePath || detail,
-                status: "done" as const,
+          setActivityEvents((prev) => {
+            const existingIdx = prev.findIndex(
+              (evt) => evt.kind === 'create' && (evt.filePath === filePath || evt.detail === filePath)
+            );
+            if (existingIdx >= 0) {
+              const updated = [...prev];
+              updated[existingIdx] = {
+                ...updated[existingIdx],
+                status: status === 'done' ? 'done' : 'running',
                 timestamp: msg.timestamp || nowIso(),
-              }];
-            });
-          } else {
-            pushActivityEvent({
+              };
+              return updated;
+            }
+            const newEvent: ActivityEvent = {
               id: makeActivityId(),
               kind: "create",
-              label,
-              detail,
-              filePath: data.filePath || detail,
-              status: "running",
+              label: status === 'done' ? doneLabel : runningLabel,
+              detail: filePath,
+              filePath,
+              status: status === 'done' ? 'done' : 'running',
               timestamp: msg.timestamp || nowIso(),
               ...(toolId ? { toolId } : {}),
-            } as any);
-          }
+            } as any;
+            return [...prev, newEvent];
+          });
           return;
         }
 
@@ -9444,7 +9450,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                       };
 
                       // For edit activities with diff data, render the FileDiffView
-                      if (evt.kind === 'edit' && hasDiff && evt.status === 'done' && filePath) {
+                      if ((evt.kind === 'edit' || evt.kind === 'create') && hasDiff && evt.status === 'done' && filePath) {
                         const diffLines = parseUnifiedDiff((evt as any).diff);
                         const diffData: FileDiff = {
                           path: filePath,
@@ -9457,6 +9463,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                             key={evt.id}
                             diff={diffData}
                             defaultExpanded={false}
+                            operation={evt.kind === 'create' ? 'create' : 'edit'}
                             onFileClick={handleFileClick}
                           />
                         );

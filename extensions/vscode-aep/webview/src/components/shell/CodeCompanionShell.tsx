@@ -1144,13 +1144,22 @@ export function CodeCompanionShell() {
   // Get user initials
   const getInitials = (name?: string, email?: string): string => {
     if (name) {
-      const parts = name.split(' ');
-      return parts.map(p => p[0]).join('').toUpperCase().slice(0, 2);
+      const parts = name
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      if (parts.length === 1) {
+        return parts[0][0]?.toUpperCase() || 'NA';
+      }
+      const first = parts[0][0] || '';
+      const last = parts[parts.length - 1][0] || '';
+      const initials = `${first}${last}`.toUpperCase();
+      return initials || 'NA';
     }
     if (email) {
       return email[0].toUpperCase();
     }
-    return '?';
+    return 'NA';
   };
 
   return (
@@ -1239,6 +1248,16 @@ export function CodeCompanionShell() {
                   <MoreHorizontal className="h-4 w-4 navi-more-icon" />
                 </button>
 
+                {isAuthenticated && (
+                  <div
+                    className="navi-auth-initials"
+                    title={`Signed in as ${displayName}`}
+                    aria-label={`Signed in as ${displayName}`}
+                  >
+                    {getInitials(user?.name, user?.email)}
+                  </div>
+                )}
+
                 {headerMoreOpen && (
                   <>
                     <div
@@ -1272,25 +1291,69 @@ export function CodeCompanionShell() {
                         )}
                         <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
                       </button>
-                      <button
-                        className="navi-header-more-menu-item"
-                        onClick={() => {
-                          if (isAuthenticated) {
-                            setFullPanelTab('account');
-                            setFullPanelOpen(true);
-                          } else {
-                            handleSignIn();
-                          }
-                          setHeaderMoreOpen(false);
-                        }}
-                      >
-                        {isAuthenticated ? (
-                          <User className="h-4 w-4" />
-                        ) : (
-                          <LogIn className="h-4 w-4" />
-                        )}
-                        <span>{isAuthenticated ? 'Account' : 'Sign in'}</span>
-                      </button>
+                      {isAuthenticated ? (
+                        <>
+                          <div className="navi-header-more-divider" />
+                          <button
+                            className="navi-header-more-menu-item"
+                            onClick={() => {
+                              setFullPanelTab('account');
+                              setFullPanelOpen(true);
+                              setHeaderMoreOpen(false);
+                            }}
+                          >
+                            <User className="h-4 w-4" />
+                            <span>Account</span>
+                          </button>
+                          <button
+                            className="navi-header-more-menu-item"
+                            onClick={() => {
+                              setFullPanelTab('account');
+                              setFullPanelOpen(true);
+                              setHeaderMoreOpen(false);
+                            }}
+                          >
+                            <Settings className="h-4 w-4" />
+                            <span>Settings</span>
+                          </button>
+                          <button
+                            className="navi-header-more-menu-item"
+                            onClick={() => {
+                              setFullPanelTab('account');
+                              setFullPanelOpen(true);
+                              setHeaderMoreOpen(false);
+                            }}
+                          >
+                            <User className="h-4 w-4" />
+                            <span>Profile</span>
+                          </button>
+                          <button
+                            className="navi-header-more-menu-item navi-header-more-menu-item--danger"
+                            onClick={() => {
+                              handleSignOut();
+                              setHeaderMoreOpen(false);
+                            }}
+                          >
+                            <LogOut className="h-4 w-4" />
+                            <span>Sign out</span>
+                          </button>
+                          <div className="navi-header-more-divider" />
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            className="navi-header-more-menu-item"
+                            onClick={() => {
+                              handleSignIn();
+                              setHeaderMoreOpen(false);
+                            }}
+                          >
+                            <LogIn className="h-4 w-4" />
+                            <span>Sign in</span>
+                          </button>
+                          <div className="navi-header-more-divider" />
+                        </>
+                      )}
                       <button
                         className="navi-header-more-menu-item"
                         onClick={() => {
@@ -1317,135 +1380,8 @@ export function CodeCompanionShell() {
                 )}
               </div>
 
-              {/* User Menu / Sign In */}
-              {isAuthenticated ? (
-                <div className="relative">
-                  <button
-                    className="navi-user-avatar-btn navi-animated-icon"
-                    onClick={() => {
-                      setUserMenuOpen(!userMenuOpen);
-                      if (headerMoreOpen) {
-                        setHeaderMoreOpen(false);
-                      }
-                    }}
-                  >
-                    <span className="navi-avatar-glow" />
-                    {user?.picture ? (
-                      <img
-                        src={user.picture}
-                        alt={user.name || 'User'}
-                        className="navi-user-avatar"
-                      />
-                    ) : (
-                      <div className="navi-user-initials">
-                        {getInitials(user?.name, user?.email)}
-                      </div>
-                    )}
-                    <span className="navi-user-name">
-                      {displayName}
-                    </span>
-                    <span className="navi-auth-status">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Signed in
-                    </span>
-                    <ChevronRight className={`h-3 w-3 navi-user-chevron ${userMenuOpen ? 'rotate-90' : ''}`} />
-                  </button>
-
-                  {/* User Dropdown Menu */}
-                  {userMenuOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setUserMenuOpen(false)}
-                      />
-                      <div className="navi-user-dropdown">
-                        <div className="navi-dropdown-user-info">
-                          <div className="navi-dropdown-user-avatar">
-                            {user?.picture ? (
-                              <img src={user.picture} alt={user.name || 'User'} />
-                            ) : (
-                              <span>{getInitials(user?.name, user?.email)}</span>
-                            )}
-                          </div>
-                          <div className="navi-dropdown-user-details">
-                            <div className="navi-dropdown-user-name">{displayName}</div>
-                            <div className="navi-dropdown-user-email">{user?.email}</div>
-                            {user?.org && (
-                              <div className="navi-dropdown-user-org">{user.org}</div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="navi-dropdown-divider" />
-                        <div className="navi-nickname-row">
-                          <label className="navi-nickname-label">Nickname</label>
-                          <div className="navi-nickname-controls">
-                            <input
-                              className="navi-nickname-input"
-                              type="text"
-                              value={nickname}
-                              placeholder="Optional"
-                              onChange={(event) => setNickname(event.target.value)}
-                            />
-                            <button
-                              className="navi-nickname-save"
-                              onClick={() => writeNickname(nickname)}
-                            >
-                              Save
-                            </button>
-                          </div>
-                        </div>
-                        <div className="navi-dropdown-divider" />
-                        <button
-                          className="navi-dropdown-menu-item"
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                          }}
-                        >
-                          <Settings className="h-4 w-4" />
-                          <span>Settings</span>
-                        </button>
-                        <button
-                          className="navi-dropdown-menu-item"
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                          }}
-                        >
-                          <User className="h-4 w-4" />
-                          <span>Profile</span>
-                        </button>
-                        <div className="navi-dropdown-divider" />
-                        <button
-                          className="navi-dropdown-menu-item navi-menu-item-danger"
-                          onClick={handleSignOut}
-                        >
-                          <LogOut className="h-4 w-4" />
-                          <span>Sign Out</span>
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className="navi-auth-group">
-                  {authGateSkipped && (
-                    <span className="navi-auth-required-badge">Sign in required</span>
-                  )}
-
-                  {/* Sign In Button */}
-                  <button
-                    className="navi-signin-btn-v3"
-                    onClick={handleSignIn}
-                  >
-                    <span className="navi-signin-border-glow" />
-                    <span className="navi-signin-bg" />
-                    <span className="navi-signin-inner">
-                      <User className="h-3.5 w-3.5 navi-signin-icon" />
-                      <span className="navi-signin-text">Sign In</span>
-                    </span>
-                    <span className="navi-signin-pulse" />
-                  </button>
-                </div>
-              )}
+              {/* User Status / Sign In */}
+              {isAuthenticated ? null : null}
             </div>
           </div>
         </header>
@@ -2619,6 +2555,25 @@ export function CodeCompanionShell() {
           position: static;
         }
 
+        .navi-auth-initials {
+          position: absolute;
+          right: -6px;
+          top: -6px;
+          width: 20px;
+          height: 20px;
+          border-radius: 999px;
+          background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+          color: white;
+          font-size: 10px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 10px hsl(var(--primary) / 0.35);
+          border: 2px solid hsl(var(--background));
+          pointer-events: none;
+        }
+
         .navi-header-more-dropdown {
           position: absolute;
           right: 0;
@@ -2668,6 +2623,19 @@ export function CodeCompanionShell() {
 
         .navi-header-more-menu-item svg {
           color: hsl(var(--muted-foreground));
+        }
+
+        .navi-header-more-menu-item--danger {
+          color: hsl(var(--destructive));
+        }
+
+        .navi-header-more-menu-item--danger svg {
+          color: hsl(var(--destructive));
+        }
+
+        .navi-header-more-menu-item--danger:hover {
+          background: hsl(var(--destructive) / 0.12);
+          box-shadow: none;
         }
 
         .navi-header-more-menu-item__meta {
@@ -2877,6 +2845,19 @@ export function CodeCompanionShell() {
           border-radius: 24px;
           cursor: pointer;
           transition: all 0.2s ease;
+        }
+
+        .navi-user-status {
+          cursor: default;
+        }
+
+        .navi-user-status:hover {
+          background: hsl(var(--secondary) / 0.3);
+          border-color: hsl(var(--border) / 0.5);
+        }
+
+        .navi-user-status:hover .navi-avatar-glow {
+          opacity: 0;
         }
 
         .navi-user-avatar-btn:hover {

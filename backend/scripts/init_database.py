@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import make_url
 from backend.core.db import Base
-from backend.core.config import settings
+from backend.core.settings import settings
 
 # Import all model modules to register them with Base.metadata
 # This is CRITICAL - if a model isn't imported, its table won't be created

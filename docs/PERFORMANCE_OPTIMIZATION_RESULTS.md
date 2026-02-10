@@ -13,8 +13,7 @@
 |----------|--------|-------|-------------|
 | **/health/live** | 414ms | **21ms** | **95% faster** ✅ |
 | **/health/ready** | 717ms | **26ms** | **96% faster** ✅ |
-| **/health-fast** (new) | N/A | **24ms** | **New ultra-fast endpoint** ✅ |
-| **/ping** (new) | N/A | **25ms** | **New minimal endpoint** ✅ |
+| **/health-fast** (new) | N/A | **24ms** | **New pre-middleware ultra-fast endpoint** ✅ |
 
 ### NAVI Requests - **Optimized** ✅
 

@@ -16,6 +16,7 @@ Pipeline stages:
 8. Verify with tests (if code was modified) (NEW)
 """
 
+import asyncio
 import logging
 import time
 import json
@@ -1794,7 +1795,6 @@ async def run_agent_loop(
             if workspace_root and isinstance(workspace_root, str):
                 try:
                     from backend.services.workspace_rag import search_codebase
-                    import asyncio
 
                     rag_results = await asyncio.wait_for(
                         search_codebase(
@@ -1869,7 +1869,6 @@ async def run_agent_loop(
                 try:
                     logger.info("[AGENT] Retrieving RAG context from workspace...")
                     from backend.services.workspace_rag import search_codebase
-                    import asyncio
 
                     # Use Phase 1 background indexing (non-blocking)
                     # First request returns empty, triggers indexing

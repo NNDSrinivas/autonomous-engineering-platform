@@ -7551,6 +7551,9 @@ async def navi_autonomous_task(
                     pass
 
         # Use request-scoped database session from dependency injection
+        # Initialize response collection before try block to ensure it's always defined
+        assistant_response_parts = []
+
         try:
             agent = AutonomousAgent(
                 workspace_path=workspace_path,
@@ -7561,9 +7564,6 @@ async def navi_autonomous_task(
                 user_id=user_id,
                 org_id=org_id,
             )
-
-            # Collect assistant response for persistence
-            assistant_response_parts = []
 
             async for event in heartbeat_wrapper(
                 agent.execute_task(

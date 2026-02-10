@@ -267,6 +267,9 @@ class OpenAIAdapter(BaseLLMAdapter):
             headers=headers,
             json=payload,
         ) as response:
+            if response.status_code >= 400:
+                error_body = await response.aread()
+                logger.error(f"OpenAI API error: {response.status_code} - {error_body.decode()}")
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if line.startswith("data: "):

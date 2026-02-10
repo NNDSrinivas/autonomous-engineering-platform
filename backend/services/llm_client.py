@@ -269,7 +269,11 @@ class OpenAIAdapter(BaseLLMAdapter):
         ) as response:
             if response.status_code >= 400:
                 error_body = await response.aread()
-                logger.error(f"OpenAI API error: {response.status_code} - {error_body.decode()}")
+                error_text = error_body.decode(errors="replace")
+                max_log_length = 4096
+                if len(error_text) > max_log_length:
+                    error_text = error_text[:max_log_length] + "...[truncated]"
+                logger.error(f"OpenAI API error: {response.status_code} - {error_text}")
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if line.startswith("data: "):

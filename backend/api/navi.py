@@ -7409,6 +7409,10 @@ async def navi_autonomous_task(
                         },
                     )
                     memory_service.db.commit()
+        except HTTPException:
+            # Propagate HTTP errors (e.g., ownership/authorization failures)
+            conv_uuid = None
+            raise
         except Exception as conv_err:
             logger.warning(f"[NAVI Autonomous] Failed to load conversation: {conv_err}")
     else:

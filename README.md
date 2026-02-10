@@ -72,7 +72,7 @@ npm install
 # Copy environment configuration
 cp .env.template .env
 # Edit .env with your configuration
-\`\`\`
+```
 
 ### Run Services
 
@@ -84,7 +84,7 @@ python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8787
 
 # Start frontend
 cd frontend && npm run dev          # Web UI (port 3000)
-\`\`\`
+```
 
 #### Development Mode (With Auto-Reload)
 ```bash

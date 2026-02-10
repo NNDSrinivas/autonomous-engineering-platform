@@ -1,5 +1,4 @@
 import { buildHeaders, resolveBackendBase } from '../api/navi/client';
-import { USER_ID } from '../api/client';
 
 export type ChatSessionTag = {
   label: string;
@@ -1054,11 +1053,12 @@ export const saveMessageToBackend = async (
 /**
  * Load all conversations from the backend database
  * Note: user_id is derived from authenticated user via auth headers, not from USER_ID constant
+ * Limit matches MAX_SESSIONS to avoid fetching conversations that will be trimmed from local cache
  */
 export const loadConversationsFromBackend = async (): Promise<ChatSessionSummary[]> => {
   try {
     const response = await fetch(
-      `${getBackendApiBase()}/api/navi-memory/conversations?limit=100`,
+      `${getBackendApiBase()}/api/navi-memory/conversations?limit=${MAX_SESSIONS}`,
       {
         method: 'GET',
         headers: buildHeaders(),

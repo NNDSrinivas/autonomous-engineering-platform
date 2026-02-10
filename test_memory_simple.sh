@@ -48,13 +48,18 @@ echo ""
 echo "DATABASE VERIFICATION:"
 echo "=" | head -c 80 && echo
 python3 -c "
+import sys
 from backend.database.session import get_db
 from sqlalchemy import text
 
+conv_id = sys.argv[1]
 db = next(get_db())
 
-# Check conversation
-result = db.execute(text(\"SELECT id, title FROM navi_conversations WHERE id = '$CONV_ID'\"))
+# Check conversation using bind parameters (prevents SQL injection)
+result = db.execute(
+    text('SELECT id, title FROM navi_conversations WHERE id = :conv_id'),
+    {'conv_id': conv_id}
+)
 conv = result.first()
 if conv:
     print(f'✅ Conversation found: {conv[0]}')
@@ -62,8 +67,11 @@ if conv:
 else:
     print('❌ Conversation NOT found in database')
 
-# Check messages
-result = db.execute(text(\"SELECT COUNT(*) FROM navi_messages WHERE conversation_id = '$CONV_ID'\"))
+# Check messages using bind parameters
+result = db.execute(
+    text('SELECT COUNT(*) FROM navi_messages WHERE conversation_id = :conv_id'),
+    {'conv_id': conv_id}
+)
 count = result.scalar()
 print(f'📝 Messages in conversation: {count}')
 
@@ -71,7 +79,7 @@ if count >= 2:
     print('✅ Memory persistence WORKING!')
 else:
     print('❌ Memory persistence FAILED - expected at least 2 messages')
-"
+" "$CONV_ID"
 
 echo ""
 echo "🎊 Memory test complete!"

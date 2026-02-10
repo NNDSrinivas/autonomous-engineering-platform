@@ -253,13 +253,24 @@ class OpenAIAdapter(BaseLLMAdapter):
         for m in messages:
             msgs.append({"role": m.role, "content": m.content})
 
-        payload = {
-            "model": self.config.model,
-            "messages": msgs,
-            "temperature": self.config.temperature,
-            "max_tokens": self.config.max_tokens,
-            "stream": True,
-        }
+        # Use max_completion_tokens for newer OpenAI models (GPT-4o, GPT-5.x, o1/o3/o4)
+        model_name = self.config.model.lower()
+        if any(x in model_name for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]):
+            payload = {
+                "model": self.config.model,
+                "messages": msgs,
+                "temperature": self.config.temperature,
+                "max_completion_tokens": self.config.max_tokens,
+                "stream": True,
+            }
+        else:
+            payload = {
+                "model": self.config.model,
+                "messages": msgs,
+                "temperature": self.config.temperature,
+                "max_tokens": self.config.max_tokens,
+                "stream": True,
+            }
 
         async with self.client.stream(
             "POST",

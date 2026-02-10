@@ -7336,10 +7336,13 @@ async def navi_autonomous_task(
     def _stable_user_id_hash(user_id: str) -> int:
         """Generate stable integer hash from user_id string for database storage.
 
-        Uses MD5 for deterministic hashing (not for security, just for stable conversion).
+        Uses SHA-256 for deterministic hashing (not for security, just for stable conversion).
+        Uses 64 bits (16 hex chars) to significantly reduce collision risk compared to 32 bits.
         This ensures the same user_id always maps to the same integer across restarts.
         """
-        return int(hashlib.md5(str(user_id).encode()).hexdigest()[:8], 16) % (10**9)
+        digest = hashlib.sha256(str(user_id).encode("utf-8")).hexdigest()
+        # Use first 16 hex characters (64 bits) for much lower collision probability
+        return int(digest[:16], 16)
 
     memory_service = ConversationMemoryService(db)
     conv_uuid = None
@@ -7565,16 +7568,16 @@ async def navi_autonomous_task(
         # =========================================================================
         if conv_uuid:
             try:
-                # Save user message
+                # Save user message with embedding for semantic search (Level 4 memory)
                 await memory_service.add_message(
                     conversation_id=conv_uuid,
                     role="user",
                     content=request.message,
                     metadata={"workspace": workspace_path},
-                    generate_embedding=False,  # Skip embedding for speed
+                    generate_embedding=True,  # Required for cross-conversation semantic search
                 )
 
-                # Save assistant response
+                # Save assistant response with embedding for semantic search (Level 4 memory)
                 assistant_response = (
                     "\n".join(assistant_response_parts)
                     if assistant_response_parts
@@ -7585,7 +7588,7 @@ async def navi_autonomous_task(
                     role="assistant",
                     content=assistant_response,
                     metadata={"provider": provider, "model": model},
-                    generate_embedding=False,  # Skip embedding for speed
+                    generate_embedding=True,  # Required for cross-conversation semantic search
                 )
 
                 logger.info(

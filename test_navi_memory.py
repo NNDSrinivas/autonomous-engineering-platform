@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Test script for NAVI memory persistence.
+Manual test script for NAVI memory persistence (not a pytest test).
+
+This is an interactive script that calls a live backend at 127.0.0.1:8787.
+DO NOT run via pytest - execute directly: ./test_navi_memory.py
 
 Tests all 4 levels of memory:
 1. Short-term memory (100 messages in session)
@@ -11,10 +14,14 @@ Tests all 4 levels of memory:
 
 import asyncio
 import json
+import os
 import uuid
 from typing import Dict, Any
 
 import httpx
+
+# Prevent pytest from collecting this as a test
+pytest_plugins = []
 
 
 BASE_URL = "http://127.0.0.1:8787"
@@ -37,7 +44,7 @@ async def send_message(
         "message": message,
         "conversation_id": conversation_id,
         "conversation_history": conversation_history or [],
-        "workspace_path": "/Users/mounikakapa/dev/autonomous-engineering-platform",
+        "workspace_path": os.getenv("WORKSPACE_PATH", os.getcwd()),
         "run_verification": False,  # Skip verification for faster testing
         "model": "gpt-4o-mini",
     }
@@ -82,6 +89,7 @@ async def send_message(
                             print(f"\n✅ Complete: {summary}")
 
                     except json.JSONDecodeError:
+                        # Ignore non-JSON lines in SSE stream (e.g., connection heartbeats)
                         pass
 
     print(f"\n📈 Total events received: {event_count}")
@@ -160,8 +168,7 @@ async def main():
 
     # Check if Test 3 referenced the first conversation
     test3_mentions_hello = (
-        "hello" in result3["response"].lower()
-        or "print" in result3["response"].lower()
+        "hello" in result3["response"].lower() or "print" in result3["response"].lower()
     )
 
     # Check if Test 4 summarized the conversation

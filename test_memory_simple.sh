@@ -3,7 +3,8 @@
 
 set -e
 
-CONV_ID="test-conv-$(date +%s)"
+# Generate proper UUID for conversation ID (backend expects UUID format)
+CONV_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
 echo "🧪 Testing NAVI Memory System"
 echo "📝 Conversation ID: $CONV_ID"
 echo "=" | head -c 80 && echo

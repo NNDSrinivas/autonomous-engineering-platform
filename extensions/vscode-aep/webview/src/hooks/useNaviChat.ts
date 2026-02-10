@@ -330,7 +330,9 @@ export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviCh
                 onDelta(`\n🔧 ${parsed.tool || 'Tool'}: ${parsed.description || parsed.input || ''}\n`);
               } else if (parsed.type === 'tool_result') {
                 // Tool results (show summary, not full output)
-                const summary = parsed.summary || (parsed.output ? parsed.output.substring(0, 100) + '...' : '');
+                const output = parsed.output;
+                const outputPreview = output && typeof output === 'string' ? output.substring(0, 100) + '...' : '';
+                const summary = parsed.summary || outputPreview;
                 if (summary) onDelta(`✓ ${summary}\n`);
               } else if (parsed.type === 'verification') {
                 // Test results

@@ -59,10 +59,7 @@ fi
 echo ""
 echo "🚨 Checking for common anti-patterns in changed files..."
 
-if [ "$HAS_PYTHON_CHANGES" = false ]; then
-    echo -e "${GREEN}✓ No Python files changed${NC}"
-else
-    # Check for bare except in changed files only
+# Check for bare except in changed files only
     BARE_EXCEPT_COUNT=0
     for file in $CHANGED_FILES; do
         if [ -f "$file" ]; then
@@ -90,9 +87,8 @@ else
         fi
     done
     
-    if [ $LIST_CHECK_COUNT -eq 0 ]; then
-        echo -e "${GREEN}✓ No list membership checks in changed API files${NC}"
-    fi
+if [ $LIST_CHECK_COUNT -eq 0 ]; then
+    echo -e "${GREEN}✓ No list membership checks in changed API files${NC}"
 fi
 
 # 4. Run fast tests and database health check (only if Python files changed)

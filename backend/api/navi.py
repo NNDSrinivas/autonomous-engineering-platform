@@ -7332,7 +7332,16 @@ async def navi_autonomous_task(
     # MEMORY PERSISTENCE: Load conversation history from database
     # =========================================================================
     from uuid import UUID
+    import hashlib
     from backend.services.memory.conversation_memory import ConversationMemoryService
+
+    def _stable_user_id_hash(user_id: str) -> int:
+        """Generate stable integer hash from user_id string for database storage.
+
+        Uses MD5 for deterministic hashing (not for security, just for stable conversion).
+        This ensures the same user_id always maps to the same integer across restarts.
+        """
+        return int(hashlib.md5(str(user_id).encode()).hexdigest()[:8], 16) % (10**9)
 
     memory_service = ConversationMemoryService(db)
     conv_uuid = None
@@ -7359,7 +7368,7 @@ async def navi_autonomous_task(
             else:
                 # Conversation ID provided but doesn't exist - create it
                 logger.info(f"[NAVI Autonomous] Creating conversation {conv_uuid}")
-                user_id_int = abs(hash(str(user_id))) % (10**9)
+                user_id_int = _stable_user_id_hash(user_id)
                 from sqlalchemy import text
 
                 memory_service.db.execute(
@@ -7373,9 +7382,7 @@ async def navi_autonomous_task(
                     {
                         "id": str(conv_uuid),
                         "user_id": user_id_int,
-                        "org_id": abs(hash(str(org_id))) % (10**9)
-                        if org_id
-                        else None,
+                        "org_id": _stable_user_id_hash(org_id) if org_id else None,
                         "workspace_path": workspace_path,
                     },
                 )
@@ -7386,10 +7393,10 @@ async def navi_autonomous_task(
         # No conversation ID - create a new conversation
         try:
             logger.info("[NAVI Autonomous] Creating new conversation")
-            user_id_int = abs(hash(str(user_id))) % (10**9)
+            user_id_int = _stable_user_id_hash(user_id)
             conversation = memory_service.create_conversation(
                 user_id=user_id_int,
-                org_id=abs(hash(str(org_id))) % (10**9) if org_id else None,
+                org_id=_stable_user_id_hash(org_id) if org_id else None,
                 workspace_path=workspace_path,
                 title=request.message[:50]
                 + ("..." if len(request.message) > 50 else ""),
@@ -7419,8 +7426,8 @@ async def navi_autonomous_task(
         from backend.services.memory.semantic_search import get_semantic_search_service
 
         search_service = get_semantic_search_service(db)
-        user_id_int = abs(hash(str(user_id))) % (10**9)
-        org_id_int = abs(hash(str(org_id))) % (10**9) if org_id else None
+        user_id_int = _stable_user_id_hash(user_id)
+        org_id_int = _stable_user_id_hash(org_id) if org_id else None
 
         # Search for relevant context from past conversations
         context_data = await search_service.get_context_for_query(
@@ -7544,8 +7551,11 @@ async def navi_autonomous_task(
                 )
             ):
                 # Collect text events for final response
-                if event.get("type") == "text" and event.get("content"):
-                    assistant_response_parts.append(event["content"])
+                # AutonomousAgent emits text under "text" field, keep "content" as fallback
+                if event.get("type") == "text":
+                    text_chunk = event.get("text") or event.get("content")
+                    if text_chunk:
+                        assistant_response_parts.append(text_chunk)
                 yield f"data: {json.dumps(event)}\n\n"
 
         except Exception as e:

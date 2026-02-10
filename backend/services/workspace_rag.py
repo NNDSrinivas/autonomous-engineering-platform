@@ -1130,8 +1130,11 @@ async def _background_index_workspace(workspace_path: str) -> None:
             f"in {elapsed:.2f}s - future requests will use this index"
         )
     except Exception as e:
-        logger.error(f"[RAG] Background indexing failed for {workspace_path}: {e}")
-        raise  # Re-raise to trigger finally cleanup in wrapper
+        # Log error but don't re-raise (fire-and-forget task)
+        # The wrapper's finally block will clean up _indexing_in_progress
+        logger.error(
+            f"[RAG] Background indexing failed for {workspace_path}: {e}", exc_info=True
+        )
 
 
 async def get_context_for_task(

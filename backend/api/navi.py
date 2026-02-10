@@ -7359,6 +7359,17 @@ async def navi_autonomous_task(
             existing_conv = memory_service.get_conversation(conv_uuid)
 
             if existing_conv:
+                # SECURITY: Verify conversation ownership before loading
+                user_id_int = _get_user_id_int(user_id)
+                if user_id_int is None or existing_conv.user_id != user_id_int:
+                    logger.warning(
+                        f"[NAVI Autonomous] SECURITY: User {user_id} attempted to access conversation {conv_uuid} owned by user {existing_conv.user_id}"
+                    )
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Access denied: You don't have permission to access this conversation"
+                    )
+
                 # Load conversation history from database
                 logger.info(
                     f"[NAVI Autonomous] Loading conversation {conv_uuid} from database"

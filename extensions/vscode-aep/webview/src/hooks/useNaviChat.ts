@@ -38,10 +38,7 @@ export const llmProviders: LLMProvider[] = [
     id: 'openai',
     name: 'OpenAI',
     models: [
-      { id: 'openai/gpt-5', name: 'GPT-5', description: 'Most capable OpenAI model' },
-      { id: 'openai/gpt-5-mini', name: 'GPT-5 Mini', description: 'Fast & efficient' },
-      { id: 'openai/gpt-5-nano', name: 'GPT-5 Nano', description: 'Ultra-fast for simple tasks' },
-      { id: 'openai/gpt-4o', name: 'GPT-4o', description: 'Optimized multimodal model' },
+      { id: 'openai/gpt-4o', name: 'GPT-4o', description: 'Most capable OpenAI model' },
       { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable' },
       { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Fast GPT-4' },
       { id: 'openai/o3-mini', name: 'o3-mini', description: 'Reasoning model' },

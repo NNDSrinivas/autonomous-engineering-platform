@@ -3,7 +3,7 @@
 Manual test script for NAVI memory persistence (not a pytest test).
 
 This is an interactive script that calls a live backend at 127.0.0.1:8787.
-DO NOT run via pytest - execute directly: ./test_navi_memory.py
+DO NOT run via pytest - execute directly: ./scripts/manual_navi_memory_test.py
 
 Tests all 4 levels of memory:
 1. Short-term memory (100 messages in session)

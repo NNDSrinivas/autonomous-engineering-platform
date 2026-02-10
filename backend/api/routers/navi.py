@@ -338,7 +338,15 @@ async def process_navi_request_stream(request: NaviRequest):
             logger.error(f"❌ Streaming NAVI failed: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ==================== NAVI V2: APPROVAL FLOW ENDPOINTS ====================
@@ -600,7 +608,15 @@ async def approve_plan_stream(plan_id: str, approve_request: ApproveRequest):
             yield f"data: {json.dumps(update)}\n\n"
         await _evict_plan(plan_id)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/apply", response_model=ApplyActionsResponse)

@@ -60,62 +60,57 @@ echo ""
 echo "🚨 Checking for common anti-patterns in changed files..."
 
 # Check for bare except in changed files only
-    BARE_EXCEPT_COUNT=0
-    for file in $CHANGED_FILES; do
-        if [ -f "$file" ]; then
-            if grep -n "except.*:$" "$file" | grep -v "except.*Error" | grep -v "#" > /dev/null; then
-                echo -e "${YELLOW}⚠ $file has bare except clauses${NC}"
-                BARE_EXCEPT_COUNT=$((BARE_EXCEPT_COUNT + 1))
-            fi
+BARE_EXCEPT_COUNT=0
+for file in $CHANGED_FILES; do
+    if [ -f "$file" ]; then
+        if grep -n "except.*:$" "$file" | grep -v "except.*Error" | grep -v "#" > /dev/null; then
+            echo -e "${YELLOW}⚠ $file has bare except clauses${NC}"
+            BARE_EXCEPT_COUNT=$((BARE_EXCEPT_COUNT + 1))
         fi
-    done
-    
-    if [ $BARE_EXCEPT_COUNT -eq 0 ]; then
-        echo -e "${GREEN}✓ No bare except clauses in changed files${NC}"
-    else
-        FAILED=1
     fi
+done
 
-    # Check for list membership in hot paths
-    LIST_CHECK_COUNT=0
-    for file in $CHANGED_FILES; do
-        if [[ "$file" == *"backend/api/"* ]] && [ -f "$file" ]; then
-            if grep -n "if .* in \[" "$file" > /dev/null; then
-                echo -e "${YELLOW}⚠ $file: Consider using sets instead of lists for membership checks${NC}"
-                LIST_CHECK_COUNT=$((LIST_CHECK_COUNT + 1))
-            fi
+if [ $BARE_EXCEPT_COUNT -eq 0 ]; then
+    echo -e "${GREEN}✓ No bare except clauses in changed files${NC}"
+else
+    FAILED=1
+fi
+
+# Check for list membership in hot paths
+LIST_CHECK_COUNT=0
+for file in $CHANGED_FILES; do
+    if [[ "$file" == *"backend/api/"* ]] && [ -f "$file" ]; then
+        if grep -n "if .* in \[" "$file" > /dev/null; then
+            echo -e "${YELLOW}⚠ $file: Consider using sets instead of lists for membership checks${NC}"
+            LIST_CHECK_COUNT=$((LIST_CHECK_COUNT + 1))
         fi
-    done
-    
+    fi
+done
+
 if [ $LIST_CHECK_COUNT -eq 0 ]; then
     echo -e "${GREEN}✓ No list membership checks in changed API files${NC}"
 fi
 
-# 4. Run fast tests and database health check (only if Python files changed)
-if [ "$HAS_PYTHON_CHANGES" = true ]; then
-    echo ""
-    echo "🧪 Running fast tests and database health check..."
+# 4. Run fast tests and database health check
+echo ""
+echo "🧪 Running fast tests and database health check..."
 
-    # Fast unit tests
-    if pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null; then
-        echo -e "${GREEN}✓ Fast tests passed${NC}"
-    else
-        echo -e "${YELLOW}⚠ Fast tests failed or dependencies missing (non-blocking)${NC}"
-    fi
-
-    # Database health check (non-blocking)
-    echo ""
-    echo "🗄️ Checking database health..."
-    # Set non-blocking mode for development pre-push hooks
-    export CI_NON_BLOCKING_DB_CHECKS=true
-    if python3 scripts/db_health_check.py 2>/dev/null; then
-        echo -e "${GREEN}✓ Database health check passed${NC}"
-    else
-        echo -e "${YELLOW}⚠ Database health check failed (non-blocking for development)${NC}"
-    fi
+# Fast unit tests
+if pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null; then
+    echo -e "${GREEN}✓ Fast tests passed${NC}"
 else
-    echo ""
-    echo -e "${BLUE}ℹ️  Skipping tests and DB checks (no Python changes)${NC}"
+    echo -e "${YELLOW}⚠ Fast tests failed or dependencies missing (non-blocking)${NC}"
+fi
+
+# Database health check (non-blocking)
+echo ""
+echo "🗄️ Checking database health..."
+# Set non-blocking mode for development pre-push hooks
+export CI_NON_BLOCKING_DB_CHECKS=true
+if python3 scripts/db_health_check.py 2>/dev/null; then
+    echo -e "${GREEN}✓ Database health check passed${NC}"
+else
+    echo -e "${YELLOW}⚠ Database health check failed (non-blocking for development)${NC}"
 fi
 
 # Summary

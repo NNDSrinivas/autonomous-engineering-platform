@@ -7586,39 +7586,47 @@ async def navi_autonomous_task(
         # =========================================================================
         # MEMORY PERSISTENCE: Save conversation to database
         # =========================================================================
+        # Run persistence in background to avoid delaying the final SSE event
+        # Embedding generation can be slow and would keep the connection open
         if conv_uuid:
-            try:
-                # Save user message with embedding for semantic search (Level 4 memory)
-                await memory_service.add_message(
-                    conversation_id=conv_uuid,
-                    role="user",
-                    content=request.message,
-                    metadata={"workspace": workspace_path},
-                    generate_embedding=True,  # Required for cross-conversation semantic search
-                )
 
-                # Save assistant response with embedding for semantic search (Level 4 memory)
-                assistant_response = (
-                    "\n".join(assistant_response_parts)
-                    if assistant_response_parts
-                    else "Task completed"
-                )
-                await memory_service.add_message(
-                    conversation_id=conv_uuid,
-                    role="assistant",
-                    content=assistant_response,
-                    metadata={"provider": provider, "model": model},
-                    generate_embedding=True,  # Required for cross-conversation semantic search
-                )
+            async def persist_conversation() -> None:
+                """Background task to persist conversation with embeddings."""
+                try:
+                    # Save user message with embedding for semantic search (Level 4 memory)
+                    await memory_service.add_message(
+                        conversation_id=conv_uuid,
+                        role="user",
+                        content=request.message,
+                        metadata={"workspace": workspace_path},
+                        generate_embedding=True,  # Required for cross-conversation semantic search
+                    )
 
-                logger.info(
-                    f"[NAVI Autonomous] Persisted conversation {conv_uuid} with {len(assistant_response)} char response"
-                )
-            except Exception as mem_error:
-                # Don't fail the stream if memory persistence fails
-                logger.warning(
-                    f"[NAVI Autonomous] Failed to persist conversation: {mem_error}"
-                )
+                    # Save assistant response with embedding for semantic search (Level 4 memory)
+                    assistant_response = (
+                        "\n".join(assistant_response_parts)
+                        if assistant_response_parts
+                        else "Task completed"
+                    )
+                    await memory_service.add_message(
+                        conversation_id=conv_uuid,
+                        role="assistant",
+                        content=assistant_response,
+                        metadata={"provider": provider, "model": model},
+                        generate_embedding=True,  # Required for cross-conversation semantic search
+                    )
+
+                    logger.info(
+                        f"[NAVI Autonomous] Persisted conversation {conv_uuid} with {len(assistant_response)} char response"
+                    )
+                except Exception as mem_error:
+                    # Don't fail the stream if memory persistence fails
+                    logger.warning(
+                        f"[NAVI Autonomous] Failed to persist conversation: {mem_error}"
+                    )
+
+            # Schedule background persistence
+            asyncio.create_task(persist_conversation())
 
         yield "data: [DONE]\n\n"
 

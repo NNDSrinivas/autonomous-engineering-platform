@@ -92,7 +92,7 @@ cd frontend && npm run dev          # Web UI (port 3000)
 # Only use if you need automatic code reloading
 source aep-venv/bin/activate
 python -m uvicorn backend.api.main:app --reload --host 127.0.0.1 --port 8787
-\`\`\`
+```
 
 #### Production Mode
 ```bash
@@ -102,7 +102,7 @@ python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8787 --workers 4
 
 # Frontend production build
 cd frontend && npm run build && npm run preview
-\`\`\`
+```
 
 ### Verify Installation
 ```bash
@@ -112,7 +112,7 @@ curl http://localhost:8787/health
 
 # Check frontend
 open http://localhost:3000
-\`\`\`
+```
 
 ---
 

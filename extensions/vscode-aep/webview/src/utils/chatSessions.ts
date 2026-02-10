@@ -993,6 +993,7 @@ const getValidUserId = (): number | null => {
 
 /**
  * Create a conversation in the backend database
+ * Note: user_id is derived from authenticated user, not sent in request
  */
 export const createBackendConversation = async (
   session: ChatSessionSummary
@@ -1002,7 +1003,7 @@ export const createBackendConversation = async (
 
   try {
     const response = await fetch(
-      `${getBackendApiBase()}/api/navi-memory/conversations?user_id=${userId}`,
+      `${getBackendApiBase()}/api/navi-memory/conversations`,
       {
         method: 'POST',
         headers: {
@@ -1070,6 +1071,7 @@ export const saveMessageToBackend = async (
 
 /**
  * Load all conversations from the backend database
+ * Note: user_id is derived from authenticated user, not sent in request
  */
 export const loadConversationsFromBackend = async (): Promise<ChatSessionSummary[]> => {
   const userId = getValidUserId();
@@ -1077,7 +1079,7 @@ export const loadConversationsFromBackend = async (): Promise<ChatSessionSummary
 
   try {
     const response = await fetch(
-      `${getBackendApiBase()}/api/navi-memory/conversations?user_id=${userId}&limit=100`,
+      `${getBackendApiBase()}/api/navi-memory/conversations?limit=100`,
       {
         method: 'GET',
         headers: buildHeaders(),
@@ -1186,24 +1188,34 @@ export const syncSessionMetadataToBackend = async (
 
 /**
  * Enhanced createSession that creates backend conversation
+ * Fixed: Uses backend conversation ID as primary session ID to avoid mismatch
  */
 export const createSessionWithBackend = async (
   seed: Partial<ChatSessionSummary> = {}
 ): Promise<ChatSessionSummary> => {
-  // Create session locally first
-  const session = createSession(seed);
+  // Create temporary session locally first to get initial data
+  const tempSession = createSession(seed);
 
   // Create backend conversation asynchronously
-  const backendId = await createBackendConversation(session);
+  const backendId = await createBackendConversation(tempSession);
 
   if (backendId) {
-    // Update session with backend conversation ID
-    const updated = updateSession(session.id, { backendConversationId: backendId });
+    // Delete temporary session
+    deleteSession(tempSession.id);
+
+    // Create new session using backend ID as the primary ID
+    // This ensures session ID matches backend conversation ID
+    const finalSession = createSession({
+      ...seed,
+      id: backendId, // Use backend UUID as session ID
+      backendConversationId: backendId,
+    });
+
     console.log(`[Chat Persistence] ✅ Created backend conversation: ${backendId}`);
-    return updated || session;
+    return finalSession;
   } else {
     console.warn('[Chat Persistence] ⚠️ Failed to create backend conversation, using localStorage only');
-    return session;
+    return tempSession;
   }
 };
 

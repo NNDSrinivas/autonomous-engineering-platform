@@ -33,6 +33,24 @@ router = APIRouter(prefix="/api/navi-memory", tags=["navi-memory"])
 
 
 # =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _get_user_id_from_auth(user: User) -> int:
+    """Extract user_id from authenticated user object.
+
+    Prevents IDOR by ensuring user_id comes from authentication, not client request.
+    """
+    return getattr(user, "user_id", None) or getattr(user, "id", None)
+
+
+def _get_org_id_from_auth(user: User) -> Optional[int]:
+    """Extract org_id from authenticated user object."""
+    return getattr(user, "org_id", None) or getattr(user, "org_key", None)
+
+
+# =============================================================================
 # Request/Response Models
 # =============================================================================
 
@@ -172,10 +190,11 @@ class SearchResultResponse(BaseModel):
 
 @router.get("/preferences")
 async def get_preferences(
-    user_id: int = Query(..., description="User ID"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> UserPreferencesResponse:
-    """Get user preferences."""
+    """Get user preferences for the authenticated user."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_user_memory_service(db)
     prefs = service.get_or_create_preferences(user_id)
 
@@ -193,11 +212,12 @@ async def get_preferences(
 
 @router.put("/preferences")
 async def update_preferences(
-    user_id: int,
     update: UserPreferencesUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> UserPreferencesResponse:
-    """Update user preferences."""
+    """Update user preferences for the authenticated user."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_user_memory_service(db)
 
     # Filter out None values
@@ -218,12 +238,13 @@ async def update_preferences(
 
 @router.get("/activity")
 async def get_activity(
-    user_id: int,
     activity_type: Optional[str] = None,
     limit: int = Query(default=50, le=200),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[Dict[str, Any]]:
-    """Get user activity history."""
+    """Get user activity history for the authenticated user."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_user_memory_service(db)
     activities = service.get_recent_activities(
         user_id=user_id,
@@ -247,11 +268,12 @@ async def get_activity(
 
 @router.post("/feedback")
 async def submit_feedback(
-    user_id: int,
     feedback: FeedbackRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Submit feedback on a NAVI response."""
+    """Submit feedback on a NAVI response for the authenticated user."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_user_memory_service(db)
 
     result = service.record_feedback(
@@ -274,10 +296,11 @@ async def submit_feedback(
 
 @router.get("/user-context")
 async def get_user_context(
-    user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get comprehensive user context for NAVI responses."""
+    """Get comprehensive user context for NAVI responses for the authenticated user."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_user_memory_service(db)
     return service.build_user_context(user_id)
 
@@ -289,13 +312,19 @@ async def get_user_context(
 
 @router.get("/org/knowledge")
 async def get_org_knowledge(
-    org_id: int,
     knowledge_type: Optional[str] = None,
     tags: Optional[str] = None,
     limit: int = Query(default=50, le=200),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[KnowledgeResponse]:
-    """Get organization knowledge base entries."""
+    """Get organization knowledge base entries for the authenticated user's organization."""
+    org_id = _get_org_id_from_auth(current_user)
+    if not org_id:
+        raise HTTPException(
+            status_code=403, detail="No organization associated with user"
+        )
+
     service = get_org_memory_service(db)
 
     tag_list = tags.split(",") if tags else None
@@ -322,12 +351,18 @@ async def get_org_knowledge(
 
 @router.post("/org/knowledge")
 async def add_org_knowledge(
-    org_id: int,
     knowledge: KnowledgeCreate,
-    created_by: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> KnowledgeResponse:
-    """Add knowledge to organization knowledge base."""
+    """Add knowledge to organization knowledge base for the authenticated user's organization."""
+    org_id = _get_org_id_from_auth(current_user)
+    if not org_id:
+        raise HTTPException(
+            status_code=403, detail="No organization associated with user"
+        )
+
+    user_id = _get_user_id_from_auth(current_user)
     service = get_org_memory_service(db)
 
     entry = await service.add_knowledge(
@@ -338,7 +373,7 @@ async def add_org_knowledge(
         source=knowledge.source,
         tags=knowledge.tags,
         confidence=knowledge.confidence,
-        created_by=created_by,
+        created_by=user_id,
     )
 
     return KnowledgeResponse(
@@ -354,12 +389,18 @@ async def add_org_knowledge(
 
 @router.get("/org/standards")
 async def get_org_standards(
-    org_id: int,
     standard_type: Optional[str] = None,
     enforced_only: bool = False,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[Dict[str, Any]]:
-    """Get organization coding standards."""
+    """Get organization coding standards for the authenticated user's organization."""
+    org_id = _get_org_id_from_auth(current_user)
+    if not org_id:
+        raise HTTPException(
+            status_code=403, detail="No organization associated with user"
+        )
+
     service = get_org_memory_service(db)
 
     standards = service.get_standards(
@@ -386,11 +427,17 @@ async def get_org_standards(
 
 @router.post("/org/standards")
 async def add_org_standard(
-    org_id: int,
     standard: StandardCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Add a coding standard to the organization."""
+    """Add a coding standard to the organization for the authenticated user's organization."""
+    org_id = _get_org_id_from_auth(current_user)
+    if not org_id:
+        raise HTTPException(
+            status_code=403, detail="No organization associated with user"
+        )
+
     service = get_org_memory_service(db)
 
     result = service.add_standard(
@@ -415,12 +462,18 @@ async def add_org_standard(
 
 @router.get("/org/context")
 async def get_org_context(
-    org_id: int,
     project: Optional[str] = None,
     team: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get comprehensive organization context for NAVI responses."""
+    """Get comprehensive organization context for NAVI responses for the authenticated user's organization."""
+    org_id = _get_org_id_from_auth(current_user)
+    if not org_id:
+        raise HTTPException(
+            status_code=403, detail="No organization associated with user"
+        )
+
     service = get_org_memory_service(db)
     return service.build_org_context(org_id, project=project, team=team)
 
@@ -432,13 +485,14 @@ async def get_org_context(
 
 @router.get("/conversations")
 async def list_conversations(
-    user_id: int,
     status: Optional[str] = None,
     limit: int = Query(default=50, le=200),
     offset: int = 0,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[Dict[str, Any]]:
-    """List user's conversations."""
+    """List authenticated user's conversations."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_conversation_memory_service(db)
 
     conversations = service.get_user_conversations(
@@ -465,12 +519,13 @@ async def list_conversations(
 
 @router.post("/conversations")
 async def create_conversation(
-    user_id: int,
-    org_id: Optional[int] = None,
     conversation: ConversationCreate = ConversationCreate(),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Create a new conversation."""
+    """Create a new conversation for the authenticated user."""
+    user_id = _get_user_id_from_auth(current_user)
+    org_id = _get_org_id_from_auth(current_user)
     service = get_conversation_memory_service(db)
 
     result = service.create_conversation(
@@ -496,14 +551,22 @@ async def get_conversation(
     conversation_id: UUID,
     include_messages: bool = True,
     message_limit: int = Query(default=50, le=200),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get a conversation with optional messages."""
+    """Get a conversation with optional messages. Verifies ownership."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_conversation_memory_service(db)
 
     conversation = service.get_conversation(conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Verify ownership
+    if str(conversation.user_id) != str(user_id):
+        raise HTTPException(
+            status_code=403, detail="Not authorized to access this conversation"
+        )
 
     result = {
         "id": str(conversation.id),
@@ -599,15 +662,23 @@ async def update_conversation(
 async def add_message(
     conversation_id: UUID,
     message: MessageCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Add a message to a conversation."""
+    """Add a message to a conversation. Verifies ownership."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_conversation_memory_service(db)
 
     # Verify conversation exists
     conversation = service.get_conversation(conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Verify ownership
+    if str(conversation.user_id) != str(user_id):
+        raise HTTPException(
+            status_code=403, detail="Not authorized to modify this conversation"
+        )
 
     result = await service.add_message(
         conversation_id=conversation_id,
@@ -628,14 +699,26 @@ async def add_message(
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation(
     conversation_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, str]:
-    """Delete (soft) a conversation."""
+    """Delete (soft) a conversation. Verifies ownership."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_conversation_memory_service(db)
+
+    # Verify conversation exists and ownership
+    conversation = service.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if str(conversation.user_id) != str(user_id):
+        raise HTTPException(
+            status_code=403, detail="Not authorized to delete this conversation"
+        )
 
     success = service.delete_conversation(conversation_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=500, detail="Delete failed")
 
     return {"message": "Conversation deleted successfully"}
 
@@ -647,12 +730,13 @@ async def delete_conversation(
 
 @router.post("/codebase/index")
 async def create_codebase_index(
-    user_id: int,
     index_data: CodebaseIndexCreate,
-    org_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Create a new codebase index."""
+    """Create a new codebase index for the authenticated user."""
+    user_id = _get_user_id_from_auth(current_user)
+    org_id = _get_org_id_from_auth(current_user)
     service = get_codebase_memory_service(db)
 
     result = service.create_index(
@@ -675,14 +759,22 @@ async def create_codebase_index(
 @router.get("/codebase/status")
 async def get_codebase_status(
     index_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get codebase index status."""
+    """Get codebase index status. Verifies ownership."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_codebase_memory_service(db)
 
     index = service.get_index(index_id)
     if not index:
         raise HTTPException(status_code=404, detail="Codebase index not found")
+
+    # Verify ownership
+    if str(index.user_id) != str(user_id):
+        raise HTTPException(
+            status_code=403, detail="Not authorized to access this codebase index"
+        )
 
     return {
         "id": str(index.id),
@@ -705,10 +797,22 @@ async def search_codebase(
     query: str,
     symbol_type: Optional[str] = None,
     limit: int = Query(default=20, le=100),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[Dict[str, Any]]:
-    """Search code symbols in a codebase."""
+    """Search code symbols in a codebase. Verifies ownership."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_codebase_memory_service(db)
+
+    # Verify ownership of the codebase
+    index = service.get_index(codebase_id)
+    if not index:
+        raise HTTPException(status_code=404, detail="Codebase not found")
+
+    if str(index.user_id) != str(user_id):
+        raise HTTPException(
+            status_code=403, detail="Not authorized to search this codebase"
+        )
 
     results = await service.search_symbols(
         codebase_id=codebase_id,
@@ -723,14 +827,26 @@ async def search_codebase(
 @router.delete("/codebase/{index_id}")
 async def delete_codebase_index(
     index_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, str]:
-    """Delete a codebase index."""
+    """Delete a codebase index. Verifies ownership."""
+    user_id = _get_user_id_from_auth(current_user)
     service = get_codebase_memory_service(db)
+
+    # Verify ownership
+    index = service.get_index(index_id)
+    if not index:
+        raise HTTPException(status_code=404, detail="Codebase index not found")
+
+    if str(index.user_id) != str(user_id):
+        raise HTTPException(
+            status_code=403, detail="Not authorized to delete this codebase index"
+        )
 
     success = service.delete_index(index_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Codebase index not found")
+        raise HTTPException(status_code=500, detail="Delete failed")
 
     return {"message": "Codebase index deleted successfully"}
 
@@ -742,12 +858,13 @@ async def delete_codebase_index(
 
 @router.post("/search")
 async def semantic_search(
-    user_id: int,
     search: SearchRequest,
-    org_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[SearchResultResponse]:
-    """Semantic search across all memory types."""
+    """Semantic search across all memory types for the authenticated user."""
+    user_id = _get_user_id_from_auth(current_user)
+    org_id = _get_org_id_from_auth(current_user)
     service = get_semantic_search_service(db)
 
     # Parse scope
@@ -782,13 +899,14 @@ async def semantic_search(
 @router.get("/context")
 async def get_query_context(
     query: str,
-    user_id: int,
-    org_id: Optional[int] = None,
     codebase_id: Optional[UUID] = None,
     max_items: int = Query(default=10, le=50),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get relevant context for a user query."""
+    """Get relevant context for a user query for the authenticated user."""
+    user_id = _get_user_id_from_auth(current_user)
+    org_id = _get_org_id_from_auth(current_user)
     service = get_semantic_search_service(db)
 
     context = await service.get_context_for_query(

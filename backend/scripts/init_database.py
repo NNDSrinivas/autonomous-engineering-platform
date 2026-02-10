@@ -69,9 +69,9 @@ except Exception as e:
 
 # Event store models (audit)
 try:
-    import backend.core.eventstore.models  # noqa: F401
+    import backend.core.eventstore.models
 
-    print("   ✓ backend.core.eventstore.models")
+    print(f"   ✓ {backend.core.eventstore.models.__name__}")
 except Exception as e:
     print(f"   ⚠️  backend.core.eventstore.models: {e}")
 

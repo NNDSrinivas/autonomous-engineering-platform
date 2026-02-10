@@ -1221,18 +1221,8 @@ export function CodeCompanionShell() {
                 <Clock className="h-4 w-4 navi-history-icon" />
               </button>
 
-              {/* Settings Button */}
-              <button
-                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-settings-btn"
-                title="Settings"
-                onClick={() => setExternalPanelRequest('account')}
-              >
-                <span className="navi-icon-glow" />
-                <Settings className="h-4 w-4 navi-settings-icon" />
-              </button>
-
               {/* More Menu - Notifications, Theme, Activity, Help */}
-              <div className="relative">
+              <div className="navi-header-more-anchor">
                 <button
                   className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-more-btn"
                   title="More"
@@ -1258,11 +1248,14 @@ export function CodeCompanionShell() {
                     <div id="navi-more-menu" role="menu" className="navi-header-more-dropdown">
                       <button
                         className="navi-header-more-menu-item"
-                        onClick={() => setHeaderMoreOpen(false)}
+                        onClick={() => {
+                          setFullPanelTab('mcp');
+                          setFullPanelOpen(true);
+                          setHeaderMoreOpen(false);
+                        }}
                       >
-                        <Bell className="h-4 w-4" />
-                        <span>Notifications</span>
-                        <span className="navi-header-more-menu-item__meta">3</span>
+                        <Layers className="h-4 w-4" />
+                        <span>Open Command Center</span>
                       </button>
                       <div className="navi-header-more-divider" />
                       <button
@@ -1278,6 +1271,25 @@ export function CodeCompanionShell() {
                           <Moon className="h-4 w-4" />
                         )}
                         <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+                      </button>
+                      <button
+                        className="navi-header-more-menu-item"
+                        onClick={() => {
+                          if (isAuthenticated) {
+                            setFullPanelTab('account');
+                            setFullPanelOpen(true);
+                          } else {
+                            handleSignIn();
+                          }
+                          setHeaderMoreOpen(false);
+                        }}
+                      >
+                        {isAuthenticated ? (
+                          <User className="h-4 w-4" />
+                        ) : (
+                          <LogIn className="h-4 w-4" />
+                        )}
+                        <span>{isAuthenticated ? 'Account' : 'Sign in'}</span>
                       </button>
                       <button
                         className="navi-header-more-menu-item"
@@ -2600,12 +2612,17 @@ export function CodeCompanionShell() {
           display: flex;
           align-items: center;
           gap: 4px;
+          position: relative;
+        }
+
+        .navi-header-more-anchor {
+          position: static;
         }
 
         .navi-header-more-dropdown {
           position: absolute;
           right: 0;
-          top: calc(100% + 8px);
+          top: calc(100% + 4px);
           width: 220px;
           min-width: 220px;
           max-width: 220px;
@@ -2613,8 +2630,8 @@ export function CodeCompanionShell() {
           border: 1px solid hsl(var(--border));
           border-radius: 12px;
           box-shadow: 0 10px 40px hsl(0 0% 0% / 0.3);
-          padding: 6px;
-          max-height: 320px;
+          padding: 4px;
+          max-height: 260px;
           overflow: hidden;
           z-index: 60;
           box-sizing: border-box;
@@ -2628,23 +2645,25 @@ export function CodeCompanionShell() {
           align-items: center;
           gap: 10px;
           width: 100%;
-          min-height: 34px;
-          padding: 8px 10px;
+          min-height: 30px;
+          padding: 6px 8px;
           border: none;
           border-radius: 8px;
           background: transparent;
           color: hsl(var(--foreground));
-          font-size: 12px;
+          font-size: 11.5px;
           cursor: pointer;
           text-align: left;
-          transition: background 0.15s ease, color 0.15s ease;
+          transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
           white-space: nowrap;
           writing-mode: horizontal-tb;
           text-orientation: mixed;
         }
 
         .navi-header-more-menu-item:hover {
-          background: hsl(var(--secondary) / 0.6);
+          background: hsl(var(--secondary) / 0.55);
+          transform: translateY(-1px);
+          box-shadow: 0 6px 12px hsl(var(--primary) / 0.12);
         }
 
         .navi-header-more-menu-item svg {
@@ -2669,7 +2688,7 @@ export function CodeCompanionShell() {
         .navi-header-more-divider {
           height: 1px;
           background: hsl(var(--border));
-          margin: 4px 2px;
+          margin: 3px 2px;
         }
 
         /* ===== NEW CHAT BUTTON ===== */
@@ -2794,7 +2813,7 @@ export function CodeCompanionShell() {
         /* ===== SIDEBAR TOGGLE BUTTON ===== */
         .navi-sidebar-toggle-btn {
           position: relative;
-          display: flex;
+          display: none;
           align-items: center;
           gap: 6px;
           padding: 4px 10px;

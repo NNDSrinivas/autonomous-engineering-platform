@@ -7591,34 +7591,44 @@ async def navi_autonomous_task(
         if conv_uuid:
 
             async def persist_conversation() -> None:
-                """Background task to persist conversation with embeddings."""
+                """Background task to persist conversation with embeddings.
+
+                Creates its own database session to avoid using the request-scoped
+                session which may be closed when this background task runs.
+                """
+                from backend.database.session import db_session
+
                 try:
-                    # Save user message with embedding for semantic search (Level 4 memory)
-                    await memory_service.add_message(
-                        conversation_id=conv_uuid,
-                        role="user",
-                        content=request.message,
-                        metadata={"workspace": workspace_path},
-                        generate_embedding=True,  # Required for cross-conversation semantic search
-                    )
+                    # Create fresh database session for background task
+                    with db_session() as bg_db:
+                        bg_memory_service = ConversationMemoryService(bg_db)
 
-                    # Save assistant response with embedding for semantic search (Level 4 memory)
-                    assistant_response = (
-                        "\n".join(assistant_response_parts)
-                        if assistant_response_parts
-                        else "Task completed"
-                    )
-                    await memory_service.add_message(
-                        conversation_id=conv_uuid,
-                        role="assistant",
-                        content=assistant_response,
-                        metadata={"provider": provider, "model": model},
-                        generate_embedding=True,  # Required for cross-conversation semantic search
-                    )
+                        # Save user message with embedding for semantic search (Level 4 memory)
+                        await bg_memory_service.add_message(
+                            conversation_id=conv_uuid,
+                            role="user",
+                            content=request.message,
+                            metadata={"workspace": workspace_path},
+                            generate_embedding=True,  # Required for cross-conversation semantic search
+                        )
 
-                    logger.info(
-                        f"[NAVI Autonomous] Persisted conversation {conv_uuid} with {len(assistant_response)} char response"
-                    )
+                        # Save assistant response with embedding for semantic search (Level 4 memory)
+                        assistant_response = (
+                            "\n".join(assistant_response_parts)
+                            if assistant_response_parts
+                            else "Task completed"
+                        )
+                        await bg_memory_service.add_message(
+                            conversation_id=conv_uuid,
+                            role="assistant",
+                            content=assistant_response,
+                            metadata={"provider": provider, "model": model},
+                            generate_embedding=True,  # Required for cross-conversation semantic search
+                        )
+
+                        logger.info(
+                            f"[NAVI Autonomous] Persisted conversation {conv_uuid} with {len(assistant_response)} char response"
+                        )
                 except Exception as mem_error:
                     # Don't fail the stream if memory persistence fails
                     logger.warning(

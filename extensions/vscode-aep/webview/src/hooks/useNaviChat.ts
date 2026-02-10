@@ -404,7 +404,7 @@ export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviCh
       console.error('[NAVI] Stream error:', error);
       onError(error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [messages, selectedModel, selectedTask, chatMode]);
+  }, [messages, selectedModel, selectedTask, chatMode, workspaceRoot]);
 
   const sendMessage = useCallback(async (input: string, overrideModel?: string) => {
     if (!input.trim() || isLoading) return;

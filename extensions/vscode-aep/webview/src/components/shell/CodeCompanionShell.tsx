@@ -1255,7 +1255,7 @@ export function CodeCompanionShell() {
                       className="fixed inset-0 z-40"
                       onClick={() => setHeaderMoreOpen(false)}
                     />
-                    <div id="navi-more-menu" role="menu" className="navi-header-more-dropdown">
+                    <div id="navi-more-menu" role="menu" className="navi-user-dropdown navi-header-more-dropdown">
                       <button
                         className="navi-dropdown-menu-item"
                         onClick={() => setHeaderMoreOpen(false)}
@@ -2897,6 +2897,12 @@ export function CodeCompanionShell() {
           overflow: hidden;
           z-index: 50;
           animation: dropdownSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .navi-user-dropdown.navi-header-more-dropdown {
+          width: 220px;
+          padding: 6px 0;
+          max-height: 320px;
         }
 
         @keyframes dropdownSlide {

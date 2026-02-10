@@ -63,11 +63,12 @@ fi
 echo ""
 echo "🚨 Checking for common anti-patterns in changed files..."
 
-# Check for bare except in changed files only
+# Check for bare except in changed files only (match only "except:" not "except Exception:")
 BARE_EXCEPT_COUNT=0
 for file in "${CHANGED_FILES[@]}"; do
     if [ -f "$file" ]; then
-        if grep -n "except.*:$" "$file" | grep -v "except.*Error" | grep -v "#" > /dev/null; then
+        # Match "except:" with optional whitespace, but not "except SomeException:"
+        if grep -n "except[[:space:]]*:[[:space:]]*\(#\|$\)" "$file" > /dev/null; then
             echo -e "${YELLOW}⚠ $file has bare except clauses${NC}"
             BARE_EXCEPT_COUNT=$((BARE_EXCEPT_COUNT + 1))
         fi

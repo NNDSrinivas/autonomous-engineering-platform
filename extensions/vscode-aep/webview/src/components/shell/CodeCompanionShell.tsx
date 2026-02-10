@@ -1255,18 +1255,18 @@ export function CodeCompanionShell() {
                       className="fixed inset-0 z-40"
                       onClick={() => setHeaderMoreOpen(false)}
                     />
-                    <div id="navi-more-menu" role="menu" className="navi-user-dropdown navi-header-more-dropdown">
+                    <div id="navi-more-menu" role="menu" className="navi-header-more-dropdown">
                       <button
-                        className="navi-dropdown-menu-item"
+                        className="navi-header-more-menu-item"
                         onClick={() => setHeaderMoreOpen(false)}
                       >
                         <Bell className="h-4 w-4" />
                         <span>Notifications</span>
-                        <span className="navi-dropdown-menu-item__meta">3</span>
+                        <span className="navi-header-more-menu-item__meta">3</span>
                       </button>
-                      <div className="navi-dropdown-divider" />
+                      <div className="navi-header-more-divider" />
                       <button
-                        className="navi-dropdown-menu-item"
+                        className="navi-header-more-menu-item"
                         onClick={() => {
                           toggleTheme();
                           setHeaderMoreOpen(false);
@@ -1280,7 +1280,7 @@ export function CodeCompanionShell() {
                         <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
                       </button>
                       <button
-                        className="navi-dropdown-menu-item"
+                        className="navi-header-more-menu-item"
                         onClick={() => {
                           setActivityPanelOpen((prev) => !prev);
                           setHeaderMoreOpen(false);
@@ -1290,7 +1290,7 @@ export function CodeCompanionShell() {
                         <span>{activityPanelOpen ? "Hide Activity" : "Show Activity"}</span>
                       </button>
                       <button
-                        className="navi-dropdown-menu-item"
+                        className="navi-header-more-menu-item"
                         onClick={() => {
                           setHeaderMoreOpen(false);
                           postMessage({ type: "help.open" });
@@ -2611,9 +2611,57 @@ export function CodeCompanionShell() {
           border: 1px solid hsl(var(--border));
           border-radius: 12px;
           box-shadow: 0 10px 40px hsl(0 0% 0% / 0.3);
+          padding: 6px;
+          max-height: 320px;
           overflow: hidden;
-          z-index: 50;
+          z-index: 60;
           animation: dropdownSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .navi-header-more-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          min-height: 34px;
+          padding: 8px 10px;
+          border: none;
+          border-radius: 8px;
+          background: transparent;
+          color: hsl(var(--foreground));
+          font-size: 12px;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .navi-header-more-menu-item:hover {
+          background: hsl(var(--secondary) / 0.6);
+        }
+
+        .navi-header-more-menu-item svg {
+          color: hsl(var(--muted-foreground));
+        }
+
+        .navi-header-more-menu-item__meta {
+          margin-left: auto;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 6px;
+          border-radius: 999px;
+          background: hsl(var(--destructive));
+          color: white;
+          font-size: 10px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .navi-header-more-divider {
+          height: 1px;
+          background: hsl(var(--border));
+          margin: 4px 2px;
         }
 
         /* ===== NEW CHAT BUTTON ===== */

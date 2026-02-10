@@ -2,6 +2,7 @@
 # Simple test script for NAVI memory using curl
 
 set -e
+set -o pipefail  # Ensure pipeline failures are caught
 
 # Generate proper UUID for conversation ID (backend expects UUID format)
 CONV_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')

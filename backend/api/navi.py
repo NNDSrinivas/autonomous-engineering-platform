@@ -7330,7 +7330,6 @@ async def navi_autonomous_task(
     # MEMORY PERSISTENCE: Load conversation history from database
     # =========================================================================
     from uuid import UUID
-    import hashlib
     from backend.services.memory.conversation_memory import ConversationMemoryService
 
     def _get_user_id_int(user_id: str) -> int | None:

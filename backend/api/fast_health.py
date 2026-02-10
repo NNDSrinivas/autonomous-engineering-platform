@@ -11,12 +11,6 @@ from fastapi.responses import JSONResponse
 router = APIRouter(tags=["health-fast"])
 
 
-@router.get("/ping")
-def ping() -> Response:
-    """Ultra-fast ping endpoint (no middleware, no DB checks)."""
-    return JSONResponse({"status": "ok"}, status_code=200)
-
-
 @router.get("/health-fast")
 def health_fast() -> Response:
     """Fast health check (no middleware, no external dependencies)."""

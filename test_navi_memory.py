@@ -22,6 +22,7 @@ import httpx
 
 # Prevent pytest from collecting this as a test
 pytest_plugins = []
+__test__ = False  # Explicitly mark as non-test file for pytest
 
 
 BASE_URL = "http://127.0.0.1:8787"

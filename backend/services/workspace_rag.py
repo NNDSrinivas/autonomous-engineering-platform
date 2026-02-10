@@ -14,6 +14,7 @@ This enables NAVI to understand the ENTIRE codebase, not just individual files.
 import os
 import re
 import hashlib
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
@@ -1120,11 +1121,11 @@ async def _background_index_workspace(workspace_path: str) -> None:
     """
     try:
         logger.info(f"[RAG] Starting background indexing for {workspace_path}")
-        start_time = __import__("time").time()
+        start_time = time.time()
 
         await index_workspace(workspace_path, force_reindex=False)
 
-        elapsed = __import__("time").time() - start_time
+        elapsed = time.time() - start_time
         logger.info(
             f"[RAG] Background indexing completed for {workspace_path} "
             f"in {elapsed:.2f}s - future requests will use this index"

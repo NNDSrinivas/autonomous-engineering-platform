@@ -205,7 +205,7 @@ async def main():
     print(f"   Main conversation: {CONVERSATION_ID}")
     print(f"   New conversation: {new_conversation_id}")
     print(
-        f"\n💡 You can verify in database with: SELECT * FROM conversations WHERE id = '{CONVERSATION_ID}'"
+        f"\n💡 You can verify in database with: SELECT * FROM navi_conversations WHERE id = '{CONVERSATION_ID}'"
     )
 
 

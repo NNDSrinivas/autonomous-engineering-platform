@@ -27,7 +27,7 @@ pytest_plugins = []
 BASE_URL = "http://127.0.0.1:8787"
 CONVERSATION_ID = str(uuid.uuid4())
 
-print(f"🧪 Testing NAVI Memory System")
+print("🧪 Testing NAVI Memory System")
 print(f"📝 Conversation ID: {CONVERSATION_ID}")
 print("=" * 80)
 
@@ -200,7 +200,7 @@ async def main():
     print("=" * 80)
 
     # Print conversation IDs for manual verification
-    print(f"\n📋 Conversation IDs for manual verification:")
+    print("\n📋 Conversation IDs for manual verification:")
     print(f"   Main conversation: {CONVERSATION_ID}")
     print(f"   New conversation: {new_conversation_id}")
     print(

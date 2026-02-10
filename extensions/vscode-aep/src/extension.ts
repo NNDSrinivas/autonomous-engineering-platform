@@ -8167,7 +8167,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // Collect actions during streaming (declared outside try for access in catch)
       let streamedActions: any[] = [];
       const toolCommandMap = new Map<string, { command: string; cwd?: string }>();
-      const toolFileMap = new Map<string, { path: string; actionType: 'editFile' | 'createFile'; summary?: string }>();
+      const toolFileMap = new Map<string, { path: string; actionType: 'editFile' | 'createFile'; summary?: string; content?: string }>();
 
       try {
         // AUTO-RECOVERY: Include last action error if recent (within 5 minutes)
@@ -8461,6 +8461,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
                   if (tc.name === 'write_file' || tc.name === 'edit_file') {
                     const relPath = String(tc.arguments?.path || '');
+                    const content = typeof tc.arguments?.content === 'string' ? tc.arguments.content : undefined;
                     if (relPath && workspaceRoot) {
                       const absPath = path.join(workspaceRoot, relPath);
                       const exists = fs.existsSync(absPath);
@@ -8473,7 +8474,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                         tc.arguments?.reason ||
                         tc.arguments?.changes ||
                         '';
-                      toolFileMap.set(String(tc.id), { path: relPath, actionType, summary });
+                      toolFileMap.set(String(tc.id), { path: relPath, actionType, summary, content });
                       this.postToWebview({
                         type: 'action.start',
                         action: {
@@ -8585,6 +8586,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                         filePath: fileAction.path,
                         diff: diffInfo.diff,
                         diffUnified: diffInfo.diff,
+                        content: fileAction.content,
                       },
                       success,
                       data: {
@@ -8593,6 +8595,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                           deletions: diffInfo.deletions,
                         },
                         diffUnified: diffInfo.diff,
+                        content: fileAction.content,
                       },
                     });
                     toolFileMap.delete(String(tr.id));

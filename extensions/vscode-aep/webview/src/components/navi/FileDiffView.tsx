@@ -80,9 +80,20 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
     onFileClick?.(diff.path);
   };
 
-  const headerLabel = operation === 'create' ? 'Created file' :
+  const headerLabel = operation === 'create' ? 'New file' :
                      operation === 'delete' ? 'Deleted file' :
                      'Edited file';
+  const fileName = getFileName(diff.path);
+  const collapsedLabel = operation === 'create'
+    ? `Created ${fileName}`
+    : operation === 'delete'
+      ? `Deleted ${fileName}`
+      : `Edited ${fileName}`;
+  const collapsedPrefix = operation === 'create'
+    ? 'Created'
+    : operation === 'delete'
+      ? 'Deleted'
+      : 'Edited';
 
   return (
     <div className="fdv-container">
@@ -92,15 +103,29 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           <span className="fdv-chevron">
             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </span>
-          <span className="fdv-label">{headerLabel}</span>
-          {operation === 'create' && diff.additions > 0 && (
-            <span className="fdv-badge fdv-badge--create">+{diff.additions} -{diff.deletions}</span>
+          {isExpanded ? (
+            <span className="fdv-label">{headerLabel}</span>
+          ) : (
+            <span className="fdv-label">
+              {collapsedPrefix}{' '}
+              <button
+                className="fdv-file-link"
+                onClick={handleFileNameClick}
+                title={`Open ${fileName}`}
+                type="button"
+              >
+                {fileName}
+              </button>
+            </span>
           )}
-          {operation === 'edit' && (diff.additions > 0 || diff.deletions > 0) && (
-            <span className="fdv-badge fdv-badge--edit">+{diff.additions} -{diff.deletions}</span>
+          {!isExpanded && operation === 'create' && diff.additions > 0 && (
+            <span className="fdv-badge fdv-badge--create fdv-badge--collapsed">+{diff.additions} -{diff.deletions}</span>
           )}
-          {operation === 'delete' && diff.deletions > 0 && (
-            <span className="fdv-badge fdv-badge--delete">-{diff.deletions}</span>
+          {!isExpanded && operation === 'edit' && (diff.additions > 0 || diff.deletions > 0) && (
+            <span className="fdv-badge fdv-badge--edit fdv-badge--collapsed">+{diff.additions} -{diff.deletions}</span>
+          )}
+          {!isExpanded && operation === 'delete' && diff.deletions > 0 && (
+            <span className="fdv-badge fdv-badge--delete fdv-badge--collapsed">-{diff.deletions}</span>
           )}
         </div>
         <button className="fdv-copy-btn" onClick={handleCopy} title="Copy changes">
@@ -109,23 +134,30 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
       </div>
 
       {/* File info bar */}
-      <div
-        className="fdv-file-bar"
-        onClick={handleFileNameClick}
-        role="button"
-        tabIndex={0}
-      >
-        <FileCode size={14} className="fdv-file-icon" />
-        <span className="fdv-filename">{getFileName(diff.path)}</span>
-        <span className="fdv-stats">
-          {diff.additions > 0 && <span className="fdv-stat fdv-stat--add">+{diff.additions}</span>}
-          {diff.deletions > 0 && <span className="fdv-stat fdv-stat--del">-{diff.deletions}</span>}
-        </span>
-      </div>
+      {isExpanded && (
+        <div
+          className="fdv-file-bar"
+          onClick={handleFileNameClick}
+          role="button"
+          tabIndex={0}
+        >
+          <FileCode size={14} className="fdv-file-icon" />
+          <span className="fdv-filename">{fileName}</span>
+          <span className="fdv-stats">
+            {diff.additions > 0 && <span className="fdv-stat fdv-stat--add">+{diff.additions}</span>}
+            {diff.deletions > 0 && <span className="fdv-stat fdv-stat--del">-{diff.deletions}</span>}
+          </span>
+        </div>
+      )}
 
       {/* Diff content */}
       {isExpanded && (
         <div className={`fdv-content fdv-lang-${getLanguageClass(diff.path)}`}>
+          {diff.lines.length === 0 && (
+            <div className="fdv-empty">
+              {operation === 'create' ? 'New file (no diff)' : 'No diff available'}
+            </div>
+          )}
           {diff.lines.map((line, idx) => (
             <div
               key={idx}
@@ -193,6 +225,20 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           letter-spacing: -0.01em;
         }
 
+        .fdv-file-link {
+          background: none;
+          border: none;
+          padding: 0;
+          margin: 0;
+          color: #60a5fa;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .fdv-file-link:hover {
+          text-decoration: underline;
+        }
+
         .fdv-badge {
           margin-left: 8px;
           padding: 2px 8px;
@@ -201,6 +247,11 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           font-weight: 600;
           font-family: "SF Mono", "Fira Code", Consolas, monospace;
           letter-spacing: -0.02em;
+        }
+
+        .fdv-badge--collapsed {
+          font-size: 10px;
+          padding: 2px 6px;
         }
 
         .fdv-badge--create {
@@ -365,6 +416,12 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
         .fdv-line-content code {
           font-family: inherit;
           color: #e2e8f0;
+        }
+
+        .fdv-empty {
+          padding: 16px;
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.6);
         }
 
         .fdv-line--addition .fdv-line-content code {

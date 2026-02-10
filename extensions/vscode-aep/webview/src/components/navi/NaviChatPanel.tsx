@@ -538,6 +538,7 @@ type ActivityEvent = {
   additions?: number; // Lines added for edit/create operations
   deletions?: number; // Lines removed for edit operations
   diff?: string; // Unified diff content for edit operations
+  content?: string; // File content (used for new-file diff fallback)
   _sequence?: number; // PHASE 5: Internal sequence number for guaranteed ordering
   // Command context fields (Bug 5 fix)
   purpose?: string; // Why this command/action is being run
@@ -4195,6 +4196,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
         if (success) {
           const diffStats = data?.diffStats || {};
           const diffUnified = data?.diffUnified || action.diff || action.diffUnified;
+          const actionContent = (action as any).content ?? data?.content;
           const computedStats = countUnifiedDiffStats(diffUnified);
           const isCreateOperation =
             action.type === "createFile" ||
@@ -4274,6 +4276,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                       additions,
                       deletions,
                       diff: diffUnified,
+                      content: actionContent ?? event.content,
                       timestamp: nowIso(),
                     }
                     : event
@@ -4296,6 +4299,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                         additions,
                         deletions,
                         diff: diffUnified,
+                        content: actionContent ?? evt.content,
                         timestamp: nowIso(),
                       }
                       : evt
@@ -4322,6 +4326,7 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                 additions,
                 deletions,
                 diff: diffUnified,
+                content: actionContent,
                 timestamp: nowIso(),
               };
               pushActivityEvent(newActivity);
@@ -9440,7 +9445,10 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                       const additions = (evt as any).additions;
                       const deletions = (evt as any).deletions;
                       const hasStats = additions !== undefined || deletions !== undefined;
-                      const hasDiff = Boolean((evt as any).diff);
+                      const diffContent = (evt as any).diff;
+                      const contentFallback = (evt as any).content;
+                      const hasDiff = Boolean(diffContent);
+                      const hasContentFallback = typeof contentFallback === "string" && contentFallback.length > 0;
 
                       const handleFileClick = (e?: React.MouseEvent) => {
                         e?.stopPropagation();
@@ -9450,12 +9458,23 @@ export default function NaviChatPanel({ activityPanelState, onOpenActivityForCom
                       };
 
                       // For edit activities with diff data, render the FileDiffView
-                      if ((evt.kind === 'edit' || evt.kind === 'create') && hasDiff && evt.status === 'done' && filePath) {
-                        const diffLines = parseUnifiedDiff((evt as any).diff);
+                      if ((evt.kind === 'edit' || evt.kind === 'create') && evt.status === 'done' && filePath) {
+                        let diffLines: DiffLine[] = [];
+                        if (hasDiff) {
+                          diffLines = parseUnifiedDiff(diffContent);
+                        } else if (evt.kind === 'create' && hasContentFallback) {
+                          const lines = contentFallback.split('\n');
+                          diffLines = lines.map((line: string, idx: number) => ({
+                            type: 'addition',
+                            content: line,
+                            oldLineNumber: undefined,
+                            newLineNumber: idx + 1,
+                          }));
+                        }
                         const diffData: FileDiff = {
                           path: filePath,
-                          additions: additions || 0,
-                          deletions: deletions || 0,
+                          additions: typeof additions === "number" ? additions : diffLines.filter(l => l.type === 'addition').length,
+                          deletions: typeof deletions === "number" ? deletions : diffLines.filter(l => l.type === 'deletion').length,
                           lines: diffLines,
                         };
                         return (

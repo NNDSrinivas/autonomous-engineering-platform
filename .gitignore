@@ -28,6 +28,8 @@ aep-venv/
 
 # Environment Variables
 .env
+.env.production
+backend/.env.production
 .env.*
 !.env.example
 

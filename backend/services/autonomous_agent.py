@@ -4556,6 +4556,28 @@ Return ONLY the JSON, no markdown or explanations."""
                         "message"
                     ] += f" | Server responding at {response.get('server_url')}"
 
+                # Post-process visual outputs (animations, videos)
+                if response.get("success"):
+                    try:
+                        from backend.services.visual_output_handler import VisualOutputHandler
+
+                        visual_handler = VisualOutputHandler(self.workspace_path)
+                        visual_result = await visual_handler.process_visual_output(
+                            output=stdout_text + "\n" + stderr_text,
+                            created_files=context.files_created + context.files_modified
+                        )
+
+                        if visual_result and visual_result.get("compiled"):
+                            # Add visual output info to result
+                            response["visual_output"] = visual_result
+                            # Enhance the message with visual output info
+                            response["message"] += f"\n\n{visual_result['message']}"
+                            logger.info(
+                                f"[AutonomousAgent] ✅ Processed visual output: {visual_result.get('output_file')}"
+                            )
+                    except Exception as visual_err:
+                        logger.warning(f"Visual output processing failed (non-critical): {visual_err}")
+
                 return response
 
             elif tool_name == "search_files":

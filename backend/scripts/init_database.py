@@ -67,6 +67,13 @@ try:
 except Exception as e:
     print(f"   ⚠️  backend.database.models.memory_graph: {e}")
 
+try:
+    import backend.database.models.consent  # noqa: F401
+
+    print("   ✓ backend.database.models.consent")
+except Exception as e:
+    print(f"   ⚠️  backend.database.models.consent: {e}")
+
 # Event store models (audit)
 try:
     import backend.core.eventstore.models

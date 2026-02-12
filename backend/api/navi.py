@@ -66,6 +66,13 @@ from backend.services.git_service import GitService
 # Conversation memory for cross-session persistence
 from backend.services.memory.conversation_memory import ConversationMemoryService
 
+# Consent service for command consent preferences and audit
+from backend.services.consent_service import get_consent_service
+
+# Redis for distributed consent state
+import redis.asyncio as redis
+from datetime import datetime
+
 # NOTE: ProjectAnalyzer is in backend/services/navi_brain.py
 # The /api/navi/chat endpoint in chat.py uses navi_brain.py's implementation
 
@@ -213,6 +220,28 @@ def _resolve_model(model: Optional[str]) -> str:
 
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
 agent_router = APIRouter(prefix="/api/agent", tags=["agent-classify"])
+
+# Redis client for distributed consent state
+_redis_client: Optional[redis.Redis] = None
+
+
+def get_redis_client() -> redis.Redis:
+    """Get or create Redis client for consent management."""
+    global _redis_client
+    if _redis_client is None:
+        from backend.core.config import settings as config_settings
+        _redis_client = redis.from_url(
+            config_settings.redis_url,
+            encoding="utf-8",
+            decode_responses=True
+        )
+    return _redis_client
+
+
+# Global prompt response storage
+# Key: prompt_id, Value: {"prompt_id": str, "response": Any, "cancelled": bool, "pending": bool}
+# TODO: Migrate to Redis/DB with TTL for production multi-worker deployments
+_prompt_responses: Dict[str, Dict[str, Any]] = {}
 
 
 class ProgressTracker:
@@ -1424,98 +1453,117 @@ async def handle_consent_response(
     user: User = Depends(require_role(Role.VIEWER)),
 ) -> Dict[str, Any]:
     """
-    Handle user consent approval/denial for dangerous commands.
+    Handle user consent decision for dangerous commands.
 
-    The frontend sends consent responses when the user approves or denies
-    a dangerous command execution (e.g., rm, kill, chmod).
+    The frontend sends consent decisions with one of 5 choices:
+    - allow_once: Execute this one time
+    - allow_always_exact: Auto-approve this exact command in future
+    - allow_always_type: Auto-approve all commands of this type
+    - deny: Don't execute, skip this command
+    - alternative: Execute alternative command instead
 
     Requires authentication to prevent unauthorized consent manipulation.
     """
     try:
-        # Import the global consent storage from autonomous_agent
-        from backend.services.autonomous_agent import _consent_approvals, _consent_lock
-
+        redis_client = get_redis_client()
         body = await request.json()
-        approved = body.get("approved", False)
-        command = body.get("command", "")
+        choice = body.get("choice", "deny")  # 'allow_once', 'allow_always_exact', 'allow_always_type', 'deny', 'alternative'
+        alternative_command = body.get("alternative_command")
 
         logger.info(
-            f"[NAVI API] 🔐 Consent {consent_id}: {'APPROVED' if approved else 'DENIED'} for command: {command}"
+            f"[NAVI API] 🔐 Consent {consent_id}: decision={choice}"
         )
 
-        # TODO: Move consent storage to DB/Redis for persistent multi-user support
-        # CRITICAL ISSUE: This async endpoint uses a synchronous threading.Lock which blocks
-        # the event loop under contention and doesn't work across multiple processes/replicas.
-        # SHORT-TERM FIX: Replace _consent_lock (threading.Lock) with asyncio.Lock and use
-        # 'async with _consent_lock:' instead of 'with _consent_lock:'.
-        # LONG-TERM FIX: Move consent state to Redis/DB for distributed, async-compatible storage.
-
-        # Derive org consistently using getattr to handle different User implementations
-        user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
-
-        # Update the consent approval in global storage (protected by lock for thread safety)
-        # WARNING: This synchronous lock blocks the event loop - see TODO above
-        with _consent_lock:
-            if consent_id not in _consent_approvals:
-                # Consent ID not found (might have expired or already processed)
-                # Do not create new consent record to prevent spoofing
-                logger.warning(
-                    f"[NAVI API] Consent {consent_id} not found in pending approvals"
-                )
-                raise HTTPException(
-                    status_code=404,
-                    detail={
-                        "success": False,
-                        "consent_id": consent_id,
-                        "error": "Consent not found or has expired",
-                    },
-                )
-
-            # Validate user/org ownership to prevent consent hijacking
-            consent_record = _consent_approvals[consent_id]
-            consent_user_id = consent_record.get("user_id")
-            consent_org_id = consent_record.get("org_id")
-
-            # Defensive attribute access for user identifier
-            current_user_id = getattr(user, "user_id", None) or getattr(
-                user, "id", None
+        # Validate consent exists in Redis
+        consent_data = await redis_client.get(f"consent:{consent_id}")
+        if not consent_data:
+            logger.warning(
+                f"[NAVI API] Consent {consent_id} not found in Redis (expired or already processed)"
             )
-            if consent_user_id and consent_user_id != current_user_id:
-                logger.warning(
-                    f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
-                )
-                raise HTTPException(
-                    status_code=403,
-                    detail={
-                        "success": False,
-                        "consent_id": consent_id,
-                        "error": "Unauthorized: You do not have permission to approve this consent",
-                    },
-                )
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "success": False,
+                    "consent_id": consent_id,
+                    "error": "Consent not found or has expired",
+                },
+            )
 
-            if consent_org_id and user_org_id and consent_org_id != user_org_id:
-                logger.warning(
-                    f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
-                )
-                raise HTTPException(
-                    status_code=403,
-                    detail={
-                        "success": False,
-                        "consent_id": consent_id,
-                        "error": "Unauthorized: This consent belongs to a different organization",
-                    },
-                )
+        consent_record = json.loads(consent_data)
 
-            # Update existing consent
-            _consent_approvals[consent_id]["approved"] = approved
-            _consent_approvals[consent_id]["pending"] = False
-            _consent_approvals[consent_id]["response_timestamp"] = time.time()
+        # Validate user/org ownership to prevent consent hijacking
+        consent_user_id = consent_record.get("user_id")
+        consent_org_id = consent_record.get("org_id")
+
+        # Derive current user/org IDs
+        current_user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
+        user_org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+
+        if consent_user_id and consent_user_id != current_user_id:
+            logger.warning(
+                f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "success": False,
+                    "consent_id": consent_id,
+                    "error": "Unauthorized: You do not have permission to approve this consent",
+                },
+            )
+
+        if consent_org_id and user_org_id and consent_org_id != user_org_id:
+            logger.warning(
+                f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "success": False,
+                    "consent_id": consent_id,
+                    "error": "Unauthorized: This consent belongs to a different organization",
+                },
+            )
+
+        # Update consent decision in Redis
+        decision = {
+            "choice": choice,
+            "alternative_command": alternative_command,
+            "pending": False,
+            "responded_at": datetime.now().isoformat()
+        }
+
+        await redis_client.setex(
+            f"consent:{consent_id}",
+            60,  # Keep for 1 minute for agent to read
+            json.dumps(decision)
+        )
+
+        logger.info(f"[NAVI API] ✅ Consent {consent_id} decision stored in Redis")
+
+        # Also update in-process consent approvals for AutonomousAgent pre-checks
+        try:
+            from backend.services import autonomous_agent as aa
+            approved = choice in ("allow_once", "allow_always_exact", "allow_always_type", "alternative")
+            with aa._consent_lock:
+                aa._consent_approvals[consent_id] = {
+                    "approved": approved,
+                    "pending": False,
+                    "choice": choice,
+                    "alternative_command": alternative_command,
+                    "updated_at": datetime.now().isoformat(),
+                    "user_id": consent_user_id,
+                    "org_id": consent_org_id,
+                }
+            logger.info(f"[NAVI API] ✅ Consent {consent_id} cached in-process (approved={approved})")
+        except Exception as e:
+            logger.warning(f"[NAVI API] Failed to cache consent {consent_id} in-process: {e}")
 
         return {
             "success": True,
             "consent_id": consent_id,
-            "approved": approved,
-            "message": f"Consent {'approved' if approved else 'denied'}",
+            "choice": choice,
+            "message": f"Consent decision '{choice}' recorded",
         }
 
     except HTTPException:
@@ -1526,6 +1574,187 @@ async def handle_consent_response(
         raise HTTPException(
             status_code=500,
             detail=f"Internal error handling consent: {str(e)}",
+        )
+
+
+@router.get("/consent-preferences")
+async def get_consent_preferences(
+    user: User = Depends(require_role(Role.VIEWER)),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Get user's always-allow consent preferences.
+
+    Returns list of all auto-approval rules configured by the user.
+    Used by settings UI to manage consent preferences.
+    """
+    try:
+        # Get user/org IDs
+        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
+        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+
+        # Get preferences from consent service
+        consent_service = get_consent_service(db)
+        preferences = consent_service.get_user_preferences(user_id, org_id)
+
+        return {
+            "success": True,
+            "preferences": preferences,
+            "count": len(preferences)
+        }
+
+    except Exception as e:
+        logger.error(f"[NAVI API] Error getting consent preferences: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error getting preferences: {str(e)}",
+        )
+
+
+@router.delete("/consent-preferences/{preference_id}")
+async def delete_consent_preference(
+    preference_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Delete a consent preference (remove an always-allow rule).
+
+    Requires user to own the preference for security.
+    """
+    try:
+        # Get user/org IDs
+        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
+        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+
+        # Delete preference (service checks ownership)
+        consent_service = get_consent_service(db)
+        deleted = consent_service.delete_preference(preference_id, user_id, org_id)
+
+        if not deleted:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "success": False,
+                    "error": "Preference not found or you don't have permission to delete it"
+                }
+            )
+
+        return {
+            "success": True,
+            "message": "Preference deleted successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[NAVI API] Error deleting consent preference: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error deleting preference: {str(e)}",
+        )
+
+
+@router.get("/consent-audit")
+async def get_consent_audit(
+    user: User = Depends(require_role(Role.VIEWER)),
+    db: Session = Depends(get_db),
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """
+    Get recent consent decisions for audit and review.
+
+    Returns user's consent history with timestamps and decisions.
+    Used by settings UI for audit trail visualization.
+    """
+    try:
+        # Get user/org IDs
+        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
+        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+
+        # Get audit log from consent service
+        consent_service = get_consent_service(db)
+        audit_log = consent_service.get_audit_log(user_id, org_id, limit=min(limit, 100))
+
+        return {
+            "success": True,
+            "audit_log": audit_log,
+            "count": len(audit_log)
+        }
+
+    except Exception as e:
+        logger.error(f"[NAVI API] Error getting consent audit log: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error getting audit log: {str(e)}",
+        )
+
+
+@router.post("/prompt/{prompt_id}")
+async def handle_prompt_response(
+    prompt_id: str,
+    request: Request,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """
+    Handle user's response to a prompt request.
+
+    The frontend sends prompt responses when the user provides input
+    during autonomous execution (e.g., choosing an option, entering text).
+
+    Requires authentication to prevent unauthorized prompt manipulation.
+    """
+    try:
+        body = await request.json()
+        response_value = body.get("response")
+        cancelled = body.get("cancelled", False)
+
+        logger.info(
+            f"[NAVI Prompt] Received response for prompt {prompt_id}: "
+            f"cancelled={cancelled}, response={'<provided>' if response_value is not None else '<none>'}"
+        )
+
+        # Validate response exists (unless cancelled)
+        if not cancelled and response_value is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Response value required unless cancelled",
+            )
+
+        # Derive user org consistently
+        user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+        current_user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+
+        # Store response
+        _prompt_responses[prompt_id] = {
+            "prompt_id": prompt_id,
+            "response": response_value,
+            "cancelled": cancelled,
+            "responded_at": time.time(),
+            "pending": False,
+            "user_id": current_user_id,
+            "org_id": user_org_id,
+        }
+
+        return {
+            "success": True,
+            "prompt_id": prompt_id,
+            "cancelled": cancelled,
+            "message": (
+                "Prompt response recorded" if not cancelled else "Prompt cancelled"
+            ),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[NAVI Prompt] Error handling prompt response {prompt_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process prompt response: {str(e)}",
         )
 
 
@@ -6581,27 +6810,38 @@ async def navi_chat_stream(
                         existing_conv = memory_service.get_conversation(conv_uuid)
                         if not existing_conv:
                             # Create new conversation with this ID
-                            # Note: This requires user_id as int, but we have string
-                            # For now, we'll use a hash of the user_id string
-                            user_id_int = abs(hash(user_id)) % (10**9)
-                            memory_service.db.execute(
-                                text(
+                            # Try to convert user_id to integer (database FK constraint requires numeric user IDs)
+                            try:
+                                user_id_int = int(user_id)
+                                if user_id_int <= 0:
+                                    raise ValueError("User ID must be positive")
+                            except (ValueError, TypeError):
+                                # Cannot persist without a valid numeric user ID
+                                logger.warning(
+                                    "[NAVI-STREAM] Cannot persist conversation: invalid user_id '%s' (must be numeric)",
+                                    user_id
+                                )
+                                user_id_int = None
+
+                            if user_id_int is not None:
+                                memory_service.db.execute(
+                                    text(
+                                        """
+                                        INSERT INTO navi_conversations (id, user_id, workspace_path, status, created_at, updated_at)
+                                        VALUES (:id, :user_id, :workspace_path, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                        ON CONFLICT (id) DO NOTHING
                                     """
-                                    INSERT INTO navi_conversations (id, user_id, workspace_path, status, created_at, updated_at)
-                                    VALUES (:id, :user_id, :workspace_path, 'active', NOW(), NOW())
-                                    ON CONFLICT (id) DO NOTHING
-                                """
-                                ),
-                                {
-                                    "id": str(conv_uuid),
-                                    "user_id": user_id_int,
-                                    "workspace_path": workspace_root,
-                                },
-                            )
-                            memory_service.db.commit()
-                            logger.info(
-                                "[NAVI-STREAM] Created conversation %s", conv_uuid
-                            )
+                                    ),
+                                    {
+                                        "id": str(conv_uuid),
+                                        "user_id": user_id_int,
+                                        "workspace_path": workspace_root,
+                                    },
+                                )
+                                memory_service.db.commit()
+                                logger.info(
+                                    "[NAVI-STREAM] Created conversation %s", conv_uuid
+                                )
 
                         # Store user message
                         await memory_service.add_message(
@@ -7402,7 +7642,7 @@ async def navi_autonomous_task(
                         text(
                             """
                             INSERT INTO navi_conversations (id, user_id, org_id, workspace_path, status, created_at, updated_at)
-                            VALUES (:id, :user_id, :org_id, :workspace_path, 'active', NOW(), NOW())
+                            VALUES (:id, :user_id, :org_id, :workspace_path, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                             ON CONFLICT (id) DO NOTHING
                             """
                         ),

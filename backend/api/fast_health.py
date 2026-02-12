@@ -1,8 +1,9 @@
 """
-Ultra-fast health check endpoint that bypasses all middleware.
+Ultra-fast health check endpoint with minimal overhead.
 
-This endpoint is registered directly on the app before any middleware
-is added, ensuring minimal latency for health checks.
+This endpoint provides a lightweight health check with no external
+dependencies, making it suitable for load balancers and monitoring systems.
+Note: In FastAPI, middleware applies to all routes regardless of registration order.
 """
 
 from fastapi import APIRouter, Response
@@ -19,7 +20,7 @@ def ping() -> Response:
 
 @router.get("/health-fast")
 def health_fast() -> Response:
-    """Fast health check (no middleware, no external dependencies)."""
+    """Fast health check with no external dependencies (database, cache, etc.)."""
     return JSONResponse(
         {
             "status": "ok",

@@ -659,10 +659,10 @@ export function CodeCompanionShell() {
   const activityPanelState = useActivityPanel();
 
   useEffect(() => {
-    if (activityPanelState.isVisible && activityPanelState.steps.length > 0) {
-      setActivityPanelOpen(true);
+    if (!activityPanelState.isVisible) {
+      setActivityPanelOpen(false);
     }
-  }, [activityPanelState.isVisible, activityPanelState.steps.length]);
+  }, [activityPanelState.isVisible]);
 
   // Listen for messages from extension
   useEffect(() => {
@@ -1230,6 +1230,8 @@ export function CodeCompanionShell() {
                 <Clock className="h-4 w-4 navi-history-icon" />
               </button>
 
+              {/* Activity button removed */}
+
               {/* More Menu - Notifications, Theme, Activity, Help */}
               <div className="navi-header-more-anchor">
                 <button
@@ -1354,16 +1356,6 @@ export function CodeCompanionShell() {
                           <div className="navi-header-more-divider" />
                         </>
                       )}
-                      <button
-                        className="navi-header-more-menu-item"
-                        onClick={() => {
-                          setActivityPanelOpen((prev) => !prev);
-                          setHeaderMoreOpen(false);
-                        }}
-                      >
-                        <Activity className="h-4 w-4" />
-                        <span>{activityPanelOpen ? "Hide Activity" : "Show Activity"}</span>
-                      </button>
                       <button
                         className="navi-header-more-menu-item"
                         onClick={() => {
@@ -1504,7 +1496,7 @@ export function CodeCompanionShell() {
               />
 
               {/* Activity Panel - Right Sidebar */}
-              {activityPanelOpen && activityPanelState.isVisible && (
+              {activityPanelOpen && activityPanelState.steps.length > 0 && (
                 <aside className="navi-activity-sidebar">
                   <ActivityPanel
                     steps={activityPanelState.steps}

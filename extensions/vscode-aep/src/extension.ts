@@ -1610,6 +1610,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private _commandOutputs = new Map<string, { command: string; cwd?: string; stdout: string; stderr: string; exitCode?: number; durationMs?: number }>();
   private _naviTerminal?: vscode.Terminal;
   private _naviOutputChannel?: vscode.OutputChannel;
+  private _webviewReady = false;
+  private _pendingConsentMessages = new Map<string, any>();
 
   // Public accessors for external functions
   public get webviewAvailable(): boolean {
@@ -1617,7 +1619,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   public isWebviewReady(): boolean {
-    return !!this._view;
+    return !!this._view && this._webviewReady;
   }
 
   // Git initialization state
@@ -2903,6 +2905,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ) {
     this._view = webviewView;
+    this._webviewReady = false;
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -2917,6 +2920,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       console.log('[AEP] Extension received message:', msg.type);
       try {
         switch (msg.type) {
+          case 'webview.ready': {
+            this._webviewReady = true;
+            this.flushPendingConsentMessages();
+            break;
+          }
           case 'requestWorkspaceContext': {
             // Send workspace context to frontend
             const workspaceRoot = this.getActiveWorkspaceRoot();
@@ -3144,25 +3152,73 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 await vscode.workspace.fs.delete(uri);
                 vscode.window.setStatusBarMessage(`🗑️ Deleted newly created file: ${path.basename(filePath)}`, 3000);
               } else {
-                // File was edited - restore original content
-                const doc = await vscode.workspace.openTextDocument(uri);
-                const edit = new vscode.WorkspaceEdit();
-                const fullRange = new vscode.Range(
-                  doc.positionAt(0),
-                  doc.positionAt(doc.getText().length)
-                );
-                edit.replace(uri, fullRange, originalContent);
-                const success = await vscode.workspace.applyEdit(edit);
-                if (success) {
-                  await doc.save();
-                  vscode.window.setStatusBarMessage(`↩️ Undone changes to ${path.basename(filePath)}`, 3000);
+                // File was edited or deleted - restore original content
+                let exists = true;
+                try {
+                  await vscode.workspace.fs.stat(uri);
+                } catch {
+                  exists = false;
+                }
+
+                if (!exists) {
+                  const dir = path.dirname(absolutePath);
+                  await vscode.workspace.fs.createDirectory(vscode.Uri.file(dir));
+                  const encoder = new TextEncoder();
+                  await vscode.workspace.fs.writeFile(uri, encoder.encode(String(originalContent)));
+                  vscode.window.setStatusBarMessage(`↩️ Restored ${path.basename(filePath)}`, 3000);
                 } else {
-                  vscode.window.showErrorMessage(`Failed to undo changes to ${path.basename(filePath)}`);
+                  const doc = await vscode.workspace.openTextDocument(uri);
+                  const edit = new vscode.WorkspaceEdit();
+                  const fullRange = new vscode.Range(
+                    doc.positionAt(0),
+                    doc.positionAt(doc.getText().length)
+                  );
+                  edit.replace(uri, fullRange, originalContent);
+                  const success = await vscode.workspace.applyEdit(edit);
+                  if (success) {
+                    await doc.save();
+                    vscode.window.setStatusBarMessage(`↩️ Undone changes to ${path.basename(filePath)}`, 3000);
+                  } else {
+                    vscode.window.showErrorMessage(`Failed to undo changes to ${path.basename(filePath)}`);
+                  }
                 }
               }
             } catch (err: any) {
               console.error('[NAVI] Undo failed:', err);
               vscode.window.showErrorMessage(`Undo failed: ${err.message}`);
+            }
+            break;
+          }
+
+          // Handle keep changes request from inline summary bar
+          case 'keepChanges': {
+            try {
+              const rawFiles = Array.isArray(msg.files) ? msg.files : [];
+              const files = rawFiles.map((f: any) => String(f || '').trim()).filter(Boolean);
+              const workspaceRoot = this.getActiveWorkspaceRoot();
+              if (files.length === 0) {
+                await vscode.workspace.saveAll();
+                vscode.window.setStatusBarMessage('✅ Changes saved', 3000);
+                return;
+              }
+              for (const filePath of files) {
+                const absolutePath = path.isAbsolute(filePath)
+                  ? filePath
+                  : workspaceRoot
+                    ? path.join(workspaceRoot, filePath)
+                    : filePath;
+                const uri = vscode.Uri.file(absolutePath);
+                try {
+                  const doc = await vscode.workspace.openTextDocument(uri);
+                  await doc.save();
+                } catch (err: any) {
+                  console.warn('[AEP] Keep changes: failed to save', filePath, err?.message || err);
+                }
+              }
+              vscode.window.setStatusBarMessage('✅ Changes saved', 3000);
+            } catch (err: any) {
+              console.error('[AEP] Failed to keep changes:', err);
+              vscode.window.showErrorMessage(`Failed to keep changes: ${err.message}`);
             }
             break;
           }
@@ -6434,33 +6490,53 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
           // Handle command consent responses
           case 'command.consent.response': {
-            const consentId = msg.consentId;
-            const approved = msg.approved;
+            const consentId = msg.consentId || msg.consent_id;
             const command = msg.command;
+            const alternativeCommand = msg.alternative_command || msg.alternativeCommand;
+            const choice =
+              msg.choice ||
+              (typeof msg.approved === 'boolean'
+                ? msg.approved
+                  ? 'allow_once'
+                  : 'deny'
+                : 'deny');
 
             if (!consentId) {
               console.error('[AEP] Consent response missing consent ID');
               return;
             }
 
-            console.log(`[AEP] 🔐 Consent response: ${approved ? 'APPROVED' : 'DENIED'} for command: ${command}`);
+            console.log(`[AEP] 🔐 Consent response: ${choice} for command: ${command}`);
 
             try {
               // Send consent response to backend API
-              const backendUrl = vscode.workspace.getConfiguration('aep').get<string>('backendUrl') || 'http://localhost:8000';
-              const response = await fetch(`${backendUrl}/api/navi/consent/${consentId}`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  approved,
-                  command,
-                }),
+              const backendUrl = this.getBackendBaseUrl();
+              const orgId = this.getOrgId();
+              const userId = this.getUserId();
+              const headers = this.buildAuthHeaders(orgId, userId, 'application/json');
+              const url = `${backendUrl}/api/navi/consent/${consentId}`;
+              const body = JSON.stringify({
+                choice,
+                alternative_command: alternativeCommand,
+                command,
               });
 
+              console.log(`[AEP] 🔐 Sending consent to: ${url}`);
+              console.log(`[AEP] 🔐 Headers:`, JSON.stringify(headers, null, 2));
+              console.log(`[AEP] 🔐 Body:`, body);
+
+              const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body,
+              });
+
+              console.log(`[AEP] 🔐 Response status: ${response.status}`);
+
               if (!response.ok) {
-                throw new Error(`Consent API returned ${response.status}`);
+                const responseText = await response.text();
+                console.error(`[AEP] 🔐 Response error body:`, responseText);
+                throw new Error(`Consent API returned ${response.status}: ${responseText}`);
               }
 
               const result = await response.json();
@@ -6470,16 +6546,21 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               this.postToWebview({
                 type: 'consent.acknowledged',
                 consentId,
-                approved
+                choice
               });
 
               // If approved, the agent will automatically re-execute the command
               // on its next tool call with the consent_id parameter
-              if (approved) {
+              if (choice === 'allow_once' || choice === 'allow_always_exact' || choice === 'allow_always_type') {
                 console.log(`[AEP] Consent approved - agent will re-execute command with consent_id`);
               }
-            } catch (error) {
+            } catch (error: any) {
               console.error('[AEP] Failed to send consent response to backend:', error);
+              console.error('[AEP] Error details:', {
+                message: error.message,
+                cause: error.cause,
+                stack: error.stack,
+              });
               this.postToWebview({
                 type: 'error',
                 message: 'Failed to process consent response'
@@ -6650,6 +6731,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         clearInterval(this._scanTimer);
         this._scanTimer = undefined;
       }
+      this._webviewReady = false;
+      this._view = undefined;
     });
 
     // Welcome message will be sent when panel sends 'ready'
@@ -8391,7 +8474,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                       type: 'navi.narrative',
                       text: parsed.text,
                       // Use backend timestamp if available for accurate chronological ordering
-                      timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
+                      timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
                     });
                   }
                   // Track that we've seen text content (helps with tool call interleaving)
@@ -8442,7 +8525,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                       }
                     },
                     // Use backend timestamp if available for accurate chronological ordering
-                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
+                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
                   });
 
                   if (tc.name === 'run_command') {
@@ -8623,24 +8706,33 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   });
                 }
 
-                // Handle command consent requests
+                // Handle command consent requests - send as navi.confirm message
                 if (parsed.type === 'command.consent_required' && parsed.data) {
-                  console.log('[AEP] 🔐 Command consent required:', parsed.data.command);
-                  this.postToWebview({
-                    type: 'command.consent_required',
+                  // Send consent as navi.confirm with data wrapper (uses existing handler)
+                  const consentId = String(parsed.data.consent_id || '');
+                  const consentMessage = {
+                    type: 'navi.confirm',
                     data: {
-                      consent_id: parsed.data.consent_id,
-                      command: parsed.data.command,
-                      shell: parsed.data.shell || 'bash',
-                      cwd: parsed.data.cwd,
-                      danger_level: parsed.data.danger_level,
-                      warning: parsed.data.warning,
-                      consequences: parsed.data.consequences || [],
-                      alternatives: parsed.data.alternatives || [],
-                      rollback_possible: parsed.data.rollback_possible || false,
+                      consent_id: consentId,
+                      command: String(parsed.data.command || ''),
+                      shell: String(parsed.data.shell || 'bash'),
+                      cwd: String(parsed.data.cwd || ''),
+                      danger_level: String(parsed.data.danger_level || 'medium'),
+                      warning: String(parsed.data.warning || 'This command requires your consent.'),
+                      consequences: Array.isArray(parsed.data.consequences) ? parsed.data.consequences.map(String) : [],
+                      alternatives: Array.isArray(parsed.data.alternatives) ? parsed.data.alternatives.map(String) : [],
+                      rollback_possible: Boolean(parsed.data.rollback_possible),
                     },
-                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
-                  });
+                    timestamp: new Date().toISOString(),
+                  };
+
+                  if (!this._webviewReady) {
+                    const queueKey = consentId || `pending-consent-${Date.now()}`;
+                    this._pendingConsentMessages.set(queueKey, consentMessage);
+                    console.log('[AEP] ⏳ Webview not ready. Queued consent message:', queueKey);
+                  } else {
+                    this.postToWebview(consentMessage);
+                  }
                 }
 
                 // Handle real-time command output streaming
@@ -8650,7 +8742,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     stream: parsed.stream,
                     line: parsed.line,
                     command: parsed.command,
-                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
+                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
                   });
                 }
 
@@ -11040,6 +11132,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     return path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot, filePath);
   }
 
+  private flushPendingConsentMessages(): void {
+    if (!this._view || this._pendingConsentMessages.size === 0) return;
+    for (const message of this._pendingConsentMessages.values()) {
+      this.postToWebview(message);
+    }
+    this._pendingConsentMessages.clear();
+  }
+
   public postToWebview(message: any) {
     if (!this._view) {
       console.warn('[Extension Host] [AEP] WARNING: postToWebview called but this._view is null!');
@@ -11095,7 +11195,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         entry: message.entry
       }).catch(() => { });
     }
-    this._view.webview.postMessage(message);
+    if (message.type === "command.consent_required") {
+      const fullJson = JSON.stringify(message, null, 2);
+      console.log("[Extension Host] [AEP] 🚨 FULL CONSENT MESSAGE:", fullJson);
+      console.log("[Extension Host] [AEP] 🚨 Message keys:", Object.keys(message));
+      console.log("[Extension Host] [AEP] 🚨 Data keys:", Object.keys(message.data || {}));
+    }
+
+    const result = this._view.webview.postMessage(message);
+    if (message.type === "command.consent_required") {
+      console.log("[Extension Host] [AEP] 🚨 postMessage returned:", result);
+    }
   }
 
   private startNewChat() {

@@ -343,6 +343,10 @@ export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviCh
               } else if (parsed.type === 'heartbeat') {
                 // Ignore heartbeat events (just keep-alive)
                 console.debug('[NAVI] Heartbeat received');
+              } else if (parsed.type === 'prompt_request') {
+                // Prompt request from agent - handled by parent component
+                console.log('[NAVI] Prompt request received:', parsed.data);
+                onDelta(`\n💬 **Waiting for input**: ${parsed.data?.title || 'User input required'}\n`);
               } else if (parsed.content) {
                 // Fallback for regular content field
                 onDelta(parsed.content);

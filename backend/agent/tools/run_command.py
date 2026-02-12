@@ -630,23 +630,29 @@ async def run_command(
         if cmd_info is not None:
             # This is a dangerous command - check if it's conditionally allowed
             if not _is_conditional_allowed(command):
-                # Return permission request for user approval
+                # Return consent request for user approval
+                import uuid
+                consent_id = f"consent_{uuid.uuid4().hex[:12]}"
+
                 permission_request = format_permission_request(command, cmd_info, cwd)
                 return {
                     "success": False,
+                    "requires_consent": True,  # THIS TRIGGERS THE CONSENT EVENT IN AUTONOMOUS AGENT
+                    "consent_id": consent_id,
+                    "command": command,
+                    "danger_level": cmd_info.risk_level.value,
+                    "warning": f"{cmd_info.name}: {cmd_info.description}",
+                    "consequences": cmd_info.consequences,
+                    "alternatives": cmd_info.alternatives,
+                    "rollback_possible": cmd_info.backup_strategy != "none",
                     "requires_permission": True,
                     "permission_request": permission_request,
                     "message": f"⚠️ **DANGEROUS COMMAND DETECTED**\n\n"
                     f"**Command:** `{command}`\n"
+                    f"**Consent ID:** {consent_id}\n"
                     f"**Risk Level:** {permission_request['risk_icon']} {cmd_info.risk_level.value.upper()}\n\n"
                     f"**What this does:** {cmd_info.description}\n\n"
-                    f"**⚠️ Consequences:**\n"
-                    + "\n".join(f"  • {c}" for c in cmd_info.consequences)
-                    + f"\n\n**Rollback possible:** {'Yes ✅' if cmd_info.rollback_possible else 'No ❌'}\n"
-                    f"**Backup strategy:** {cmd_info.backup_strategy}\n\n"
-                    f"**Alternatives:**\n"
-                    + "\n".join(f"  • {a}" for a in cmd_info.alternatives)
-                    + "\n\n**To proceed, use:** `run_dangerous_command` with `approved=True`",
+                    f"Waiting for user consent...",
                     "error": "Permission required for dangerous command",
                 }
 
@@ -675,12 +681,23 @@ async def run_command(
                 }
             # Check if it's a dangerous command that could be allowed with permission
             if cmd_info is not None:
+                import uuid
+                consent_id = f"consent_{uuid.uuid4().hex[:12]}"
+
                 permission_request = format_permission_request(command, cmd_info, cwd)
                 return {
                     "success": False,
+                    "requires_consent": True,  # THIS TRIGGERS THE CONSENT EVENT
+                    "consent_id": consent_id,
+                    "command": command,
+                    "danger_level": cmd_info.risk_level.value,
+                    "warning": f"{cmd_info.name}: {cmd_info.description}",
+                    "consequences": cmd_info.consequences,
+                    "alternatives": cmd_info.alternatives,
+                    "rollback_possible": cmd_info.backup_strategy != "none",
                     "requires_permission": True,
                     "permission_request": permission_request,
-                    "message": "⚠️ This command requires explicit permission. See permission_request for details.",
+                    "message": f"⚠️ This command requires explicit permission (consent ID: {consent_id}).",
                     "error": "Permission required",
                 }
             return {

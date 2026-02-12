@@ -7,6 +7,8 @@ export interface FileChange {
   deletions?: number;
   originalContent?: string;
   wasCreated?: boolean; // True if file was newly created (undo = delete)
+  wasDeleted?: boolean; // True if file was deleted (undo = restore)
+  status?: "added" | "modified" | "deleted";
 }
 
 export interface FileChangeSummaryProps {
@@ -17,6 +19,8 @@ export interface FileChangeSummaryProps {
   onUndo: () => void;
   onFileClick?: (filePath: string) => void;
   onPreviewAll?: () => void; // Opens diff view for all changed files
+  expanded?: boolean;
+  onToggle?: (expanded: boolean) => void;
 }
 
 // Get file icon based on extension
@@ -98,9 +102,22 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   onUndo,
   onFileClick,
   onPreviewAll,
+  expanded,
+  onToggle,
 }) => {
   // Start collapsed by default for compact layout
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const isControlled = typeof expanded === 'boolean';
+  const isExpanded = isControlled ? expanded : internalExpanded;
+
+  const toggleExpanded = () => {
+    const next = !isExpanded;
+    if (isControlled) {
+      onToggle?.(next);
+    } else {
+      setInternalExpanded(next);
+    }
+  };
 
   // Calculate totals if not provided
   const additions = totalAdditions ?? files.reduce((sum, f) => sum + (f.additions || 0), 0);
@@ -114,10 +131,10 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
       {/* Header row */}
       <div
         className="fcs-header"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={toggleExpanded}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && setIsExpanded(!isExpanded)}
+        onKeyDown={(e) => e.key === 'Enter' && toggleExpanded()}
       >
         <div className="fcs-header-left">
           <div className="fcs-expand-icon">
@@ -142,7 +159,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           {onPreviewAll && (
             <button type="button" className="fcs-btn fcs-btn--preview" onClick={onPreviewAll}>
               <Eye size={12} />
-              <span>Preview All</span>
+              <span>Review</span>
             </button>
           )}
           <button type="button" className="fcs-btn fcs-btn--keep" onClick={onKeep}>
@@ -161,23 +178,29 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         {isExpanded && files.map((file, index) => {
           const { filename, directory } = parseFilePath(file.path);
           const fileHasStats = typeof file.additions === 'number' || typeof file.deletions === 'number';
+          const derivedStatus = file.status
+            || (file.wasCreated ? "added" : file.wasDeleted ? "deleted" : undefined);
+          const isDeleted = derivedStatus === "deleted";
+          const isAdded = derivedStatus === "added";
 
           return (
             <button
               key={file.path || `file-${index}`}
               type="button"
-              className="fcs-file-row"
+              className={`fcs-file-row ${isDeleted ? 'fcs-file-row--deleted' : isAdded ? 'fcs-file-row--added' : ''}`}
               onClick={() => file.path && onFileClick?.(file.path)}
             >
               <div className="fcs-file-info">
                 {getFileIcon(file.path)}
-                <span className="fcs-filename">{filename}</span>
+                <span className={`fcs-filename ${isDeleted ? 'fcs-filename--deleted' : ''}`}>{filename}</span>
                 {directory && (
                   <span className="fcs-directory">{directory}</span>
                 )}
               </div>
               <div className="fcs-file-stats">
-                {fileHasStats ? (
+                {isDeleted ? (
+                  <span className="fcs-badge fcs-badge--deleted">deleted</span>
+                ) : fileHasStats ? (
                   <>
                     {typeof file.additions === 'number' && file.additions > 0 && (
                       <span className="fcs-stat fcs-stat--add">+{file.additions}</span>
@@ -293,6 +316,21 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           letter-spacing: 0.5px;
         }
 
+        .fcs-badge {
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          padding: 2px 6px;
+          border-radius: 999px;
+        }
+
+        .fcs-badge--deleted {
+          color: #fecaca;
+          background: rgba(248, 113, 113, 0.2);
+          border: 1px solid rgba(248, 113, 113, 0.35);
+        }
+
         .fcs-actions {
           display: flex;
           align-items: center;
@@ -401,6 +439,16 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           transform: translateX(2px);
         }
 
+        .fcs-file-row--deleted {
+          background: rgba(248, 113, 113, 0.08);
+          border-color: rgba(248, 113, 113, 0.25);
+        }
+
+        .fcs-file-row--deleted:hover {
+          background: rgba(248, 113, 113, 0.12);
+          border-color: rgba(248, 113, 113, 0.35);
+        }
+
         .fcs-file-row:focus {
           outline: none;
           border-color: rgba(99, 102, 241, 0.5);
@@ -446,6 +494,11 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           flex-shrink: 0;
         }
 
+        .fcs-filename--deleted {
+          color: #f87171;
+          text-decoration: line-through;
+        }
+
         .fcs-directory {
           font-size: 11px;
           color: rgba(255, 255, 255, 0.35);
@@ -486,69 +539,112 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           background: rgba(255, 255, 255, 0.25);
         }
 
-        /* Light theme support */
-        @media (prefers-color-scheme: light) {
-          .fcs-container {
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.98));
-            border-color: rgba(99, 102, 241, 0.15);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.03);
-          }
-
-          .fcs-header:hover {
-            background: rgba(99, 102, 241, 0.06);
-          }
-
-          .fcs-count {
-            color: #1e293b;
-          }
-
-          .fcs-stat--add {
-            color: #16a34a;
-            background: rgba(22, 163, 74, 0.1);
-          }
-
-          .fcs-stat--del {
-            color: #dc2626;
-            background: rgba(220, 38, 38, 0.1);
-          }
-
-          .fcs-btn--undo {
-            background: rgba(0, 0, 0, 0.04);
-            color: rgba(0, 0, 0, 0.7);
-            border-color: rgba(0, 0, 0, 0.1);
-          }
-
-          .fcs-btn--undo:hover {
-            background: rgba(0, 0, 0, 0.08);
-            color: rgba(0, 0, 0, 0.9);
-          }
-
-          .fcs-file-row {
-            background: rgba(0, 0, 0, 0.02);
-          }
-
-          .fcs-file-row:hover {
-            background: rgba(99, 102, 241, 0.08);
-          }
-
-          .fcs-filename {
-            color: #1e293b;
-          }
-
-          .fcs-directory {
-            color: rgba(0, 0, 0, 0.4);
-          }
-
-          .fcs-icon {
-            color: rgba(0, 0, 0, 0.5);
-          }
-        }
-
-        /* VSCode theme variables */
+        /* VSCode light theme */
         :root.vscode-light .fcs-container,
-        [data-vscode-theme-kind="vscode-light"] .fcs-container {
+        [data-vscode-theme-kind="vscode-light"] .fcs-container,
+        :root.light .fcs-container {
           background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.98));
           border-color: rgba(99, 102, 241, 0.15);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.03);
+        }
+
+        :root.vscode-light .fcs-header:hover,
+        [data-vscode-theme-kind="vscode-light"] .fcs-header:hover,
+        :root.light .fcs-header:hover {
+          background: rgba(99, 102, 241, 0.06);
+        }
+
+        :root.vscode-light .fcs-count,
+        [data-vscode-theme-kind="vscode-light"] .fcs-count,
+        :root.light .fcs-count {
+          color: #1e293b;
+        }
+
+        :root.vscode-light .fcs-stat--add,
+        [data-vscode-theme-kind="vscode-light"] .fcs-stat--add,
+        :root.light .fcs-stat--add {
+          color: #16a34a;
+          background: rgba(22, 163, 74, 0.1);
+        }
+
+        :root.vscode-light .fcs-stat--del,
+        [data-vscode-theme-kind="vscode-light"] .fcs-stat--del,
+        :root.light .fcs-stat--del {
+          color: #dc2626;
+          background: rgba(220, 38, 38, 0.1);
+        }
+
+        :root.vscode-light .fcs-btn--undo,
+        [data-vscode-theme-kind="vscode-light"] .fcs-btn--undo,
+        :root.light .fcs-btn--undo {
+          background: rgba(0, 0, 0, 0.04);
+          color: rgba(0, 0, 0, 0.7);
+          border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        :root.vscode-light .fcs-btn--undo:hover,
+        [data-vscode-theme-kind="vscode-light"] .fcs-btn--undo:hover,
+        :root.light .fcs-btn--undo:hover {
+          background: rgba(0, 0, 0, 0.08);
+          color: rgba(0, 0, 0, 0.9);
+        }
+
+        :root.vscode-light .fcs-file-row,
+        [data-vscode-theme-kind="vscode-light"] .fcs-file-row,
+        :root.light .fcs-file-row {
+          background: rgba(0, 0, 0, 0.02);
+        }
+
+        :root.vscode-light .fcs-file-row:hover,
+        [data-vscode-theme-kind="vscode-light"] .fcs-file-row:hover,
+        :root.light .fcs-file-row:hover {
+          background: rgba(99, 102, 241, 0.08);
+        }
+
+        :root.vscode-light .fcs-file-row--deleted,
+        [data-vscode-theme-kind="vscode-light"] .fcs-file-row--deleted,
+        :root.light .fcs-file-row--deleted {
+          background: rgba(220, 38, 38, 0.08);
+          border-color: rgba(220, 38, 38, 0.25);
+        }
+
+        :root.vscode-light .fcs-file-row--deleted:hover,
+        [data-vscode-theme-kind="vscode-light"] .fcs-file-row--deleted:hover,
+        :root.light .fcs-file-row--deleted:hover {
+          background: rgba(220, 38, 38, 0.12);
+          border-color: rgba(220, 38, 38, 0.35);
+        }
+
+        :root.vscode-light .fcs-filename,
+        [data-vscode-theme-kind="vscode-light"] .fcs-filename,
+        :root.light .fcs-filename {
+          color: #1e293b;
+        }
+
+        :root.vscode-light .fcs-filename--deleted,
+        [data-vscode-theme-kind="vscode-light"] .fcs-filename--deleted,
+        :root.light .fcs-filename--deleted {
+          color: #dc2626;
+        }
+
+        :root.vscode-light .fcs-directory,
+        [data-vscode-theme-kind="vscode-light"] .fcs-directory,
+        :root.light .fcs-directory {
+          color: rgba(0, 0, 0, 0.4);
+        }
+
+        :root.vscode-light .fcs-icon,
+        [data-vscode-theme-kind="vscode-light"] .fcs-icon,
+        :root.light .fcs-icon {
+          color: rgba(0, 0, 0, 0.5);
+        }
+
+        :root.vscode-light .fcs-badge--deleted,
+        [data-vscode-theme-kind="vscode-light"] .fcs-badge--deleted,
+        :root.light .fcs-badge--deleted {
+          color: #dc2626;
+          background: rgba(220, 38, 38, 0.12);
+          border-color: rgba(220, 38, 38, 0.3);
         }
       `}</style>
     </div>

@@ -3,7 +3,7 @@
 ## Executive Summary
 NAVI has strong technical foundations and is **production-ready for pilot deployment** after comprehensive E2E validation with real LLMs. Recent performance optimizations achieved 73-99% latency improvements across all percentiles. All critical security blockers have been resolved (Feb 9, 2026). Primary remaining gaps are operational readiness (monitoring dashboards, SLOs, incident runbooks).
 
-**Recent Progress (Feb 6-9, 2026):**
+**Recent Progress (Feb 6-10, 2026):**
 - ✅ **E2E validation completed** with 100 real LLM tests (OpenAI GPT-4o) + smoke test passed
 - ✅ **Performance optimizations validated**: 73-82% latency improvement (p50: 28s → 5.5s)
 - ✅ **Circuit breaker implemented**: 99.7% p95 improvement, eliminated batch delays
@@ -14,6 +14,7 @@ NAVI has strong technical foundations and is **production-ready for pilot deploy
 - ✅ Audit encryption available and documented
 - ✅ Prometheus metrics fully wired with LLM cost tracking
 - ✅ **ALL CRITICAL SECURITY FIXES COMPLETE**: Authentication context, consent authorization, DDL migrations (Feb 9, 2026)
+- ⚠️ **Technical debt identified**: Provider code path duplication (Feb 10, 2026) - Documented for future refactoring (P2)
 
 ## Readiness Rating
 - **Pilot production (friendly teams)**: ✅ **READY NOW** (E2E validated, all critical security fixes complete)
@@ -746,6 +747,150 @@ sudo systemctl enable --now navi-feedback-analyzer.timer
 - `docs/LOAD_TEST_RESULTS.md`
 - `docs/CAPACITY_PLANNING.md`
 
+#### 9. Provider Code Path Unification 🏗️
+**Status:** ⚠️ **Code duplication across OpenAI/Anthropic paths**
+**Priority:** P2 - MEDIUM (Technical debt, prevents future bugs)
+**Impact:** Business logic duplicated across provider-specific code paths, increasing maintenance burden and bug risk
+**Discovery:** Identified Feb 10, 2026 during consent dialog bug investigation
+
+**Problem:**
+The autonomous agent (`backend/services/autonomous_agent.py`) has **completely separate execution paths** for OpenAI and Anthropic providers:
+- OpenAI execution: Lines ~4686-5010
+- Anthropic execution: Lines ~4300-4530
+
+**Critical business logic is duplicated** across both paths:
+- ❌ Consent checking (was missing in OpenAI path, causing production bug)
+- ❌ Tool execution and result handling
+- ❌ Error handling and retries
+- ❌ Metrics recording and logging
+- ❌ Rate limiting checks
+- ❌ Step progress calculation
+
+**Real Impact - Bug Example (Feb 10, 2026):**
+1. Consent checking was added to Anthropic code path (line 4492)
+2. But FORGOTTEN in OpenAI code path (line 4977)
+3. Result: Consent dialogs completely broken for OpenAI users
+4. Required emergency hotfix to duplicate consent logic to OpenAI path
+5. **Root cause**: Code duplication anti-pattern
+
+**Why Different Paths Exist:**
+- **Valid reason**: OpenAI and Anthropic have fundamentally different API formats
+  - Streaming format: Different SSE chunk structures
+  - Tool calling: `tool_calls` vs `tool_use` with different schemas
+  - Response parsing: Completely different JSON structures
+- **Invalid reason**: Business logic shouldn't be duplicated
+
+**Current Architecture (PROBLEMATIC):**
+```python
+# ❌ Current: Duplicated business logic
+async def _call_anthropic_api():
+    # Provider-specific API call
+    # ... Anthropic SSE parsing ...
+
+    # Business logic (duplicated!)
+    if result.get("requires_consent"):
+        yield consent_event
+    # ... error handling ...
+    # ... metrics recording ...
+
+async def _call_openai_api():
+    # Provider-specific API call
+    # ... OpenAI SSE parsing ...
+
+    # Business logic (duplicated!)
+    if result.get("requires_consent"):  # ⚠️ Often forgotten!
+        yield consent_event
+    # ... error handling ...
+    # ... metrics recording ...
+```
+
+**Target Architecture (CORRECT):**
+```python
+# ✅ Proposed: Unified business logic
+async def _check_tool_consent(result, context) -> Optional[ConsentEvent]:
+    """Unified consent checking for ALL providers"""
+    if result.get("requires_consent"):
+        return create_consent_event(result)
+    return None
+
+async def _execute_tool_with_checks(tool_name, args, context):
+    """Execute tool with unified business logic"""
+    result = await self._execute_tool(tool_name, args, context)
+
+    # Unified checks (ALL providers)
+    consent_event = await self._check_tool_consent(result, context)
+    if consent_event:
+        return consent_event
+
+    # Unified error handling, metrics, etc.
+    return self._handle_tool_result(result)
+
+# Provider-specific (ONLY for API differences)
+async def _call_openai_api():
+    # ONLY OpenAI API parsing
+    result = await self._execute_tool_with_checks(...)
+
+async def _call_anthropic_api():
+    # ONLY Anthropic API parsing
+    result = await self._execute_tool_with_checks(...)
+```
+
+**Recommended Refactoring (3-4 days):**
+
+**Phase 1: Extract consent checking (1 day)**
+- Create `_check_tool_consent()` method
+- Create `_emit_consent_event()` method
+- Replace all consent checks in both paths with unified method
+- Add tests covering both providers
+
+**Phase 2: Extract tool execution (1 day)**
+- Create `_execute_tool_with_checks()` method
+- Unify error handling for tool failures
+- Unify metrics recording
+- Add tests
+
+**Phase 3: Extract progress tracking (1 day)**
+- Create `_calculate_and_emit_progress()` method
+- Unify step progress logic
+- Add tests
+
+**Phase 4: Validation (1 day)**
+- Run E2E tests with both providers
+- Verify consent dialogs work for both
+- Verify metrics identical to before refactoring
+- Code review
+
+**Benefits:**
+- ✅ **Prevent future bugs**: Changes apply to all providers automatically
+- ✅ **Easier maintenance**: Single place to update business logic
+- ✅ **Better testing**: Test business logic once, not per provider
+- ✅ **Faster feature development**: Add new checks/features once
+- ✅ **Support new providers easily**: Only need to implement API parsing
+
+**Risks if NOT fixed:**
+- ❌ Future features may be added to only one provider path
+- ❌ Bug fixes may miss one provider path
+- ❌ Testing burden doubles (must test each path)
+- ❌ Technical debt compounds over time
+
+**Files to Modify:**
+- `backend/services/autonomous_agent.py` - Main refactoring
+- Add unit tests for extracted methods
+- Update E2E tests to verify both providers
+
+**Success Criteria:**
+- All business logic extracted to provider-agnostic methods
+- OpenAI and Anthropic paths only differ in API parsing
+- 100% E2E test pass rate maintained
+- Code coverage increases (easier to test unified logic)
+- Future provider additions only require API parsing code
+
+**Timeline:**
+- Estimated: 3-4 days of focused development
+- Target: Week 3-4 (after operational readiness complete)
+- Owner: Senior backend engineer
+- Review: Architecture review required
+
 ### ✅ COMPLETED
 - [x] Database persistence for metrics/learning/telemetry
 - [x] Token encryption (AWS KMS + Fernet)
@@ -952,6 +1097,7 @@ Notes:
 The production UI must not expose debug or placeholder logs. Only user-facing, purposeful UI is allowed.
 
 ## Update Log
+- 2026-02-10: **Technical Debt Identified**: Provider code path duplication in autonomous_agent.py. Business logic (consent checking, error handling, metrics) duplicated across OpenAI and Anthropic execution paths. Caused consent dialog bug when consent check was added to Anthropic path but forgotten in OpenAI path. Documented comprehensive refactoring plan to extract unified business logic while keeping provider-specific API parsing. See "Provider Code Path Unification" in MEDIUM PRIORITY section. Estimated 3-4 days to refactor, target Week 3-4.
 - 2026-02-03: Added tokenizer fallback for offline/test runs to avoid tiktoken network fetches.
 - 2026-02-03: Redis cache now degrades cleanly to in-memory on connection failures.
 - 2026-02-03: Settings validator now allows env aliases during strict extra-field checks.

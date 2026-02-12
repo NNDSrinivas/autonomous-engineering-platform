@@ -42,3 +42,32 @@ export function mapChatResponseToNaviChatMessage(
     actions: response.actions || [],
   };
 }
+
+// Prompt request types
+export type PromptType = "text" | "select" | "confirm" | "multiselect";
+
+export interface PromptOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface NaviPromptRequest {
+  prompt_id: string;
+  prompt_type: PromptType;
+  title: string;
+  description: string;
+  placeholder?: string;
+  default_value?: string;
+  options?: PromptOption[];
+  validation_pattern?: string;
+  required: boolean;
+  timeout_seconds?: number;
+  timestamp?: string;
+}
+
+export interface NaviPromptResponse {
+  prompt_id: string;
+  response: string | string[] | boolean;
+  cancelled?: boolean;
+}

@@ -11,16 +11,25 @@ export default defineConfig({
       "@": resolve(__dirname, "src")
     }
   },
+  optimizeDeps: {
+    include: ["lucide-react"]
+  },
   build: {
     outDir: "../dist/webview",
     emptyOutDir: true,
     sourcemap: true,
+    commonjsOptions: {
+      include: [/lucide-react/, /node_modules/]
+    },
     rollupOptions: {
       input: resolve(__dirname, "index.html"),
       output: {
         entryFileNames: "panel.js",
         chunkFileNames: "chunks/[name].js",
-        assetFileNames: "assets/[name][extname]"
+        assetFileNames: "assets/[name][extname]",
+        manualChunks: {
+          'lucide': ['lucide-react']
+        }
       }
     }
   }

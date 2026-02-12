@@ -537,6 +537,16 @@ class Settings(BaseSettings):
             else [s.strip() for s in self.cors_origins.split(",") if s.strip()]
         )
 
+    def is_production_like(self) -> bool:
+        """
+        Check if running in production-like environment (production or staging).
+
+        Use this for checks that should apply to both production and staging,
+        such as security requirements, encryption enforcement, etc.
+        """
+        normalized = normalize_env(self.app_env)
+        return normalized in ("production", "staging")
+
 
 settings = Settings()
 

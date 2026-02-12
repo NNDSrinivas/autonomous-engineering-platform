@@ -3263,27 +3263,32 @@ Use this context to understand existing patterns, dependencies, and architecture
                 label = "Execute command"
                 desc = "Running the requested command"
             else:
-                # Extract first meaningful verb/noun phrase from request
-                # Skip question words like "can you", "could you", "please"
-                words = request.replace("?", "").split()
-                # Remove question words from the beginning
-                while words and words[0].lower() in [
-                    "can",
-                    "could",
-                    "would",
-                    "will",
-                    "please",
-                    "you",
-                ]:
-                    words = words[1:]
+                # For all other cases, generate a meaningful action-oriented step
+                # instead of echoing the user's request
+                label = "Complete task"
 
-                label = " ".join(words[:4])[:40].strip()
-                if not label or len(label) < 3:
-                    label = "Process request"
-                # Capitalize first letter if not already
-                if label and not label[0].isupper():
-                    label = label[0].upper() + label[1:]
-                desc = request[:100] if len(request) > 100 else request
+                # Try to infer the action from the request
+                request_lower = request.lower()
+                if any(word in request_lower for word in ["see", "show", "view", "look", "check"]):
+                    if any(word in request_lower for word in ["animation", "video", "result", "output"]):
+                        label = "Run and display animation"
+                        desc = "Execute the animation script and show the visual output"
+                    elif any(word in request_lower for word in ["file", "code"]):
+                        label = "Read and explain code"
+                        desc = "Analyze the file and explain how it works"
+                    else:
+                        label = "Analyze and show result"
+                        desc = "Process the request and display the outcome"
+                elif any(word in request_lower for word in ["run", "execute", "start"]):
+                    label = "Execute command"
+                    desc = "Run the specified command and show results"
+                elif any(word in request_lower for word in ["help", "how"]):
+                    label = "Provide assistance"
+                    desc = "Analyze the question and provide helpful guidance"
+                else:
+                    # Generic fallback - use a brief description of the actual task
+                    label = "Complete task"
+                    desc = "Process the request and perform necessary actions"
 
             # Emit plan_start event in the format the frontend expects
             plan_id = f"plan-{uuid.uuid4().hex[:8]}"

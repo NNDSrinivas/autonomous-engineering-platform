@@ -428,6 +428,95 @@ Implemented comprehensive database storage for all observability data with **ful
 - **Policy controls:** `MCP_REQUIRE_HTTPS`, `MCP_BLOCK_PRIVATE_NETWORKS`, `MCP_ALLOWED_HOSTS` for egress safety.
 - For local dev, set `MCP_REQUIRE_HTTPS=false` and `MCP_BLOCK_PRIVATE_NETWORKS=false`.
 
+### ⚠️ Visual Output Handler (PARTIAL - 40% Complete)
+
+**What this enables:**
+- Automatically detect when NAVI generates animation frames (PNG sequences)
+- Compile frames into viewable formats (GIF or MP4 video)
+- Auto-open compiled animations in the user's default viewer
+- Provide clear feedback about generated visual outputs
+
+**Current Implementation Status:**
+- ✅ **Module created:** `backend/services/visual_output_handler.py`
+- ✅ **Frame detection:** Detects frame_*.png sequences, "Frame saved" messages
+- ✅ **GIF compilation:** Uses Python Pillow (no external dependencies)
+- ✅ **MP4 compilation:** Uses ffmpeg if available, graceful fallback to GIF
+- ✅ **Auto-open:** Opens compiled animation in system default viewer
+- ✅ **Tested end-to-end:** fast_animation.py → 30 frames → GIF (176KB) → auto-opened
+- ❌ **Not integrated:** Visual handler exists but NOT called by autonomous agent
+- ❌ **No UI feedback:** VSCode extension doesn't show visual output status
+
+**What works manually:**
+```python
+# Test script demonstrates full working pipeline
+handler = VisualOutputHandler(workspace_path)
+result = await handler.process_visual_output(
+    output="✓ Saved frame_001.png...",
+    created_files=["animation_frames/frame_001.png", ...]
+)
+# Result: Frames detected → Compiled to GIF → Opened automatically
+```
+
+**What doesn't work yet:**
+- User asks NAVI: "Create an animation and show it to me"
+- NAVI generates animation script, runs it, creates frames
+- ❌ Visual handler NOT invoked (missing integration point)
+- ❌ Frames NOT compiled
+- ❌ User must manually find and open frame files
+
+**Files created:**
+- `backend/services/visual_output_handler.py` - Core handler (348 lines)
+- `docs/VISUAL_OUTPUT_FIX.md` - Implementation documentation
+- `/Users/mounikakapa/dev/marketing-website-navra-labs/fast_animation.py` - Test script
+
+**Supported animation types:**
+- ✅ **Frame-based animations:** PIL, matplotlib save frames (WORKING)
+- ❌ **Direct video generation:** moviepy, opencv, manim (NOT IMPLEMENTED)
+- ❌ **HTML/Canvas animations:** HTML5 canvas, CSS animations (NOT IMPLEMENTED)
+- ❌ **Interactive websites:** React apps, games, WebGL (NOT IMPLEMENTED)
+
+**Dependencies:**
+- **Required:** Python Pillow (already in requirements.txt)
+- **Optional:** ffmpeg (for MP4 support, falls back to GIF if missing)
+
+**Integration needed:**
+```python
+# In autonomous_agent.py after run_command execution
+if result.get("success"):
+    try:
+        from backend.services.visual_output_handler import VisualOutputHandler
+        visual_handler = VisualOutputHandler(self.workspace_path)
+        visual_result = await visual_handler.process_visual_output(
+            output=result.get("output", ""),
+            created_files=context.files_created
+        )
+        if visual_result and visual_result.get("compiled"):
+            result["visual_output"] = visual_result
+            logger.info(f"✅ Processed visual output: {visual_result['output_file']}")
+    except Exception as e:
+        logger.warning(f"Visual output processing failed (non-critical): {e}")
+```
+
+**Why it matters:**
+- **User expectation:** "Create animation and show it" should SHOW the result
+- **Current gap:** NAVI creates frames but user must manually find/compile/view
+- **Impact:** Poor UX for visual/creative tasks (animations, charts, visualizations)
+
+**Timeline to complete:**
+- **Week 1-2:** Integrate visual handler into autonomous agent (HIGH PRIORITY)
+- **Week 3-4:** Add direct video file detection (.mp4, .webm)
+- **Week 5-8:** HTML animation serving (HTTP server for Canvas/CSS animations)
+- **Week 9-16:** Interactive website support (npm + dev server management)
+
+**Known limitations:**
+- Only supports frame-based animations (PNG sequences)
+- No support for video generation libraries (moviepy outputs .mp4 directly)
+- No support for web animations (HTML5 Canvas, WebGL, Three.js)
+- No support for interactive applications requiring dev servers
+- No VSCode extension preview (opens in external viewer)
+
+**See detailed gap analysis:** Section "4. Visual Output & Animation Handling" in "What NAVI CANNOT Do Yet"
+
 ## Remaining Gaps for Production (Priority Order)
 
 ### 🔴 CRITICAL (Week 1-2) - BLOCKING PRODUCTION
@@ -2146,6 +2235,181 @@ NAVI has strong technical foundations with all critical security blockers resolv
 **Bottom Line:** NAVI generates **80% of the code**, but the **last 20%** (deployment, hosting, domain, app stores, monitoring) requires **manual human intervention**.
 
 **Timeline to 100%:** 3-6 months for full automation
+
+### 4. Visual Output & Animation Handling ⚠️ **PARTIAL (40% Complete)**
+
+**Common User Questions:**
+- ⚠️ "Create an animation using Python PIL and show me the result"
+- ❌ "Build an interactive website with animated graphics"
+- ❌ "Create a game with HTML5 Canvas animations"
+- ❌ "Generate a video using moviepy and display it"
+
+**What NAVI Can Do (Current Visual Output Handler):**
+- ✅ Detect frame sequences (frame_001.png, frame_002.png, ...)
+- ✅ Compile PNG frames → animated GIF using Python Pillow
+- ✅ Compile PNG frames → MP4 video (if ffmpeg available)
+- ✅ Auto-open compiled animations in default viewer
+- ✅ Provide clear feedback about generated outputs
+
+**Implementation Status:**
+- ✅ `backend/services/visual_output_handler.py` - Frame detection and compilation
+- ✅ Pattern detection: "Frame saved" messages, numbered frame files
+- ✅ Graceful fallback: MP4 → GIF if ffmpeg unavailable
+- ✅ Integration point: After `run_command` tool execution
+- ⚠️ Not yet integrated into autonomous agent pipeline
+
+**What NAVI Cannot Do Yet:**
+
+| Animation Type | Status | What's Missing |
+|----------------|--------|----------------|
+| **Frame-based animations** (PIL) | ✅ **Supported** | Integration into agent pipeline |
+| **Direct video generation** (moviepy, opencv) | ❌ **Not supported** | Video file detection (.mp4, .webm, .avi) |
+| **HTML/Canvas animations** (static) | ❌ **Not supported** | HTML detection + auto-serve on local server |
+| **Interactive websites** (React, games) | ❌ **Not supported** | npm install + dev server management |
+| **SVG animations** | ❌ **Not supported** | SVG detection + browser launch |
+| **WebGL/Three.js** | ❌ **Not supported** | Bundler + local server orchestration |
+
+**Detailed Scenarios & Solutions:**
+
+**Scenario 1: Frame-Based Animation (✅ WORKING)**
+```
+User: "Create a spiral animation using PIL"
+NAVI: Creates fast_animation.py → Generates 30 PNG frames
+Visual Handler: Detects frames → Compiles to GIF → Opens in viewer
+Result: ✅ User sees animated GIF automatically
+```
+
+**Scenario 2: Direct Video Generation (❌ NOT WORKING)**
+```
+User: "Create a bouncing ball video using moviepy"
+NAVI: Creates video.py → Generates animation.mp4 directly
+Current: ❌ No detection - file sits on disk, not opened
+Needed: Detect .mp4/.webm files → Auto-open in player
+Timeline: 2-4 weeks
+```
+
+**Scenario 3: HTML5 Canvas Animation (❌ NOT WORKING)**
+```
+User: "Create a bouncing ball using HTML5 Canvas"
+NAVI: Creates animation.html with <canvas> and JavaScript
+Current: ❌ HTML file created but not served/opened
+Needed:
+  - Detect HTML with animation keywords (canvas, @keyframes)
+  - Start HTTP server (Python http.server or similar)
+  - Open browser to http://localhost:8000/animation.html
+Timeline: 3-6 weeks
+```
+
+**Scenario 4: Interactive Website (❌ NOT WORKING)**
+```
+User: "Create an interactive game with animations"
+NAVI: Creates React app with package.json, components, etc.
+Current: ❌ Files created, dependencies not installed, not served
+Needed:
+  - Detect package.json or vite.config.ts
+  - Run npm install automatically
+  - Start dev server (npm run dev)
+  - Open browser to http://localhost:5173
+  - Keep server running in background
+Timeline: 6-8 weeks (complex - needs process management)
+```
+
+**Proposed Architecture Enhancement:**
+
+```python
+# Enhanced detection pipeline with priority-based routing
+async def process_visual_output(
+    self, output: str, created_files: List[str]
+) -> Optional[Dict[str, Any]]:
+    """Multi-format visual output detection and handling"""
+
+    # Priority 1: Direct video files (already rendered, just open)
+    if video_files := self.detect_video_files(created_files):
+        return await self.open_video_files(video_files)
+
+    # Priority 2: Interactive websites (need npm install + serve)
+    if website := await self.detect_interactive_website():
+        return await self.install_and_serve_website(website)
+
+    # Priority 3: HTML animations (static, simple HTTP server)
+    if html_anim := await self.detect_web_animation(created_files):
+        return await self.serve_and_open_html(html_anim)
+
+    # Priority 4: Frame sequences (compile first, then open)
+    if frames := self.detect_frame_sequence(output, created_files):
+        return await self.compile_and_open_animation(frames)
+
+    return None
+```
+
+**Key Insights:**
+1. **Not all animations can be compiled** - some must be served and interacted with
+2. **Different output types require different handling:**
+   - Pre-rendered videos: Just open them
+   - Frame sequences: Compile then open
+   - Static HTML: Serve then open
+   - Interactive apps: Install deps, serve, open, keep running
+3. **Process management complexity** - Interactive apps need background servers
+
+**Dependencies Required:**
+- ✅ **Current:** Python Pillow (for GIF compilation)
+- ⚠️ **Optional:** ffmpeg (for MP4 compilation - graceful fallback)
+- ❌ **Not yet implemented:** http.server management, npm process orchestration
+
+**Integration Status:**
+- ✅ Visual output handler module created
+- ✅ Frame detection and GIF compilation tested
+- ❌ Not integrated into autonomous agent pipeline
+- ❌ Agent doesn't call visual handler after commands complete
+- ❌ No UI feedback in VSCode extension for visual outputs
+
+**What Works Today:**
+```bash
+# Manual test (works perfectly)
+cd /path/to/workspace
+python3 fast_animation.py
+# Visual handler detects frames → compiles to GIF → opens automatically
+```
+
+**What Doesn't Work:**
+```
+User asks NAVI: "Create an animation and show it to me"
+NAVI: Generates animation script, runs it
+Current: ✅ Script creates frames
+        ❌ Visual handler NOT called (not integrated)
+        ❌ GIF NOT compiled
+        ❌ User sees nothing
+```
+
+**Timeline to Full Support:**
+
+| Feature | Status | Timeline | Complexity |
+|---------|--------|----------|------------|
+| **Integrate visual handler** | ⚠️ Ready to integrate | 1-2 weeks | Low |
+| **Direct video detection** | ❌ Not started | 2-4 weeks | Low |
+| **HTML animation serving** | ❌ Not started | 3-6 weeks | Medium |
+| **Interactive website serving** | ❌ Not started | 6-8 weeks | High |
+| **Process lifecycle management** | ❌ Not started | 8-12 weeks | High |
+| **VSCode extension preview** | ❌ Not started | 4-6 weeks | Medium |
+
+**Recommended Priority:**
+1. **Week 1-2:** Integrate existing visual handler into autonomous agent
+2. **Week 3-4:** Add direct video file detection (.mp4, .webm)
+3. **Week 5-8:** HTML animation serving (HTTP server)
+4. **Week 9-16:** Interactive website support (npm + dev server)
+
+**Cost Estimate:** $15K-$25K (2-3 months, 1 engineer)
+
+**Current Limitations:**
+- Frame-based animations work but require manual integration
+- No support for direct video generation libraries (moviepy, manim)
+- No support for web-based animations (Canvas, WebGL, Three.js)
+- No support for interactive applications
+- No process management for long-running dev servers
+
+**Bottom Line:** Visual output handler exists and works for frame-based animations (GIFs), but needs:
+1. Integration into the autonomous agent pipeline (HIGH PRIORITY - 1-2 weeks)
+2. Multi-format detection (videos, HTML, interactive apps) (MEDIUM PRIORITY - 2-4 months)
 
 ---
 

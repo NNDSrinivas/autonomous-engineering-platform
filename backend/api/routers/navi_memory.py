@@ -41,8 +41,27 @@ def _get_user_id_from_auth(user: User) -> int:
     """Extract user_id from authenticated user object.
 
     Prevents IDOR by ensuring user_id comes from authentication, not client request.
+    Raises HTTPException if user_id is not numeric (OAuth/JWT users not supported for memory features).
     """
-    return getattr(user, "user_id", None) or getattr(user, "id", None)
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    if user_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="User ID not found in authentication context"
+        )
+
+    try:
+        uid = int(user_id)
+        if uid > 0:
+            return uid
+        raise ValueError("User ID must be positive")
+    except (ValueError, TypeError) as e:
+        # user_id is not numeric (e.g., OAuth/JWT string like 'dev-user-aep-platform')
+        logger.warning(f"Cannot convert user_id '{user_id}' to integer: {e}")
+        raise HTTPException(
+            status_code=403,
+            detail=f"Memory features require numeric user ID (got '{user_id}')"
+        )
 
 
 def _get_org_id_from_auth(user: User) -> Optional[int]:

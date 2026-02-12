@@ -5199,7 +5199,7 @@ Return ONLY the JSON, no markdown or explanations."""
 
                                         if auto_allowed:
                                             # Execute directly without user consent
-                                            logger.info(f"[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
+                                            logger.info("[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
                                             args["consent_id"] = consent_id
                                             result = await self._execute_tool(
                                                 current_tool["name"], args, context
@@ -5242,7 +5242,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                             if command_to_execute:
                                                 # Retry tool execution with consent_id
                                                 logger.info(
-                                                    f"[AutonomousAgent] 🔄 Retrying tool with consent approval"
+                                                    "[AutonomousAgent] 🔄 Retrying tool with consent approval"
                                                 )
                                                 args["consent_id"] = consent_id
                                                 # If alternative command, update the args
@@ -5684,7 +5684,7 @@ Return ONLY the JSON, no markdown or explanations."""
 
                                     if auto_allowed:
                                         # Execute directly without user consent
-                                        logger.info(f"[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
+                                        logger.info("[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
                                         tool_info["arguments"]["consent_id"] = consent_id
                                         result = await self._execute_tool(
                                             tool_info["name"], tool_info["arguments"], context
@@ -5727,7 +5727,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                         if command_to_execute:
                                             # Retry tool execution with consent_id
                                             logger.info(
-                                                f"[AutonomousAgent] 🔄 Retrying tool with consent approval"
+                                                "[AutonomousAgent] 🔄 Retrying tool with consent approval"
                                             )
                                             tool_info["arguments"]["consent_id"] = consent_id
                                             # If alternative command, update the args
@@ -5794,7 +5794,7 @@ Return ONLY the JSON, no markdown or explanations."""
 
                                 if auto_allowed:
                                     # Execute directly without user consent
-                                    logger.info(f"[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
+                                    logger.info("[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
                                     tc["arguments"]["consent_id"] = consent_id
                                     result = await self._execute_tool(
                                         tc["name"], tc["arguments"], context
@@ -5837,7 +5837,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if command_to_execute:
                                         # Retry tool execution with consent_id
                                         logger.info(
-                                            f"[AutonomousAgent] 🔄 Retrying tool with consent approval"
+                                            "[AutonomousAgent] 🔄 Retrying tool with consent approval"
                                         )
                                         tc["arguments"]["consent_id"] = consent_id
                                         # If alternative command, update the args
@@ -6267,7 +6267,7 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 if response is None:
                     # Timeout or cancellation - stop execution
                     logger.warning(
-                        f"[AutonomousAgent] ⏸️ Stopping execution - user prompt was not answered"
+                        "[AutonomousAgent] ⏸️ Stopping execution - user prompt was not answered"
                     )
                     yield {
                         "type": "complete",

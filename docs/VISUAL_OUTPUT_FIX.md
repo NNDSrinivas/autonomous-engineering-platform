@@ -86,20 +86,26 @@ elif tool_name == "compile_animation":
 
 **Required:**
 - Python 3.8+
-- No additional pip packages needed
+- `Pillow` - Python library for GIF creation (automatically installed via pip)
 
-**Optional (for full functionality):**
-- `ffmpeg` - For MP4 video compilation
-- `ImageMagick` (`convert`) - For GIF fallback
+**Optional (for enhanced functionality):**
+- `ffmpeg` - For MP4 video compilation (falls back to GIF if not available)
 
-**Install on macOS:**
+**Install Python dependencies:**
 ```bash
-brew install ffmpeg imagemagick
+pip install Pillow>=10.0.0
+# Already included in requirements.txt
 ```
 
-**Install on Ubuntu:**
+**Optional - Install ffmpeg for MP4 support:**
 ```bash
-sudo apt-get install ffmpeg imagemagick
+# macOS
+brew install ffmpeg
+
+# Ubuntu
+sudo apt-get install ffmpeg
+
+# Not required - system will automatically use GIF if ffmpeg is missing
 ```
 
 ## Example Usage

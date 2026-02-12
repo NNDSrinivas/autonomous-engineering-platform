@@ -82,7 +82,8 @@ class VisualOutputHandler:
 
     async def compile_to_video(self, frames: List[str], output_path: str, fps: int = 30) -> Dict[str, Any]:
         """
-        Compile image frames into a video using ffmpeg.
+        Compile image frames into a video using ffmpeg (optional).
+        Falls back to GIF if ffmpeg is not available.
 
         Args:
             frames: List of frame file paths
@@ -97,18 +98,19 @@ class VisualOutputHandler:
             result = subprocess.run(
                 ["which", "ffmpeg"],
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=5
             )
 
             if result.returncode != 0:
-                logger.warning("ffmpeg not found, falling back to GIF")
+                logger.info("ffmpeg not found, using GIF format instead")
                 return await self.compile_to_gif(frames, output_path.replace(".mp4", ".gif"))
 
             # Create a temporary file list for ffmpeg
             list_file = os.path.join(os.path.dirname(output_path), "frame_list.txt")
             with open(list_file, "w") as f:
                 for frame in sorted(frames):
-                    # Use relative paths if possible
+                    # Use absolute paths for ffmpeg
                     f.write(f"file '{os.path.abspath(frame)}'\n")
 
             # Run ffmpeg to create video
@@ -145,44 +147,56 @@ class VisualOutputHandler:
                     "frame_count": len(frames)
                 }
             else:
-                logger.error(f"ffmpeg failed: {result.stderr}")
-                return {
-                    "success": False,
-                    "error": result.stderr[:500]
-                }
+                logger.warning(f"ffmpeg failed, falling back to GIF: {result.stderr[:200]}")
+                return await self.compile_to_gif(frames, output_path.replace(".mp4", ".gif"))
 
         except subprocess.TimeoutExpired:
-            return {
-                "success": False,
-                "error": "Video compilation timed out after 60s"
-            }
+            logger.warning("ffmpeg timed out, falling back to GIF")
+            return await self.compile_to_gif(frames, output_path.replace(".mp4", ".gif"))
         except Exception as e:
-            logger.error(f"Error compiling video: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            logger.warning(f"Error with ffmpeg, falling back to GIF: {e}")
+            return await self.compile_to_gif(frames, output_path.replace(".mp4", ".gif"))
 
     async def compile_to_gif(self, frames: List[str], output_path: str, fps: int = 10) -> Dict[str, Any]:
         """
-        Compile frames into animated GIF (fallback if ffmpeg not available).
+        Compile frames into animated GIF using Python Pillow (no external dependencies).
         """
         try:
-            # Try using ImageMagick convert
-            cmd = [
-                "convert",
-                "-delay", str(int(100/fps)),  # Delay in 1/100ths of a second
-                "-loop", "0",  # Infinite loop
-            ] + sorted(frames) + [output_path]
+            from PIL import Image
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=60
+            # Load all frames
+            images = []
+            for frame_path in sorted(frames):
+                try:
+                    img = Image.open(frame_path)
+                    # Convert to RGB if necessary (GIF requires RGB or palette mode)
+                    if img.mode not in ('RGB', 'P'):
+                        img = img.convert('RGB')
+                    images.append(img)
+                except Exception as e:
+                    logger.warning(f"Failed to load frame {frame_path}: {e}")
+                    continue
+
+            if not images:
+                return {
+                    "success": False,
+                    "error": "No valid image frames found"
+                }
+
+            # Calculate duration between frames (in milliseconds)
+            duration = int(1000 / fps)
+
+            # Save as animated GIF
+            images[0].save(
+                output_path,
+                save_all=True,
+                append_images=images[1:],
+                duration=duration,
+                loop=0,  # Infinite loop
+                optimize=False  # Faster but larger file
             )
 
-            if result.returncode == 0 and os.path.exists(output_path):
+            if os.path.exists(output_path):
                 size_mb = os.path.getsize(output_path) / (1024 * 1024)
                 return {
                     "success": True,
@@ -190,14 +204,20 @@ class VisualOutputHandler:
                     "format": "image/gif",
                     "size_mb": round(size_mb, 2),
                     "fps": fps,
-                    "frame_count": len(frames)
+                    "frame_count": len(images)
                 }
             else:
                 return {
                     "success": False,
-                    "error": "GIF compilation failed (ImageMagick not available?)"
+                    "error": "GIF file was not created"
                 }
 
+        except ImportError:
+            logger.error("Pillow library not installed. Install with: pip install Pillow")
+            return {
+                "success": False,
+                "error": "Pillow library required for GIF creation. Install with: pip install Pillow"
+            }
         except Exception as e:
             logger.error(f"Error compiling GIF: {e}")
             return {

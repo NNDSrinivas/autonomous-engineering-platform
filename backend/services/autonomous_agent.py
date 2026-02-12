@@ -3165,31 +3165,50 @@ Use this context to understand existing patterns, dependencies, and architecture
         Generate a high-level plan for complex tasks before execution.
         This helps users understand what the agent will do.
         """
-        # Determine if this is a complex task that needs planning
-        # Simple tasks: single file edits, quick questions, simple commands
-        # Complex tasks: multi-file changes, new feature implementation, debugging
-        is_complex = len(request) > 200 or any(
-            kw in request.lower()
+        # Determine if this is a trivial task that doesn't need LLM planning
+        # Most tasks should use LLM planning to generate specific, file-based steps
+        # Only skip LLM planning for truly trivial cases
+        request_lower = request.lower()
+        is_trivial = (
+            len(request) < 15  # Very short requests like "hi", "thanks"
+            or any(
+                kw in request_lower
+                for kw in [
+                    "hello",
+                    "hi ",
+                    "hey ",
+                    "thanks",
+                    "thank you",
+                    "ok",
+                    "okay",
+                    "sure",
+                    "yes",
+                    "no",
+                ]
+            )
+        ) and not any(
+            # But if it mentions files/code/actions, still use LLM planning
+            kw in request_lower
             for kw in [
-                "implement",
+                "fix",
+                "add",
                 "create",
-                "build",
-                "develop",
-                "fix all",
-                "refactor",
-                "add feature",
-                "new feature",
-                "multiple files",
-                "complete",
-                "full",
-                "entire",
-                "whole",
-                "application",
-                "project",
+                "update",
+                "delete",
+                "remove",
+                "file",
+                ".py",
+                ".ts",
+                ".js",
+                ".tsx",
+                ".jsx",
+                "code",
+                "bug",
+                "error",
             ]
         )
 
-        if not is_complex:
+        if is_trivial:
             # For simple tasks, generate a meaningful step label based on the request
             request_lower = request.lower()
 
@@ -3359,29 +3378,38 @@ When a task involves testing, ALWAYS use automatable testing:
 - "Manual testing" (requires human)
 - "Get user feedback" (requires human)
 
-Examples of GOOD task-specific steps:
-- For "create a login page": "Create LoginForm component", "Add authentication logic", "Write tests for login"
-- For "fix CSS errors": "Identify missing CSS modules", "Create CTASection.module.css", "Run build to verify"
-- For "implement API": "Create API route handlers", "Add database queries", "Write and run API tests"
-- For "improve UI design": "Update component styles", "Add animations", "Run visual regression tests"
+**STEP FORMAT - BE SPECIFIC:**
+Each step MUST include:
+1. Action verb (Fix, Add, Create, Update, Remove, etc.)
+2. What is being changed (be specific!)
+3. File name or path when applicable
 
-Examples of BAD steps (DO NOT use these):
+✅ EXCELLENT step labels (use these as models):
+- "Fix broadcast subscription bug in plan.py"
+- "Add Content-Type header in useNaviChat.ts"
+- "Remove unused imports in FileDiffView.tsx"
+- "Update PostgreSQL NOW() to CURRENT_TIMESTAMP"
+- "Create UserProfile component in components/"
+- "Fix type mismatch in navi_memory.py"
+
+❌ BAD step labels (NEVER use):
 - "Analyze codebase" (too vague)
 - "Implement changes" (not specific)
+- "Fix issues" (what issues? which files?)
 - "Run verification" (always implied)
+- "Update files" (which files? what changes?)
 - "Perform user testing" (requires human - NEVER include this)
 - "Get user feedback" (requires human)
 - "Deploy to production" (requires approval)
-- "Conduct A/B testing" (requires human users)
-- "Manual QA testing" (requires human)
 
 Respond with ONLY a JSON object:
 {{
   "steps": [
-    {{"id": 1, "label": "Specific action (max 30 chars)", "description": "What exactly will be done"}},
+    {{"id": 1, "label": "Fix bug in auth.py", "description": "Fix authentication token validation logic"}},
+    {{"id": 2, "label": "Add error handling in api.ts", "description": "Add try-catch blocks for API calls"}},
     ...
   ],
-  "estimated_files": ["specific/file/path.ts", "another/file.css"]
+  "estimated_files": ["backend/auth.py", "frontend/api.ts"]
 }}
 
 Return ONLY the JSON, no markdown or explanations."""

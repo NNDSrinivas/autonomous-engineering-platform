@@ -88,4 +88,7 @@ def test_stream_v2_fallback_when_provider_unsupported(monkeypatch: pytest.Monkey
 
     assert decision.was_fallback is True
     assert decision.effective_model_id == "openai/gpt-4o"
-    assert decision.fallback_reason_code in {"MODEL_UNAVAILABLE", "UNKNOWN_MODEL_ID"}
+    assert decision.fallback_reason_code == "ENDPOINT_PROVIDER_UNSUPPORTED"
+    assert decision.fallback_reason is not None
+    assert "/stream/v2" in decision.fallback_reason
+    assert "google" in decision.fallback_reason

@@ -1061,9 +1061,12 @@ html.light .navi-status-text--done {
   transform: translateX(-50%);
   z-index: 9999;
   font-size: 11px;
+  line-height: 1.35;
   padding: 6px 12px;
   border-radius: 6px;
   color: #ffffff;
+  max-width: min(680px, calc(100% - 32px));
+  white-space: pre-line;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   animation: naviToastSlideUp 0.2s ease-out;
   pointer-events: auto;

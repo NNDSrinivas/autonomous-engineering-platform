@@ -429,6 +429,7 @@ type DetectedTask = {
   modelName?: string;
   reason?: string;
   fallbackReason?: string;
+  fallbackReasonCode?: string;
   provider?: string;
   source?: "auto" | "manual";
   requestedModel?: string;
@@ -970,6 +971,8 @@ const normalizeRoutingInfo = (routing: any): DetectedTask | null => {
   const reason = routing.reason || routing.rationale || routing.explanation || undefined;
   const fallbackReason =
     routing.fallbackReason || routing.fallback_reason || routing.fallback_reason_text || undefined;
+  const fallbackReasonCode =
+    routing.fallbackReasonCode || routing.fallback_reason_code || undefined;
   const source = routing.source || undefined;
   const requestedModel =
     routing.requestedModelId || routing.requested_model || routing.requestedModel || undefined;
@@ -986,6 +989,7 @@ const normalizeRoutingInfo = (routing: any): DetectedTask | null => {
     provider,
     reason,
     fallbackReason,
+    fallbackReasonCode,
     source,
     requestedModel,
     requestedModelId: requestedModel,
@@ -1842,6 +1846,7 @@ export default function NaviChatPanel({
   const actionSummaryRef = useRef<ActionSummaryEntry[]>([]);
   const actionSummaryTimerRef = useRef<number | null>(null);
   const activeRunIdRef = useRef<string | null>(null);
+  const endpointFallbackToastShownRef = useRef<Set<string>>(new Set());
 
   // SELF-HEALING: Track retry attempts to prevent infinite loops
   const selfHealingRetryCountRef = useRef(0);
@@ -3276,6 +3281,9 @@ export default function NaviChatPanel({
       if (msg.type === "RUN_STARTED" && msg.runId) {
         console.log('[NaviChatPanel] 🏃 RUN_STARTED received:', msg.runId);
         activeRunIdRef.current = msg.runId;
+        if (endpointFallbackToastShownRef.current.size > 200) {
+          endpointFallbackToastShownRef.current.clear();
+        }
         const unresolvedSummary = stickyChangeSummaryRef.current || inlineChangeSummaryRef.current;
         if (unresolvedSummary?.files?.length) {
           carryoverSummaryFilesRef.current = mergeInlineSummaryFiles(
@@ -3716,6 +3724,7 @@ export default function NaviChatPanel({
           requestedModeId: normalized?.requestedModeId || normalized?.requestedMode,
           wasFallback: normalized?.wasFallback || false,
           fallbackReason: normalized?.fallbackReason || undefined,
+          fallbackReasonCode: normalized?.fallbackReasonCode || undefined,
           reason: normalized?.reason,
         });
 
@@ -3725,7 +3734,22 @@ export default function NaviChatPanel({
             normalized.fallbackReason ||
             normalized.reason ||
             `Requested model unavailable. Using '${effectiveModel}'.`;
-          showToast(reason, "warning");
+          const fallbackCode = normalized.fallbackReasonCode;
+          if (fallbackCode === "ENDPOINT_PROVIDER_UNSUPPORTED") {
+            const requestKey =
+              (typeof msg.runId === "string" && msg.runId.trim()) ||
+              activeRunIdRef.current ||
+              `fallback:${fallbackCode}:${normalized.requestedModelId || "unknown"}:${normalized.effectiveModelId || "unknown"}`;
+            if (!endpointFallbackToastShownRef.current.has(requestKey)) {
+              endpointFallbackToastShownRef.current.add(requestKey);
+              showToast(
+                `${reason}\nTip: Switch to /stream or use NAVI Intelligence mode to auto-select a compatible model.`,
+                "warning"
+              );
+            }
+          } else {
+            showToast(reason, "warning");
+          }
         }
 
         // Store auto-execute state for action processing

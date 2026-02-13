@@ -9226,10 +9226,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 // Handle router info
                 if (parsed.router_info) {
                   const routerInfo = parsed.router_info as Record<string, any>;
+                  const backendRunId =
+                    (typeof routerInfo.runId === 'string' && routerInfo.runId.trim()) ||
+                    (typeof routerInfo.run_id === 'string' && routerInfo.run_id.trim()) ||
+                    '';
+                  const routerRunId = backendRunId || runId;
                   this.postToWebview({
                     type: 'navi.router.info',
-                    runId,
                     ...routerInfo,
+                    runId: routerRunId,
                   });
                 }
 

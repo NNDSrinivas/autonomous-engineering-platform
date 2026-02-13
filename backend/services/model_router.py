@@ -242,6 +242,7 @@ class ModelRouter:
         endpoint_key: str,
         supported_providers: set[str],
     ) -> RoutingDecision:
+        endpoint_label = self._display_endpoint_label(endpoint_key)
         model_cfg = self.model_index.get(requested_model_id)
         if model_cfg and self._is_model_routable(requested_model_id, endpoint_key, supported_providers, strict_private=False):
             return RoutingDecision(
@@ -255,19 +256,31 @@ class ModelRouter:
                 fallback_reason=None,
             )
 
+        reason_code = "MODEL_UNAVAILABLE"
+        reason = (
+            f"Requested model '{requested_model_id}' is unavailable or unsupported for endpoint '{endpoint_label}'."
+        )
+        if requested_model_id not in self.model_index:
+            reason_code = "UNKNOWN_MODEL_ID"
+            reason = f"Requested model '{requested_model_id}' is not in registry."
+        elif model_cfg:
+            provider = model_cfg["provider"]
+            if provider not in supported_providers:
+                reason_code = "ENDPOINT_PROVIDER_UNSUPPORTED"
+                reason = (
+                    f"{provider} is not supported on {endpoint_label} for requested model "
+                    f"'{requested_model_id}'."
+                )
+            elif not self._is_provider_configured(provider):
+                reason_code = "PROVIDER_NOT_CONFIGURED"
+                reason = (
+                    f"Provider '{provider}' is not configured for requested model '{requested_model_id}'."
+                )
+
         fallback_default = self.defaults.get("defaultModelId")
         if fallback_default and self._is_model_routable(fallback_default, endpoint_key, supported_providers, strict_private=False):
             fallback_cfg = self.model_index[fallback_default]
-            reason_code = "MODEL_UNAVAILABLE"
-            reason = (
-                f"Requested model '{requested_model_id}' is unavailable or unsupported for endpoint '{endpoint_key}'. "
-                f"Using '{fallback_default}'."
-            )
-            if requested_model_id not in self.model_index:
-                reason_code = "UNKNOWN_MODEL_ID"
-                reason = (
-                    f"Requested model '{requested_model_id}' is not in registry. Using '{fallback_default}'."
-                )
+            reason = f"{reason} Using '{fallback_default}'."
 
             return RoutingDecision(
                 requested_model_id=requested_model_id,
@@ -280,9 +293,12 @@ class ModelRouter:
                 fallback_reason=reason,
             )
 
+        if reason_code == "ENDPOINT_PROVIDER_UNSUPPORTED":
+            raise ModelRoutingError(reason_code, reason)
+
         raise ModelRoutingError(
             "NO_MODELS_AVAILABLE",
-            f"Requested model '{requested_model_id}' cannot be used and no fallback model is available.",
+            f"{reason} No fallback model is available.",
         )
 
     def _pick_first_routable(
@@ -370,6 +386,15 @@ class ModelRouter:
             return f"groq/{raw}"
 
         return raw
+
+    @staticmethod
+    def _display_endpoint_label(endpoint_key: str) -> str:
+        mapping = {
+            "stream": "/stream",
+            "stream_v2": "/stream/v2",
+            "autonomous": "/autonomous",
+        }
+        return mapping.get(endpoint_key, endpoint_key)
 
 
 

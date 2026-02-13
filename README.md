@@ -51,9 +51,10 @@ Transform how engineering teams work by providing an **autonomous AI assistant**
 - **Python 3.11.x** (recommended) or 3.9-3.12
   - ⚠️ Python 3.13+ not yet supported due to dependency compatibility
   - Install Python 3.11: `brew install python@3.11` (macOS) or download from [python.org](https://www.python.org)
-- **Node.js 20+** (recommended for VSCode extension development)
-  - Node.js 18+ supported for backend/frontend
-  - Install Node 20: `brew install node@20` (macOS) or download from [nodejs.org](https://nodejs.org)
+- **Node.js 20+ LTS** (strongly recommended for all development)
+  - Minimum: Node.js 18.19+ supported, but Node 20+ LTS recommended to avoid environment inconsistencies
+  - Vite 6.x build tooling works best with Node 20+
+  - Install Node 20 LTS: `brew install node@20` (macOS) or download from [nodejs.org](https://nodejs.org)
 - **PostgreSQL**
 - **Redis** (optional for development, required for production)
 

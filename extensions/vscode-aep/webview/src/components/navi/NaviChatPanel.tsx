@@ -129,6 +129,14 @@ import { ExecutionPlanStepper, ExecutionPlanStep } from "./ExecutionPlanStepper"
 import { FileChangeSummary } from "./FileChangeSummary";
 import { FileDiffView, type DiffLine, type FileDiff } from "./FileDiffView";
 import { useActivityPanelPreferences } from "../../hooks/useActivityPanelPreferences";
+import {
+  ADVANCED_PROVIDER_GROUPS,
+  LEGACY_MODEL_PROVIDER_GROUPS,
+  MODEL_REGISTRY,
+  NAVI_MODELS,
+  getRegistryModel,
+  getRegistryModelLabel,
+} from "../../config/modelRegistry";
 import "./NaviChatPanel.css";
 import Prism from 'prismjs';
 import type { ActivityEvent as ActivityEventPayload } from "../../types/activity";
@@ -248,6 +256,7 @@ const CHAT_MODE_LABELS: Record<ChatMode, string> = {
 };
 
 const AUTO_MODEL_ID = "auto/recommended";
+const DEFAULT_NAVI_MODE_ID = MODEL_REGISTRY.defaults.defaultModeId;
 
 // Slash commands configuration
 interface SlashCommand {
@@ -345,85 +354,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
 ];
 
-const LLM_PROVIDERS: LLMProvider[] = [
-  {
-    id: "auto",
-    name: "Auto",
-    models: [
-      {
-        id: AUTO_MODEL_ID,
-        name: "Auto (Recommended)",
-        description: "Automatically selects the best model",
-      },
-    ],
-  },
-  {
-    id: "openai",
-    name: "OpenAI",
-    models: [
-      // GPT-5 Series (Latest)
-      { id: "openai/gpt-5.2", name: "GPT-5.2", description: "Latest flagship model" },
-      { id: "openai/gpt-5.2-pro", name: "GPT-5.2 Pro", description: "Enhanced reasoning" },
-      { id: "openai/gpt-5.1", name: "GPT-5.1", description: "Previous 5.x version" },
-      { id: "openai/gpt-5", name: "GPT-5", description: "Fifth generation flagship" },
-      { id: "openai/gpt-5-mini", name: "GPT-5 Mini", description: "Fast & efficient" },
-      { id: "openai/gpt-5-nano", name: "GPT-5 Nano", description: "Ultra-fast for simple tasks" },
-      // GPT-4.1 Series
-      { id: "openai/gpt-4.1", name: "GPT-4.1", description: "Enhanced GPT-4" },
-      { id: "openai/gpt-4.1-mini", name: "GPT-4.1 Mini", description: "Fast GPT-4.1" },
-      { id: "openai/gpt-4.1-nano", name: "GPT-4.1 Nano", description: "Lightweight GPT-4.1" },
-      // GPT-4o Series
-      { id: "openai/gpt-4o", name: "GPT-4o", description: "Optimized multimodal" },
-      { id: "openai/chatgpt-4o-latest", name: "ChatGPT-4o Latest", description: "ChatGPT optimized" },
-      { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", description: "Fast 4o variant" },
-      { id: "openai/gpt-4o-search-preview", name: "GPT-4o Search", description: "Web search enabled" },
-      // Reasoning Models (o-series)
-      { id: "openai/o1", name: "o1", description: "Advanced reasoning" },
-      { id: "openai/o1-pro", name: "o1 Pro", description: "Enhanced reasoning" },
-      { id: "openai/o3", name: "o3", description: "Latest reasoning model" },
-      { id: "openai/o3-mini", name: "o3 Mini", description: "Fast reasoning" },
-      { id: "openai/o4-mini", name: "o4 Mini", description: "Compact reasoning" },
-      { id: "openai/o4-mini-deep-research", name: "o4 Mini Deep Research", description: "Research optimized" },
-      // Code Models
-      { id: "openai/gpt-5.2-codex", name: "GPT-5.2 Codex", description: "Latest code model" },
-      { id: "openai/gpt-5.1-codex", name: "GPT-5.1 Codex", description: "Code generation" },
-      { id: "openai/gpt-5-codex", name: "GPT-5 Codex", description: "Code specialist" },
-      { id: "openai/codex-mini-latest", name: "Codex Mini", description: "Fast code model" },
-      // Legacy
-      { id: "openai/gpt-4-turbo", name: "GPT-4 Turbo", description: "Legacy turbo model" },
-      { id: "openai/gpt-3.5-turbo", name: "GPT-3.5 Turbo", description: "Fast legacy model" },
-    ],
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic",
-    models: [
-      { id: "anthropic/claude-sonnet-4", name: "Claude Sonnet 4", description: "Balanced performance" },
-      { id: "anthropic/claude-opus-4", name: "Claude Opus 4", description: "Most capable Claude" },
-      { id: "anthropic/claude-3.5-haiku", name: "Claude 3.5 Haiku", description: "Fast & efficient" },
-      { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet", description: "Previous generation" },
-    ],
-  },
-  {
-    id: "google",
-    name: "Google",
-    models: [
-      { id: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro", description: "Top-tier multimodal" },
-      { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash", description: "Fast & balanced" },
-      { id: "google/gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", description: "Fastest option" },
-      { id: "google/gemini-3-pro-preview", name: "Gemini 3 Pro", description: "Next-gen preview" },
-    ],
-  },
-  {
-    id: "groq",
-    name: "Groq (Ultra-Fast)",
-    models: [
-      { id: "groq/llama-3.3-70b-versatile", name: "Llama 3.3 70B", description: "Most capable" },
-      { id: "groq/llama3-70b-8192", name: "Llama 3 70B", description: "Previous generation" },
-      { id: "groq/mixtral-8x7b-32768", name: "Mixtral 8x7B", description: "Fast mixture model" },
-    ],
-  },
-];
+const LLM_PROVIDERS: LLMProvider[] = LEGACY_MODEL_PROVIDER_GROUPS;
 
 interface NaviAction {
   id?: string;
@@ -494,15 +425,20 @@ interface NaviChatResponse {
 type DetectedTask = {
   taskType?: string;
   modelId?: string;
+  effectiveModelId?: string;
   modelName?: string;
   reason?: string;
+  fallbackReason?: string;
   provider?: string;
   source?: "auto" | "manual";
   requestedModel?: string;
+  requestedModelId?: string;
   requestedMode?: string;
+  requestedModeId?: string;
   resolvedModel?: string;
   mode?: string; // chat | agent | agent-full-access
   autoExecute?: boolean;
+  wasFallback?: boolean;
 };
 
 type TerminalEntry = {
@@ -1013,6 +949,7 @@ const normalizeRoutingInfo = (routing: any): DetectedTask | null => {
     routing.intent ||
     undefined;
   const modelId =
+    routing.effectiveModelId ||
     routing.resolved_model_id ||
     routing.model_id ||
     routing.modelId ||
@@ -1031,20 +968,31 @@ const normalizeRoutingInfo = (routing: any): DetectedTask | null => {
     routing.providerId ||
     undefined;
   const reason = routing.reason || routing.rationale || routing.explanation || undefined;
+  const fallbackReason =
+    routing.fallbackReason || routing.fallback_reason || routing.fallback_reason_text || undefined;
   const source = routing.source || undefined;
-  const requestedModel = routing.requested_model || routing.requestedModel || undefined;
-  const requestedMode = routing.mode || routing.requested_mode || routing.requestedMode || undefined;
+  const requestedModel =
+    routing.requestedModelId || routing.requested_model || routing.requestedModel || undefined;
+  const requestedMode =
+    routing.requestedModeId || routing.requested_mode || routing.requestedMode || undefined;
   const resolvedModel = routing.resolved_model || routing.resolvedModel || undefined;
+  const wasFallback = Boolean(routing.wasFallback || routing.was_fallback);
+  const effectiveModelId = routing.effectiveModelId || routing.effective_model_id || modelId;
   return {
     taskType,
     modelId,
+    effectiveModelId,
     modelName,
     provider,
     reason,
+    fallbackReason,
     source,
     requestedModel,
+    requestedModelId: requestedModel,
     requestedMode,
+    requestedModeId: requestedMode,
     resolvedModel,
+    wasFallback,
   };
 };
 
@@ -1076,20 +1024,37 @@ const flattenModels = () =>
   );
 
 const getModelOption = (modelId: string) => {
+  const registryModel = getRegistryModel(modelId);
+  if (registryModel) {
+    return {
+      id: registryModel.id,
+      name: registryModel.name,
+      description: registryModel.description || "",
+      providerId: registryModel.id.split("/")[0],
+      providerName: registryModel.id.split("/")[0],
+    };
+  }
   const all = flattenModels();
   return all.find((model) => model.id === modelId) || null;
 };
 
 const getModelLabel = (modelId: string, fallbackLabel?: string) => {
+  const registryLabel = getRegistryModelLabel(modelId);
+  if (registryLabel && registryLabel !== modelId) return registryLabel;
   const model = getModelOption(modelId);
   if (model) return model.name;
   return fallbackLabel || modelId;
 };
 
 const getDefaultManualModelId = () => {
-  const preferred = LLM_PROVIDERS.find((provider) => provider.id !== "auto");
-  return preferred?.models[0]?.id ?? "openai/gpt-5";
+  const preferred = ADVANCED_PROVIDER_GROUPS[0];
+  return preferred?.models[0]?.id ?? MODEL_REGISTRY.defaults.defaultModelId;
 };
+
+const isLegacyAutoModel = (modelId: string) =>
+  modelId === AUTO_MODEL_ID || modelId === "auto";
+
+const isNaviModeModel = (modelId: string) => modelId.startsWith("navi/");
 
 const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   { id: "tell_more", label: "Tell me more", prompt: "tell me more" },
@@ -1618,11 +1583,18 @@ export default function NaviChatPanel({
   const [scope, setScope] = useState<ScopeMode>("this_repo");
   const [provider, setProvider] = useState<ProviderId>("openai_navra");
   const [chatMode, setChatMode] = useState<ChatMode>("agent");
-  const [selectedModelId, setSelectedModelId] = useState(AUTO_MODEL_ID);
+  const [selectedModelId, setSelectedModelId] = useState(DEFAULT_NAVI_MODE_ID);
   const [modelLabelOverride, setModelLabelOverride] = useState<string | null>(null);
-  const [useAutoModel, setUseAutoModel] = useState(true);
+  const [useAutoModel, setUseAutoModel] = useState(false);
+  const [showAdvancedModels, setShowAdvancedModels] = useState(false);
   const [lastManualModelId, setLastManualModelId] = useState(getDefaultManualModelId());
   const [lastRouterInfo, setLastRouterInfo] = useState<DetectedTask | null>(null);
+
+  useEffect(() => {
+    if (!isNaviModeModel(selectedModelId) && !isLegacyAutoModel(selectedModelId)) {
+      setShowAdvancedModels(true);
+    }
+  }, [selectedModelId]);
 
   // Task Complete panel state
   type TaskSummary = {
@@ -1825,7 +1797,7 @@ export default function NaviChatPanel({
   const sendTimeoutRef = useRef<number | null>(null);
   const lastSentRef = useRef<string>("");
   const lastAttachmentsRef = useRef<AttachmentChipData[]>([]);
-  const lastModelIdRef = useRef<string>(AUTO_MODEL_ID);
+  const lastModelIdRef = useRef<string>(DEFAULT_NAVI_MODE_ID);
   const lastModeIdRef = useRef<ChatMode>("agent");
   const sentViaExtensionRef = useRef(false);
   const pendingResetRef = useRef(false);
@@ -3171,7 +3143,8 @@ export default function NaviChatPanel({
       const activityPanel = activityPanelRef.current;
 
       if (msg.type === "hydrateState") {
-        const nextModelId = typeof msg.modelId === "string" ? msg.modelId : AUTO_MODEL_ID;
+        const nextModelId =
+          typeof msg.modelId === "string" ? msg.modelId : DEFAULT_NAVI_MODE_ID;
         const nextModelLabel = typeof msg.modelLabel === "string" ? msg.modelLabel : null;
         const nextModeId = typeof msg.modeId === "string" ? msg.modeId : "agent";
 
@@ -3179,9 +3152,9 @@ export default function NaviChatPanel({
         setSelectedModelId(nextModelId);
         setModelLabelOverride(knownModel ? null : nextModelLabel);
 
-        const isAuto = nextModelId === AUTO_MODEL_ID || nextModelId === "auto";
+        const isAuto = isLegacyAutoModel(nextModelId);
         setUseAutoModel(isAuto);
-        if (!isAuto) {
+        if (!isAuto && !isNaviModeModel(nextModelId)) {
           setLastManualModelId(nextModelId);
         }
 
@@ -3725,18 +3698,35 @@ export default function NaviChatPanel({
 
       // Handle router info from streaming endpoint (mode, model, task type)
       if (msg.type === "navi.router.info") {
-        const { provider, model, mode, task_type, auto_execute } = msg;
-        const autoExecuteEnabled = auto_execute || false;
+        const normalized = normalizeRoutingInfo(msg);
+        const autoExecuteEnabled = Boolean(msg.auto_execute || msg.autoExecute);
 
         setLastRouterInfo({
           source: "auto",
-          provider: provider || "openai",
-          modelId: model ? `${provider}/${model}` : undefined,
-          modelName: model || "auto",
-          taskType: task_type || "code_generation",
-          mode: mode || "agent",
+          provider: normalized?.provider || "openai",
+          modelId: normalized?.effectiveModelId || normalized?.modelId || undefined,
+          effectiveModelId: normalized?.effectiveModelId || normalized?.modelId || undefined,
+          modelName: normalized?.modelName || normalized?.effectiveModelId || normalized?.modelId || "auto",
+          taskType: normalized?.taskType || "code_generation",
+          mode: normalized?.requestedModeId || normalized?.mode || "agent",
           autoExecute: autoExecuteEnabled,
+          requestedModel: normalized?.requestedModelId || normalized?.requestedModel,
+          requestedModelId: normalized?.requestedModelId || normalized?.requestedModel,
+          requestedMode: normalized?.requestedModeId || normalized?.requestedMode,
+          requestedModeId: normalized?.requestedModeId || normalized?.requestedMode,
+          wasFallback: normalized?.wasFallback || false,
+          fallbackReason: normalized?.fallbackReason || undefined,
+          reason: normalized?.reason,
         });
+
+        if (normalized?.wasFallback) {
+          const effectiveModel = normalized.effectiveModelId || normalized.modelId || "unknown";
+          const reason =
+            normalized.fallbackReason ||
+            normalized.reason ||
+            `Requested model unavailable. Using '${effectiveModel}'.`;
+          showToast(reason, "warning");
+        }
 
         // Store auto-execute state for action processing
         autoExecuteModeRef.current = autoExecuteEnabled;
@@ -6453,12 +6443,12 @@ export default function NaviChatPanel({
 
   const applyModelSelection = (nextModelId: string) => {
     const resolvedLabel = getModelLabel(nextModelId);
-    const isAuto = nextModelId === AUTO_MODEL_ID || nextModelId === "auto";
+    const isAuto = isLegacyAutoModel(nextModelId);
     setLastRouterInfo(null);
     setSelectedModelId(nextModelId);
     setModelLabelOverride(null);
     setUseAutoModel(isAuto);
-    if (!isAuto) {
+    if (!isAuto && !isNaviModeModel(nextModelId)) {
       setLastManualModelId(nextModelId);
     }
     vscodeApi.postMessage({
@@ -6479,7 +6469,7 @@ export default function NaviChatPanel({
   };
 
   const resolveModelForMessage = (text: string) => {
-    if (selectedModelId === AUTO_MODEL_ID && useAutoModel) {
+    if (isLegacyAutoModel(selectedModelId) && useAutoModel) {
       // Use intelligent LLM router to detect task type and recommend best model
       const recommendation = getRecommendedModel(text);
       console.log(`[NAVI Router] Detected task: ${recommendation.taskType}, using: ${recommendation.modelName} (${recommendation.reason})`);
@@ -8615,6 +8605,12 @@ export default function NaviChatPanel({
   const scopeIsChangedFiles = scopeDecision === "changed-files";
   const scopeIsWorkspace = scopeDecision === "workspace";
   const selectedModelName = getModelLabel(selectedModelId, modelLabelOverride || undefined);
+  const isAdvancedSelection =
+    !isNaviModeModel(selectedModelId) && !isLegacyAutoModel(selectedModelId);
+  const modelProviderGroups: LLMProvider[] =
+    showAdvancedModels || isAdvancedSelection
+      ? LLM_PROVIDERS
+      : [{ id: "navi", name: "NAVI", models: NAVI_MODELS }];
   const autoBadgeLabel = "Auto -> server routing";
   const resolvedRouterName =
     lastRouterInfo?.modelName ||
@@ -8627,7 +8623,7 @@ export default function NaviChatPanel({
   );
   const routerBadgeLabel = lastRouterInfo
     ? `${routerTaskLabel} -> ${resolvedRouterName || selectedModelName}`
-    : useAutoModel && selectedModelId === AUTO_MODEL_ID
+    : useAutoModel && isLegacyAutoModel(selectedModelId)
       ? autoBadgeLabel
       : `Manual -> ${selectedModelName}`;
   const lastAssistantCompleted = useMemo(() => {
@@ -12449,7 +12445,7 @@ export default function NaviChatPanel({
         {/* Hide QuickActionsBar when we have specific next steps from the response */}
         {/* QuickActionsBar removed: only show backend-provided next steps */}
 
-        {selectedModelId === AUTO_MODEL_ID && useAutoModel && lastRouterInfo?.source === "auto" && sending && (
+        {isLegacyAutoModel(selectedModelId) && useAutoModel && lastRouterInfo?.source === "auto" && sending && (
           <div className="navi-chat-model-banner">
             <div className="navi-chat-model-banner-info">
               <Cpu className="navi-icon-3d" />
@@ -12481,7 +12477,7 @@ export default function NaviChatPanel({
           </div>
         )}
 
-        {selectedModelId !== AUTO_MODEL_ID && (
+        {!isLegacyAutoModel(selectedModelId) && !isNaviModeModel(selectedModelId) && (
           <div className="navi-chat-model-banner navi-chat-model-banner--manual">
             <div className="navi-chat-model-banner-info">
               <Cpu className="navi-icon-3d" />
@@ -12495,9 +12491,9 @@ export default function NaviChatPanel({
             <button
               type="button"
               className="navi-chat-model-banner-action"
-              onClick={() => applyModelSelection(AUTO_MODEL_ID)}
+              onClick={() => applyModelSelection(DEFAULT_NAVI_MODE_ID)}
             >
-              Use Auto
+              Use NAVI
             </button>
           </div>
         )}
@@ -12751,7 +12747,7 @@ export default function NaviChatPanel({
             value={selectedModelId}
             onChange={(e) => applyModelSelection(e.target.value)}
           >
-            {LLM_PROVIDERS.map((provider) => (
+            {modelProviderGroups.map((provider) => (
               <optgroup key={provider.id} label={provider.name}>
                 {provider.models.map((model) => (
                   <option key={model.id} value={model.id}>
@@ -12761,6 +12757,21 @@ export default function NaviChatPanel({
               </optgroup>
             ))}
           </select>
+
+          <button
+            type="button"
+            className={`navi-chat-mode-pill navi-chat-mode-pill--action navi-chat-advanced-toggle ${showAdvancedModels ? "is-active" : ""}`}
+            onClick={() => setShowAdvancedModels((prev) => !prev)}
+            title="Show or hide exact vendor model selection"
+          >
+            Advanced
+          </button>
+
+          {isAdvancedSelection && (
+            <span className="navi-chat-advanced-note">
+              This bypasses NAVI optimization
+            </span>
+          )}
 
           <div className="navi-branch-dropdown-container">
             <button

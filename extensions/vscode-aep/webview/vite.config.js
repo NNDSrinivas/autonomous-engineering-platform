@@ -7,6 +7,17 @@ exports.default = (0, vite_1.defineConfig)({
     plugins: [(0, plugin_react_1.default)()],
     root: ".",
     base: "",
+    server: {
+        fs: {
+            allow: [(0, path_1.resolve)(__dirname, "../../../")]
+        }
+    },
+    resolve: {
+        alias: {
+            "@": (0, path_1.resolve)(__dirname, "src"),
+            "@shared": (0, path_1.resolve)(__dirname, "../../../shared")
+        }
+    },
     build: {
         outDir: "../dist/webview",
         emptyOutDir: true,

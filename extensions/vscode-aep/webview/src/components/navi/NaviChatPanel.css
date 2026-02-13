@@ -4204,6 +4204,20 @@ html.light .navi-slash-menu {
   transform: translateY(-1px);
 }
 
+.navi-chat-advanced-toggle.is-active {
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.12);
+}
+
+.navi-chat-advanced-note {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
 /* Branch indicator - prominent styling */
 .navi-chat-mode-pill--branch {
   position: relative;

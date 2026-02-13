@@ -3137,5 +3137,50 @@ Current: ✅ Script creates frames
 
 ---
 
-**Last Updated:** February 9, 2026
+## Unified NAVI Model Registry + ModelRouter (V1) — Implementation Notes
+
+### Scope implemented
+- Added single shared registry at `shared/model-registry.json`.
+- Added validator at `scripts/validate_model_registry.py`.
+- Added backend router at `backend/services/model_router.py`.
+- Unified routing now used by:
+  - `/api/navi/chat/stream`
+  - `/api/navi/chat/stream/v2`
+  - `/api/navi/chat/autonomous`
+- Added consistent `router_info` metadata to SSE events:
+  - `requestedModelId`
+  - `effectiveModelId`
+  - `wasFallback`
+  - `fallbackReason`
+  - `provider`
+  - `model`
+  - `requestedModeId`
+- Added strict private mode enforcement (`navi/private`):
+  - only `local` / `self_hosted` providers are eligible
+  - no SaaS fallback
+  - explicit routing error when no private model is configured
+- Added trace logging foundation:
+  - `backend/services/trace_store.py` (append-only JSONL)
+  - `scripts/export_navi_traces.py` (filter/export traces)
+  - emits `routing_decision` and `run_outcome` events
+- Webview now reads model definitions from shared registry via:
+  - `extensions/vscode-aep/webview/src/config/modelRegistry.ts`
+
+### UX changes shipped
+- Default model changed to `navi/intelligence`.
+- Model selector now supports NAVI-first behavior with Advanced vendor access.
+- Added non-blocking fallback warning toast when backend reports fallback.
+- Added Advanced note: `This bypasses NAVI optimization`.
+
+### Tests added
+- `backend/tests/test_model_registry_json.py`
+- `backend/tests/test_model_router.py`
+- `backend/tests/test_navi_model_routing_integration.py`
+
+### Follow-up items (next pass)
+- Extend routing metadata to non-stream `/api/navi/chat` response body for complete parity.
+- Expand endpoint-level integration tests to execute live SSE flows in CI harness.
+- Add provider capability gating from registry capabilities matrix (streaming/tools/vision) beyond provider-level checks.
+
+**Last Updated:** February 13, 2026
 **Next Review:** March 1, 2026 (after first month of customer pilots)

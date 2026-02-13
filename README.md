@@ -51,7 +51,10 @@ Transform how engineering teams work by providing an **autonomous AI assistant**
 - **Python 3.11.x** (recommended) or 3.9-3.12
   - ⚠️ Python 3.13+ not yet supported due to dependency compatibility
   - Install Python 3.11: `brew install python@3.11` (macOS) or download from [python.org](https://www.python.org)
-- **Node.js 16+**
+- **Node.js 20+ LTS** (strongly recommended for all development)
+  - Minimum: Node.js 18.19+ supported, but Node 20+ LTS recommended to avoid environment inconsistencies
+  - Vite 6.x build tooling works best with Node 20+
+  - Install Node 20 LTS: `brew install node@20` (macOS) or download from [nodejs.org](https://nodejs.org)
 - **PostgreSQL**
 - **Redis** (optional for development, required for production)
 
@@ -65,8 +68,7 @@ python3.11 -m venv aep-venv
 source aep-venv/bin/activate
 pip install -r requirements.txt
 
-# Frontend setup
-cd frontend
+# Install all npm workspaces (frontend, extension, webview, packages)
 npm install
 
 # Copy environment configuration
@@ -881,6 +883,44 @@ Notes:
 ```bash
 ./scripts/check_extension_compile.sh
 ```
+
+#### **VSCode Extension Build Process**
+
+The VSCode extension (`extensions/vscode-aep`) includes an automated webview build process.
+
+**Prerequisites:**
+- Node.js 20+ required (Vite 6.x build tooling requires Node 18.19+ or 20+)
+
+**Setup (One-Time):**
+```bash
+# IMPORTANT: Run from repository root to install all workspace dependencies
+cd /path/to/autonomous-engineering-platform
+npm install  # Installs all workspaces: navi-contracts, frontend, extension, webview
+```
+
+**Build Commands:**
+```bash
+cd extensions/vscode-aep
+
+# Full build (webview + TypeScript extension)
+npm run compile
+
+# Development workflow (faster, TypeScript-only)
+npm run watch  # Use this for extension development - no webview rebuild
+
+# Webview development (hot reload)
+cd webview && npm run dev  # Live preview at http://localhost:5173
+
+# Publishing
+npm run vscode:prepublish  # Builds everything for production
+```
+
+**How It Works:**
+1. `npm install` at repo root installs all npm workspaces (including webview dependencies)
+2. `npm run compile` builds webview (Vite 6.x) → compiles TypeScript extension
+3. `npm run watch` watches TypeScript only (no webview rebuild - faster for development)
+
+**Note**: This repository uses npm workspaces. Always run `npm install` from the **repository root** to ensure all workspace dependencies (including `@aep/navi-contracts` local workspace) are correctly resolved. Running `npm install` in subdirectories may break local workspace dependency resolution. For development, use `npm run watch` for fast incremental TypeScript builds.
 
 #### **Enterprise Ops Readiness**
 

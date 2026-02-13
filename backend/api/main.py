@@ -43,6 +43,7 @@ from backend.core.health.shutdown import on_startup, on_shutdown
 from backend.core.resilience.resilience_middleware import ResilienceMiddleware
 from backend.core.rate_limit.middleware import RateLimitMiddleware
 from backend.core.auth.vscode_middleware import VscodeAuthMiddleware
+from backend.core.auth.deps import get_current_user
 
 from backend.core.config import settings
 from backend.core.settings import (
@@ -104,6 +105,7 @@ from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
 from .routers.memory import router as memory_router
 from .routers.memory_graph import router as memory_graph_router
+from .routers.navi_memory import router as navi_memory_router
 from .routers.saas import router as saas_router
 from .routers.plan import router as live_plan_router
 from .apply_fix import router as apply_fix_router  # Batch 6: Auto-Fix Engine
@@ -217,6 +219,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
+
+# Ultra-fast health endpoints (registered before middleware for minimal latency)
+from backend.api.fast_health import router as fast_health_router
+
+app.include_router(fast_health_router)
 
 
 @app.exception_handler(HTTPException)
@@ -543,6 +550,10 @@ app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(memory_graph_router)  # Memory graph queries (/api/memory/*)
+app.include_router(
+    navi_memory_router,
+    dependencies=[Depends(get_current_user)],
+)  # NAVI memory endpoints (/api/navi-memory/*) - secured with authentication
 app.include_router(saas_router)  # SaaS management endpoints (/saas/*)
 app.include_router(events_router, prefix="/api")  # Universal event ingestion
 app.include_router(internal_router, prefix="/api")  # System info and diagnostics

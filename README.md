@@ -48,10 +48,12 @@ Transform how engineering teams work by providing an **autonomous AI assistant**
 ## ⚙️ Quick Start
 
 ### Prerequisites
-- Python 3.9+
-- Node.js 16+
-- PostgreSQL
-- Redis (optional)
+- **Python 3.11.x** (recommended) or 3.9-3.12
+  - ⚠️ Python 3.13+ not yet supported due to dependency compatibility
+  - Install Python 3.11: `brew install python@3.11` (macOS) or download from [python.org](https://www.python.org)
+- **Node.js 16+**
+- **PostgreSQL**
+- **Redis** (optional for development, required for production)
 
 ### Installation
 ```bash
@@ -59,28 +61,168 @@ git clone <repository-url>
 cd autonomous-engineering-platform
 
 # Backend setup
-cd backend
-python -m venv .venv
-source .venv/bin/activate
+python3.11 -m venv aep-venv
+source aep-venv/bin/activate
 pip install -r requirements.txt
 
 # Frontend setup
-cd ../frontend
+cd frontend
 npm install
 
 # Copy environment configuration
 cp .env.template .env
-\`\`\`
+# Edit .env with your configuration
+```
 
 ### Run Services
+
+#### Development Mode (Fast, No Auto-Reload)
 ```bash
-# Start backend services
-python -m backend.api.main        # Core API (port 8000)
-python -m backend.api.realtime    # Realtime API (port 8001)
+# Start backend (recommended for development)
+source aep-venv/bin/activate
+python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8787
 
 # Start frontend
-cd frontend && npm start          # Web UI (port 3000)
-\`\`\`
+cd frontend && npm run dev          # Web UI (port 3000)
+```
+
+#### Development Mode (With Auto-Reload)
+```bash
+# ⚠️ Warning: Auto-reload can cause slow startup on large codebases
+# Only use if you need automatic code reloading
+source aep-venv/bin/activate
+python -m uvicorn backend.api.main:app --reload --host 127.0.0.1 --port 8787
+```
+
+#### Production Mode
+```bash
+# Start with production settings
+source aep-venv/bin/activate
+python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8787 --workers 4
+
+# Frontend production build
+cd frontend && npm run build && npm run preview
+```
+
+### Verify Installation
+```bash
+# Check backend health
+curl http://localhost:8787/health
+# Expected: {"status":"ok","service":"core"}
+
+# Check frontend
+open http://localhost:3000
+```
+
+---
+
+## 🔧 Troubleshooting
+
+### Backend Not Starting / Slow Performance
+
+**Problem:** Backend takes 3-5 minutes to respond or doesn't start
+```bash
+ERROR: ModuleNotFoundError: No module named 'fastapi'
+ERROR: [Errno 48] Address already in use
+```
+
+**Solution:**
+```bash
+# 1. Kill any hung processes
+lsof -ti :8787 | xargs kill -9
+
+# 2. Ensure you're using the correct virtual environment
+source aep-venv/bin/activate
+python --version  # Should show Python 3.11.x
+
+# 3. Start WITHOUT --reload for better performance
+python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8787
+```
+
+### Python Version Compatibility
+
+**Problem:** Using system Python 3.13+ instead of 3.11
+```bash
+# Check which Python you're using
+python --version
+which python
+```
+
+**Why Python 3.11?**
+- Some dependencies (e.g., `chromadb`, `numpy`, `torch`) may not be compatible with Python 3.13 yet
+- Python 3.11 is the stable, tested version for this project
+- Python 3.9-3.12 are supported, 3.13+ not yet tested
+
+**Solution:**
+```bash
+# Install Python 3.11
+# macOS:
+brew install python@3.11
+
+# Ubuntu/Debian:
+sudo apt install python3.11 python3.11-venv
+
+# Create venv with specific Python version
+python3.11 -m venv aep-venv
+source aep-venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Auto-Reload Performance Issues
+
+**Problem:** Backend startup is slow with `--reload` flag
+
+**Cause:** WatchFiles monitors the entire codebase (2GB+), causing startup delays
+
+**Solutions:**
+```bash
+# Option 1: Don't use --reload (recommended)
+python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8787
+
+# Option 2: Exclude large directories from watching
+# Add to .gitignore or create .watchignore
+aep-venv/
+node_modules/
+*.pyc
+__pycache__/
+
+# Option 3: Clear Python cache before starting
+find backend -name "*.pyc" -delete
+find backend -name "__pycache__" -type d -delete
+```
+
+### Wrong Virtual Environment
+
+**Problem:** Commands work in terminal but fail in IDE or scripts
+
+**Solution:**
+Always activate the correct virtual environment:
+```bash
+# Check current venv
+which python
+# Should show: /path/to/autonomous-engineering-platform/aep-venv/bin/python
+
+# If not, activate:
+source aep-venv/bin/activate
+
+# Add to your shell profile for convenience (~/.bashrc or ~/.zshrc)
+alias aep='cd /path/to/autonomous-engineering-platform && source aep-venv/bin/activate'
+```
+
+### Port Already in Use
+
+**Problem:** `[Errno 48] Address already in use`
+
+**Solution:**
+```bash
+# Find and kill process using port 8787
+lsof -ti :8787 | xargs kill -9
+
+# Or use a different port
+python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8788
+```
+
+---
 
 ### 🧩 Redis Broadcaster Mode (Production)
 

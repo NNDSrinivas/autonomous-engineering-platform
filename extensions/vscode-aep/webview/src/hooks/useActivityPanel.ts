@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ActivityStep, FileChange, CommandPreview } from '../components/ActivityPanel';
+import * as vscodeApi from '../utils/vscodeApi';
 
 interface AgentRunMetadata {
   mode?: string;
@@ -9,11 +10,107 @@ interface AgentRunMetadata {
   total_steps?: number;
 }
 
+type ActivityPanelSnapshot = {
+  steps: ActivityStep[];
+  currentStep?: number;
+  isVisible: boolean;
+};
+
+const STORAGE_KEY = "aep.navi.activityPanel.v1";
+const VSCODE_STATE_KEY = "aep.navi.activityPanel.state.v1";
+
+const getWebviewStateObject = (): Record<string, any> => {
+  const raw = vscodeApi.getState();
+  return raw && typeof raw === "object" ? (raw as Record<string, any>) : {};
+};
+
+const readSnapshot = (): ActivityPanelSnapshot | null => {
+  try {
+    const state = getWebviewStateObject();
+    const snapshot = state[VSCODE_STATE_KEY];
+    if (snapshot && typeof snapshot === "object") {
+      return {
+        steps: Array.isArray((snapshot as any).steps) ? (snapshot as any).steps : [],
+        currentStep:
+          typeof (snapshot as any).currentStep === "number"
+            ? (snapshot as any).currentStep
+            : undefined,
+        isVisible: Boolean((snapshot as any).isVisible),
+      };
+    }
+  } catch {
+    // ignore VS Code state errors and fall back to localStorage
+  }
+
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ActivityPanelSnapshot>;
+    return {
+      steps: Array.isArray(parsed.steps) ? parsed.steps : [],
+      currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : undefined,
+      isVisible: Boolean(parsed.isVisible),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const writeSnapshot = (snapshot: ActivityPanelSnapshot) => {
+  try {
+    const state = getWebviewStateObject();
+    vscodeApi.setState({
+      ...state,
+      [VSCODE_STATE_KEY]: snapshot,
+    });
+  } catch {
+    // ignore VS Code state errors
+  }
+
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // ignore storage errors
+  }
+};
+
 export function useActivityPanel() {
   const [steps, setSteps] = useState<ActivityStep[]>([]);
   const [currentStep, setCurrentStep] = useState<number | undefined>();
   const [isVisible, setIsVisible] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MAX_COMMAND_PREVIEW = 800;
+
+  // Restore persisted activity panel state
+  useEffect(() => {
+    const snapshot = readSnapshot();
+    if (!snapshot) return;
+    setSteps(snapshot.steps || []);
+    setCurrentStep(snapshot.currentStep);
+    setIsVisible(snapshot.isVisible);
+  }, []);
+
+  // Persist activity panel state (debounced)
+  useEffect(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    saveTimerRef.current = setTimeout(() => {
+      writeSnapshot({ steps, currentStep, isVisible });
+      saveTimerRef.current = null;
+    }, 400);
+
+    // Cleanup: clear timeout on unmount or dependency change
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [steps, currentStep, isVisible]);
 
   const appendPreviewText = useCallback((current: string, addition: string) => {
     const next = `${current}${addition}`;

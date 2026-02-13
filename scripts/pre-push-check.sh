@@ -11,12 +11,36 @@ echo ""
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Track failures
 FAILED=0
 
-# 1. Format check
+# Get list of changed Python files FIRST to determine what checks to run
+# Use array to handle filenames with spaces/newlines properly
+CHANGED_FILES=()
+while IFS= read -r file; do
+    CHANGED_FILES+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR | grep "\.py$" || true)
+HAS_PYTHON_CHANGES=false
+if [ ${#CHANGED_FILES[@]} -gt 0 ]; then
+    HAS_PYTHON_CHANGES=true
+fi
+
+# Quick exit for non-Python changes
+if [ "$HAS_PYTHON_CHANGES" = false ]; then
+    echo -e "${BLUE}ℹ️  No Python files changed - skipping Python-specific checks${NC}"
+    echo ""
+    echo "=================================="
+    echo -e "${GREEN}✅ All Python checks passed! Safe to push.${NC}"
+    exit 0
+fi
+
+echo -e "${BLUE}ℹ️  Python files changed - running full validation${NC}"
+echo ""
+
+# 1. Format check (only if Python files changed)
 echo "📝 Checking code formatting..."
 if black --check backend/ tests/ 2>/dev/null; then
     echo -e "${GREEN}✓ Python formatting OK${NC}"
@@ -25,7 +49,7 @@ else
     FAILED=1
 fi
 
-# 2. Linting
+# 2. Linting (only if Python files changed)
 echo ""
 echo "🔎 Running linters..."
 if ruff check backend/ tests/ 2>/dev/null; then
@@ -39,43 +63,37 @@ fi
 echo ""
 echo "🚨 Checking for common anti-patterns in changed files..."
 
-# Get list of changed files in this commit
-CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep "\.py$" || true)
+# Check for bare except in changed files only (match only "except:" not "except Exception:")
+BARE_EXCEPT_COUNT=0
+for file in "${CHANGED_FILES[@]}"; do
+    if [ -f "$file" ]; then
+        # Match "except:" with optional whitespace, but not "except SomeException:"
+        if grep -n "except[[:space:]]*:[[:space:]]*\(#\|$\)" "$file" > /dev/null; then
+            echo -e "${YELLOW}⚠ $file has bare except clauses${NC}"
+            BARE_EXCEPT_COUNT=$((BARE_EXCEPT_COUNT + 1))
+        fi
+    fi
+done
 
-if [ -z "$CHANGED_FILES" ]; then
-    echo -e "${GREEN}✓ No Python files changed${NC}"
+if [ $BARE_EXCEPT_COUNT -eq 0 ]; then
+    echo -e "${GREEN}✓ No bare except clauses in changed files${NC}"
 else
-    # Check for bare except in changed files only
-    BARE_EXCEPT_COUNT=0
-    for file in $CHANGED_FILES; do
-        if [ -f "$file" ]; then
-            if grep -n "except.*:$" "$file" | grep -v "except.*Error" | grep -v "#" > /dev/null; then
-                echo -e "${YELLOW}⚠ $file has bare except clauses${NC}"
-                BARE_EXCEPT_COUNT=$((BARE_EXCEPT_COUNT + 1))
-            fi
-        fi
-    done
-    
-    if [ $BARE_EXCEPT_COUNT -eq 0 ]; then
-        echo -e "${GREEN}✓ No bare except clauses in changed files${NC}"
-    else
-        FAILED=1
-    fi
+    FAILED=1
+fi
 
-    # Check for list membership in hot paths
-    LIST_CHECK_COUNT=0
-    for file in $CHANGED_FILES; do
-        if [[ "$file" == *"backend/api/"* ]] && [ -f "$file" ]; then
-            if grep -n "if .* in \[" "$file" > /dev/null; then
-                echo -e "${YELLOW}⚠ $file: Consider using sets instead of lists for membership checks${NC}"
-                LIST_CHECK_COUNT=$((LIST_CHECK_COUNT + 1))
-            fi
+# Check for list membership in hot paths
+LIST_CHECK_COUNT=0
+for file in "${CHANGED_FILES[@]}"; do
+    if [[ "$file" == *"backend/api/"* ]] && [ -f "$file" ]; then
+        if grep -n "if .* in \[" "$file" > /dev/null; then
+            echo -e "${YELLOW}⚠ $file: Consider using sets instead of lists for membership checks${NC}"
+            LIST_CHECK_COUNT=$((LIST_CHECK_COUNT + 1))
         fi
-    done
-    
-    if [ $LIST_CHECK_COUNT -eq 0 ]; then
-        echo -e "${GREEN}✓ No list membership checks in changed API files${NC}"
     fi
+done
+
+if [ $LIST_CHECK_COUNT -eq 0 ]; then
+    echo -e "${GREEN}✓ No list membership checks in changed API files${NC}"
 fi
 
 # 4. Run fast tests and database health check

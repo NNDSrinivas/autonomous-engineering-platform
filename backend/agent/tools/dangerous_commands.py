@@ -813,10 +813,10 @@ def format_permission_request(
     }
 
     risk_icons = {
-        RiskLevel.LOW: "⚠️",
-        RiskLevel.MEDIUM: "🔶",
-        RiskLevel.HIGH: "🔴",
-        RiskLevel.CRITICAL: "💀",
+        RiskLevel.LOW: "[!]",
+        RiskLevel.MEDIUM: "[!!]",
+        RiskLevel.HIGH: "[!!!]",
+        RiskLevel.CRITICAL: "[!!!!]",
     }
 
     return {

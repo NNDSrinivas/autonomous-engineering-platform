@@ -1,4 +1,21 @@
-"""Application settings and configuration."""
+"""Application settings and configuration.
+
+ARCHITECTURAL DEBT WARNING (P1 - High Priority)
+================================================================================
+This module (backend/core/settings.py) currently duplicates functionality with
+backend/core/config.py, which also defines a settings/configuration class.
+This split causes confusion and maintenance overhead.
+
+Action required: Consolidate these into a single, unified settings
+implementation as described in the consolidation plan.
+
+Please do not extend or add new settings in this module or in
+backend/core/config.py without first consulting the consolidation plan.
+
+Tracking: See docs/SETTINGS_CONSOLIDATION_TODO.md for the current
+background, metrics, and refactoring plan.
+================================================================================
+"""
 
 from __future__ import annotations
 

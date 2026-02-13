@@ -8,8 +8,9 @@ import { resolveBackendBase, buildHeaders } from '@/api/navi/client';
 const BACKEND_BASE = resolveBackendBase();
 const CHAT_URL = `${BACKEND_BASE}/api/navi/chat`;
 const CHAT_STREAM_URL = `${BACKEND_BASE}/api/navi/chat/stream`;
-// IMPORTANT: Disable streaming for autonomous coding to work properly (state/agentRun metadata not supported in streaming yet)
-const USE_STREAMING = false;
+const AUTONOMOUS_URL = `${BACKEND_BASE}/api/navi/chat/autonomous`;
+// Keep streaming enabled for all modes to provide consistent incremental UX.
+const USE_STREAMING = true;
 
 export interface LLMModel {
   id: string;
@@ -37,10 +38,7 @@ export const llmProviders: LLMProvider[] = [
     id: 'openai',
     name: 'OpenAI',
     models: [
-      { id: 'openai/gpt-5', name: 'GPT-5', description: 'Most capable OpenAI model' },
-      { id: 'openai/gpt-5-mini', name: 'GPT-5 Mini', description: 'Fast & efficient' },
-      { id: 'openai/gpt-5-nano', name: 'GPT-5 Nano', description: 'Ultra-fast for simple tasks' },
-      { id: 'openai/gpt-4o', name: 'GPT-4o', description: 'Optimized multimodal model' },
+      { id: 'openai/gpt-4o', name: 'GPT-4o', description: 'Most capable OpenAI model' },
       { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable' },
       { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Fast GPT-4' },
       { id: 'openai/o3-mini', name: 'o3-mini', description: 'Reasoning model' },
@@ -78,9 +76,18 @@ export const chatModes: { id: ChatMode; name: string; description: string }[] = 
 interface UseNaviChatProps {
   selectedTask: JiraTask | null;
   userName: string;
+  workspaceRoot?: string | null;
 }
 
-export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
+export interface ExecutionStep {
+  id: string;
+  phase: 'planning' | 'executing' | 'verifying' | 'fixing' | 'completed' | 'failed';
+  label: string;
+  status: 'pending' | 'running' | 'completed' | 'error';
+  detail?: string;
+}
+
+export function useNaviChat({ selectedTask, userName, workspaceRoot }: UseNaviChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('auto/recommended');
@@ -89,6 +96,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [lastRouterInfo, setLastRouterInfo] = useState<{ taskType: TaskType; modelName: string; reason: string } | null>(null);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
 
   // Load saved model preference on mount
   useEffect(() => {
@@ -178,16 +186,29 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
       console.log('[NAVI STATE] Previous state:', previousState);
 
       // Build request body for backend
-      const requestBody = {
+      const requestBody: any = {
         message: userMessage,
-        conversationHistory: messages.map(m => ({
+        model: modelToUse,
+      };
+
+      // Add fields based on endpoint type
+      if (chatMode === 'agent') {
+        // Autonomous endpoint expects: message, model, workspace_root, run_verification, max_iterations
+        if (workspaceRoot) {
+          requestBody.workspace_root = workspaceRoot;
+        }
+        requestBody.run_verification = true;
+        requestBody.max_iterations = 5;
+      } else {
+        // Regular chat endpoints expect: message, conversationHistory, currentTask, teamContext, model, mode, state
+        requestBody.conversationHistory = messages.map(m => ({
           id: m.id,
           type: m.role,
           content: m.content,
           timestamp: m.timestamp,
-        })),
-        currentTask: selectedTask ? selectedTask.key : null,
-        teamContext: selectedTask ? {
+        }));
+        requestBody.currentTask = selectedTask ? selectedTask.key : null;
+        requestBody.teamContext = selectedTask ? {
           task: {
             key: selectedTask.key,
             title: selectedTask.title,
@@ -195,15 +216,20 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
             status: selectedTask.status,
             acceptanceCriteria: selectedTask.acceptanceCriteria,
           }
-        } : null,
-        model: modelToUse,
-        mode: chatMode,
+        } : null;
+        requestBody.mode = chatMode;
         // Include previous state for autonomous coding continuity
-        state: previousState || undefined,
-      };
+        requestBody.state = previousState || undefined;
+      }
 
-      const endpoint = USE_STREAMING ? CHAT_STREAM_URL : CHAT_URL;
+      // Select endpoint based on mode - autonomous mode has its own streaming endpoint
+      const endpoint = chatMode === 'agent'
+        ? AUTONOMOUS_URL
+        : (USE_STREAMING ? CHAT_STREAM_URL : CHAT_URL);
+      const useStreaming = chatMode === 'agent' || USE_STREAMING;
+
       console.log('[NAVI] Sending request to:', endpoint);
+      console.log('[NAVI] Mode:', chatMode, 'Streaming:', useStreaming);
       console.log('[NAVI] Request body:', requestBody);
 
       const response = await fetch(endpoint, {
@@ -217,7 +243,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
         throw new Error(errorData.error || `Request failed: ${response.status}`);
       }
 
-      if (USE_STREAMING) {
+      if (useStreaming) {
         // Handle SSE streaming
         if (!response.body) {
           throw new Error('No response body for streaming');
@@ -250,13 +276,92 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
 
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content) {
+
+              // Handle different event types from autonomous endpoint
+              if (parsed.type === 'status') {
+                // Status updates: planning, executing, verifying, etc.
+                onDelta(`\n**${parsed.status}**${parsed.message ? ': ' + parsed.message : ''}\n`);
+
+                // Update execution steps for progress UI
+                if (chatMode === 'agent') {
+                  const phaseLabels: Record<string, string> = {
+                    planning: '📋 Planning',
+                    executing: '⚡ Executing',
+                    verifying: '✅ Verifying',
+                    fixing: '🔧 Fixing',
+                    completed: '✓ Completed',
+                    failed: '❌ Failed'
+                  };
+
+                  setExecutionSteps(prev => {
+                    const existingIdx = prev.findIndex(s => s.phase === parsed.status);
+                    const newStep: ExecutionStep = {
+                      id: parsed.status,
+                      phase: parsed.status,
+                      label: phaseLabels[parsed.status] || parsed.status,
+                      status: parsed.status === 'completed' ? 'completed'
+                            : parsed.status === 'failed' ? 'error'
+                            : 'running',
+                      detail: parsed.message
+                    };
+
+                    if (existingIdx >= 0) {
+                      // Update existing step
+                      const updated = [...prev];
+                      updated[existingIdx] = newStep;
+                      return updated;
+                    } else {
+                      // Add new step and mark previous as completed
+                      const updated = prev.map(s =>
+                        s.status === 'running' ? { ...s, status: 'completed' as const } : s
+                      );
+                      return [...updated, newStep];
+                    }
+                  });
+                }
+              } else if (parsed.type === 'text' || parsed.type === 'content') {
+                // Narrative text from agent
+                onDelta(parsed.text || parsed.content || '');
+              } else if (parsed.type === 'tool_call') {
+                // Tool invocations
+                onDelta(`\n🔧 ${parsed.tool || 'Tool'}: ${parsed.description || parsed.input || ''}\n`);
+              } else if (parsed.type === 'tool_result') {
+                // Tool results (show summary, not full output)
+                const output = parsed.output;
+                const outputPreview = output && typeof output === 'string' ? output.substring(0, 100) + '...' : '';
+                const summary = parsed.summary || outputPreview;
+                if (summary) onDelta(`✓ ${summary}\n`);
+              } else if (parsed.type === 'verification') {
+                // Test results
+                onDelta(`\n✅ Verification: ${parsed.message || parsed.status || ''}\n`);
+              } else if (parsed.type === 'complete') {
+                // Final summary
+                if (parsed.summary) onDelta(`\n${parsed.summary}\n`);
+              } else if (parsed.type === 'error') {
+                // Error events
+                throw new Error(parsed.message || parsed.error || 'Unknown error');
+              } else if (parsed.type === 'heartbeat') {
+                // Ignore heartbeat events (just keep-alive)
+                console.debug('[NAVI] Heartbeat received');
+              } else if (parsed.type === 'prompt_request') {
+                // Prompt request from agent - handled by parent component
+                console.log('[NAVI] Prompt request received:', parsed.data);
+                onDelta(`\n💬 **Waiting for input**: ${parsed.data?.title || 'User input required'}\n`);
+              } else if (parsed.content) {
+                // Fallback for regular content field
                 onDelta(parsed.content);
               } else if (parsed.error) {
+                // SSE error event - propagate to caller and stop stream
                 throw new Error(parsed.error);
               }
             } catch (e) {
-              console.warn('[NAVI] Failed to parse SSE data:', data);
+              // Only catch JSON parse errors - re-throw everything else
+              if (e instanceof SyntaxError) {
+                console.warn('[NAVI] Failed to parse SSE data:', data, e);
+              } else {
+                // Re-throw non-parse errors (including SSE error events)
+                throw e;
+              }
             }
           }
         }
@@ -300,10 +405,13 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
       console.error('[NAVI] Stream error:', error);
       onError(error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [messages, selectedModel, selectedTask, chatMode]);
+  }, [messages, selectedModel, selectedTask, chatMode, workspaceRoot]);
 
   const sendMessage = useCallback(async (input: string, overrideModel?: string) => {
     if (!input.trim() || isLoading) return;
+
+    // Clear execution steps for new autonomous task
+    setExecutionSteps([]);
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -449,5 +557,6 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
     getDisplayModelName,
     lastRouterInfo,
     preferencesLoaded,
+    executionSteps,
   };
 }

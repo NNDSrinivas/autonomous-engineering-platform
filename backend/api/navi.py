@@ -33,6 +33,7 @@ import random
 import logging
 import os
 import re
+import threading
 import time
 from asyncio.subprocess import STDOUT
 from pathlib import Path
@@ -51,6 +52,7 @@ from backend.core.db import get_db
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import User, Role
 from backend.core.settings import settings
+from backend.database.models.rbac import DBUser, Organization
 from backend.agent.agent_loop import run_agent_loop
 from backend.agent.planner_v3 import PlannerV3
 from backend.agent.tool_executor import execute_tool_with_sources
@@ -65,6 +67,13 @@ from backend.services.git_service import GitService
 
 # Conversation memory for cross-session persistence
 from backend.services.memory.conversation_memory import ConversationMemoryService
+
+# Consent service for command consent preferences and audit
+from backend.services.consent_service import get_consent_service
+
+# Redis for distributed consent state
+import redis.asyncio as redis
+from datetime import datetime
 
 # NOTE: ProjectAnalyzer is in backend/services/navi_brain.py
 # The /api/navi/chat endpoint in chat.py uses navi_brain.py's implementation
@@ -213,6 +222,163 @@ def _resolve_model(model: Optional[str]) -> str:
 
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
 agent_router = APIRouter(prefix="/api/agent", tags=["agent-classify"])
+
+# Redis client for distributed consent state
+_redis_client: Optional[redis.Redis] = None
+
+
+def get_redis_client() -> redis.Redis:
+    """Get or create Redis client for consent management."""
+    global _redis_client
+    if _redis_client is None:
+        from backend.core.config import settings as config_settings
+        _redis_client = redis.from_url(
+            config_settings.redis_url,
+            encoding="utf-8",
+            decode_responses=True
+        )
+    return _redis_client
+
+
+# Global prompt response storage
+# Key: prompt_id, Value: {"prompt_id": str, "response": Any, "cancelled": bool, "pending": bool}
+# TODO: Migrate to Redis/DB with TTL for production multi-worker deployments
+_prompt_responses: Dict[str, Dict[str, Any]] = {}
+_prompt_lock = threading.Lock()
+_PROMPT_DEFAULT_TIMEOUT_SECONDS = 300
+_PROMPT_MAX_TTL_SECONDS = 3600
+_PROMPT_RESPONSE_RETENTION_SECONDS = 120
+
+
+def _parse_positive_int(value: Any) -> Optional[int]:
+    """Return a positive integer or None for invalid values."""
+    try:
+        iv = int(str(value))
+        return iv if iv > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_user_org_ids_for_memory(
+    db: Session, user_id: Optional[str], org_id: Optional[str]
+) -> tuple[Optional[int], Optional[int]]:
+    """Resolve auth identity strings (sub/org_key) to numeric DB IDs for memory tables."""
+    user_id_int = _parse_positive_int(user_id)
+    org_id_int = _parse_positive_int(org_id)
+
+    if org_id_int is None and org_id:
+        try:
+            org = db.query(Organization).filter(Organization.org_key == str(org_id)).one_or_none()
+            if org:
+                org_id_int = int(org.id)
+        except Exception as exc:
+            logger.debug(
+                "[NAVI] Unable to resolve org key '%s' to numeric ID: %s",
+                org_id,
+                exc,
+            )
+
+    if user_id_int is not None:
+        return user_id_int, org_id_int
+
+    user_sub = (user_id or "").strip()
+    if not user_sub:
+        return None, org_id_int
+
+    try:
+        query = db.query(DBUser).filter(DBUser.sub == user_sub)
+        if org_id_int is not None:
+            query = query.filter(DBUser.org_id == org_id_int)
+        db_user = query.one_or_none()
+        if db_user:
+            return int(db_user.id), org_id_int if org_id_int is not None else int(db_user.org_id)
+    except Exception as exc:
+        logger.debug(
+            "[NAVI] Unable to resolve user sub '%s' to numeric ID: %s",
+            user_sub,
+            exc,
+        )
+
+    return None, org_id_int
+
+
+def _cleanup_expired_prompt_entries(now_ts: Optional[float] = None) -> None:
+    """Drop expired or stale prompt entries from in-memory prompt state."""
+    now_ts = now_ts or time.time()
+    expired_ids: list[str] = []
+    for prompt_id, record in _prompt_responses.items():
+        expires_at = record.get("expires_at")
+        if isinstance(expires_at, (int, float)) and expires_at <= now_ts:
+            expired_ids.append(prompt_id)
+            continue
+        responded_at = record.get("responded_at")
+        if not record.get("pending", True) and isinstance(responded_at, (int, float)):
+            if responded_at + _PROMPT_RESPONSE_RETENTION_SECONDS <= now_ts:
+                expired_ids.append(prompt_id)
+    for prompt_id in expired_ids:
+        _prompt_responses.pop(prompt_id, None)
+
+
+def register_prompt_request(
+    prompt_id: str,
+    user_id: Optional[str],
+    org_id: Optional[str],
+    timeout_seconds: Optional[int] = None,
+) -> None:
+    """Register a prompt as pending so responses can be validated for ownership."""
+    with _prompt_lock:
+        now_ts = time.time()
+        _cleanup_expired_prompt_entries(now_ts)
+        ttl = timeout_seconds or _PROMPT_DEFAULT_TIMEOUT_SECONDS
+        ttl = max(30, min(int(ttl), _PROMPT_MAX_TTL_SECONDS))
+        _prompt_responses[prompt_id] = {
+            "prompt_id": prompt_id,
+            "response": None,
+            "cancelled": False,
+            "pending": True,
+            "created_at": now_ts,
+            "responded_at": None,
+            "expires_at": now_ts + ttl,
+            "user_id": str(user_id) if user_id is not None else None,
+            "org_id": str(org_id) if org_id is not None else None,
+        }
+
+
+def consume_prompt_response(
+    prompt_id: str,
+    expected_user_id: Optional[str] = None,
+    expected_org_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Pop and return a completed prompt response when ownership matches."""
+    with _prompt_lock:
+        _cleanup_expired_prompt_entries()
+        record = _prompt_responses.get(prompt_id)
+        if not record or record.get("pending", True):
+            return None
+
+        owner_user_id = record.get("user_id")
+        owner_org_id = record.get("org_id")
+        expected_user = str(expected_user_id) if expected_user_id is not None else None
+        expected_org = str(expected_org_id) if expected_org_id is not None else None
+
+        if owner_user_id and expected_user and owner_user_id != expected_user:
+            logger.warning(
+                "[NAVI Prompt] Ownership mismatch while consuming prompt %s (expected user=%s, owner user=%s)",
+                prompt_id,
+                expected_user,
+                owner_user_id,
+            )
+            return None
+        if owner_org_id and expected_org and owner_org_id != expected_org:
+            logger.warning(
+                "[NAVI Prompt] Ownership mismatch while consuming prompt %s (expected org=%s, owner org=%s)",
+                prompt_id,
+                expected_org,
+                owner_org_id,
+            )
+            return None
+
+        return _prompt_responses.pop(prompt_id, None)
 
 
 class ProgressTracker:
@@ -1424,98 +1590,120 @@ async def handle_consent_response(
     user: User = Depends(require_role(Role.VIEWER)),
 ) -> Dict[str, Any]:
     """
-    Handle user consent approval/denial for dangerous commands.
+    Handle user consent decision for dangerous commands.
 
-    The frontend sends consent responses when the user approves or denies
-    a dangerous command execution (e.g., rm, kill, chmod).
+    The frontend sends consent decisions with one of 5 choices:
+    - allow_once: Execute this one time
+    - allow_always_exact: Auto-approve this exact command in future
+    - allow_always_type: Auto-approve all commands of this type
+    - deny: Don't execute, skip this command
+    - alternative: Execute alternative command instead
 
     Requires authentication to prevent unauthorized consent manipulation.
     """
     try:
-        # Import the global consent storage from autonomous_agent
-        from backend.services.autonomous_agent import _consent_approvals, _consent_lock
-
+        redis_client = get_redis_client()
         body = await request.json()
-        approved = body.get("approved", False)
-        command = body.get("command", "")
+        choice = body.get("choice", "deny")  # 'allow_once', 'allow_always_exact', 'allow_always_type', 'deny', 'alternative'
+        alternative_command = body.get("alternative_command")
 
         logger.info(
-            f"[NAVI API] 🔐 Consent {consent_id}: {'APPROVED' if approved else 'DENIED'} for command: {command}"
+            f"[NAVI API] 🔐 Consent {consent_id}: decision={choice}"
         )
 
-        # TODO: Move consent storage to DB/Redis for persistent multi-user support
-        # CRITICAL ISSUE: This async endpoint uses a synchronous threading.Lock which blocks
-        # the event loop under contention and doesn't work across multiple processes/replicas.
-        # SHORT-TERM FIX: Replace _consent_lock (threading.Lock) with asyncio.Lock and use
-        # 'async with _consent_lock:' instead of 'with _consent_lock:'.
-        # LONG-TERM FIX: Move consent state to Redis/DB for distributed, async-compatible storage.
-
-        # Derive org consistently using getattr to handle different User implementations
-        user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
-
-        # Update the consent approval in global storage (protected by lock for thread safety)
-        # WARNING: This synchronous lock blocks the event loop - see TODO above
-        with _consent_lock:
-            if consent_id not in _consent_approvals:
-                # Consent ID not found (might have expired or already processed)
-                # Do not create new consent record to prevent spoofing
-                logger.warning(
-                    f"[NAVI API] Consent {consent_id} not found in pending approvals"
-                )
-                raise HTTPException(
-                    status_code=404,
-                    detail={
-                        "success": False,
-                        "consent_id": consent_id,
-                        "error": "Consent not found or has expired",
-                    },
-                )
-
-            # Validate user/org ownership to prevent consent hijacking
-            consent_record = _consent_approvals[consent_id]
-            consent_user_id = consent_record.get("user_id")
-            consent_org_id = consent_record.get("org_id")
-
-            # Defensive attribute access for user identifier
-            current_user_id = getattr(user, "user_id", None) or getattr(
-                user, "id", None
+        # Validate consent exists in Redis
+        consent_data = await redis_client.get(f"consent:{consent_id}")
+        if not consent_data:
+            logger.warning(
+                f"[NAVI API] Consent {consent_id} not found in Redis (expired or already processed)"
             )
-            if consent_user_id and consent_user_id != current_user_id:
-                logger.warning(
-                    f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
-                )
-                raise HTTPException(
-                    status_code=403,
-                    detail={
-                        "success": False,
-                        "consent_id": consent_id,
-                        "error": "Unauthorized: You do not have permission to approve this consent",
-                    },
-                )
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "success": False,
+                    "consent_id": consent_id,
+                    "error": "Consent not found or has expired",
+                },
+            )
 
-            if consent_org_id and user_org_id and consent_org_id != user_org_id:
-                logger.warning(
-                    f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
-                )
-                raise HTTPException(
-                    status_code=403,
-                    detail={
-                        "success": False,
-                        "consent_id": consent_id,
-                        "error": "Unauthorized: This consent belongs to a different organization",
-                    },
-                )
+        consent_record = json.loads(consent_data)
 
-            # Update existing consent
-            _consent_approvals[consent_id]["approved"] = approved
-            _consent_approvals[consent_id]["pending"] = False
-            _consent_approvals[consent_id]["response_timestamp"] = time.time()
+        # Validate user/org ownership to prevent consent hijacking
+        consent_user_id = consent_record.get("user_id")
+        consent_org_id = consent_record.get("org_id")
+
+        # Derive current user/org IDs
+        current_user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
+        user_org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+
+        if consent_user_id and consent_user_id != current_user_id:
+            logger.warning(
+                f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "success": False,
+                    "consent_id": consent_id,
+                    "error": "Unauthorized: You do not have permission to approve this consent",
+                },
+            )
+
+        if consent_org_id and user_org_id and consent_org_id != user_org_id:
+            logger.warning(
+                f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "success": False,
+                    "consent_id": consent_id,
+                    "error": "Unauthorized: This consent belongs to a different organization",
+                },
+            )
+
+        # Update consent decision in Redis while preserving ownership metadata.
+        decision = dict(consent_record)
+        decision.update(
+            {
+                "choice": choice,
+                "alternative_command": alternative_command,
+                "pending": False,
+                "responded_at": datetime.now().isoformat(),
+            }
+        )
+
+        await redis_client.setex(
+            f"consent:{consent_id}",
+            60,  # Keep for 1 minute for agent to read
+            json.dumps(decision)
+        )
+
+        logger.info(f"[NAVI API] ✅ Consent {consent_id} decision stored in Redis")
+
+        # Also update in-process consent approvals for AutonomousAgent pre-checks
+        try:
+            from backend.services import autonomous_agent as aa
+            approved = choice in ("allow_once", "allow_always_exact", "allow_always_type", "alternative")
+            with aa._consent_lock:
+                aa._consent_approvals[consent_id] = {
+                    "approved": approved,
+                    "pending": False,
+                    "choice": choice,
+                    "alternative_command": alternative_command,
+                    "updated_at": datetime.now().isoformat(),
+                    "user_id": consent_user_id,
+                    "org_id": consent_org_id,
+                }
+            logger.info(f"[NAVI API] ✅ Consent {consent_id} cached in-process (approved={approved})")
+        except Exception as e:
+            logger.warning(f"[NAVI API] Failed to cache consent {consent_id} in-process: {e}")
 
         return {
             "success": True,
             "consent_id": consent_id,
-            "approved": approved,
-            "message": f"Consent {'approved' if approved else 'denied'}",
+            "choice": choice,
+            "message": f"Consent decision '{choice}' recorded",
         }
 
     except HTTPException:
@@ -1526,6 +1714,219 @@ async def handle_consent_response(
         raise HTTPException(
             status_code=500,
             detail=f"Internal error handling consent: {str(e)}",
+        )
+
+
+@router.get("/consent-preferences")
+async def get_consent_preferences(
+    user: User = Depends(require_role(Role.VIEWER)),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Get user's always-allow consent preferences.
+
+    Returns list of all auto-approval rules configured by the user.
+    Used by settings UI to manage consent preferences.
+    """
+    try:
+        # Get user/org IDs
+        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
+        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+
+        # Get preferences from consent service
+        consent_service = get_consent_service(db)
+        preferences = consent_service.get_user_preferences(user_id, org_id)
+
+        return {
+            "success": True,
+            "preferences": preferences,
+            "count": len(preferences)
+        }
+
+    except Exception as e:
+        logger.error(f"[NAVI API] Error getting consent preferences: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error getting preferences: {str(e)}",
+        )
+
+
+@router.delete("/consent-preferences/{preference_id}")
+async def delete_consent_preference(
+    preference_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Delete a consent preference (remove an always-allow rule).
+
+    Requires user to own the preference for security.
+    """
+    try:
+        # Get user/org IDs
+        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
+        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+
+        # Delete preference (service checks ownership)
+        consent_service = get_consent_service(db)
+        deleted = consent_service.delete_preference(preference_id, user_id, org_id)
+
+        if not deleted:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "success": False,
+                    "error": "Preference not found or you don't have permission to delete it"
+                }
+            )
+
+        return {
+            "success": True,
+            "message": "Preference deleted successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[NAVI API] Error deleting consent preference: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error deleting preference: {str(e)}",
+        )
+
+
+@router.get("/consent-audit")
+async def get_consent_audit(
+    user: User = Depends(require_role(Role.VIEWER)),
+    db: Session = Depends(get_db),
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """
+    Get recent consent decisions for audit and review.
+
+    Returns user's consent history with timestamps and decisions.
+    Used by settings UI for audit trail visualization.
+    """
+    try:
+        # Get user/org IDs
+        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
+        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+
+        # Get audit log from consent service
+        consent_service = get_consent_service(db)
+        audit_log = consent_service.get_audit_log(user_id, org_id, limit=min(limit, 100))
+
+        return {
+            "success": True,
+            "audit_log": audit_log,
+            "count": len(audit_log)
+        }
+
+    except Exception as e:
+        logger.error(f"[NAVI API] Error getting consent audit log: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error getting audit log: {str(e)}",
+        )
+
+
+@router.post("/prompt/{prompt_id}")
+async def handle_prompt_response(
+    prompt_id: str,
+    request: Request,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """
+    Handle user's response to a prompt request.
+
+    The frontend sends prompt responses when the user provides input
+    during autonomous execution (e.g., choosing an option, entering text).
+
+    Requires authentication to prevent unauthorized prompt manipulation.
+    """
+    try:
+        body = await request.json()
+        response_value = body.get("response")
+        cancelled = body.get("cancelled", False)
+
+        logger.info(
+            f"[NAVI Prompt] Received response for prompt {prompt_id}: "
+            f"cancelled={cancelled}, response={'<provided>' if response_value is not None else '<none>'}"
+        )
+
+        # Validate response exists (unless cancelled)
+        if not cancelled and response_value is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Response value required unless cancelled",
+            )
+
+        # Derive user org consistently
+        user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+        current_user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+        current_user_id_str = str(current_user_id) if current_user_id is not None else None
+        user_org_id_str = str(user_org_id) if user_org_id is not None else None
+
+        # Validate prompt exists, is pending, and belongs to the authenticated user/org.
+        with _prompt_lock:
+            _cleanup_expired_prompt_entries()
+            prompt_record = _prompt_responses.get(prompt_id)
+            if not prompt_record:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Prompt not found or expired",
+                )
+            if not prompt_record.get("pending", False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Prompt already answered",
+                )
+
+            owner_user_id = prompt_record.get("user_id")
+            owner_org_id = prompt_record.get("org_id")
+            if owner_user_id and owner_user_id != current_user_id_str:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Unauthorized: Prompt belongs to another user",
+                )
+            if owner_org_id and owner_org_id != user_org_id_str:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Unauthorized: Prompt belongs to another organization",
+                )
+
+            prompt_record.update(
+                {
+                    "response": response_value,
+                    "cancelled": cancelled,
+                    "responded_at": time.time(),
+                    "pending": False,
+                    "user_id": current_user_id_str,
+                    "org_id": user_org_id_str,
+                    "expires_at": time.time() + _PROMPT_RESPONSE_RETENTION_SECONDS,
+                }
+            )
+            _prompt_responses[prompt_id] = prompt_record
+
+        return {
+            "success": True,
+            "prompt_id": prompt_id,
+            "cancelled": cancelled,
+            "message": (
+                "Prompt response recorded" if not cancelled else "Prompt cancelled"
+            ),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[NAVI Prompt] Error handling prompt response {prompt_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process prompt response: {str(e)}",
         )
 
 
@@ -4612,8 +5013,8 @@ async def debug_openai():
 # pyright: ignore[reportGeneralTypeIssues]
 async def navi_chat(
     request: ChatRequest,
-    http_request: Request,
     db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.VIEWER)),
 ) -> ChatResponse:
     """
     Main NAVI chat endpoint used by the VS Code extension.
@@ -4709,12 +5110,23 @@ async def navi_chat(
     )
 
     try:
-        user_id = (request.user_id or "default_user").strip() or "default_user"
+        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
+        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+        if not user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Authenticated user identity is required",
+            )
+        if request.user_id and request.user_id != user_id:
+            logger.warning(
+                "[NAVI-CHAT] Ignoring client-supplied user_id=%s in favor of authenticated user_id=%s",
+                request.user_id,
+                user_id,
+            )
         mode = (request.mode or "chat-only").strip() or "chat-only"
         workspace_root = request.workspace_root or (request.workspace or {}).get(
             "workspace_root"
         )
-        org_id = http_request.headers.get("x-org-id") if http_request else None
 
         logger.info(
             "[NAVI-CHAT] user=%s model=%s mode=%s org=%s workspace=%s msg='%s...'",
@@ -4839,7 +5251,7 @@ async def navi_chat(
                 extra={
                     "workspace_root": workspace_root,
                     "workspace": request.workspace,
-                    "user_id": getattr(request, "user_id", None),
+                    "user_id": user_id,
                 },
             )
 
@@ -6051,6 +6463,7 @@ async def navi_chat_stream(
     request: ChatRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
     """
     Streaming version of navi_chat with Server-Sent Events (SSE).
@@ -6069,10 +6482,14 @@ async def navi_chat_stream(
         request.message[:50] if request.message else "",
     )
 
-    user_id = (request.user_id or "default_user").strip() or "default_user"
+    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
+    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
     mode = (request.mode or "chat-only").strip() or "chat-only"
     workspace_root = request.workspace_root or (request.workspace or {}).get(
         "workspace_root"
+    )
+    memory_user_id_int, memory_org_id_int = _resolve_user_org_ids_for_memory(
+        db, user_id, org_id
     )
 
     async def generate_stream():
@@ -6579,51 +6996,74 @@ async def navi_chat_stream(
 
                         # Check if conversation exists, create if not
                         existing_conv = memory_service.get_conversation(conv_uuid)
-                        if not existing_conv:
+                        can_persist = False
+                        if existing_conv:
+                            if (
+                                memory_user_id_int is None
+                                or existing_conv.user_id != memory_user_id_int
+                            ):
+                                logger.warning(
+                                    "[NAVI-STREAM] Skipping persistence: conversation ownership mismatch for %s",
+                                    conv_uuid,
+                                )
+                            else:
+                                can_persist = True
+                        elif memory_user_id_int is not None:
                             # Create new conversation with this ID
-                            # Note: This requires user_id as int, but we have string
-                            # For now, we'll use a hash of the user_id string
-                            user_id_int = abs(hash(user_id)) % (10**9)
                             memory_service.db.execute(
                                 text(
                                     """
-                                    INSERT INTO conversations (id, user_id, workspace_path, status, created_at, updated_at)
-                                    VALUES (:id, :user_id, :workspace_path, 'active', NOW(), NOW())
+                                    INSERT INTO navi_conversations (id, user_id, org_id, workspace_path, status, created_at, updated_at)
+                                    VALUES (:id, :user_id, :org_id, :workspace_path, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                                     ON CONFLICT (id) DO NOTHING
                                 """
                                 ),
                                 {
                                     "id": str(conv_uuid),
-                                    "user_id": user_id_int,
+                                    "user_id": memory_user_id_int,
+                                    "org_id": memory_org_id_int,
                                     "workspace_path": workspace_root,
                                 },
                             )
                             memory_service.db.commit()
-                            logger.info(
-                                "[NAVI-STREAM] Created conversation %s", conv_uuid
+                            logger.info("[NAVI-STREAM] Created conversation %s", conv_uuid)
+                            owned_conv = memory_service.get_conversation(conv_uuid)
+                            can_persist = bool(
+                                owned_conv and owned_conv.user_id == memory_user_id_int
                             )
 
-                        # Store user message
-                        await memory_service.add_message(
-                            conversation_id=conv_uuid,
-                            role="user",
-                            content=request.message,
-                            metadata={"workspace": workspace_root},
-                            generate_embedding=False,  # Skip embedding for speed
-                        )
+                        if memory_user_id_int is not None and can_persist:
+                            # Store user message
+                            await memory_service.add_message(
+                                conversation_id=conv_uuid,
+                                role="user",
+                                content=request.message,
+                                metadata={"workspace": workspace_root},
+                                generate_embedding=False,  # Skip embedding for speed
+                            )
 
-                        # Store assistant response
-                        await memory_service.add_message(
-                            conversation_id=conv_uuid,
-                            role="assistant",
-                            content=response_content,
-                            generate_embedding=False,  # Skip embedding for speed
-                        )
-                        logger.info(
-                            "[NAVI-STREAM] Persisted conversation %s with %d char response",
-                            conv_uuid,
-                            len(response_content),
-                        )
+                            # Store assistant response
+                            await memory_service.add_message(
+                                conversation_id=conv_uuid,
+                                role="assistant",
+                                content=response_content,
+                                generate_embedding=False,  # Skip embedding for speed
+                            )
+                            logger.info(
+                                "[NAVI-STREAM] Persisted conversation %s with %d char response",
+                                conv_uuid,
+                                len(response_content),
+                            )
+                        elif memory_user_id_int is not None:
+                            logger.warning(
+                                "[NAVI-STREAM] Skipping persistence: unauthorized conversation %s",
+                                conv_uuid,
+                            )
+                        elif memory_user_id_int is None:
+                            logger.warning(
+                                "[NAVI-STREAM] Skipping persistence: unable to resolve numeric user ID for %s",
+                                user_id or "<unknown>",
+                            )
                 except Exception as mem_error:
                     # Don't fail the stream if memory persistence fails
                     logger.warning(
@@ -6760,7 +7200,7 @@ def _parse_model_string(model_str: Optional[str]) -> Tuple[str, str]:
 @router.post("/chat/stream/v2")
 async def navi_chat_stream_v2(
     request: ToolStreamRequest,
-    http_request: Request,
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
     """
     NAVI V2 Chat Stream - Claude Code Style
@@ -6782,6 +7222,19 @@ async def navi_chat_stream_v2(
         stream_with_tools_anthropic,
         stream_with_tools_openai,
     )
+    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
+    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Authenticated user identity is required",
+        )
+    if request.user_id and request.user_id != user_id:
+        logger.warning(
+            "[NAVI V2] Ignoring client-supplied user_id=%s in favor of authenticated user_id=%s",
+            request.user_id,
+            user_id,
+        )
 
     # Determine workspace path (accept both workspace_path and workspace_root from extension)
     workspace_path = request.workspace_path or request.workspace_root
@@ -6802,7 +7255,13 @@ async def navi_chat_stream_v2(
     if request.provider:
         provider = request.provider
 
-    logger.info(f"[NAVI V2] Parsed model: provider={provider}, model={model_name}")
+    logger.info(
+        "[NAVI V2] Parsed model: provider=%s, model=%s, user=%s, org=%s",
+        provider,
+        model_name,
+        user_id,
+        org_id or "<none>",
+    )
 
     async def stream_generator():
         """Generate SSE events from the streaming agent."""
@@ -7326,6 +7785,168 @@ async def navi_autonomous_task(
             )
             logger.info("[NAVI Autonomous] Message augmented with image analysis")
 
+    # =========================================================================
+    # MEMORY PERSISTENCE: Load conversation history from database
+    # =========================================================================
+    from uuid import UUID
+    from backend.services.memory.conversation_memory import ConversationMemoryService
+
+    memory_service = ConversationMemoryService(db)
+    conv_uuid = None
+    conversation_history_from_db = []
+    memory_user_id_int, memory_org_id_int = _resolve_user_org_ids_for_memory(
+        db,
+        str(user_id) if user_id is not None else None,
+        str(org_id) if org_id is not None else None,
+    )
+
+    # Create or load conversation
+    if request.conversation_id:
+        try:
+            conv_uuid = UUID(request.conversation_id)
+            if memory_user_id_int is None:
+                logger.warning(
+                    "[NAVI Autonomous] Cannot resolve numeric user identity for conversation persistence; running stateless"
+                )
+                conv_uuid = None
+            else:
+                existing_conv = memory_service.get_conversation(conv_uuid)
+
+                if existing_conv:
+                    # SECURITY: Verify conversation ownership before loading
+                    if existing_conv.user_id != memory_user_id_int:
+                        logger.warning(
+                            f"[NAVI Autonomous] SECURITY: User {user_id} attempted to access conversation {conv_uuid} owned by user {existing_conv.user_id}"
+                        )
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Access denied: You don't have permission to access this conversation"
+                        )
+
+                    # Load conversation history from database
+                    logger.info(
+                        f"[NAVI Autonomous] Loading conversation {conv_uuid} from database"
+                    )
+                    db_messages = memory_service.get_recent_messages(conv_uuid, limit=100)
+                    conversation_history_from_db = [
+                        {"role": msg.role, "content": msg.content} for msg in db_messages
+                    ]
+                    logger.info(
+                        f"[NAVI Autonomous] Loaded {len(conversation_history_from_db)} messages from database"
+                    )
+                else:
+                    # Conversation ID provided but doesn't exist - create it
+                    logger.info(f"[NAVI Autonomous] Creating conversation {conv_uuid}")
+                    from sqlalchemy import text
+
+                    memory_service.db.execute(
+                        text(
+                            """
+                            INSERT INTO navi_conversations (id, user_id, org_id, workspace_path, status, created_at, updated_at)
+                            VALUES (:id, :user_id, :org_id, :workspace_path, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            ON CONFLICT (id) DO NOTHING
+                            """
+                        ),
+                        {
+                            "id": str(conv_uuid),
+                            "user_id": memory_user_id_int,
+                            "org_id": memory_org_id_int,
+                            "workspace_path": workspace_path,
+                        },
+                    )
+                    memory_service.db.commit()
+        except HTTPException:
+            # Propagate HTTP errors (e.g., ownership/authorization failures)
+            conv_uuid = None
+            raise
+        except Exception as conv_err:
+            logger.warning(f"[NAVI Autonomous] Failed to load conversation: {conv_err}")
+    else:
+        # No conversation ID - create a new conversation
+        try:
+            logger.info("[NAVI Autonomous] Creating new conversation")
+            if memory_user_id_int is None:
+                logger.warning(
+                    f"[NAVI Autonomous] Cannot persist conversation: unresolved user identity '{user_id}'"
+                )
+            else:
+                conversation = memory_service.create_conversation(
+                    user_id=memory_user_id_int,
+                    org_id=memory_org_id_int,
+                    workspace_path=workspace_path,
+                    title=request.message[:50]
+                    + ("..." if len(request.message) > 50 else ""),
+                )
+                conv_uuid = conversation.id
+                logger.info(f"[NAVI Autonomous] Created new conversation {conv_uuid}")
+        except Exception as conv_err:
+            logger.warning(
+                f"[NAVI Autonomous] Failed to create conversation: {conv_err}"
+            )
+
+    # Use database history if available, otherwise fall back to request payload
+    final_conversation_history = (
+        conversation_history_from_db
+        if conversation_history_from_db
+        else (request.conversation_history or [])
+    )
+    logger.info(
+        f"[NAVI Autonomous] Using {len(final_conversation_history)} messages for context"
+    )
+
+    # =========================================================================
+    # CROSS-CONVERSATION MEMORY: Semantic search for relevant past conversations
+    # =========================================================================
+    relevant_past_context = ""
+    try:
+        from backend.services.memory.semantic_search import get_semantic_search_service
+
+        search_service = get_semantic_search_service(db)
+
+        # Skip semantic search if user_id is invalid
+        if memory_user_id_int is None:
+            logger.warning(
+                f"[NAVI Autonomous] Skipping semantic search: unresolved user identity '{user_id}'"
+            )
+        else:
+            # Search for relevant context from past conversations
+            context_data = await search_service.get_context_for_query(
+                query=request.message,
+                user_id=memory_user_id_int,
+                org_id=memory_org_id_int,
+                max_context_items=5,
+            )
+
+            # Build context string from search results
+            if context_data and context_data.get("conversations"):
+                relevant_conversations = context_data["conversations"]
+                if relevant_conversations:
+                    relevant_past_context = (
+                        "\n\n=== RELEVANT INFORMATION FROM PAST CONVERSATIONS ===\n"
+                    )
+                    for idx, conv_item in enumerate(
+                        relevant_conversations[:3], 1
+                    ):  # Top 3 most relevant
+                        relevant_past_context += f"\n{idx}. From '{conv_item.get('title', 'Previous conversation')}':\n"
+                        relevant_past_context += (
+                            f"   {conv_item.get('content', '')[:200]}...\n"
+                        )
+                    logger.info(
+                        f"[NAVI Autonomous] Found {len(relevant_conversations)} relevant past conversations"
+                    )
+    except Exception as search_err:
+        logger.warning(
+            f"[NAVI Autonomous] Semantic search failed (non-blocking): {search_err}"
+        )
+
+    # Augment message with relevant past context if found
+    final_message = augmented_message
+    if relevant_past_context:
+        final_message = f"{augmented_message}{relevant_past_context}"
+        logger.info(
+            "[NAVI Autonomous] Message augmented with past conversation context"
+        )
+
     async def stream_generator():
         """Generate SSE events from the autonomous agent with heartbeat to prevent timeout."""
         import asyncio
@@ -7388,6 +8009,9 @@ async def navi_autonomous_task(
                     pass
 
         # Use request-scoped database session from dependency injection
+        # Initialize response collection before try block to ensure it's always defined
+        assistant_response_parts = []
+
         try:
             agent = AutonomousAgent(
                 workspace_path=workspace_path,
@@ -7401,15 +8025,77 @@ async def navi_autonomous_task(
 
             async for event in heartbeat_wrapper(
                 agent.execute_task(
-                    request=augmented_message,  # Use augmented message with image context
+                    request=final_message,  # Use message with image context + past conversation context
                     run_verification=request.run_verification,
+                    conversation_history=final_conversation_history,  # Use database history for context
                 )
             ):
+                # Collect text events for final response
+                # AutonomousAgent emits text under "text" field, keep "content" as fallback
+                if event.get("type") == "text":
+                    text_chunk = event.get("text") or event.get("content")
+                    if text_chunk:
+                        assistant_response_parts.append(text_chunk)
                 yield f"data: {json.dumps(event)}\n\n"
 
         except Exception as e:
             logger.exception(f"[NAVI Autonomous] Error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+        # =========================================================================
+        # MEMORY PERSISTENCE: Save conversation to database
+        # =========================================================================
+        # Run persistence in background to avoid delaying the final SSE event
+        # Embedding generation can be slow and would keep the connection open
+        if conv_uuid:
+
+            async def persist_conversation() -> None:
+                """Background task to persist conversation with embeddings.
+
+                Creates its own database session to avoid using the request-scoped
+                session which may be closed when this background task runs.
+                """
+                from backend.database.session import db_session
+
+                try:
+                    # Create fresh database session for background task
+                    with db_session() as bg_db:
+                        bg_memory_service = ConversationMemoryService(bg_db)
+
+                        # Save user message with embedding for semantic search (Level 4 memory)
+                        await bg_memory_service.add_message(
+                            conversation_id=conv_uuid,
+                            role="user",
+                            content=request.message,
+                            metadata={"workspace": workspace_path},
+                            generate_embedding=True,  # Required for cross-conversation semantic search
+                        )
+
+                        # Save assistant response with embedding for semantic search (Level 4 memory)
+                        assistant_response = (
+                            "\n".join(assistant_response_parts)
+                            if assistant_response_parts
+                            else "Task completed"
+                        )
+                        await bg_memory_service.add_message(
+                            conversation_id=conv_uuid,
+                            role="assistant",
+                            content=assistant_response,
+                            metadata={"provider": provider, "model": model},
+                            generate_embedding=True,  # Required for cross-conversation semantic search
+                        )
+
+                        logger.info(
+                            f"[NAVI Autonomous] Persisted conversation {conv_uuid} with {len(assistant_response)} char response"
+                        )
+                except Exception as mem_error:
+                    # Don't fail the stream if memory persistence fails
+                    logger.warning(
+                        f"[NAVI Autonomous] Failed to persist conversation: {mem_error}"
+                    )
+
+            # Schedule background persistence
+            asyncio.create_task(persist_conversation())
 
         yield "data: [DONE]\n\n"
 

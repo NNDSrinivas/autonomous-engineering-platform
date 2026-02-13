@@ -32,26 +32,26 @@
   /* Background Colors */
   --navi-bg-dark: #0a0a0f;
   --navi-bg-darker: #050508;
-  --navi-bg-card: rgba(20, 20, 30, 0.8);
-  --navi-bg-card-hover: rgba(30, 30, 45, 0.9);
-  --navi-bg-sidebar: rgba(12, 12, 18, 0.95);
-  --navi-bg-input: rgba(25, 25, 35, 0.9);
+  --navi-bg-card: rgba(20, 20, 30, 0.96);
+  --navi-bg-card-hover: rgba(26, 26, 40, 0.98);
+  --navi-bg-sidebar: rgba(12, 12, 18, 0.98);
+  --navi-bg-input: rgba(25, 25, 35, 0.98);
 
   /* Text Colors */
   --navi-text-primary: #f8fafc;
-  --navi-text-secondary: #94a3b8;
-  --navi-text-muted: #64748b;
+  --navi-text-secondary: #c7d0dd;
+  --navi-text-muted: #9aa5b1;
   --navi-text-accent: var(--navi-primary);
 
   /* Border Colors */
-  --navi-border: rgba(148, 163, 184, 0.1);
-  --navi-border-light: rgba(148, 163, 184, 0.2);
+  --navi-border: rgba(148, 163, 184, 0.24);
+  --navi-border-light: rgba(148, 163, 184, 0.35);
   --navi-border-glow: rgba(0, 212, 255, 0.3);
 
   /* Shadows & Glows */
-  --navi-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --navi-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --navi-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --navi-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.25);
+  --navi-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --navi-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45);
   --navi-glow-primary: 0 0 20px rgba(var(--navi-primary-rgb), 0.3);
   --navi-glow-secondary: 0 0 20px rgba(var(--navi-secondary-rgb), 0.3);
   --navi-glow-accent: 0 0 15px rgba(var(--navi-accent-rgb), 0.4);
@@ -107,6 +107,7 @@
   color: var(--navi-text-primary);
   background: var(--navi-bg-dark);
   line-height: 1.5;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -116,8 +117,8 @@
    -------------------------------------------------------------------------- */
 .navi-glass-card {
   background: var(--navi-bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   border: 1px solid var(--navi-border);
   border-radius: var(--navi-radius-lg);
   transition: all var(--navi-transition-normal);

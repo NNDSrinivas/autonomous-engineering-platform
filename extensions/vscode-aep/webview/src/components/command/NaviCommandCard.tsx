@@ -13,6 +13,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Copy, Check, ExternalLink } from 'lucide-react';
 import { NaviStatusRing, CommandStatus } from './NaviStatusRing';
 import { NaviCommandProgress } from './NaviCommandProgress';
+import { stripEchoedCommand } from './stripEchoedCommand';
 
 export interface TerminalEntry {
   id: string;
@@ -203,7 +204,8 @@ export const NaviCommandCard: React.FC<NaviCommandCardProps> = ({
               </>
             ) : (
               <>
-                {entry.output || (entry.status === 'running' ? 'Running...' : 'No output')}
+                {stripEchoedCommand(entry.output, entry.command) ||
+                  (entry.status === 'running' ? 'Running...' : 'No output')}
                 {entry.truncated && (
                   <span className="navi-command-output__truncated">
                     {'\n...output truncated...'}

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './NaviInlineCommand.css';
+import { stripEchoedCommand } from './stripEchoedCommand';
 
 // =============================================================================
 // NAVI INLINE COMMAND
@@ -63,7 +64,8 @@ export const NaviInlineCommand: React.FC<NaviInlineCommandProps> = ({
 
   const formatOutput = () => {
     if (!output) return status === 'running' ? 'Executing...' : 'No output';
-    const lines = output.split('\n').filter(l => l.trim());
+    const cleaned = stripEchoedCommand(output, command);
+    const lines = cleaned.split('\n').filter(l => l.trim());
     return lines.slice(-12).join('\n') || 'No output';
   };
 

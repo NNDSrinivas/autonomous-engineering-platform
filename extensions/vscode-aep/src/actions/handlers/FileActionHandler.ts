@@ -15,19 +15,33 @@ export class FileActionHandler extends BaseActionHandler {
     }
 
     canHandle(action: any): boolean {
-        // Can handle editFile actions, or actions with filePath and content/operation
+        // Handle explicit file action types, or actions with filePath/path and content/operation
+        const filePath = action.filePath || action.path;
         const canHandle = !!(
             action.type === 'editFile' ||
-            (action.filePath && (action.content !== undefined || action.operation))
+            action.type === 'createFile' ||
+            action.type === 'deleteFile' ||
+            action.type === 'delete' ||
+            (filePath && (action.content !== undefined || action.operation))
         );
-        console.log(`[FileActionHandler] canHandle check - type: ${action.type}, filePath: ${action.filePath}, hasContent: ${action.content !== undefined}, result: ${canHandle}`);
+        console.log(`[FileActionHandler] canHandle check - type: ${action.type}, filePath: ${filePath}, hasContent: ${action.content !== undefined}, result: ${canHandle}`);
         return canHandle;
     }
 
     async execute(action: any, context: ActionContext): Promise<ActionResult> {
-        const filePath = action.filePath;
+        const filePath = action.filePath || action.path;
         const content = action.content;
-        const operation = action.operation || (content !== undefined ? 'write' : 'read');
+        const operation =
+            action.operation ||
+            (action.type === 'deleteFile' || action.type === 'delete'
+                ? 'delete'
+                : content !== undefined
+                    ? 'write'
+                    : 'read');
+
+        if (!filePath) {
+            throw new Error('No file path provided for file operation');
+        }
 
         console.log(`[FileActionHandler] Executing file operation: ${operation} on ${filePath}`);
 
@@ -61,10 +75,16 @@ export class FileActionHandler extends BaseActionHandler {
                     };
 
                 case 'delete':
-                    await this.deleteFile(filePath, context);
+                    const deleteResult = await this.deleteFile(filePath, context);
                     return {
                         success: true,
-                        message: `File deleted: ${filePath}`
+                        message: `File deleted: ${filePath}`,
+                        diffStats: deleteResult.diffStats,
+                        data: {
+                            diffUnified: deleteResult.diffUnified,
+                            originalContent: deleteResult.originalContent,
+                            wasDeleted: true,
+                        }
                     };
 
                 default:
@@ -232,22 +252,39 @@ export class FileActionHandler extends BaseActionHandler {
         };
     }
 
-    private async deleteFile(filePath: string, context: ActionContext): Promise<void> {
+    private async deleteFile(
+        filePath: string,
+        context: ActionContext
+    ): Promise<{ diffStats: DiffStats; diffUnified: string; originalContent: string }> {
         const absolutePath = this.resolveFilePath(filePath, context.workspaceRoot);
         const uri = vscode.Uri.file(absolutePath);
 
-        // Confirm deletion
-        const confirm = await vscode.window.showWarningMessage(
-            `Delete file: ${filePath}?`,
-            { modal: true },
-            'Delete'
-        );
-
-        if (confirm === 'Delete') {
-            await vscode.workspace.fs.delete(uri);
-        } else {
-            throw new Error('File deletion cancelled by user');
+        // Capture original content for undo + diff stats
+        let originalContent = '';
+        try {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            originalContent = doc.getText();
+        } catch {
+            throw new Error(`File not found: ${filePath}`);
         }
+
+        const diffStats = this.calculateDiffStats(originalContent, '');
+        const diffUnified = this.createUnifiedDiff(filePath, originalContent, '');
+
+        // Only prompt if not already approved via chat
+        if (!context.approvedViaChat) {
+            const confirm = await vscode.window.showWarningMessage(
+                `Delete file: ${filePath}?`,
+                { modal: true },
+                'Delete'
+            );
+            if (confirm !== 'Delete') {
+                throw new Error('File deletion cancelled by user');
+            }
+        }
+
+        await vscode.workspace.fs.delete(uri);
+        return { diffStats, diffUnified, originalContent };
     }
 
     private resolveFilePath(filePath: string, workspaceRoot?: string): string {

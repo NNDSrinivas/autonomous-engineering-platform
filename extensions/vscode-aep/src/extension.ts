@@ -39,6 +39,7 @@ import { TaskService } from './services/TaskService';
 import { createDefaultActionRegistry, ActionRegistry } from './actions';
 import type { ActivityEvent } from './types/activity';
 import { DeviceAuthService } from './auth/deviceAuth';
+import { buildUndoRestoreMetadataFromSnapshot } from './undoMetadata';
 
 const exec = util.promisify(child_process.exec);
 
@@ -230,27 +231,34 @@ async function openNativeDiff(
   scope: DiffScope = 'working'
 ) {
   try {
-    // Build file URI for working tree version
-    const absolutePath = path.join(workspaceRoot, relativePath);
+    const absolutePath = path.isAbsolute(relativePath)
+      ? relativePath
+      : path.join(workspaceRoot, relativePath);
+    const relativeForGit = path
+      .relative(workspaceRoot, absolutePath)
+      .replace(/\\/g, '/');
+    const displayPath = relativeForGit && !relativeForGit.startsWith('..')
+      ? relativeForGit
+      : relativePath;
     const fileUri = vscode.Uri.file(absolutePath);
 
-    console.log('[openNativeDiff] Opening diff for:', relativePath, 'scope:', scope);
+    console.log('[openNativeDiff] Opening diff for:', displayPath, 'scope:', scope);
 
     // Check if file exists
     const fs = require('fs');
     if (!fs.existsSync(absolutePath)) {
       console.warn('[openNativeDiff] File does not exist:', absolutePath);
-      vscode.window.showWarningMessage(`File not found: ${relativePath}`);
+      vscode.window.showWarningMessage(`File not found: ${displayPath}`);
       return;
     }
 
     // Check if file is untracked (new file)
-    const isNew = await isFileUntracked(workspaceRoot, relativePath);
+    const isNew = await isFileUntracked(workspaceRoot, relativeForGit);
     if (isNew) {
-      console.log('[openNativeDiff] File is untracked, opening directly:', relativePath);
+      console.log('[openNativeDiff] File is untracked, opening directly:', displayPath);
       // For new files, just open them directly (no diff available)
       await vscode.window.showTextDocument(fileUri, { preview: false });
-      vscode.window.showInformationMessage(`New file: ${relativePath} (no previous version to diff)`);
+      vscode.window.showInformationMessage(`New file: ${displayPath} (no previous version to diff)`);
       return;
     }
 
@@ -280,7 +288,7 @@ async function openNativeDiff(
       'vscode.diff',
       headUri,
       rightUri,
-      `Diff: ${relativePath} (${titleScope})`
+      `Diff: ${displayPath} (${titleScope})`
     );
     console.log('[openNativeDiff] Diff opened successfully');
   } catch (error) {
@@ -1584,6 +1592,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private _activityRunId: string | null = null;
   private _activityPhaseId: string | null = null;
   private _actionActivityIds = new Map<string, { id: string; runId: string }>();
+  private _pendingUndoSnapshots = new Map<string, {
+    existed: boolean;
+    originalContent?: string;
+    capturedAt: number;
+    runId?: string;
+  }>();
   // AUTO-RECOVERY: Store last action error for NAVI to debug
   private _lastActionError: {
     action: any;
@@ -1603,6 +1617,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private _commandOutputs = new Map<string, { command: string; cwd?: string; stdout: string; stderr: string; exitCode?: number; durationMs?: number }>();
   private _naviTerminal?: vscode.Terminal;
   private _naviOutputChannel?: vscode.OutputChannel;
+  private _webviewReady = false;
+  private _pendingConsentMessages = new Map<string, any>();
 
   // Public accessors for external functions
   public get webviewAvailable(): boolean {
@@ -1610,7 +1626,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   public isWebviewReady(): boolean {
-    return !!this._view;
+    return !!this._view && this._webviewReady;
   }
 
   // Git initialization state
@@ -2896,6 +2912,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ) {
     this._view = webviewView;
+    this._webviewReady = false;
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -2910,6 +2927,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       console.log('[AEP] Extension received message:', msg.type);
       try {
         switch (msg.type) {
+          case 'webview.ready': {
+            this._webviewReady = true;
+            this.flushPendingConsentMessages();
+            break;
+          }
           case 'requestWorkspaceContext': {
             // Send workspace context to frontend
             const workspaceRoot = this.getActiveWorkspaceRoot();
@@ -3114,8 +3136,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           // Handle undo file change request from inline summary bar
           case 'undoFileChange': {
             const filePath = String(msg.filePath || '').trim();
-            const originalContent = msg.originalContent;
-            const wasCreated = msg.wasCreated === true;
+            const snapshot = filePath ? this.getUndoSnapshot(filePath) : undefined;
+            const originalContent = typeof msg.originalContent === 'string'
+              ? msg.originalContent
+              : (snapshot?.existed ? (snapshot.originalContent ?? '') : undefined);
+            const wasCreated = msg.wasCreated === true || snapshot?.existed === false;
 
             // For newly created files, we need to delete them
             // For edited files, we need originalContent to restore
@@ -3124,6 +3149,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               return;
             }
             try {
+              let undoApplied = false;
               const workspaceRoot = this.getActiveWorkspaceRoot();
               const absolutePath = path.isAbsolute(filePath)
                 ? filePath
@@ -3136,26 +3162,208 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 // File was newly created - delete it to undo
                 await vscode.workspace.fs.delete(uri);
                 vscode.window.setStatusBarMessage(`🗑️ Deleted newly created file: ${path.basename(filePath)}`, 3000);
+                undoApplied = true;
               } else {
-                // File was edited - restore original content
-                const doc = await vscode.workspace.openTextDocument(uri);
-                const edit = new vscode.WorkspaceEdit();
-                const fullRange = new vscode.Range(
-                  doc.positionAt(0),
-                  doc.positionAt(doc.getText().length)
-                );
-                edit.replace(uri, fullRange, originalContent);
-                const success = await vscode.workspace.applyEdit(edit);
-                if (success) {
-                  await doc.save();
-                  vscode.window.setStatusBarMessage(`↩️ Undone changes to ${path.basename(filePath)}`, 3000);
-                } else {
-                  vscode.window.showErrorMessage(`Failed to undo changes to ${path.basename(filePath)}`);
+                // File was edited or deleted - restore original content
+                let exists = true;
+                try {
+                  await vscode.workspace.fs.stat(uri);
+                } catch {
+                  exists = false;
                 }
+
+                if (!exists) {
+                  const dir = path.dirname(absolutePath);
+                  await vscode.workspace.fs.createDirectory(vscode.Uri.file(dir));
+                  const encoder = new TextEncoder();
+                  await vscode.workspace.fs.writeFile(uri, encoder.encode(String(originalContent)));
+                  vscode.window.setStatusBarMessage(`↩️ Restored ${path.basename(filePath)}`, 3000);
+                  undoApplied = true;
+                } else {
+                  const doc = await vscode.workspace.openTextDocument(uri);
+                  const edit = new vscode.WorkspaceEdit();
+                  const fullRange = new vscode.Range(
+                    doc.positionAt(0),
+                    doc.positionAt(doc.getText().length)
+                  );
+                  edit.replace(uri, fullRange, originalContent);
+                  const success = await vscode.workspace.applyEdit(edit);
+                  if (success) {
+                    await doc.save();
+                    vscode.window.setStatusBarMessage(`↩️ Undone changes to ${path.basename(filePath)}`, 3000);
+                    undoApplied = true;
+                  } else {
+                    vscode.window.showErrorMessage(`Failed to undo changes to ${path.basename(filePath)}`);
+                  }
+                }
+              }
+              if (undoApplied) {
+                this.clearUndoSnapshots([filePath]);
               }
             } catch (err: any) {
               console.error('[NAVI] Undo failed:', err);
               vscode.window.showErrorMessage(`Undo failed: ${err.message}`);
+            }
+            break;
+          }
+
+          // Scoped fallback undo when we don't have per-file snapshots in the webview.
+          // Reverts only when it is provably safe. Never use git checkout fallback here.
+          case 'undoWorkspaceFiles': {
+            try {
+              const workspaceRoot = this.getActiveWorkspaceRoot();
+              if (!workspaceRoot) {
+                vscode.window.showErrorMessage('Undo failed: no workspace root found');
+                return;
+              }
+
+              const rawFiles = Array.isArray(msg.files) ? msg.files : [];
+              const files = rawFiles
+                .map((f: any) => ({
+                  path: String(f?.path || '').trim(),
+                  status: String(f?.status || '').trim() as 'added' | 'modified' | 'deleted' | '',
+                  originalContent: typeof f?.originalContent === 'string' ? f.originalContent : undefined,
+                }))
+                .filter((f: { path: string }) => Boolean(f.path));
+
+              if (files.length === 0) {
+                vscode.window.showWarningMessage('Undo failed: no files provided');
+                return;
+              }
+
+              let revertedCount = 0;
+              const skippedUnsafePaths: string[] = [];
+              const failedPaths: string[] = [];
+              const revertedPaths: string[] = [];
+
+              for (const file of files) {
+                try {
+                  const absolutePath = path.isAbsolute(file.path)
+                    ? file.path
+                    : path.join(workspaceRoot, file.path);
+                  const relativeForGit = path
+                    .relative(workspaceRoot, absolutePath)
+                    .replace(/\\/g, '/');
+
+                  if (!relativeForGit || relativeForGit.startsWith('..')) {
+                    failedPaths.push(file.path);
+                    continue;
+                  }
+
+                  const uri = vscode.Uri.file(absolutePath);
+                  const snapshot = this.getUndoSnapshot(file.path);
+                  const shouldDelete = file.status === 'added' || snapshot?.existed === false;
+                  const contentToRestore =
+                    typeof file.originalContent === 'string'
+                      ? file.originalContent
+                      : (snapshot?.existed ? (snapshot.originalContent ?? '') : undefined);
+
+                  if (shouldDelete) {
+                    try {
+                      await vscode.workspace.fs.delete(uri);
+                    } catch {
+                      // If the file is already absent, treat as reverted.
+                    }
+                    revertedCount += 1;
+                    revertedPaths.push(file.path);
+                    continue;
+                  }
+
+                  if (typeof contentToRestore === 'string') {
+                    let exists = true;
+                    try {
+                      await vscode.workspace.fs.stat(uri);
+                    } catch {
+                      exists = false;
+                    }
+
+                    if (!exists) {
+                      await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(absolutePath)));
+                      await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(contentToRestore));
+                    } else {
+                      const doc = await vscode.workspace.openTextDocument(uri);
+                      const edit = new vscode.WorkspaceEdit();
+                      const fullRange = new vscode.Range(
+                        doc.positionAt(0),
+                        doc.positionAt(doc.getText().length)
+                      );
+                      edit.replace(uri, fullRange, contentToRestore);
+                      const applied = await vscode.workspace.applyEdit(edit);
+                      if (applied) {
+                        await doc.save();
+                      }
+                    }
+                    revertedCount += 1;
+                    revertedPaths.push(file.path);
+                    continue;
+                  }
+
+                  // No safe snapshot to restore from. Skip instead of risking user data with git checkout.
+                  skippedUnsafePaths.push(file.path);
+                  continue;
+                } catch (fileErr) {
+                  console.warn('[AEP] Failed to undo workspace file:', file.path, fileErr);
+                  failedPaths.push(file.path);
+                }
+              }
+
+              if (revertedCount > 0) {
+                vscode.window.setStatusBarMessage(
+                  `↩️ Undone ${revertedCount} file change${revertedCount === 1 ? '' : 's'}`,
+                  3000
+                );
+                this.clearUndoSnapshots(revertedPaths);
+              }
+              if (skippedUnsafePaths.length > 0) {
+                const sample = skippedUnsafePaths.slice(0, 3).join(', ');
+                vscode.window.showWarningMessage(
+                  `Skipped unsafe undo for ${skippedUnsafePaths.length} file(s) to avoid losing local edits (missing snapshots): ${sample}${skippedUnsafePaths.length > 3 ? ', ...' : ''}`
+                );
+              }
+              if (failedPaths.length > 0) {
+                const sample = failedPaths.slice(0, 3).join(', ');
+                vscode.window.showWarningMessage(
+                  `Failed to undo ${failedPaths.length} file(s): ${sample}${failedPaths.length > 3 ? ', ...' : ''}`
+                );
+              }
+            } catch (err: any) {
+              console.error('[AEP] Scoped undo failed:', err);
+              vscode.window.showErrorMessage(`Undo failed: ${err.message}`);
+            }
+            break;
+          }
+
+          // Handle keep changes request from inline summary bar
+          case 'keepChanges': {
+            try {
+              const rawFiles = Array.isArray(msg.files) ? msg.files : [];
+              const files = rawFiles.map((f: any) => String(f || '').trim()).filter(Boolean);
+              const workspaceRoot = this.getActiveWorkspaceRoot();
+              if (files.length === 0) {
+                await vscode.workspace.saveAll();
+                this.clearUndoSnapshots();
+                vscode.window.setStatusBarMessage('✅ Changes saved', 3000);
+                return;
+              }
+              for (const filePath of files) {
+                const absolutePath = path.isAbsolute(filePath)
+                  ? filePath
+                  : workspaceRoot
+                    ? path.join(workspaceRoot, filePath)
+                    : filePath;
+                const uri = vscode.Uri.file(absolutePath);
+                try {
+                  const doc = await vscode.workspace.openTextDocument(uri);
+                  await doc.save();
+                } catch (err: any) {
+                  console.warn('[AEP] Keep changes: failed to save', filePath, err?.message || err);
+                }
+              }
+              this.clearUndoSnapshots(files);
+              vscode.window.setStatusBarMessage('✅ Changes saved', 3000);
+            } catch (err: any) {
+              console.error('[AEP] Failed to keep changes:', err);
+              vscode.window.showErrorMessage(`Failed to keep changes: ${err.message}`);
             }
             break;
           }
@@ -3415,6 +3623,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             // User clicked "New Chat" button - generate new conversation ID and reset state
             const newConversationId = `conv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
             this._conversationId = newConversationId;
+            this.clearUndoSnapshots();
             console.log(`[AEP] New conversation started: ${newConversationId}`);
 
             // Notify webview to reset chat state
@@ -6427,33 +6636,53 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
           // Handle command consent responses
           case 'command.consent.response': {
-            const consentId = msg.consentId;
-            const approved = msg.approved;
+            const consentId = msg.consentId || msg.consent_id;
             const command = msg.command;
+            const alternativeCommand = msg.alternative_command || msg.alternativeCommand;
+            const choice =
+              msg.choice ||
+              (typeof msg.approved === 'boolean'
+                ? msg.approved
+                  ? 'allow_once'
+                  : 'deny'
+                : 'deny');
 
             if (!consentId) {
               console.error('[AEP] Consent response missing consent ID');
               return;
             }
 
-            console.log(`[AEP] 🔐 Consent response: ${approved ? 'APPROVED' : 'DENIED'} for command: ${command}`);
+            console.log(`[AEP] 🔐 Consent response: ${choice} for command: ${command}`);
 
             try {
               // Send consent response to backend API
-              const backendUrl = vscode.workspace.getConfiguration('aep').get<string>('backendUrl') || 'http://localhost:8000';
-              const response = await fetch(`${backendUrl}/api/navi/consent/${consentId}`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  approved,
-                  command,
-                }),
+              const backendUrl = this.getBackendBaseUrl();
+              const orgId = this.getOrgId();
+              const userId = this.getUserId();
+              const headers = this.buildAuthHeaders(orgId, userId, 'application/json');
+              const url = `${backendUrl}/api/navi/consent/${consentId}`;
+              const body = JSON.stringify({
+                choice,
+                alternative_command: alternativeCommand,
+                command,
               });
 
+              console.log(`[AEP] 🔐 Sending consent to: ${url}`);
+              console.log(`[AEP] 🔐 Headers:`, JSON.stringify(headers, null, 2));
+              console.log(`[AEP] 🔐 Body:`, body);
+
+              const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body,
+              });
+
+              console.log(`[AEP] 🔐 Response status: ${response.status}`);
+
               if (!response.ok) {
-                throw new Error(`Consent API returned ${response.status}`);
+                const responseText = await response.text();
+                console.error(`[AEP] 🔐 Response error body:`, responseText);
+                throw new Error(`Consent API returned ${response.status}: ${responseText}`);
               }
 
               const result = await response.json();
@@ -6463,16 +6692,21 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               this.postToWebview({
                 type: 'consent.acknowledged',
                 consentId,
-                approved
+                choice
               });
 
               // If approved, the agent will automatically re-execute the command
               // on its next tool call with the consent_id parameter
-              if (approved) {
+              if (choice === 'allow_once' || choice === 'allow_always_exact' || choice === 'allow_always_type') {
                 console.log(`[AEP] Consent approved - agent will re-execute command with consent_id`);
               }
-            } catch (error) {
+            } catch (error: any) {
               console.error('[AEP] Failed to send consent response to backend:', error);
+              console.error('[AEP] Error details:', {
+                message: error.message,
+                cause: error.cause,
+                stack: error.stack,
+              });
               this.postToWebview({
                 type: 'error',
                 message: 'Failed to process consent response'
@@ -6643,6 +6877,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         clearInterval(this._scanTimer);
         this._scanTimer = undefined;
       }
+      this._webviewReady = false;
+      this._view = undefined;
     });
 
     // Welcome message will be sent when panel sends 'ready'
@@ -8160,7 +8396,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // Collect actions during streaming (declared outside try for access in catch)
       let streamedActions: any[] = [];
       const toolCommandMap = new Map<string, { command: string; cwd?: string }>();
-      const toolFileMap = new Map<string, { path: string; actionType: 'editFile' | 'createFile'; summary?: string }>();
+      const toolFileMap = new Map<string, { path: string; actionType: 'editFile' | 'createFile'; summary?: string; content?: string }>();
 
       try {
         // AUTO-RECOVERY: Include last action error if recent (within 5 minutes)
@@ -8384,7 +8620,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                       type: 'navi.narrative',
                       text: parsed.text,
                       // Use backend timestamp if available for accurate chronological ordering
-                      timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
+                      timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
                     });
                   }
                   // Track that we've seen text content (helps with tool call interleaving)
@@ -8420,22 +8656,40 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     'list_directory': 'context',
                   };
 
-                  const kind = toolToKind[tc.name] || 'info';
-                  const detail = tc.arguments?.path || tc.arguments?.command || tc.name;
+                  const commandText = String(tc.arguments?.command || '').trim();
+                  const isGrepCommand = tc.name === 'run_command' && /^(rg|grep)\b/i.test(commandText);
+                  const kind = isGrepCommand ? 'grep' : (toolToKind[tc.name] || 'info');
+                  const pathDetail = String(tc.arguments?.path || '');
+                  let detail = pathDetail || commandText || tc.name;
+
+                  if (tc.name === 'read_file' && pathDetail) {
+                    const startLine = tc.arguments?.start_line ?? tc.arguments?.start;
+                    const endLine = tc.arguments?.end_line ?? tc.arguments?.end;
+                    if (startLine || endLine) {
+                      const from = Number(startLine) || 1;
+                      const to = Number(endLine) || from;
+                      detail = `${pathDetail} (lines ${from}-${to})`;
+                    } else {
+                      detail = pathDetail;
+                    }
+                  } else if (isGrepCommand && commandText) {
+                    detail = commandText;
+                  }
 
                   this.postToWebview({
                     type: 'navi.agent.event',
                     event: {
                       kind,
                       data: {
-                        label: tc.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                        label: isGrepCommand ? 'Grep' : tc.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
                         detail,
                         status: 'running',
                         toolId: tc.id,
+                        filePath: pathDetail || undefined,
                       }
                     },
                     // Use backend timestamp if available for accurate chronological ordering
-                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
+                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
                   });
 
                   if (tc.name === 'run_command') {
@@ -8454,11 +8708,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
                   if (tc.name === 'write_file' || tc.name === 'edit_file') {
                     const relPath = String(tc.arguments?.path || '');
+                    const content = typeof tc.arguments?.content === 'string' ? tc.arguments.content : undefined;
                     if (relPath && workspaceRoot) {
+                      await this.captureUndoSnapshot(relPath);
                       const absPath = path.join(workspaceRoot, relPath);
-                      const exists = fs.existsSync(absPath);
+                      const snapshot = this.getUndoSnapshot(relPath);
+                      const existedBefore = snapshot ? snapshot.existed : fs.existsSync(absPath);
                       const actionType: 'editFile' | 'createFile' =
-                        tc.name === 'write_file' && !exists ? 'createFile' : 'editFile';
+                        tc.name === 'write_file' && !existedBefore ? 'createFile' : 'editFile';
                       const summary =
                         tc.arguments?.summary ||
                         tc.arguments?.description ||
@@ -8466,7 +8723,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                         tc.arguments?.reason ||
                         tc.arguments?.changes ||
                         '';
-                      toolFileMap.set(String(tc.id), { path: relPath, actionType, summary });
+                      toolFileMap.set(String(tc.id), { path: relPath, actionType, summary, content });
                       this.postToWebview({
                         type: 'action.start',
                         action: {
@@ -8571,6 +8828,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                         text: `${verb} ${fileAction.path} — ${fileAction.summary}`,
                       });
                     }
+                    const undoMetadata = this.buildUndoRestoreMetadata(
+                      fileAction.path,
+                      fileAction.actionType,
+                      tr.result,
+                    );
                     this.postToWebview({
                       type: 'action.complete',
                       action: {
@@ -8578,6 +8840,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                         filePath: fileAction.path,
                         diff: diffInfo.diff,
                         diffUnified: diffInfo.diff,
+                        content: fileAction.content,
                       },
                       success,
                       data: {
@@ -8586,6 +8849,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                           deletions: diffInfo.deletions,
                         },
                         diffUnified: diffInfo.diff,
+                        content: fileAction.content,
+                        ...undoMetadata,
                       },
                     });
                     toolFileMap.delete(String(tr.id));
@@ -8613,24 +8878,33 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   });
                 }
 
-                // Handle command consent requests
+                // Handle command consent requests - send as navi.confirm message
                 if (parsed.type === 'command.consent_required' && parsed.data) {
-                  console.log('[AEP] 🔐 Command consent required:', parsed.data.command);
-                  this.postToWebview({
-                    type: 'command.consent_required',
+                  // Send consent as navi.confirm with data wrapper (uses existing handler)
+                  const consentId = String(parsed.data.consent_id || '');
+                  const consentMessage = {
+                    type: 'navi.confirm',
                     data: {
-                      consent_id: parsed.data.consent_id,
-                      command: parsed.data.command,
-                      shell: parsed.data.shell || 'bash',
-                      cwd: parsed.data.cwd,
-                      danger_level: parsed.data.danger_level,
-                      warning: parsed.data.warning,
-                      consequences: parsed.data.consequences || [],
-                      alternatives: parsed.data.alternatives || [],
-                      rollback_possible: parsed.data.rollback_possible || false,
+                      consent_id: consentId,
+                      command: String(parsed.data.command || ''),
+                      shell: String(parsed.data.shell || 'bash'),
+                      cwd: String(parsed.data.cwd || ''),
+                      danger_level: String(parsed.data.danger_level || 'medium'),
+                      warning: String(parsed.data.warning || 'This command requires your consent.'),
+                      consequences: Array.isArray(parsed.data.consequences) ? parsed.data.consequences.map(String) : [],
+                      alternatives: Array.isArray(parsed.data.alternatives) ? parsed.data.alternatives.map(String) : [],
+                      rollback_possible: Boolean(parsed.data.rollback_possible),
                     },
-                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
-                  });
+                    timestamp: new Date().toISOString(),
+                  };
+
+                  if (!this._webviewReady) {
+                    const queueKey = consentId || `pending-consent-${Date.now()}`;
+                    this._pendingConsentMessages.set(queueKey, consentMessage);
+                    console.log('[AEP] ⏳ Webview not ready. Queued consent message:', queueKey);
+                  } else {
+                    this.postToWebview(consentMessage);
+                  }
                 }
 
                 // Handle real-time command output streaming
@@ -8640,7 +8914,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     stream: parsed.stream,
                     line: parsed.line,
                     command: parsed.command,
-                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined,
+                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
                   });
                 }
 
@@ -11030,6 +11304,152 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     return path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot, filePath);
   }
 
+  private isFileMutationAction(action: any): boolean {
+    const actionType = String(action?.type || "").trim().toLowerCase();
+    return (
+      actionType === "createfile" ||
+      actionType === "editfile" ||
+      actionType === "deletefile" ||
+      actionType === "create" ||
+      actionType === "edit" ||
+      actionType === "delete"
+    );
+  }
+
+  private getActionFilePath(action: any): string | undefined {
+    const raw =
+      action?.filePath ||
+      action?.path ||
+      action?.targetPath;
+    const normalized = typeof raw === "string" ? raw.trim() : "";
+    return normalized || undefined;
+  }
+
+  private normalizeUndoSnapshotKey(filePath: string): string | null {
+    const raw = String(filePath || "").trim();
+    if (!raw) return null;
+
+    const workspaceRoot = this.getActiveWorkspaceRoot();
+    if (!workspaceRoot) {
+      return raw.replace(/\\/g, "/");
+    }
+
+    const absolutePath = path.isAbsolute(raw)
+      ? path.resolve(raw)
+      : path.resolve(workspaceRoot, raw);
+    const relativePath = path.relative(workspaceRoot, absolutePath).replace(/\\/g, "/");
+
+    if (!relativePath || relativePath.startsWith("..")) {
+      return null;
+    }
+
+    return relativePath;
+  }
+
+  private resolveUndoSnapshotPath(filePath: string): string | null {
+    const raw = String(filePath || "").trim();
+    if (!raw) return null;
+
+    const workspaceRoot = this.getActiveWorkspaceRoot();
+    if (!workspaceRoot) {
+      return path.isAbsolute(raw) ? path.resolve(raw) : null;
+    }
+
+    const absolutePath = path.isAbsolute(raw)
+      ? path.resolve(raw)
+      : path.resolve(workspaceRoot, raw);
+    const relativePath = path.relative(workspaceRoot, absolutePath).replace(/\\/g, "/");
+
+    if (!relativePath || relativePath.startsWith("..")) {
+      return null;
+    }
+
+    return absolutePath;
+  }
+
+  private async captureUndoSnapshot(filePath: string): Promise<void> {
+    const snapshotKey = this.normalizeUndoSnapshotKey(filePath);
+    if (!snapshotKey) return;
+    if (this._pendingUndoSnapshots.has(snapshotKey)) return;
+
+    const absolutePath = this.resolveUndoSnapshotPath(filePath);
+    if (!absolutePath) return;
+
+    let existed = false;
+    let originalContent: string | undefined = undefined;
+
+    try {
+      await fs.promises.stat(absolutePath);
+      existed = true;
+      originalContent = await fs.promises.readFile(absolutePath, "utf8");
+    } catch (err: any) {
+      if (err?.code !== "ENOENT") {
+        console.warn("[AEP] Failed to capture undo snapshot for", filePath, err);
+        return;
+      }
+      existed = false;
+      originalContent = undefined;
+    }
+
+    this._pendingUndoSnapshots.set(snapshotKey, {
+      existed,
+      originalContent,
+      capturedAt: Date.now(),
+      runId: this._activityRunId || undefined,
+    });
+
+    // Prevent unbounded growth if user keeps running tasks without resolving.
+    if (this._pendingUndoSnapshots.size > 500) {
+      const oldestEntry = [...this._pendingUndoSnapshots.entries()].sort(
+        (a, b) => a[1].capturedAt - b[1].capturedAt
+      )[0];
+      if (oldestEntry) {
+        this._pendingUndoSnapshots.delete(oldestEntry[0]);
+      }
+    }
+  }
+
+  private getUndoSnapshot(filePath: string) {
+    const snapshotKey = this.normalizeUndoSnapshotKey(filePath);
+    if (!snapshotKey) return undefined;
+    return this._pendingUndoSnapshots.get(snapshotKey);
+  }
+
+  private clearUndoSnapshots(filePaths?: string[]): void {
+    if (!filePaths || filePaths.length === 0) {
+      this._pendingUndoSnapshots.clear();
+      return;
+    }
+
+    for (const filePath of filePaths) {
+      const snapshotKey = this.normalizeUndoSnapshotKey(filePath);
+      if (snapshotKey) {
+        this._pendingUndoSnapshots.delete(snapshotKey);
+      }
+    }
+  }
+
+  private buildUndoRestoreMetadata(
+    filePath: string | undefined,
+    actionType: string | undefined,
+    existingData?: any
+  ): Record<string, any> {
+    const snapshot = filePath ? this.getUndoSnapshot(filePath) : undefined;
+    return buildUndoRestoreMetadataFromSnapshot({
+      actionType,
+      existingData,
+      snapshot,
+    });
+  }
+
+  private flushPendingConsentMessages(): void {
+    if (!this._view || this._pendingConsentMessages.size === 0) return;
+    for (const message of this._pendingConsentMessages.values()) {
+      this.postToWebview(message);
+    }
+    this._pendingConsentMessages.clear();
+  }
+
   public postToWebview(message: any) {
     if (!this._view) {
       console.warn('[Extension Host] [AEP] WARNING: postToWebview called but this._view is null!');
@@ -11085,7 +11505,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         entry: message.entry
       }).catch(() => { });
     }
-    this._view.webview.postMessage(message);
+    if (message.type === "command.consent_required") {
+      const fullJson = JSON.stringify(message, null, 2);
+      console.log("[Extension Host] [AEP] 🚨 FULL CONSENT MESSAGE:", fullJson);
+      console.log("[Extension Host] [AEP] 🚨 Message keys:", Object.keys(message));
+      console.log("[Extension Host] [AEP] 🚨 Data keys:", Object.keys(message.data || {}));
+    }
+
+    const result = this._view.webview.postMessage(message);
+    if (message.type === "command.consent_required") {
+      console.log("[Extension Host] [AEP] 🚨 postMessage returned:", result);
+    }
   }
 
   private startNewChat() {
@@ -12150,6 +12580,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         });
       }
 
+      const actionFilePath = this.getActionFilePath(action);
+      if (this.isFileMutationAction(action) && actionFilePath) {
+        await this.captureUndoSnapshot(actionFilePath);
+      }
+
       // Notify UI that action execution started
       this.postToWebview({
         type: 'action.start',
@@ -12291,6 +12726,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           }
           this._actionActivityIds.delete(actionKey);
 
+          const undoMetadata = this.buildUndoRestoreMetadata(
+            actionFilePath,
+            action.type,
+            result.data
+          );
+
           // Send success notification to webview (includes actionIndex for sequential approval)
           this.postToWebview({
             type: 'action.complete',
@@ -12300,7 +12741,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             message: result.message,
             data: {
               ...result.data,
-              diffStats: result.diffStats  // Include diff statistics for file edits
+              diffStats: result.diffStats,  // Include diff statistics for file edits
+              ...undoMetadata,
             }
           });
         }
@@ -12344,12 +12786,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       // Send completion notification for legacy handlers
+      const legacyUndoMetadata = this.buildUndoRestoreMetadata(
+        actionFilePath,
+        action.type,
+      );
       this.postToWebview({
         type: 'action.complete',
         action: action,
         actionIndex: actionIndex,
         success: legacySuccess,
-        message: legacyMessage
+        message: legacyMessage,
+        ...(Object.keys(legacyUndoMetadata).length > 0 ? { data: legacyUndoMetadata } : {})
       });
 
     } catch (error: any) {

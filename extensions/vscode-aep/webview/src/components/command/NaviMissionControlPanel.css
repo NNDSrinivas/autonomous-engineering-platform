@@ -132,6 +132,20 @@
   gap: 8px;
 }
 
+.mission-control-panel__chevron-btn {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mission-control-panel__chevron-btn:hover .mission-control-panel__chevron {
+  color: var(--mc-console-amber);
+}
+
 .mission-control-action {
   background: transparent;
   border: 1px solid var(--mc-grid-steel);

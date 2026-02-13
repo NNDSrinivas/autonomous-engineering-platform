@@ -96,28 +96,41 @@ class SemanticSearchService:
         Returns:
             List of SearchResult objects sorted by relevance
         """
+        import asyncio
+
         results: List[SearchResult] = []
+
+        # Build list of search tasks to run in parallel
+        search_tasks = []
 
         # Search conversations
         if scope in (SearchScope.ALL, SearchScope.CONVERSATIONS) and user_id:
-            conversation_results = await self._search_conversations(
-                query, user_id, limit, min_similarity
+            search_tasks.append(
+                self._search_conversations(query, user_id, limit, min_similarity)
             )
-            results.extend(conversation_results)
 
         # Search organization knowledge
         if scope in (SearchScope.ALL, SearchScope.KNOWLEDGE) and org_id:
-            knowledge_results = await self._search_knowledge(
-                query, org_id, limit, min_similarity
+            search_tasks.append(
+                self._search_knowledge(query, org_id, limit, min_similarity)
             )
-            results.extend(knowledge_results)
 
         # Search code symbols
         if scope in (SearchScope.ALL, SearchScope.CODE) and codebase_id:
-            code_results = await self._search_code(
-                query, codebase_id, limit, min_similarity
+            search_tasks.append(
+                self._search_code(query, codebase_id, limit, min_similarity)
             )
-            results.extend(code_results)
+
+        # Run all searches in parallel
+        if search_tasks:
+            search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+            # Collect results, handling any exceptions
+            for result in search_results:
+                if isinstance(result, Exception):
+                    logger.warning(f"Search task failed: {result}")
+                elif isinstance(result, list):
+                    results.extend(result)
 
         # Sort all results by similarity
         results.sort(key=lambda x: x.similarity, reverse=True)
@@ -280,27 +293,46 @@ class SemanticSearchService:
         Returns:
             Dictionary with results grouped by source
         """
+        import asyncio
+
         results = {
             "conversations": [],
             "knowledge": [],
             "code": [],
         }
 
-        # Search each category separately
+        # Build list of search tasks to run in parallel
+        search_tasks = []
+        task_keys = []
+
         if user_id:
-            results["conversations"] = await self._search_conversations(
-                content, user_id, limit, min_similarity=0.6
+            search_tasks.append(
+                self._search_conversations(content, user_id, limit, min_similarity=0.6)
             )
+            task_keys.append("conversations")
 
         if org_id:
-            results["knowledge"] = await self._search_knowledge(
-                content, org_id, limit, min_similarity=0.6
+            search_tasks.append(
+                self._search_knowledge(content, org_id, limit, min_similarity=0.6)
             )
+            task_keys.append("knowledge")
 
         if codebase_id:
-            results["code"] = await self._search_code(
-                content, codebase_id, limit, min_similarity=0.6
+            search_tasks.append(
+                self._search_code(content, codebase_id, limit, min_similarity=0.6)
             )
+            task_keys.append("code")
+
+        # Run all searches in parallel
+        if search_tasks:
+            search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+            # Map results back to their categories
+            for key, result in zip(task_keys, search_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"Search for {key} failed: {result}")
+                elif isinstance(result, list):
+                    results[key] = result
 
         return results
 

@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 @import './styles/futuristic.css';
 
 @tailwind base;
@@ -370,8 +369,8 @@
 
   /* Glass morphism effect */
   .glass {
-    background: hsl(var(--background) / 0.8);
-    backdrop-filter: blur(12px);
+    background: hsl(var(--background) / 0.95);
+    backdrop-filter: blur(4px);
     border: 1px solid hsl(var(--border) / 0.5);
   }
 

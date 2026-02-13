@@ -66,7 +66,11 @@ export function postMessage(message: VsCodeMessage) {
 export function onMessage(listener: Listener): () => void {
   if (typeof window === "undefined") return () => undefined;
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  console.log("[vscodeApi] Listener registered. Total listeners:", listeners.size);
+  return () => {
+    listeners.delete(listener);
+    console.log("[vscodeApi] Listener removed. Total listeners:", listeners.size);
+  };
 }
 
 let nextClipboardReqId = 1;
@@ -92,7 +96,10 @@ export function readClipboard(): Promise<string | null> {
 if (typeof window !== "undefined") {
   window.addEventListener("message", (event: MessageEvent) => {
     const data = event.data;
-    if (!data || typeof data !== "object") return;
+
+    if (!data || typeof data !== "object") {
+      return;
+    }
 
     if (data.type === "clipboard.write.result" && typeof data.id === "number") {
       const resolver = pendingClipboardWrites.get(data.id);
@@ -112,7 +119,13 @@ if (typeof window !== "undefined") {
       return;
     }
 
-    listeners.forEach((cb) => cb(data));
+    listeners.forEach((cb) => {
+      try {
+        cb(data);
+      } catch (err) {
+        console.error("[vscodeApi] Listener error:", err);
+      }
+    });
   });
 }
 

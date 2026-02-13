@@ -72,8 +72,8 @@ export const NaviCommandPanelSwitcher: React.FC<NaviCommandPanelSwitcherProps> =
   const [currentTheme, setCurrentTheme] = useState<PanelTheme>(defaultTheme);
   const [isThemeSelectorOpen, setIsThemeSelectorOpen] = useState(false);
 
-  // Adapter for classic panel (uses id: string instead of entry: TerminalEntry)
-  const handleOpenInTerminalClassic = useCallback(
+  // Adapter for panel variants that emit terminal id instead of full entry.
+  const handleOpenInTerminalById = useCallback(
     (id: string) => {
       const entry = entries.find(e => e.id === id);
       if (entry && onOpenInTerminal) {
@@ -97,7 +97,7 @@ export const NaviCommandPanelSwitcher: React.FC<NaviCommandPanelSwitcherProps> =
           <NaviMissionControlPanel
             entries={entries}
             onClear={onClear}
-            onOpenInTerminal={onOpenInTerminal}
+            onOpenInTerminal={handleOpenInTerminalById}
             defaultOpen={defaultOpen}
           />
         );
@@ -125,7 +125,7 @@ export const NaviCommandPanelSwitcher: React.FC<NaviCommandPanelSwitcherProps> =
           <NaviCommandPanel
             entries={entries}
             onClear={onClear}
-            onOpenInTerminal={handleOpenInTerminalClassic}
+            onOpenInTerminal={handleOpenInTerminalById}
             defaultOpen={defaultOpen}
           />
         );

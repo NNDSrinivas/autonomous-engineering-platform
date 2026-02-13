@@ -1,5 +1,25 @@
 """
-Configuration management for Autonomous Engineering Intelligence Platform
+Configuration management for Autonomous Engineering Intelligence Platform.
+
+ARCHITECTURAL DEBT WARNING (P1 - High Priority)
+================================================================================
+This module (backend/core/config.py) duplicates functionality with
+backend/core/settings.py, creating confusion and maintenance overhead.
+
+Issue:
+- Two separate Settings implementations exist (in settings.py and config.py).
+- This split creates ambiguity about which Settings class to use and extend.
+
+Action required:
+- Consolidate to a single Settings implementation as described in the
+  consolidation plan.
+- DO NOT extend or introduce new Settings behavior in either module without
+  consulting the consolidation plan.
+
+Tracking:
+- See docs/SETTINGS_CONSOLIDATION_TODO.md for up-to-date metrics, timelines,
+  and the detailed refactoring plan.
+================================================================================
 """
 
 import os
@@ -516,6 +536,16 @@ class Settings(BaseSettings):
             if self.cors_origins == "*"
             else [s.strip() for s in self.cors_origins.split(",") if s.strip()]
         )
+
+    def is_production_like(self) -> bool:
+        """
+        Check if running in production-like environment (production or staging).
+
+        Use this for checks that should apply to both production and staging,
+        such as security requirements, encryption enforcement, etc.
+        """
+        normalized = normalize_env(self.app_env)
+        return normalized in ("production", "staging")
 
 
 settings = Settings()

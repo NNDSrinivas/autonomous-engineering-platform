@@ -14,6 +14,7 @@ This enables NAVI to understand the ENTIRE codebase, not just individual files.
 import os
 import re
 import hashlib
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
@@ -23,6 +24,9 @@ import logging
 import fnmatch
 
 logger = logging.getLogger(__name__)
+
+# Track in-flight background indexing tasks to prevent duplicate indexers
+_indexing_in_progress: set[str] = set()
 
 
 # ============================================================
@@ -1045,19 +1049,48 @@ async def search_codebase(
     workspace_path: str,
     query: str,
     top_k: int = 10,
+    allow_background_indexing: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Search the codebase for relevant code.
 
     Returns list of relevant code chunks with scores.
+
+    Args:
+        workspace_path: Path to workspace
+        query: Search query
+        top_k: Number of results to return
+        allow_background_indexing: If True, trigger background indexing for next time
     """
     index = get_index(workspace_path)
     if not index:
-        # Auto-index if not already done
-        await index_workspace(workspace_path)
-        index = get_index(workspace_path)
+        # OPTIMIZATION: Don't block the request to index
+        # Instead, trigger background indexing for next time
+        if allow_background_indexing:
+            import asyncio
 
-    if not index:
+            # Only start background indexing if not already in progress
+            if workspace_path not in _indexing_in_progress:
+                logger.info(
+                    f"[RAG] No index found for {workspace_path} - scheduling background indexing"
+                )
+                # Mark as in progress BEFORE creating task to prevent race condition
+                _indexing_in_progress.add(workspace_path)
+
+                async def _run_background_indexer() -> None:
+                    try:
+                        await _background_index_workspace(workspace_path)
+                    finally:
+                        _indexing_in_progress.discard(workspace_path)
+
+                # Fire and forget - don't await
+                asyncio.create_task(_run_background_indexer())
+            else:
+                logger.debug(
+                    f"[RAG] Background indexing already in progress for {workspace_path}"
+                )
+
+        # Return empty for now - next request will have index ready
         return []
 
     results = await SemanticSearch.search(query, index, top_k=top_k)
@@ -1075,6 +1108,34 @@ async def search_codebase(
         }
         for chunk, score in results
     ]
+
+
+async def _background_index_workspace(workspace_path: str) -> None:
+    """
+    Index workspace in background without blocking the request.
+
+    This allows the FIRST request to return quickly (without RAG),
+    while subsequent requests will have the index ready.
+
+    Note: Caller is responsible for managing _indexing_in_progress set.
+    """
+    try:
+        logger.info(f"[RAG] Starting background indexing for {workspace_path}")
+        start_time = time.time()
+
+        await index_workspace(workspace_path, force_reindex=False)
+
+        elapsed = time.time() - start_time
+        logger.info(
+            f"[RAG] Background indexing completed for {workspace_path} "
+            f"in {elapsed:.2f}s - future requests will use this index"
+        )
+    except Exception as e:
+        # Log error but don't re-raise (fire-and-forget task)
+        # The wrapper's finally block will clean up _indexing_in_progress
+        logger.error(
+            f"[RAG] Background indexing failed for {workspace_path}: {e}", exc_info=True
+        )
 
 
 async def get_context_for_task(

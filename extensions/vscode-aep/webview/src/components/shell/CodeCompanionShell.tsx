@@ -9,6 +9,7 @@ import {
   LogIn,
   LogOut,
   Moon,
+  MoreHorizontal,
   PanelLeft,
   PenSquare,
   Plus,
@@ -605,10 +606,12 @@ export function CodeCompanionShell() {
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgError, setOrgError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [chatSettingsTrigger, setChatSettingsTrigger] = useState(0);
   const [activityPanelOpen, setActivityPanelOpen] = useState(false);
   const [activityJumpCommandId, setActivityJumpCommandId] = useState<string | null>(null);
   const [chatJumpCommandId, setChatJumpCommandId] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [headerMoreOpen, setHeaderMoreOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [externalPanelRequest, setExternalPanelRequest] = useState<SidebarPanelType>(null);
   const [fullPanelOpen, setFullPanelOpen] = useState(false);
@@ -657,10 +660,10 @@ export function CodeCompanionShell() {
   const activityPanelState = useActivityPanel();
 
   useEffect(() => {
-    if (activityPanelState.isVisible && activityPanelState.steps.length > 0) {
-      setActivityPanelOpen(true);
+    if (!activityPanelState.isVisible) {
+      setActivityPanelOpen(false);
     }
-  }, [activityPanelState.isVisible, activityPanelState.steps.length]);
+  }, [activityPanelState.isVisible]);
 
   // Listen for messages from extension
   useEffect(() => {
@@ -752,6 +755,23 @@ export function CodeCompanionShell() {
       void fetchOrgs();
     }
   }, [isAuthenticated]);
+
+  // Keyboard handler: close "More" menu on Escape key
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && headerMoreOpen) {
+        setHeaderMoreOpen(false);
+      }
+    };
+
+    if (headerMoreOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [headerMoreOpen]);
 
   // Handle sign in/out
   const handleSignIn = () => {
@@ -958,6 +978,13 @@ export function CodeCompanionShell() {
     setHistoryOpen(false);
   }, []);
 
+  const handleOpenChatSettings = useCallback(() => {
+    setChatSettingsTrigger((prev) => prev + 1);
+    setHeaderMoreOpen(false);
+    setUserMenuOpen(false);
+    setHistoryOpen(false);
+  }, []);
+
   // Toggle theme
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
@@ -1125,13 +1152,22 @@ export function CodeCompanionShell() {
   // Get user initials
   const getInitials = (name?: string, email?: string): string => {
     if (name) {
-      const parts = name.split(' ');
-      return parts.map(p => p[0]).join('').toUpperCase().slice(0, 2);
+      const parts = name
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      if (parts.length === 1) {
+        return parts[0][0]?.toUpperCase() || 'NA';
+      }
+      const first = parts[0][0] || '';
+      const last = parts[parts.length - 1][0] || '';
+      const initials = `${first}${last}`.toUpperCase();
+      return initials || 'NA';
     }
     if (email) {
       return email[0].toUpperCase();
     }
-    return '?';
+    return 'NA';
   };
 
   return (
@@ -1202,186 +1238,157 @@ export function CodeCompanionShell() {
                 <Clock className="h-4 w-4 navi-history-icon" />
               </button>
 
-              {/* Notifications with Badge - Bell ring animation */}
-              <button className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-has-badge navi-bell-btn" title="Notifications">
-                <span className="navi-icon-glow" />
-                <Bell className="h-4 w-4 navi-bell-icon" />
-                <span className="navi-notification-badge">3</span>
-              </button>
-
-              {/* Theme Toggle - Animated */}
               <button
-                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-theme-toggle"
-                title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
-                onClick={toggleTheme}
+                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-settings-btn"
+                title="Chat Settings"
+                onClick={handleOpenChatSettings}
               >
                 <span className="navi-icon-glow" />
-                <div className="navi-theme-icon-wrapper">
-                  {theme === 'dark' ? (
-                    <Sun className="h-4 w-4 navi-icon-sun" />
-                  ) : (
-                    <Moon className="h-4 w-4 navi-icon-moon" />
-                  )}
-                </div>
+                <Settings className="h-4 w-4 navi-settings-icon" />
               </button>
 
-              {/* Activity Panel Toggle */}
-              <button
-                className={`navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-activity-toggle ${activityPanelOpen ? "is-active" : ""}`}
-                title={activityPanelOpen ? "Hide Activity" : "Show Activity"}
-                onClick={() => setActivityPanelOpen((prev) => !prev)}
-              >
-                <span className="navi-icon-glow" />
-                <Activity className="h-4 w-4 navi-activity-icon" />
-              </button>
+              {/* Activity button removed */}
 
-              {/* Help - Opens documentation */}
-              <button
-                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-help-btn"
-                title="Help & Documentation"
-                onClick={() => {
-                  postMessage({ type: "help.open" });
-                  postMessage({ type: "openExternal", url: "https://docs.navra.ai" });
-                }}
-              >
-                <span className="navi-icon-glow" />
-                <HelpCircle className="h-4 w-4 navi-help-icon" />
-              </button>
+              {/* More Menu - Notifications, Theme, Activity, Help */}
+              <div className="navi-header-more-anchor">
+                <button
+                  className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-more-btn"
+                  title="More"
+                  aria-expanded={headerMoreOpen}
+                  aria-controls="navi-more-menu"
+                  onClick={() => {
+                    setHeaderMoreOpen((prev) => !prev);
+                    if (userMenuOpen) {
+                      setUserMenuOpen(false);
+                    }
+                  }}
+                >
+                  <span className="navi-icon-glow" />
+                  <MoreHorizontal className="h-4 w-4 navi-more-icon" />
+                </button>
 
-              {/* User Menu / Sign In */}
-              {isAuthenticated ? (
-                <div className="relative">
-                  <button
-                    className="navi-user-avatar-btn navi-animated-icon"
-                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                {isAuthenticated && (
+                  <div
+                    className="navi-auth-initials"
+                    title={`Signed in as ${displayName}`}
+                    aria-label={`Signed in as ${displayName}`}
                   >
-                    <span className="navi-avatar-glow" />
-                    {user?.picture ? (
-                      <img
-                        src={user.picture}
-                        alt={user.name || 'User'}
-                        className="navi-user-avatar"
-                      />
-                    ) : (
-                      <div className="navi-user-initials">
-                        {getInitials(user?.name, user?.email)}
-                      </div>
-                    )}
-                    <span className="navi-user-name">
-                      {displayName}
-                    </span>
-                    <span className="navi-auth-status">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Signed in
-                    </span>
-                    <ChevronRight className={`h-3 w-3 navi-user-chevron ${userMenuOpen ? 'rotate-90' : ''}`} />
-                  </button>
+                    {getInitials(user?.name, user?.email)}
+                  </div>
+                )}
 
-                  {/* User Dropdown Menu */}
-                  {userMenuOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setUserMenuOpen(false)}
-                      />
-                      <div className="navi-user-dropdown">
-                        <div className="navi-dropdown-user-info">
-                          <div className="navi-dropdown-user-avatar">
-                            {user?.picture ? (
-                              <img src={user.picture} alt={user.name || 'User'} />
-                            ) : (
-                              <span>{getInitials(user?.name, user?.email)}</span>
-                            )}
-                          </div>
-                          <div className="navi-dropdown-user-details">
-                            <div className="navi-dropdown-user-name">{displayName}</div>
-                            <div className="navi-dropdown-user-email">{user?.email}</div>
-                            {user?.org && (
-                              <div className="navi-dropdown-user-org">{user.org}</div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="navi-dropdown-divider" />
-                        <div className="navi-nickname-row">
-                          <label className="navi-nickname-label">Nickname</label>
-                          <div className="navi-nickname-controls">
-                            <input
-                              className="navi-nickname-input"
-                              type="text"
-                              value={nickname}
-                              placeholder="Optional"
-                              onChange={(event) => setNickname(event.target.value)}
-                            />
-                            <button
-                              className="navi-nickname-save"
-                              onClick={() => writeNickname(nickname)}
-                            >
-                              Save
-                            </button>
-                          </div>
-                        </div>
-                        <div className="navi-dropdown-divider" />
-                        <button
-                          className="navi-dropdown-menu-item"
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                          }}
-                        >
-                          <Settings className="h-4 w-4" />
-                          <span>Settings</span>
-                        </button>
-                        <button
-                          className="navi-dropdown-menu-item"
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                          }}
-                        >
-                          <User className="h-4 w-4" />
-                          <span>Profile</span>
-                        </button>
-                        <div className="navi-dropdown-divider" />
-                        <button
-                          className="navi-dropdown-menu-item navi-menu-item-danger"
-                          onClick={handleSignOut}
-                        >
-                          <LogOut className="h-4 w-4" />
-                          <span>Sign Out</span>
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className="navi-auth-group">
-                  {/* Settings Button */}
-                  <button
-                    className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-settings-btn"
-                    title="Settings"
-                    onClick={() => setExternalPanelRequest('account')}
-                  >
-                    <span className="navi-icon-glow" />
-                    <Settings className="h-4 w-4 navi-settings-icon" />
-                  </button>
+                {headerMoreOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setHeaderMoreOpen(false)}
+                    />
+                    <div id="navi-more-menu" role="menu" className="navi-header-more-dropdown">
+                      <button
+                        className="navi-header-more-menu-item"
+                        onClick={() => {
+                          setFullPanelTab('mcp');
+                          setFullPanelOpen(true);
+                          setHeaderMoreOpen(false);
+                        }}
+                      >
+                        <Layers className="h-4 w-4" />
+                        <span>Open Command Center</span>
+                      </button>
+                      <div className="navi-header-more-divider" />
+                      <button
+                        className="navi-header-more-menu-item"
+                        onClick={() => {
+                          toggleTheme();
+                          setHeaderMoreOpen(false);
+                        }}
+                      >
+                        {theme === 'dark' ? (
+                          <Sun className="h-4 w-4" />
+                        ) : (
+                          <Moon className="h-4 w-4" />
+                        )}
+                        <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+                      </button>
+                      {isAuthenticated ? (
+                        <>
+                          <div className="navi-header-more-divider" />
+                          <button
+                            className="navi-header-more-menu-item"
+                            onClick={() => {
+                              setFullPanelTab('account');
+                              setFullPanelOpen(true);
+                              setHeaderMoreOpen(false);
+                            }}
+                          >
+                            <User className="h-4 w-4" />
+                            <span>Account</span>
+                          </button>
+                          <button
+                            className="navi-header-more-menu-item"
+                            onClick={() => {
+                              handleOpenChatSettings();
+                            }}
+                          >
+                            <Settings className="h-4 w-4" />
+                            <span>Chat Settings</span>
+                          </button>
+                          <button
+                            className="navi-header-more-menu-item"
+                            onClick={() => {
+                              setFullPanelTab('account');
+                              setFullPanelOpen(true);
+                              setHeaderMoreOpen(false);
+                            }}
+                          >
+                            <User className="h-4 w-4" />
+                            <span>Profile</span>
+                          </button>
+                          <button
+                            className="navi-header-more-menu-item navi-header-more-menu-item--danger"
+                            onClick={() => {
+                              handleSignOut();
+                              setHeaderMoreOpen(false);
+                            }}
+                          >
+                            <LogOut className="h-4 w-4" />
+                            <span>Sign out</span>
+                          </button>
+                          <div className="navi-header-more-divider" />
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            className="navi-header-more-menu-item"
+                            onClick={() => {
+                              handleSignIn();
+                              setHeaderMoreOpen(false);
+                            }}
+                          >
+                            <LogIn className="h-4 w-4" />
+                            <span>Sign in</span>
+                          </button>
+                          <div className="navi-header-more-divider" />
+                        </>
+                      )}
+                      <button
+                        className="navi-header-more-menu-item"
+                        onClick={() => {
+                          setHeaderMoreOpen(false);
+                          postMessage({ type: "help.open" });
+                          postMessage({ type: "openExternal", url: "https://docs.navra.ai" });
+                        }}
+                      >
+                        <HelpCircle className="h-4 w-4" />
+                        <span>Help & Documentation</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
 
-                  {authGateSkipped && (
-                    <span className="navi-auth-required-badge">Sign in required</span>
-                  )}
-
-                  {/* Sign In Button */}
-                  <button
-                    className="navi-signin-btn-v3"
-                    onClick={handleSignIn}
-                  >
-                    <span className="navi-signin-border-glow" />
-                    <span className="navi-signin-bg" />
-                    <span className="navi-signin-inner">
-                      <User className="h-3.5 w-3.5 navi-signin-icon" />
-                      <span className="navi-signin-text">Sign In</span>
-                    </span>
-                    <span className="navi-signin-pulse" />
-                  </button>
-                </div>
-              )}
+              {/* User Status / Sign In */}
+              {isAuthenticated ? null : null}
             </div>
           </div>
         </header>
@@ -1501,10 +1508,11 @@ export function CodeCompanionShell() {
                 activityPanelState={activityPanelState}
                 onOpenActivityForCommand={handleOpenActivityForCommand}
                 highlightCommandId={chatJumpCommandId}
+                openSettingsTrigger={chatSettingsTrigger}
               />
 
               {/* Activity Panel - Right Sidebar */}
-              {activityPanelOpen && activityPanelState.isVisible && (
+              {activityPanelOpen && activityPanelState.steps.length > 0 && (
                 <aside className="navi-activity-sidebar">
                   <ActivityPanel
                     steps={activityPanelState.steps}
@@ -2261,7 +2269,7 @@ export function CodeCompanionShell() {
           position: sticky;
           top: 0;
           z-index: 50;
-          height: 52px;
+          height: 44px;
           background: linear-gradient(180deg,
             hsl(var(--background)) 0%,
             hsl(var(--background) / 0.98) 100%
@@ -2275,15 +2283,15 @@ export function CodeCompanionShell() {
           align-items: center;
           justify-content: space-between;
           height: 100%;
-          padding: 0 16px;
-          gap: 16px;
+          padding: 0 12px;
+          gap: 12px;
         }
 
         /* ===== LEFT SECTION ===== */
         .navi-header-left {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 8px;
         }
 
         /* ===== ANIMATED ICON BUTTON ===== */
@@ -2292,8 +2300,10 @@ export function CodeCompanionShell() {
           display: flex;
           align-items: center;
           justify-content: center;
-          --icon-btn-size: 34px;
-          border-radius: 10px;
+          --icon-btn-size: 30px;
+          width: var(--icon-btn-size);
+          height: var(--icon-btn-size);
+          border-radius: 8px;
           overflow: hidden;
         }
 
@@ -2329,20 +2339,20 @@ export function CodeCompanionShell() {
         .navi-header-brand {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
         }
 
         .navi-logo-container {
           position: relative;
-          width: 36px;
-          height: 36px;
+          width: 28px;
+          height: 28px;
         }
 
         .navi-logo-glow {
           position: absolute;
-          inset: -4px;
+          inset: -3px;
           background: radial-gradient(circle, hsl(var(--primary) / 0.4), transparent 70%);
-          border-radius: 12px;
+          border-radius: 10px;
           animation: logoGlow 3s ease-in-out infinite;
         }
 
@@ -2353,13 +2363,13 @@ export function CodeCompanionShell() {
 
         .navi-logo-icon {
           position: relative;
-          width: 36px;
-          height: 36px;
+          width: 28px;
+          height: 28px;
           display: flex;
           align-items: center;
           justify-content: center;
           background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
-          border-radius: 10px;
+          border-radius: 8px;
           color: hsl(var(--primary-foreground));
           box-shadow: 0 2px 12px hsl(var(--primary) / 0.3);
         }
@@ -2370,7 +2380,7 @@ export function CodeCompanionShell() {
         }
 
         .navi-brand-name {
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 700;
           background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
           -webkit-background-clip: text;
@@ -2379,9 +2389,11 @@ export function CodeCompanionShell() {
         }
 
         .navi-brand-tagline {
-          font-size: 10px;
+          display: none;
+          font-size: 9px;
           color: hsl(var(--muted-foreground));
           letter-spacing: 0.02em;
+          line-height: 1.1;
         }
 
         /* ===== COLLABORATORS BADGE ===== */
@@ -2543,7 +2555,116 @@ export function CodeCompanionShell() {
         .navi-header-right {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
+          position: relative;
+        }
+
+        .navi-header-more-anchor {
+          position: static;
+        }
+
+        .navi-auth-initials {
+          position: absolute;
+          right: -6px;
+          top: -6px;
+          width: 20px;
+          height: 20px;
+          border-radius: 999px;
+          background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+          color: white;
+          font-size: 10px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 10px hsl(var(--primary) / 0.35);
+          border: 2px solid hsl(var(--background));
+          pointer-events: none;
+        }
+
+        .navi-header-more-dropdown {
+          position: absolute;
+          right: 0;
+          top: calc(100% + 4px);
+          width: 220px;
+          min-width: 220px;
+          max-width: 220px;
+          background: hsl(var(--popover));
+          border: 1px solid hsl(var(--border));
+          border-radius: 12px;
+          box-shadow: 0 10px 40px hsl(0 0% 0% / 0.3);
+          padding: 4px;
+          max-height: 260px;
+          overflow: hidden;
+          z-index: 60;
+          box-sizing: border-box;
+          writing-mode: horizontal-tb;
+          text-orientation: mixed;
+          animation: dropdownSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .navi-header-more-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          min-height: 30px;
+          padding: 6px 8px;
+          border: none;
+          border-radius: 8px;
+          background: transparent;
+          color: hsl(var(--foreground));
+          font-size: 11.5px;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+          white-space: nowrap;
+          writing-mode: horizontal-tb;
+          text-orientation: mixed;
+        }
+
+        .navi-header-more-menu-item:hover {
+          background: hsl(var(--secondary) / 0.55);
+          transform: translateY(-1px);
+          box-shadow: 0 6px 12px hsl(var(--primary) / 0.12);
+        }
+
+        .navi-header-more-menu-item svg {
+          color: hsl(var(--muted-foreground));
+        }
+
+        .navi-header-more-menu-item--danger {
+          color: hsl(var(--destructive));
+        }
+
+        .navi-header-more-menu-item--danger svg {
+          color: hsl(var(--destructive));
+        }
+
+        .navi-header-more-menu-item--danger:hover {
+          background: hsl(var(--destructive) / 0.12);
+          box-shadow: none;
+        }
+
+        .navi-header-more-menu-item__meta {
+          margin-left: auto;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 6px;
+          border-radius: 999px;
+          background: hsl(var(--destructive));
+          color: white;
+          font-size: 10px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .navi-header-more-divider {
+          height: 1px;
+          background: hsl(var(--border));
+          margin: 3px 2px;
         }
 
         /* ===== NEW CHAT BUTTON ===== */
@@ -2668,11 +2789,11 @@ export function CodeCompanionShell() {
         /* ===== SIDEBAR TOGGLE BUTTON ===== */
         .navi-sidebar-toggle-btn {
           position: relative;
-          display: flex;
+          display: none;
           align-items: center;
           gap: 6px;
-          padding: 6px 12px;
-          border-radius: 10px;
+          padding: 4px 10px;
+          border-radius: 8px;
           border: 1px solid hsl(var(--primary) / 0.3);
           background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--accent) / 0.05));
           color: hsl(var(--primary));
@@ -2707,7 +2828,8 @@ export function CodeCompanionShell() {
 
         .navi-sidebar-toggle-hint {
           position: relative;
-          font-size: 11px;
+          display: none;
+          font-size: 10px;
           font-weight: 600;
           letter-spacing: 0.02em;
           text-transform: uppercase;
@@ -2731,6 +2853,19 @@ export function CodeCompanionShell() {
           border-radius: 24px;
           cursor: pointer;
           transition: all 0.2s ease;
+        }
+
+        .navi-user-status {
+          cursor: default;
+        }
+
+        .navi-user-status:hover {
+          background: hsl(var(--secondary) / 0.3);
+          border-color: hsl(var(--border) / 0.5);
+        }
+
+        .navi-user-status:hover .navi-avatar-glow {
+          opacity: 0;
         }
 
         .navi-user-avatar-btn:hover {
@@ -2826,6 +2961,12 @@ export function CodeCompanionShell() {
           overflow: hidden;
           z-index: 50;
           animation: dropdownSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .navi-user-dropdown.navi-header-more-dropdown {
+          width: 220px;
+          padding: 6px 0;
+          max-height: 320px;
         }
 
         @keyframes dropdownSlide {
@@ -3098,6 +3239,22 @@ export function CodeCompanionShell() {
           color: hsl(var(--muted-foreground));
         }
 
+        .navi-dropdown-menu-item__meta {
+          margin-left: auto;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 6px;
+          border-radius: 999px;
+          background: hsl(var(--destructive));
+          color: white;
+          font-size: 10px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 6px hsl(var(--destructive) / 0.35);
+        }
+
         .navi-menu-item-danger {
           color: hsl(var(--destructive));
         }
@@ -3234,8 +3391,8 @@ export function CodeCompanionShell() {
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 8px 16px;
-          border-radius: 10px;
+          padding: 6px 12px;
+          border-radius: 8px;
           border: 1px solid hsl(var(--primary) / 0.4);
           background: hsl(var(--primary) / 0.08);
           cursor: pointer;
@@ -3246,7 +3403,7 @@ export function CodeCompanionShell() {
         .navi-signin-border-glow {
           position: absolute;
           inset: -1px;
-          border-radius: 11px;
+          border-radius: 9px;
           background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)), hsl(var(--primary)));
           background-size: 200% 200%;
           animation: borderRotate 4s linear infinite;
@@ -3268,7 +3425,7 @@ export function CodeCompanionShell() {
         .navi-signin-bg {
           position: absolute;
           inset: 1px;
-          border-radius: 9px;
+          border-radius: 7px;
           background: hsl(var(--background));
           z-index: 0;
         }
@@ -3278,7 +3435,7 @@ export function CodeCompanionShell() {
           z-index: 2;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
         }
 
         .navi-signin-icon {
@@ -3287,7 +3444,7 @@ export function CodeCompanionShell() {
         }
 
         .navi-signin-text {
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 600;
           color: hsl(var(--primary));
           transition: all 0.3s ease;

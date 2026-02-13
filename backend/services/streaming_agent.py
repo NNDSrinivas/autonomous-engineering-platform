@@ -901,32 +901,6 @@ NAVI_TOOLS = [
         },
     },
     {
-        "name": "run_dangerous_command",
-        "description": "Execute a dangerous command (rm, kill, chmod, etc.) AFTER getting user approval. Use this when a regular run_command returns requires_permission=True. You MUST show the user the warning and get their approval first.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The dangerous command to execute",
-                },
-                "approved": {
-                    "type": "boolean",
-                    "description": "Must be true to execute. Only set to true AFTER user confirms.",
-                },
-                "skip_backup": {
-                    "type": "boolean",
-                    "description": "Skip automatic backup (not recommended). Default: false",
-                },
-                "cwd": {
-                    "type": "string",
-                    "description": "Working directory (optional)",
-                },
-            },
-            "required": ["command", "approved"],
-        },
-    },
-    {
         "name": "list_backups",
         "description": "List all NAVI backups created before dangerous operations. Use to show user what can be restored.",
         "input_schema": {

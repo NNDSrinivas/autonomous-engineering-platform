@@ -81,3 +81,4 @@ msal==1.28.0  # Microsoft Authentication Library for Graph API
 psutil>=5.9.0  # CPU/memory/process monitoring
 websockets>=11.0  # WebSocket connectivity verification
 pytest-asyncio>=0.23.0  # Async test support
+Pillow>=10.0.0  # For animated GIF creation in visual output handler

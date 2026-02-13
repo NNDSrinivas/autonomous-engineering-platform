@@ -20,6 +20,7 @@ export interface FileDiffViewProps {
   defaultExpanded?: boolean;
   onFileClick?: (path: string) => void;
   operation?: 'create' | 'edit' | 'delete';
+  embedded?: boolean;
 }
 
 // Get file extension for syntax highlighting class
@@ -51,6 +52,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
   defaultExpanded = false,
   onFileClick,
   operation = 'edit',
+  embedded = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
@@ -72,6 +74,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
   };
 
   const handleHeaderClick = () => {
+    if (embedded) return;
     setIsExpanded(!isExpanded);
   };
 
@@ -90,46 +93,58 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
       ? 'Deleted'
       : 'Edited';
 
+  const isOpen = embedded ? true : isExpanded;
+
   return (
-    <div className="fdv-container">
+    <div className={`fdv-container ${embedded ? 'fdv-container--embedded' : ''}`}>
       {/* Header */}
-      <div className="fdv-header" onClick={handleHeaderClick}>
-        <div className="fdv-header-left">
-          <span className="fdv-chevron">
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </span>
-          {isExpanded ? (
-            <span className="fdv-label">{headerLabel}</span>
-          ) : (
-            <span className="fdv-label">
-              {collapsedPrefix}{' '}
-              <button
-                className="fdv-file-link"
-                onClick={handleFileNameClick}
-                title={`Open ${fileName}`}
-                type="button"
-              >
-                {fileName}
-              </button>
+      {!embedded && (
+        <div className="fdv-header" onClick={handleHeaderClick}>
+          <div className="fdv-header-left">
+            <span className="fdv-chevron">
+              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </span>
-          )}
-          {!isExpanded && operation === 'create' && diff.additions > 0 && (
-            <span className="fdv-badge fdv-badge--create fdv-badge--collapsed">+{diff.additions} -{diff.deletions}</span>
-          )}
-          {!isExpanded && operation === 'edit' && (diff.additions > 0 || diff.deletions > 0) && (
-            <span className="fdv-badge fdv-badge--edit fdv-badge--collapsed">+{diff.additions} -{diff.deletions}</span>
-          )}
-          {!isExpanded && operation === 'delete' && diff.deletions > 0 && (
-            <span className="fdv-badge fdv-badge--delete fdv-badge--collapsed">-{diff.deletions}</span>
-          )}
+            {isExpanded ? (
+              <span className="fdv-label">{headerLabel}</span>
+            ) : (
+              <span className="fdv-label">
+                {collapsedPrefix}{' '}
+                <button
+                  className="fdv-file-link"
+                  onClick={handleFileNameClick}
+                  title={`Open ${fileName}`}
+                  type="button"
+                >
+                  {fileName}
+                </button>
+              </span>
+            )}
+            {!isExpanded && operation === 'create' && diff.additions > 0 && (
+              <span className="fdv-badge fdv-badge--create fdv-badge--collapsed">
+                <span className="fdv-badge-stat fdv-badge-stat--add">+{diff.additions}</span>
+                {diff.deletions > 0 && <span className="fdv-badge-stat fdv-badge-stat--del">-{diff.deletions}</span>}
+              </span>
+            )}
+            {!isExpanded && operation === 'edit' && (diff.additions > 0 || diff.deletions > 0) && (
+              <span className="fdv-badge fdv-badge--edit fdv-badge--collapsed">
+                {diff.additions > 0 && <span className="fdv-badge-stat fdv-badge-stat--add">+{diff.additions}</span>}
+                {diff.deletions > 0 && <span className="fdv-badge-stat fdv-badge-stat--del">-{diff.deletions}</span>}
+              </span>
+            )}
+            {!isExpanded && operation === 'delete' && diff.deletions > 0 && (
+              <span className="fdv-badge fdv-badge--delete fdv-badge--collapsed">
+                <span className="fdv-badge-stat fdv-badge-stat--del">-{diff.deletions}</span>
+              </span>
+            )}
+          </div>
+          <button className="fdv-copy-btn" onClick={handleCopy} title="Copy changes">
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
         </div>
-        <button className="fdv-copy-btn" onClick={handleCopy} title="Copy changes">
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-        </button>
-      </div>
+      )}
 
       {/* File info bar */}
-      {isExpanded && (
+      {!embedded && isExpanded && (
         <div
           className="fdv-file-bar"
           onClick={handleFileNameClick}
@@ -146,7 +161,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
       )}
 
       {/* Diff content */}
-      {isExpanded && (
+      {isOpen && (
         <div className={`fdv-content fdv-lang-${getLanguageClass(diff.path)}`}>
           {diff.lines.length === 0 && (
             <div className="fdv-empty">
@@ -184,6 +199,10 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           overflow: hidden;
           margin: 8px 0;
           font-family: var(--navi-code-font, var(--vscode-editor-font-family, "SF Mono", Menlo, monospace));
+        }
+
+        .fdv-container--embedded {
+          margin-top: 6px;
         }
 
         .fdv-header {
@@ -226,14 +245,14 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           border: none;
           padding: 0;
           margin: 0;
-          color: var(--vscode-textLink-foreground, #60a5fa);
+          color: var(--navi-link-color, var(--vscode-textLink-foreground, #6aaeff));
           font-weight: 600;
           cursor: pointer;
         }
 
         .fdv-file-link:hover {
           text-decoration: underline;
-          color: var(--vscode-textLink-activeForeground, #93c5fd);
+          color: var(--navi-link-color-active, var(--vscode-textLink-activeForeground, #8cc2ff));
         }
 
         .fdv-badge {
@@ -244,6 +263,9 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           font-weight: 600;
           font-family: var(--navi-code-font, var(--vscode-editor-font-family, "SF Mono", Menlo, monospace));
           letter-spacing: -0.02em;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
         }
 
         .fdv-badge--collapsed {
@@ -252,21 +274,32 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
         }
 
         .fdv-badge--create {
-          background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(74, 222, 128, 0.15));
-          color: var(--vscode-gitDecoration-addedResourceForeground, #4ade80);
-          border: 1px solid var(--vscode-gitDecoration-addedResourceForeground, rgba(74, 222, 128, 0.3));
+          background-color: rgba(15, 23, 42, 0.55);
+          border: 1px solid rgba(148, 163, 184, 0.35);
         }
 
         .fdv-badge--edit {
-          background-color: rgba(96, 165, 250, 0.15);
-          color: var(--vscode-gitDecoration-modifiedResourceForeground, #60a5fa);
-          border: 1px solid var(--vscode-gitDecoration-modifiedResourceForeground, rgba(96, 165, 250, 0.3));
+          background-color: rgba(15, 23, 42, 0.55);
+          border: 1px solid rgba(148, 163, 184, 0.35);
         }
 
         .fdv-badge--delete {
-          background-color: var(--vscode-diffEditor-removedLineBackground, rgba(248, 113, 113, 0.15));
+          background-color: rgba(15, 23, 42, 0.55);
+          border: 1px solid rgba(148, 163, 184, 0.35);
+        }
+
+        .fdv-badge-stat {
+          font-family: inherit;
+          font-size: 10px;
+          font-weight: 600;
+        }
+
+        .fdv-badge-stat--add {
+          color: var(--vscode-gitDecoration-addedResourceForeground, #4ade80);
+        }
+
+        .fdv-badge-stat--del {
           color: var(--vscode-gitDecoration-deletedResourceForeground, #f87171);
-          border: 1px solid var(--vscode-gitDecoration-deletedResourceForeground, rgba(248, 113, 113, 0.3));
         }
 
         .fdv-copy-btn {
@@ -303,7 +336,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
         }
 
         .fdv-file-icon {
-          color: var(--vscode-symbolIcon-fileForeground, #60a5fa);
+          color: var(--navi-link-color, var(--vscode-symbolIcon-fileForeground, #6aaeff));
           flex-shrink: 0;
         }
 
@@ -353,11 +386,11 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
         }
 
         .fdv-line--addition {
-          background: var(--vscode-diffEditor-insertedLineBackground, rgba(46, 160, 67, 0.15));
+          background: var(--vscode-diffEditor-insertedLineBackground, rgba(46, 160, 67, 0.14));
         }
 
         .fdv-line--deletion {
-          background: var(--vscode-diffEditor-removedLineBackground, rgba(248, 81, 73, 0.15));
+          background: var(--vscode-diffEditor-removedLineBackground, rgba(248, 81, 73, 0.14));
         }
 
         .fdv-line--context {
@@ -376,12 +409,12 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
         }
 
         .fdv-line--addition .fdv-line-number--new {
-          background: var(--vscode-diffEditor-insertedLineBackground, rgba(46, 160, 67, 0.25));
+          background: var(--vscode-diffEditor-insertedLineBackground, rgba(46, 160, 67, 0.14));
           color: var(--vscode-editorLineNumber-foreground, rgba(255, 255, 255, 0.6));
         }
 
         .fdv-line--deletion .fdv-line-number--old {
-          background: var(--vscode-diffEditor-removedLineBackground, rgba(248, 81, 73, 0.25));
+          background: var(--vscode-diffEditor-removedLineBackground, rgba(248, 81, 73, 0.14));
           color: var(--vscode-editorLineNumber-foreground, rgba(255, 255, 255, 0.6));
         }
 
@@ -408,12 +441,21 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           flex: 1;
           padding-right: 16px;
           white-space: pre;
+          color: var(--vscode-editor-foreground, #e2e8f0);
+          min-width: 0;
         }
 
         .fdv-line-content code {
           font-family: inherit;
+          font-size: inherit;
+          line-height: inherit;
           color: var(--vscode-editor-foreground, #e2e8f0);
-          background: transparent;
+          background: transparent !important;
+          padding: 0 !important;
+          margin: 0;
+          border-radius: 0;
+          display: block;
+          white-space: pre;
         }
 
         .fdv-empty {
@@ -423,11 +465,12 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
         }
 
         .fdv-line--addition .fdv-line-content code {
-          background: var(--vscode-diffEditor-insertedTextBackground, transparent);
+          background: transparent !important;
         }
 
         .fdv-line--deletion .fdv-line-content code {
-          background: var(--vscode-diffEditor-removedTextBackground, transparent);
+          background: transparent !important;
+          color: var(--vscode-diffEditor-removedTextForeground, #fca5a5);
         }
 
         /* Scrollbar styling */

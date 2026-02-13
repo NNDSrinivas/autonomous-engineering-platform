@@ -606,6 +606,7 @@ export function CodeCompanionShell() {
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgError, setOrgError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [chatSettingsTrigger, setChatSettingsTrigger] = useState(0);
   const [activityPanelOpen, setActivityPanelOpen] = useState(false);
   const [activityJumpCommandId, setActivityJumpCommandId] = useState<string | null>(null);
   const [chatJumpCommandId, setChatJumpCommandId] = useState<string | null>(null);
@@ -977,6 +978,13 @@ export function CodeCompanionShell() {
     setHistoryOpen(false);
   }, []);
 
+  const handleOpenChatSettings = useCallback(() => {
+    setChatSettingsTrigger((prev) => prev + 1);
+    setHeaderMoreOpen(false);
+    setUserMenuOpen(false);
+    setHistoryOpen(false);
+  }, []);
+
   // Toggle theme
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
@@ -1230,6 +1238,15 @@ export function CodeCompanionShell() {
                 <Clock className="h-4 w-4 navi-history-icon" />
               </button>
 
+              <button
+                className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-settings-btn"
+                title="Chat Settings"
+                onClick={handleOpenChatSettings}
+              >
+                <span className="navi-icon-glow" />
+                <Settings className="h-4 w-4 navi-settings-icon" />
+              </button>
+
               {/* Activity button removed */}
 
               {/* More Menu - Notifications, Theme, Activity, Help */}
@@ -1310,13 +1327,11 @@ export function CodeCompanionShell() {
                           <button
                             className="navi-header-more-menu-item"
                             onClick={() => {
-                              setFullPanelTab('account');
-                              setFullPanelOpen(true);
-                              setHeaderMoreOpen(false);
+                              handleOpenChatSettings();
                             }}
                           >
                             <Settings className="h-4 w-4" />
-                            <span>Settings</span>
+                            <span>Chat Settings</span>
                           </button>
                           <button
                             className="navi-header-more-menu-item"
@@ -1493,6 +1508,7 @@ export function CodeCompanionShell() {
                 activityPanelState={activityPanelState}
                 onOpenActivityForCommand={handleOpenActivityForCommand}
                 highlightCommandId={chatJumpCommandId}
+                openSettingsTrigger={chatSettingsTrigger}
               />
 
               {/* Activity Panel - Right Sidebar */}

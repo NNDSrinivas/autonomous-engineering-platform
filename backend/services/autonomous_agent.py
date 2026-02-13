@@ -1696,24 +1696,26 @@ class AutonomousAgent:
         Returns:
             User's response value, or None if timeout/cancelled
         """
-        from backend.api.navi import _prompt_responses
+        from backend.api.navi import consume_prompt_response
 
         start_time = time.time()
         timeout = timeout_seconds or 300
 
         while time.time() - start_time < timeout:
-            if prompt_id in _prompt_responses:
-                response_data = _prompt_responses[prompt_id]
-                if not response_data.get("pending", True):
-                    # Response received
-                    if response_data.get("cancelled"):
-                        logger.info(
-                            f"[AutonomousAgent] Prompt {prompt_id} cancelled by user"
-                        )
-                        return None
+            response_data = consume_prompt_response(
+                prompt_id,
+                expected_user_id=str(self.user_id) if self.user_id is not None else None,
+                expected_org_id=str(self.org_id) if self.org_id is not None else None,
+            )
+            if response_data:
+                if response_data.get("cancelled"):
+                    logger.info(
+                        f"[AutonomousAgent] Prompt {prompt_id} cancelled by user"
+                    )
+                    return None
 
-                    logger.info(f"[AutonomousAgent] Prompt {prompt_id} answered")
-                    return response_data.get("response")
+                logger.info(f"[AutonomousAgent] Prompt {prompt_id} answered")
+                return response_data.get("response")
 
             await asyncio.sleep(0.5)
 
@@ -6287,6 +6289,14 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 prompt = context.pending_prompt
                 logger.info(
                     f"[AutonomousAgent] 💬 User prompt pending: {prompt.title}"
+                )
+                from backend.api.navi import register_prompt_request
+
+                register_prompt_request(
+                    prompt_id=prompt.prompt_id,
+                    user_id=str(self.user_id) if self.user_id is not None else None,
+                    org_id=str(self.org_id) if self.org_id is not None else None,
+                    timeout_seconds=prompt.timeout_seconds,
                 )
 
                 # Yield prompt event to frontend

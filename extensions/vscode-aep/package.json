@@ -223,7 +223,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "demo-backend": "node demo-backend.js"
+    "demo-backend": "node demo-backend.js",
+    "test:undo": "npm run compile && node --test out/tests/undoMetadata.test.js"
   },
   "dependencies": {
     "@aep/navi-contracts": "0.1.0",

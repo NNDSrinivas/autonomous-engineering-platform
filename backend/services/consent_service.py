@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from backend.database.models.consent import ConsentPreference, ConsentAuditLog
+from backend.database.models.rbac import DBUser, Organization
 from backend.core.db import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,60 @@ class ConsentService:
         if self._owns_session and db is not self._db:
             db.close()
 
+    def _resolve_user_org_ids(
+        self, db: Session, user_id: str, org_id: str
+    ) -> tuple[Optional[int], Optional[int]]:
+        """Resolve auth identities to numeric DB IDs used by consent tables."""
+        user_id_int: Optional[int] = None
+        org_id_int: Optional[int] = None
+
+        try:
+            parsed = int(str(org_id))
+            if parsed > 0:
+                org_id_int = parsed
+        except (TypeError, ValueError):
+            org_key = (org_id or "").strip()
+            if org_key:
+                try:
+                    org = (
+                        db.query(Organization)
+                        .filter(Organization.org_key == org_key)
+                        .one_or_none()
+                    )
+                    if org:
+                        org_id_int = int(org.id)
+                except Exception as exc:
+                    logger.debug(
+                        "Failed to resolve org key '%s' to numeric org ID: %s",
+                        org_key,
+                        exc,
+                    )
+
+        try:
+            parsed = int(str(user_id))
+            if parsed > 0:
+                user_id_int = parsed
+        except (TypeError, ValueError):
+            user_sub = (user_id or "").strip()
+            if user_sub:
+                try:
+                    query = db.query(DBUser).filter(DBUser.sub == user_sub)
+                    if org_id_int is not None:
+                        query = query.filter(DBUser.org_id == org_id_int)
+                    db_user = query.one_or_none()
+                    if db_user:
+                        user_id_int = int(db_user.id)
+                        if org_id_int is None:
+                            org_id_int = int(db_user.org_id)
+                except Exception as exc:
+                    logger.debug(
+                        "Failed to resolve user sub '%s' to numeric user ID: %s",
+                        user_sub,
+                        exc,
+                    )
+
+        return user_id_int, org_id_int
+
     def check_auto_allow(
         self,
         user_id: str,
@@ -66,9 +121,14 @@ class ConsentService:
         """
         db = self._get_db()
         try:
-            # Convert IDs to integers
-            user_id_int = int(user_id)
-            org_id_int = int(org_id)
+            user_id_int, org_id_int = self._resolve_user_org_ids(db, user_id, org_id)
+            if user_id_int is None or org_id_int is None:
+                logger.warning(
+                    "Cannot check auto-allow: unresolved user/org IDs (user_id=%s, org_id=%s)",
+                    user_id,
+                    org_id,
+                )
+                return None
 
             # Extract base command (first word)
             base_command = command.split()[0] if command.strip() else ""
@@ -133,9 +193,14 @@ class ConsentService:
         """
         db = self._get_db()
         try:
-            # Convert IDs to integers
-            user_id_int = int(user_id)
-            org_id_int = int(org_id)
+            user_id_int, org_id_int = self._resolve_user_org_ids(db, user_id, org_id)
+            if user_id_int is None or org_id_int is None:
+                logger.warning(
+                    "Cannot save consent preference: unresolved user/org IDs (user_id=%s, org_id=%s)",
+                    user_id,
+                    org_id,
+                )
+                return False
 
             # For command_type, extract base command
             if preference_type == 'command_type':
@@ -208,9 +273,14 @@ class ConsentService:
         """
         db = self._get_db()
         try:
-            # Convert IDs to integers
-            user_id_int = int(user_id)
-            org_id_int = int(org_id)
+            user_id_int, org_id_int = self._resolve_user_org_ids(db, user_id, org_id)
+            if user_id_int is None or org_id_int is None:
+                logger.warning(
+                    "Cannot log consent decision: unresolved user/org IDs (user_id=%s, org_id=%s)",
+                    user_id,
+                    org_id,
+                )
+                return False
 
             response_time_ms = int((responded_at - requested_at).total_seconds() * 1000)
 
@@ -261,9 +331,14 @@ class ConsentService:
         """
         db = self._get_db()
         try:
-            # Convert IDs to integers
-            user_id_int = int(user_id)
-            org_id_int = int(org_id)
+            user_id_int, org_id_int = self._resolve_user_org_ids(db, user_id, org_id)
+            if user_id_int is None or org_id_int is None:
+                logger.warning(
+                    "Cannot fetch consent preferences: unresolved user/org IDs (user_id=%s, org_id=%s)",
+                    user_id,
+                    org_id,
+                )
+                return []
 
             prefs = db.execute(
                 select(ConsentPreference).where(
@@ -308,9 +383,14 @@ class ConsentService:
         """
         db = self._get_db()
         try:
-            # Convert IDs to integers
-            user_id_int = int(user_id)
-            org_id_int = int(org_id)
+            user_id_int, org_id_int = self._resolve_user_org_ids(db, user_id, org_id)
+            if user_id_int is None or org_id_int is None:
+                logger.warning(
+                    "Cannot delete consent preference: unresolved user/org IDs (user_id=%s, org_id=%s)",
+                    user_id,
+                    org_id,
+                )
+                return False
 
             # Delete only if owned by this user/org (security check)
             result = db.execute(
@@ -356,9 +436,14 @@ class ConsentService:
         """
         db = self._get_db()
         try:
-            # Convert IDs to integers
-            user_id_int = int(user_id)
-            org_id_int = int(org_id)
+            user_id_int, org_id_int = self._resolve_user_org_ids(db, user_id, org_id)
+            if user_id_int is None or org_id_int is None:
+                logger.warning(
+                    "Cannot fetch consent audit log: unresolved user/org IDs (user_id=%s, org_id=%s)",
+                    user_id,
+                    org_id,
+                )
+                return []
 
             logs = db.execute(
                 select(ConsentAuditLog).where(

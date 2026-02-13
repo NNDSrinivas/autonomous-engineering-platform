@@ -61,7 +61,7 @@ export const PromptDialog: React.FC<PromptDialogProps> = ({
 
   const handleSubmit = () => {
     // Validation
-    if (prompt.required && !value) {
+    if (prompt.required && !isValueProvided()) {
       setError("This field is required");
       return;
     }
@@ -153,8 +153,7 @@ export const PromptDialog: React.FC<PromptDialogProps> = ({
                 setValue(true);
                 setError("");
               }}
-              variant={value === true ? "default" : "outline"}
-              autoFocus={value !== false}
+              variant={value === true ? "primary" : "outline"}
             >
               Yes
             </Button>
@@ -163,7 +162,7 @@ export const PromptDialog: React.FC<PromptDialogProps> = ({
                 setValue(false);
                 setError("");
               }}
-              variant={value === false ? "default" : "outline"}
+              variant={value === false ? "primary" : "outline"}
             >
               No
             </Button>

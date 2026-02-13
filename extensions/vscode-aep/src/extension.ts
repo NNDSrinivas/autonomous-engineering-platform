@@ -39,6 +39,7 @@ import { TaskService } from './services/TaskService';
 import { createDefaultActionRegistry, ActionRegistry } from './actions';
 import type { ActivityEvent } from './types/activity';
 import { DeviceAuthService } from './auth/deviceAuth';
+import { buildUndoRestoreMetadataFromSnapshot } from './undoMetadata';
 
 const exec = util.promisify(child_process.exec);
 
@@ -1591,6 +1592,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private _activityRunId: string | null = null;
   private _activityPhaseId: string | null = null;
   private _actionActivityIds = new Map<string, { id: string; runId: string }>();
+  private _pendingUndoSnapshots = new Map<string, {
+    existed: boolean;
+    originalContent?: string;
+    capturedAt: number;
+    runId?: string;
+  }>();
   // AUTO-RECOVERY: Store last action error for NAVI to debug
   private _lastActionError: {
     action: any;
@@ -3129,8 +3136,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           // Handle undo file change request from inline summary bar
           case 'undoFileChange': {
             const filePath = String(msg.filePath || '').trim();
-            const originalContent = msg.originalContent;
-            const wasCreated = msg.wasCreated === true;
+            const snapshot = filePath ? this.getUndoSnapshot(filePath) : undefined;
+            const originalContent = typeof msg.originalContent === 'string'
+              ? msg.originalContent
+              : (snapshot?.existed ? (snapshot.originalContent ?? '') : undefined);
+            const wasCreated = msg.wasCreated === true || snapshot?.existed === false;
 
             // For newly created files, we need to delete them
             // For edited files, we need originalContent to restore
@@ -3139,6 +3149,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               return;
             }
             try {
+              let undoApplied = false;
               const workspaceRoot = this.getActiveWorkspaceRoot();
               const absolutePath = path.isAbsolute(filePath)
                 ? filePath
@@ -3151,6 +3162,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 // File was newly created - delete it to undo
                 await vscode.workspace.fs.delete(uri);
                 vscode.window.setStatusBarMessage(`🗑️ Deleted newly created file: ${path.basename(filePath)}`, 3000);
+                undoApplied = true;
               } else {
                 // File was edited or deleted - restore original content
                 let exists = true;
@@ -3166,6 +3178,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   const encoder = new TextEncoder();
                   await vscode.workspace.fs.writeFile(uri, encoder.encode(String(originalContent)));
                   vscode.window.setStatusBarMessage(`↩️ Restored ${path.basename(filePath)}`, 3000);
+                  undoApplied = true;
                 } else {
                   const doc = await vscode.workspace.openTextDocument(uri);
                   const edit = new vscode.WorkspaceEdit();
@@ -3178,13 +3191,143 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   if (success) {
                     await doc.save();
                     vscode.window.setStatusBarMessage(`↩️ Undone changes to ${path.basename(filePath)}`, 3000);
+                    undoApplied = true;
                   } else {
                     vscode.window.showErrorMessage(`Failed to undo changes to ${path.basename(filePath)}`);
                   }
                 }
               }
+              if (undoApplied) {
+                this.clearUndoSnapshots([filePath]);
+              }
             } catch (err: any) {
               console.error('[NAVI] Undo failed:', err);
+              vscode.window.showErrorMessage(`Undo failed: ${err.message}`);
+            }
+            break;
+          }
+
+          // Scoped fallback undo when we don't have per-file snapshots in the webview.
+          // Reverts only when it is provably safe. Never use git checkout fallback here.
+          case 'undoWorkspaceFiles': {
+            try {
+              const workspaceRoot = this.getActiveWorkspaceRoot();
+              if (!workspaceRoot) {
+                vscode.window.showErrorMessage('Undo failed: no workspace root found');
+                return;
+              }
+
+              const rawFiles = Array.isArray(msg.files) ? msg.files : [];
+              const files = rawFiles
+                .map((f: any) => ({
+                  path: String(f?.path || '').trim(),
+                  status: String(f?.status || '').trim() as 'added' | 'modified' | 'deleted' | '',
+                  originalContent: typeof f?.originalContent === 'string' ? f.originalContent : undefined,
+                }))
+                .filter((f: { path: string }) => Boolean(f.path));
+
+              if (files.length === 0) {
+                vscode.window.showWarningMessage('Undo failed: no files provided');
+                return;
+              }
+
+              let revertedCount = 0;
+              const skippedUnsafePaths: string[] = [];
+              const failedPaths: string[] = [];
+              const revertedPaths: string[] = [];
+
+              for (const file of files) {
+                try {
+                  const absolutePath = path.isAbsolute(file.path)
+                    ? file.path
+                    : path.join(workspaceRoot, file.path);
+                  const relativeForGit = path
+                    .relative(workspaceRoot, absolutePath)
+                    .replace(/\\/g, '/');
+
+                  if (!relativeForGit || relativeForGit.startsWith('..')) {
+                    failedPaths.push(file.path);
+                    continue;
+                  }
+
+                  const uri = vscode.Uri.file(absolutePath);
+                  const snapshot = this.getUndoSnapshot(file.path);
+                  const shouldDelete = file.status === 'added' || snapshot?.existed === false;
+                  const contentToRestore =
+                    typeof file.originalContent === 'string'
+                      ? file.originalContent
+                      : (snapshot?.existed ? (snapshot.originalContent ?? '') : undefined);
+
+                  if (shouldDelete) {
+                    try {
+                      await vscode.workspace.fs.delete(uri);
+                    } catch {
+                      // If the file is already absent, treat as reverted.
+                    }
+                    revertedCount += 1;
+                    revertedPaths.push(file.path);
+                    continue;
+                  }
+
+                  if (typeof contentToRestore === 'string') {
+                    let exists = true;
+                    try {
+                      await vscode.workspace.fs.stat(uri);
+                    } catch {
+                      exists = false;
+                    }
+
+                    if (!exists) {
+                      await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(absolutePath)));
+                      await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(contentToRestore));
+                    } else {
+                      const doc = await vscode.workspace.openTextDocument(uri);
+                      const edit = new vscode.WorkspaceEdit();
+                      const fullRange = new vscode.Range(
+                        doc.positionAt(0),
+                        doc.positionAt(doc.getText().length)
+                      );
+                      edit.replace(uri, fullRange, contentToRestore);
+                      const applied = await vscode.workspace.applyEdit(edit);
+                      if (applied) {
+                        await doc.save();
+                      }
+                    }
+                    revertedCount += 1;
+                    revertedPaths.push(file.path);
+                    continue;
+                  }
+
+                  // No safe snapshot to restore from. Skip instead of risking user data with git checkout.
+                  skippedUnsafePaths.push(file.path);
+                  continue;
+                } catch (fileErr) {
+                  console.warn('[AEP] Failed to undo workspace file:', file.path, fileErr);
+                  failedPaths.push(file.path);
+                }
+              }
+
+              if (revertedCount > 0) {
+                vscode.window.setStatusBarMessage(
+                  `↩️ Undone ${revertedCount} file change${revertedCount === 1 ? '' : 's'}`,
+                  3000
+                );
+                this.clearUndoSnapshots(revertedPaths);
+              }
+              if (skippedUnsafePaths.length > 0) {
+                const sample = skippedUnsafePaths.slice(0, 3).join(', ');
+                vscode.window.showWarningMessage(
+                  `Skipped unsafe undo for ${skippedUnsafePaths.length} file(s) to avoid losing local edits (missing snapshots): ${sample}${skippedUnsafePaths.length > 3 ? ', ...' : ''}`
+                );
+              }
+              if (failedPaths.length > 0) {
+                const sample = failedPaths.slice(0, 3).join(', ');
+                vscode.window.showWarningMessage(
+                  `Failed to undo ${failedPaths.length} file(s): ${sample}${failedPaths.length > 3 ? ', ...' : ''}`
+                );
+              }
+            } catch (err: any) {
+              console.error('[AEP] Scoped undo failed:', err);
               vscode.window.showErrorMessage(`Undo failed: ${err.message}`);
             }
             break;
@@ -3198,6 +3341,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               const workspaceRoot = this.getActiveWorkspaceRoot();
               if (files.length === 0) {
                 await vscode.workspace.saveAll();
+                this.clearUndoSnapshots();
                 vscode.window.setStatusBarMessage('✅ Changes saved', 3000);
                 return;
               }
@@ -3215,6 +3359,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   console.warn('[AEP] Keep changes: failed to save', filePath, err?.message || err);
                 }
               }
+              this.clearUndoSnapshots(files);
               vscode.window.setStatusBarMessage('✅ Changes saved', 3000);
             } catch (err: any) {
               console.error('[AEP] Failed to keep changes:', err);
@@ -3478,6 +3623,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             // User clicked "New Chat" button - generate new conversation ID and reset state
             const newConversationId = `conv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
             this._conversationId = newConversationId;
+            this.clearUndoSnapshots();
             console.log(`[AEP] New conversation started: ${newConversationId}`);
 
             // Notify webview to reset chat state
@@ -8510,18 +8656,36 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     'list_directory': 'context',
                   };
 
-                  const kind = toolToKind[tc.name] || 'info';
-                  const detail = tc.arguments?.path || tc.arguments?.command || tc.name;
+                  const commandText = String(tc.arguments?.command || '').trim();
+                  const isGrepCommand = tc.name === 'run_command' && /^(rg|grep)\b/i.test(commandText);
+                  const kind = isGrepCommand ? 'grep' : (toolToKind[tc.name] || 'info');
+                  const pathDetail = String(tc.arguments?.path || '');
+                  let detail = pathDetail || commandText || tc.name;
+
+                  if (tc.name === 'read_file' && pathDetail) {
+                    const startLine = tc.arguments?.start_line ?? tc.arguments?.start;
+                    const endLine = tc.arguments?.end_line ?? tc.arguments?.end;
+                    if (startLine || endLine) {
+                      const from = Number(startLine) || 1;
+                      const to = Number(endLine) || from;
+                      detail = `${pathDetail} (lines ${from}-${to})`;
+                    } else {
+                      detail = pathDetail;
+                    }
+                  } else if (isGrepCommand && commandText) {
+                    detail = commandText;
+                  }
 
                   this.postToWebview({
                     type: 'navi.agent.event',
                     event: {
                       kind,
                       data: {
-                        label: tc.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                        label: isGrepCommand ? 'Grep' : tc.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
                         detail,
                         status: 'running',
                         toolId: tc.id,
+                        filePath: pathDetail || undefined,
                       }
                     },
                     // Use backend timestamp if available for accurate chronological ordering
@@ -8546,10 +8710,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     const relPath = String(tc.arguments?.path || '');
                     const content = typeof tc.arguments?.content === 'string' ? tc.arguments.content : undefined;
                     if (relPath && workspaceRoot) {
+                      await this.captureUndoSnapshot(relPath);
                       const absPath = path.join(workspaceRoot, relPath);
-                      const exists = fs.existsSync(absPath);
+                      const snapshot = this.getUndoSnapshot(relPath);
+                      const existedBefore = snapshot ? snapshot.existed : fs.existsSync(absPath);
                       const actionType: 'editFile' | 'createFile' =
-                        tc.name === 'write_file' && !exists ? 'createFile' : 'editFile';
+                        tc.name === 'write_file' && !existedBefore ? 'createFile' : 'editFile';
                       const summary =
                         tc.arguments?.summary ||
                         tc.arguments?.description ||
@@ -8662,6 +8828,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                         text: `${verb} ${fileAction.path} — ${fileAction.summary}`,
                       });
                     }
+                    const undoMetadata = this.buildUndoRestoreMetadata(
+                      fileAction.path,
+                      fileAction.actionType,
+                      tr.result,
+                    );
                     this.postToWebview({
                       type: 'action.complete',
                       action: {
@@ -8679,6 +8850,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                         },
                         diffUnified: diffInfo.diff,
                         content: fileAction.content,
+                        ...undoMetadata,
                       },
                     });
                     toolFileMap.delete(String(tr.id));
@@ -11132,6 +11304,144 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     return path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot, filePath);
   }
 
+  private isFileMutationAction(action: any): boolean {
+    const actionType = String(action?.type || "").trim().toLowerCase();
+    return (
+      actionType === "createfile" ||
+      actionType === "editfile" ||
+      actionType === "deletefile" ||
+      actionType === "create" ||
+      actionType === "edit" ||
+      actionType === "delete"
+    );
+  }
+
+  private getActionFilePath(action: any): string | undefined {
+    const raw =
+      action?.filePath ||
+      action?.path ||
+      action?.targetPath;
+    const normalized = typeof raw === "string" ? raw.trim() : "";
+    return normalized || undefined;
+  }
+
+  private normalizeUndoSnapshotKey(filePath: string): string | null {
+    const raw = String(filePath || "").trim();
+    if (!raw) return null;
+
+    const workspaceRoot = this.getActiveWorkspaceRoot();
+    if (!workspaceRoot) {
+      return raw.replace(/\\/g, "/");
+    }
+
+    const absolutePath = path.isAbsolute(raw)
+      ? path.resolve(raw)
+      : path.resolve(workspaceRoot, raw);
+    const relativePath = path.relative(workspaceRoot, absolutePath).replace(/\\/g, "/");
+
+    if (!relativePath || relativePath.startsWith("..")) {
+      return null;
+    }
+
+    return relativePath;
+  }
+
+  private resolveUndoSnapshotPath(filePath: string): string | null {
+    const raw = String(filePath || "").trim();
+    if (!raw) return null;
+
+    const workspaceRoot = this.getActiveWorkspaceRoot();
+    if (!workspaceRoot) {
+      return path.isAbsolute(raw) ? path.resolve(raw) : null;
+    }
+
+    const absolutePath = path.isAbsolute(raw)
+      ? path.resolve(raw)
+      : path.resolve(workspaceRoot, raw);
+    const relativePath = path.relative(workspaceRoot, absolutePath).replace(/\\/g, "/");
+
+    if (!relativePath || relativePath.startsWith("..")) {
+      return null;
+    }
+
+    return absolutePath;
+  }
+
+  private async captureUndoSnapshot(filePath: string): Promise<void> {
+    const snapshotKey = this.normalizeUndoSnapshotKey(filePath);
+    if (!snapshotKey) return;
+    if (this._pendingUndoSnapshots.has(snapshotKey)) return;
+
+    const absolutePath = this.resolveUndoSnapshotPath(filePath);
+    if (!absolutePath) return;
+
+    let existed = false;
+    let originalContent: string | undefined = undefined;
+
+    try {
+      await fs.promises.stat(absolutePath);
+      existed = true;
+      originalContent = await fs.promises.readFile(absolutePath, "utf8");
+    } catch (err: any) {
+      if (err?.code !== "ENOENT") {
+        console.warn("[AEP] Failed to capture undo snapshot for", filePath, err);
+        return;
+      }
+      existed = false;
+      originalContent = undefined;
+    }
+
+    this._pendingUndoSnapshots.set(snapshotKey, {
+      existed,
+      originalContent,
+      capturedAt: Date.now(),
+      runId: this._activityRunId || undefined,
+    });
+
+    // Prevent unbounded growth if user keeps running tasks without resolving.
+    if (this._pendingUndoSnapshots.size > 500) {
+      const oldestEntry = [...this._pendingUndoSnapshots.entries()].sort(
+        (a, b) => a[1].capturedAt - b[1].capturedAt
+      )[0];
+      if (oldestEntry) {
+        this._pendingUndoSnapshots.delete(oldestEntry[0]);
+      }
+    }
+  }
+
+  private getUndoSnapshot(filePath: string) {
+    const snapshotKey = this.normalizeUndoSnapshotKey(filePath);
+    if (!snapshotKey) return undefined;
+    return this._pendingUndoSnapshots.get(snapshotKey);
+  }
+
+  private clearUndoSnapshots(filePaths?: string[]): void {
+    if (!filePaths || filePaths.length === 0) {
+      this._pendingUndoSnapshots.clear();
+      return;
+    }
+
+    for (const filePath of filePaths) {
+      const snapshotKey = this.normalizeUndoSnapshotKey(filePath);
+      if (snapshotKey) {
+        this._pendingUndoSnapshots.delete(snapshotKey);
+      }
+    }
+  }
+
+  private buildUndoRestoreMetadata(
+    filePath: string | undefined,
+    actionType: string | undefined,
+    existingData?: any
+  ): Record<string, any> {
+    const snapshot = filePath ? this.getUndoSnapshot(filePath) : undefined;
+    return buildUndoRestoreMetadataFromSnapshot({
+      actionType,
+      existingData,
+      snapshot,
+    });
+  }
+
   private flushPendingConsentMessages(): void {
     if (!this._view || this._pendingConsentMessages.size === 0) return;
     for (const message of this._pendingConsentMessages.values()) {
@@ -12270,6 +12580,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         });
       }
 
+      const actionFilePath = this.getActionFilePath(action);
+      if (this.isFileMutationAction(action) && actionFilePath) {
+        await this.captureUndoSnapshot(actionFilePath);
+      }
+
       // Notify UI that action execution started
       this.postToWebview({
         type: 'action.start',
@@ -12411,6 +12726,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           }
           this._actionActivityIds.delete(actionKey);
 
+          const undoMetadata = this.buildUndoRestoreMetadata(
+            actionFilePath,
+            action.type,
+            result.data
+          );
+
           // Send success notification to webview (includes actionIndex for sequential approval)
           this.postToWebview({
             type: 'action.complete',
@@ -12420,7 +12741,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             message: result.message,
             data: {
               ...result.data,
-              diffStats: result.diffStats  // Include diff statistics for file edits
+              diffStats: result.diffStats,  // Include diff statistics for file edits
+              ...undoMetadata,
             }
           });
         }
@@ -12464,12 +12786,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       // Send completion notification for legacy handlers
+      const legacyUndoMetadata = this.buildUndoRestoreMetadata(
+        actionFilePath,
+        action.type,
+      );
       this.postToWebview({
         type: 'action.complete',
         action: action,
         actionIndex: actionIndex,
         success: legacySuccess,
-        message: legacyMessage
+        message: legacyMessage,
+        ...(Object.keys(legacyUndoMetadata).length > 0 ? { data: legacyUndoMetadata } : {})
       });
 
     } catch (error: any) {

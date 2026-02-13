@@ -105,18 +105,16 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   expanded,
   onToggle,
 }) => {
-  // Start collapsed by default for compact layout
   const [internalExpanded, setInternalExpanded] = useState(false);
   const isControlled = typeof expanded === 'boolean';
-  const isExpanded = isControlled ? expanded : internalExpanded;
+  const isExpanded = isControlled ? Boolean(expanded) : internalExpanded;
 
   const toggleExpanded = () => {
     const next = !isExpanded;
-    if (isControlled) {
-      onToggle?.(next);
-    } else {
+    if (!isControlled) {
       setInternalExpanded(next);
     }
+    onToggle?.(next);
   };
 
   // Calculate totals if not provided
@@ -131,19 +129,20 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
       {/* Header row */}
       <div
         className="fcs-header"
-        onClick={toggleExpanded}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && toggleExpanded()}
+        onClick={toggleExpanded}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleExpanded();
+          }
+        }}
       >
         <div className="fcs-header-left">
-          <div className="fcs-expand-icon">
-            {isExpanded ? (
-              <ChevronDown size={14} />
-            ) : (
-              <ChevronRight size={14} />
-            )}
-          </div>
+          <span className="fcs-expand-icon">
+            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
           <GitBranch size={14} className="fcs-git-icon" />
           <span className="fcs-count">
             {files.length} file{files.length !== 1 ? 's' : ''} changed
@@ -461,6 +460,9 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           flex: 1;
           min-width: 0;
           overflow: hidden;
+          flex-wrap: wrap;
+          word-break: normal;
+          overflow-wrap: normal;
         }
 
         .fcs-icon {
@@ -490,8 +492,10 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           font-size: 11px;
           font-weight: 500;
           color: var(--vscode-foreground, #e2e8f0);
-          white-space: nowrap;
+          white-space: normal;
           flex-shrink: 0;
+          word-break: normal;
+          overflow-wrap: normal;
         }
 
         .fcs-filename--deleted {
@@ -502,10 +506,12 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         .fcs-directory {
           font-size: 11px;
           color: rgba(255, 255, 255, 0.35);
-          white-space: nowrap;
+          white-space: normal;
           overflow: hidden;
           text-overflow: ellipsis;
           margin-left: 4px;
+          word-break: normal;
+          overflow-wrap: normal;
         }
 
         .fcs-directory::before {

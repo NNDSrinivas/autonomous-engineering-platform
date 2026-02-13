@@ -33,6 +33,7 @@ import random
 import logging
 import os
 import re
+import threading
 import time
 from asyncio.subprocess import STDOUT
 from pathlib import Path
@@ -51,6 +52,7 @@ from backend.core.db import get_db
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import User, Role
 from backend.core.settings import settings
+from backend.database.models.rbac import DBUser, Organization
 from backend.agent.agent_loop import run_agent_loop
 from backend.agent.planner_v3 import PlannerV3
 from backend.agent.tool_executor import execute_tool_with_sources
@@ -242,6 +244,141 @@ def get_redis_client() -> redis.Redis:
 # Key: prompt_id, Value: {"prompt_id": str, "response": Any, "cancelled": bool, "pending": bool}
 # TODO: Migrate to Redis/DB with TTL for production multi-worker deployments
 _prompt_responses: Dict[str, Dict[str, Any]] = {}
+_prompt_lock = threading.Lock()
+_PROMPT_DEFAULT_TIMEOUT_SECONDS = 300
+_PROMPT_MAX_TTL_SECONDS = 3600
+_PROMPT_RESPONSE_RETENTION_SECONDS = 120
+
+
+def _parse_positive_int(value: Any) -> Optional[int]:
+    """Return a positive integer or None for invalid values."""
+    try:
+        iv = int(str(value))
+        return iv if iv > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_user_org_ids_for_memory(
+    db: Session, user_id: Optional[str], org_id: Optional[str]
+) -> tuple[Optional[int], Optional[int]]:
+    """Resolve auth identity strings (sub/org_key) to numeric DB IDs for memory tables."""
+    user_id_int = _parse_positive_int(user_id)
+    org_id_int = _parse_positive_int(org_id)
+
+    if org_id_int is None and org_id:
+        try:
+            org = db.query(Organization).filter(Organization.org_key == str(org_id)).one_or_none()
+            if org:
+                org_id_int = int(org.id)
+        except Exception as exc:
+            logger.debug(
+                "[NAVI] Unable to resolve org key '%s' to numeric ID: %s",
+                org_id,
+                exc,
+            )
+
+    if user_id_int is not None:
+        return user_id_int, org_id_int
+
+    user_sub = (user_id or "").strip()
+    if not user_sub:
+        return None, org_id_int
+
+    try:
+        query = db.query(DBUser).filter(DBUser.sub == user_sub)
+        if org_id_int is not None:
+            query = query.filter(DBUser.org_id == org_id_int)
+        db_user = query.one_or_none()
+        if db_user:
+            return int(db_user.id), org_id_int if org_id_int is not None else int(db_user.org_id)
+    except Exception as exc:
+        logger.debug(
+            "[NAVI] Unable to resolve user sub '%s' to numeric ID: %s",
+            user_sub,
+            exc,
+        )
+
+    return None, org_id_int
+
+
+def _cleanup_expired_prompt_entries(now_ts: Optional[float] = None) -> None:
+    """Drop expired or stale prompt entries from in-memory prompt state."""
+    now_ts = now_ts or time.time()
+    expired_ids: list[str] = []
+    for prompt_id, record in _prompt_responses.items():
+        expires_at = record.get("expires_at")
+        if isinstance(expires_at, (int, float)) and expires_at <= now_ts:
+            expired_ids.append(prompt_id)
+            continue
+        responded_at = record.get("responded_at")
+        if not record.get("pending", True) and isinstance(responded_at, (int, float)):
+            if responded_at + _PROMPT_RESPONSE_RETENTION_SECONDS <= now_ts:
+                expired_ids.append(prompt_id)
+    for prompt_id in expired_ids:
+        _prompt_responses.pop(prompt_id, None)
+
+
+def register_prompt_request(
+    prompt_id: str,
+    user_id: Optional[str],
+    org_id: Optional[str],
+    timeout_seconds: Optional[int] = None,
+) -> None:
+    """Register a prompt as pending so responses can be validated for ownership."""
+    with _prompt_lock:
+        now_ts = time.time()
+        _cleanup_expired_prompt_entries(now_ts)
+        ttl = timeout_seconds or _PROMPT_DEFAULT_TIMEOUT_SECONDS
+        ttl = max(30, min(int(ttl), _PROMPT_MAX_TTL_SECONDS))
+        _prompt_responses[prompt_id] = {
+            "prompt_id": prompt_id,
+            "response": None,
+            "cancelled": False,
+            "pending": True,
+            "created_at": now_ts,
+            "responded_at": None,
+            "expires_at": now_ts + ttl,
+            "user_id": str(user_id) if user_id is not None else None,
+            "org_id": str(org_id) if org_id is not None else None,
+        }
+
+
+def consume_prompt_response(
+    prompt_id: str,
+    expected_user_id: Optional[str] = None,
+    expected_org_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Pop and return a completed prompt response when ownership matches."""
+    with _prompt_lock:
+        _cleanup_expired_prompt_entries()
+        record = _prompt_responses.get(prompt_id)
+        if not record or record.get("pending", True):
+            return None
+
+        owner_user_id = record.get("user_id")
+        owner_org_id = record.get("org_id")
+        expected_user = str(expected_user_id) if expected_user_id is not None else None
+        expected_org = str(expected_org_id) if expected_org_id is not None else None
+
+        if owner_user_id and expected_user and owner_user_id != expected_user:
+            logger.warning(
+                "[NAVI Prompt] Ownership mismatch while consuming prompt %s (expected user=%s, owner user=%s)",
+                prompt_id,
+                expected_user,
+                owner_user_id,
+            )
+            return None
+        if owner_org_id and expected_org and owner_org_id != expected_org:
+            logger.warning(
+                "[NAVI Prompt] Ownership mismatch while consuming prompt %s (expected org=%s, owner org=%s)",
+                prompt_id,
+                expected_org,
+                owner_org_id,
+            )
+            return None
+
+        return _prompt_responses.pop(prompt_id, None)
 
 
 class ProgressTracker:
@@ -1525,13 +1662,16 @@ async def handle_consent_response(
                 },
             )
 
-        # Update consent decision in Redis
-        decision = {
-            "choice": choice,
-            "alternative_command": alternative_command,
-            "pending": False,
-            "responded_at": datetime.now().isoformat()
-        }
+        # Update consent decision in Redis while preserving ownership metadata.
+        decision = dict(consent_record)
+        decision.update(
+            {
+                "choice": choice,
+                "alternative_command": alternative_command,
+                "pending": False,
+                "responded_at": datetime.now().isoformat(),
+            }
+        )
 
         await redis_client.setex(
             f"consent:{consent_id}",
@@ -1724,17 +1864,49 @@ async def handle_prompt_response(
         # Derive user org consistently
         user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
         current_user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+        current_user_id_str = str(current_user_id) if current_user_id is not None else None
+        user_org_id_str = str(user_org_id) if user_org_id is not None else None
 
-        # Store response
-        _prompt_responses[prompt_id] = {
-            "prompt_id": prompt_id,
-            "response": response_value,
-            "cancelled": cancelled,
-            "responded_at": time.time(),
-            "pending": False,
-            "user_id": current_user_id,
-            "org_id": user_org_id,
-        }
+        # Validate prompt exists, is pending, and belongs to the authenticated user/org.
+        with _prompt_lock:
+            _cleanup_expired_prompt_entries()
+            prompt_record = _prompt_responses.get(prompt_id)
+            if not prompt_record:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Prompt not found or expired",
+                )
+            if not prompt_record.get("pending", False):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Prompt already answered",
+                )
+
+            owner_user_id = prompt_record.get("user_id")
+            owner_org_id = prompt_record.get("org_id")
+            if owner_user_id and owner_user_id != current_user_id_str:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Unauthorized: Prompt belongs to another user",
+                )
+            if owner_org_id and owner_org_id != user_org_id_str:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Unauthorized: Prompt belongs to another organization",
+                )
+
+            prompt_record.update(
+                {
+                    "response": response_value,
+                    "cancelled": cancelled,
+                    "responded_at": time.time(),
+                    "pending": False,
+                    "user_id": current_user_id_str,
+                    "org_id": user_org_id_str,
+                    "expires_at": time.time() + _PROMPT_RESPONSE_RETENTION_SECONDS,
+                }
+            )
+            _prompt_responses[prompt_id] = prompt_record
 
         return {
             "success": True,
@@ -4841,8 +5013,8 @@ async def debug_openai():
 # pyright: ignore[reportGeneralTypeIssues]
 async def navi_chat(
     request: ChatRequest,
-    http_request: Request,
     db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.VIEWER)),
 ) -> ChatResponse:
     """
     Main NAVI chat endpoint used by the VS Code extension.
@@ -4938,12 +5110,23 @@ async def navi_chat(
     )
 
     try:
-        user_id = (request.user_id or "default_user").strip() or "default_user"
+        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
+        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+        if not user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Authenticated user identity is required",
+            )
+        if request.user_id and request.user_id != user_id:
+            logger.warning(
+                "[NAVI-CHAT] Ignoring client-supplied user_id=%s in favor of authenticated user_id=%s",
+                request.user_id,
+                user_id,
+            )
         mode = (request.mode or "chat-only").strip() or "chat-only"
         workspace_root = request.workspace_root or (request.workspace or {}).get(
             "workspace_root"
         )
-        org_id = http_request.headers.get("x-org-id") if http_request else None
 
         logger.info(
             "[NAVI-CHAT] user=%s model=%s mode=%s org=%s workspace=%s msg='%s...'",
@@ -5068,7 +5251,7 @@ async def navi_chat(
                 extra={
                     "workspace_root": workspace_root,
                     "workspace": request.workspace,
-                    "user_id": getattr(request, "user_id", None),
+                    "user_id": user_id,
                 },
             )
 
@@ -6280,6 +6463,7 @@ async def navi_chat_stream(
     request: ChatRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
     """
     Streaming version of navi_chat with Server-Sent Events (SSE).
@@ -6298,10 +6482,14 @@ async def navi_chat_stream(
         request.message[:50] if request.message else "",
     )
 
-    user_id = (request.user_id or "default_user").strip() or "default_user"
+    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
+    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
     mode = (request.mode or "chat-only").strip() or "chat-only"
     workspace_root = request.workspace_root or (request.workspace or {}).get(
         "workspace_root"
+    )
+    memory_user_id_int, memory_org_id_int = _resolve_user_org_ids_for_memory(
+        db, user_id, org_id
     )
 
     async def generate_stream():
@@ -6808,62 +6996,74 @@ async def navi_chat_stream(
 
                         # Check if conversation exists, create if not
                         existing_conv = memory_service.get_conversation(conv_uuid)
-                        if not existing_conv:
-                            # Create new conversation with this ID
-                            # Try to convert user_id to integer (database FK constraint requires numeric user IDs)
-                            try:
-                                user_id_int = int(user_id)
-                                if user_id_int <= 0:
-                                    raise ValueError("User ID must be positive")
-                            except (ValueError, TypeError):
-                                # Cannot persist without a valid numeric user ID
+                        can_persist = False
+                        if existing_conv:
+                            if (
+                                memory_user_id_int is None
+                                or existing_conv.user_id != memory_user_id_int
+                            ):
                                 logger.warning(
-                                    "[NAVI-STREAM] Cannot persist conversation: invalid user_id '%s' (must be numeric)",
-                                    user_id
+                                    "[NAVI-STREAM] Skipping persistence: conversation ownership mismatch for %s",
+                                    conv_uuid,
                                 )
-                                user_id_int = None
-
-                            if user_id_int is not None:
-                                memory_service.db.execute(
-                                    text(
-                                        """
-                                        INSERT INTO navi_conversations (id, user_id, workspace_path, status, created_at, updated_at)
-                                        VALUES (:id, :user_id, :workspace_path, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                                        ON CONFLICT (id) DO NOTHING
+                            else:
+                                can_persist = True
+                        elif memory_user_id_int is not None:
+                            # Create new conversation with this ID
+                            memory_service.db.execute(
+                                text(
                                     """
-                                    ),
-                                    {
-                                        "id": str(conv_uuid),
-                                        "user_id": user_id_int,
-                                        "workspace_path": workspace_root,
-                                    },
-                                )
-                                memory_service.db.commit()
-                                logger.info(
-                                    "[NAVI-STREAM] Created conversation %s", conv_uuid
-                                )
+                                    INSERT INTO navi_conversations (id, user_id, org_id, workspace_path, status, created_at, updated_at)
+                                    VALUES (:id, :user_id, :org_id, :workspace_path, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                    ON CONFLICT (id) DO NOTHING
+                                """
+                                ),
+                                {
+                                    "id": str(conv_uuid),
+                                    "user_id": memory_user_id_int,
+                                    "org_id": memory_org_id_int,
+                                    "workspace_path": workspace_root,
+                                },
+                            )
+                            memory_service.db.commit()
+                            logger.info("[NAVI-STREAM] Created conversation %s", conv_uuid)
+                            owned_conv = memory_service.get_conversation(conv_uuid)
+                            can_persist = bool(
+                                owned_conv and owned_conv.user_id == memory_user_id_int
+                            )
 
-                        # Store user message
-                        await memory_service.add_message(
-                            conversation_id=conv_uuid,
-                            role="user",
-                            content=request.message,
-                            metadata={"workspace": workspace_root},
-                            generate_embedding=False,  # Skip embedding for speed
-                        )
+                        if memory_user_id_int is not None and can_persist:
+                            # Store user message
+                            await memory_service.add_message(
+                                conversation_id=conv_uuid,
+                                role="user",
+                                content=request.message,
+                                metadata={"workspace": workspace_root},
+                                generate_embedding=False,  # Skip embedding for speed
+                            )
 
-                        # Store assistant response
-                        await memory_service.add_message(
-                            conversation_id=conv_uuid,
-                            role="assistant",
-                            content=response_content,
-                            generate_embedding=False,  # Skip embedding for speed
-                        )
-                        logger.info(
-                            "[NAVI-STREAM] Persisted conversation %s with %d char response",
-                            conv_uuid,
-                            len(response_content),
-                        )
+                            # Store assistant response
+                            await memory_service.add_message(
+                                conversation_id=conv_uuid,
+                                role="assistant",
+                                content=response_content,
+                                generate_embedding=False,  # Skip embedding for speed
+                            )
+                            logger.info(
+                                "[NAVI-STREAM] Persisted conversation %s with %d char response",
+                                conv_uuid,
+                                len(response_content),
+                            )
+                        elif memory_user_id_int is not None:
+                            logger.warning(
+                                "[NAVI-STREAM] Skipping persistence: unauthorized conversation %s",
+                                conv_uuid,
+                            )
+                        elif memory_user_id_int is None:
+                            logger.warning(
+                                "[NAVI-STREAM] Skipping persistence: unable to resolve numeric user ID for %s",
+                                user_id or "<unknown>",
+                            )
                 except Exception as mem_error:
                     # Don't fail the stream if memory persistence fails
                     logger.warning(
@@ -7000,7 +7200,7 @@ def _parse_model_string(model_str: Optional[str]) -> Tuple[str, str]:
 @router.post("/chat/stream/v2")
 async def navi_chat_stream_v2(
     request: ToolStreamRequest,
-    http_request: Request,
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
     """
     NAVI V2 Chat Stream - Claude Code Style
@@ -7022,6 +7222,19 @@ async def navi_chat_stream_v2(
         stream_with_tools_anthropic,
         stream_with_tools_openai,
     )
+    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
+    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Authenticated user identity is required",
+        )
+    if request.user_id and request.user_id != user_id:
+        logger.warning(
+            "[NAVI V2] Ignoring client-supplied user_id=%s in favor of authenticated user_id=%s",
+            request.user_id,
+            user_id,
+        )
 
     # Determine workspace path (accept both workspace_path and workspace_root from extension)
     workspace_path = request.workspace_path or request.workspace_root
@@ -7042,7 +7255,13 @@ async def navi_chat_stream_v2(
     if request.provider:
         provider = request.provider
 
-    logger.info(f"[NAVI V2] Parsed model: provider={provider}, model={model_name}")
+    logger.info(
+        "[NAVI V2] Parsed model: provider=%s, model=%s, user=%s, org=%s",
+        provider,
+        model_name,
+        user_id,
+        org_id or "<none>",
+    )
 
     async def stream_generator():
         """Generate SSE events from the streaming agent."""
@@ -7572,70 +7791,52 @@ async def navi_autonomous_task(
     from uuid import UUID
     from backend.services.memory.conversation_memory import ConversationMemoryService
 
-    def _get_user_id_int(user_id: str) -> int | None:
-        """Extract integer user_id from string or numeric value.
-
-        Returns the numeric user_id if valid, None otherwise.
-        This ensures user_id matches real users.id (FK constraint).
-        """
-        try:
-            # Try to convert to integer (handles numeric strings)
-            uid = int(user_id)
-            # Ensure it's a positive integer (valid user ID)
-            return uid if uid > 0 else None
-        except (ValueError, TypeError):
-            # user_id is not numeric (e.g., "default_user")
-            # Cannot persist without a real user ID due to FK constraint
-            return None
-
     memory_service = ConversationMemoryService(db)
     conv_uuid = None
     conversation_history_from_db = []
+    memory_user_id_int, memory_org_id_int = _resolve_user_org_ids_for_memory(
+        db,
+        str(user_id) if user_id is not None else None,
+        str(org_id) if org_id is not None else None,
+    )
 
     # Create or load conversation
     if request.conversation_id:
         try:
             conv_uuid = UUID(request.conversation_id)
-            existing_conv = memory_service.get_conversation(conv_uuid)
-
-            if existing_conv:
-                # SECURITY: Verify conversation ownership before loading
-                user_id_int = _get_user_id_int(user_id)
-
-                # In production, enforce strict ownership checks
-                # In dev/test, allow access if user_id_int is None (dev users like "default_user")
-                if user_id_int is not None and existing_conv.user_id != user_id_int:
-                    logger.warning(
-                        f"[NAVI Autonomous] SECURITY: User {user_id} attempted to access conversation {conv_uuid} owned by user {existing_conv.user_id}"
-                    )
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Access denied: You don't have permission to access this conversation"
-                    )
-                elif user_id_int is None:
-                    logger.debug(f"[NAVI Autonomous] Dev mode: Allowing access for non-numeric user_id '{user_id}'")
-
-                # Load conversation history from database
-                logger.info(
-                    f"[NAVI Autonomous] Loading conversation {conv_uuid} from database"
+            if memory_user_id_int is None:
+                logger.warning(
+                    "[NAVI Autonomous] Cannot resolve numeric user identity for conversation persistence; running stateless"
                 )
-                db_messages = memory_service.get_recent_messages(conv_uuid, limit=100)
-                conversation_history_from_db = [
-                    {"role": msg.role, "content": msg.content} for msg in db_messages
-                ]
-                logger.info(
-                    f"[NAVI Autonomous] Loaded {len(conversation_history_from_db)} messages from database"
-                )
+                conv_uuid = None
             else:
-                # Conversation ID provided but doesn't exist - create it
-                logger.info(f"[NAVI Autonomous] Creating conversation {conv_uuid}")
-                user_id_int = _get_user_id_int(user_id)
-                if user_id_int is None:
-                    logger.warning(
-                        f"[NAVI Autonomous] Cannot persist conversation: invalid user_id '{user_id}' (must be numeric)"
+                existing_conv = memory_service.get_conversation(conv_uuid)
+
+                if existing_conv:
+                    # SECURITY: Verify conversation ownership before loading
+                    if existing_conv.user_id != memory_user_id_int:
+                        logger.warning(
+                            f"[NAVI Autonomous] SECURITY: User {user_id} attempted to access conversation {conv_uuid} owned by user {existing_conv.user_id}"
+                        )
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Access denied: You don't have permission to access this conversation"
+                        )
+
+                    # Load conversation history from database
+                    logger.info(
+                        f"[NAVI Autonomous] Loading conversation {conv_uuid} from database"
                     )
-                    conv_uuid = None  # Clear conv_uuid to prevent FK failures in background persistence
+                    db_messages = memory_service.get_recent_messages(conv_uuid, limit=100)
+                    conversation_history_from_db = [
+                        {"role": msg.role, "content": msg.content} for msg in db_messages
+                    ]
+                    logger.info(
+                        f"[NAVI Autonomous] Loaded {len(conversation_history_from_db)} messages from database"
+                    )
                 else:
+                    # Conversation ID provided but doesn't exist - create it
+                    logger.info(f"[NAVI Autonomous] Creating conversation {conv_uuid}")
                     from sqlalchemy import text
 
                     memory_service.db.execute(
@@ -7648,8 +7849,8 @@ async def navi_autonomous_task(
                         ),
                         {
                             "id": str(conv_uuid),
-                            "user_id": user_id_int,
-                            "org_id": _get_user_id_int(org_id) if org_id else None,
+                            "user_id": memory_user_id_int,
+                            "org_id": memory_org_id_int,
                             "workspace_path": workspace_path,
                         },
                     )
@@ -7664,15 +7865,14 @@ async def navi_autonomous_task(
         # No conversation ID - create a new conversation
         try:
             logger.info("[NAVI Autonomous] Creating new conversation")
-            user_id_int = _get_user_id_int(user_id)
-            if user_id_int is None:
+            if memory_user_id_int is None:
                 logger.warning(
-                    f"[NAVI Autonomous] Cannot persist conversation: invalid user_id '{user_id}' (must be numeric)"
+                    f"[NAVI Autonomous] Cannot persist conversation: unresolved user identity '{user_id}'"
                 )
             else:
                 conversation = memory_service.create_conversation(
-                    user_id=user_id_int,
-                    org_id=_get_user_id_int(org_id) if org_id else None,
+                    user_id=memory_user_id_int,
+                    org_id=memory_org_id_int,
                     workspace_path=workspace_path,
                     title=request.message[:50]
                     + ("..." if len(request.message) > 50 else ""),
@@ -7702,20 +7902,18 @@ async def navi_autonomous_task(
         from backend.services.memory.semantic_search import get_semantic_search_service
 
         search_service = get_semantic_search_service(db)
-        user_id_int = _get_user_id_int(user_id)
-        org_id_int = _get_user_id_int(org_id) if org_id else None
 
         # Skip semantic search if user_id is invalid
-        if user_id_int is None:
+        if memory_user_id_int is None:
             logger.warning(
-                f"[NAVI Autonomous] Skipping semantic search: invalid user_id '{user_id}'"
+                f"[NAVI Autonomous] Skipping semantic search: unresolved user identity '{user_id}'"
             )
         else:
             # Search for relevant context from past conversations
             context_data = await search_service.get_context_for_query(
                 query=request.message,
-                user_id=user_id_int,
-                org_id=org_id_int,
+                user_id=memory_user_id_int,
+                org_id=memory_org_id_int,
                 max_context_items=5,
             )
 

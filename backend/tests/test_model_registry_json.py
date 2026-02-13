@@ -13,7 +13,9 @@ def test_shared_model_registry_is_valid() -> None:
 
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     validator_path = repo_root / "scripts" / "validate_model_registry.py"
-    spec = importlib.util.spec_from_file_location("model_registry_validator", validator_path)
+    spec = importlib.util.spec_from_file_location(
+        "model_registry_validator", validator_path
+    )
     assert spec and spec.loader, f"failed to load validator: {validator_path}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

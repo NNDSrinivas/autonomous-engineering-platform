@@ -256,10 +256,9 @@ def get_redis_client() -> redis.Redis:
     global _redis_client
     if _redis_client is None:
         from backend.core.config import settings as config_settings
+
         _redis_client = redis.from_url(
-            config_settings.redis_url,
-            encoding="utf-8",
-            decode_responses=True
+            config_settings.redis_url, encoding="utf-8", decode_responses=True
         )
     return _redis_client
 
@@ -292,7 +291,11 @@ def _resolve_user_org_ids_for_memory(
 
     if org_id_int is None and org_id:
         try:
-            org = db.query(Organization).filter(Organization.org_key == str(org_id)).one_or_none()
+            org = (
+                db.query(Organization)
+                .filter(Organization.org_key == str(org_id))
+                .one_or_none()
+            )
             if org:
                 org_id_int = int(org.id)
         except Exception as exc:
@@ -315,7 +318,9 @@ def _resolve_user_org_ids_for_memory(
             query = query.filter(DBUser.org_id == org_id_int)
         db_user = query.one_or_none()
         if db_user:
-            return int(db_user.id), org_id_int if org_id_int is not None else int(db_user.org_id)
+            return int(db_user.id), (
+                org_id_int if org_id_int is not None else int(db_user.org_id)
+            )
     except Exception as exc:
         logger.debug(
             "[NAVI] Unable to resolve user sub '%s' to numeric ID: %s",
@@ -1628,12 +1633,12 @@ async def handle_consent_response(
     try:
         redis_client = get_redis_client()
         body = await request.json()
-        choice = body.get("choice", "deny")  # 'allow_once', 'allow_always_exact', 'allow_always_type', 'deny', 'alternative'
+        choice = body.get(
+            "choice", "deny"
+        )  # 'allow_once', 'allow_always_exact', 'allow_always_type', 'deny', 'alternative'
         alternative_command = body.get("alternative_command")
 
-        logger.info(
-            f"[NAVI API] 🔐 Consent {consent_id}: decision={choice}"
-        )
+        logger.info(f"[NAVI API] 🔐 Consent {consent_id}: decision={choice}")
 
         # Validate consent exists in Redis
         consent_data = await redis_client.get(f"consent:{consent_id}")
@@ -1657,8 +1662,12 @@ async def handle_consent_response(
         consent_org_id = consent_record.get("org_id")
 
         # Derive current user/org IDs
-        current_user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
-        user_org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+        current_user_id = str(
+            getattr(user, "user_id", None) or getattr(user, "id", None)
+        )
+        user_org_id = str(
+            getattr(user, "org_id", None) or getattr(user, "org_key", None)
+        )
 
         if consent_user_id and consent_user_id != current_user_id:
             logger.warning(
@@ -1700,7 +1709,7 @@ async def handle_consent_response(
         await redis_client.setex(
             f"consent:{consent_id}",
             60,  # Keep for 1 minute for agent to read
-            json.dumps(decision)
+            json.dumps(decision),
         )
 
         logger.info(f"[NAVI API] ✅ Consent {consent_id} decision stored in Redis")
@@ -1708,7 +1717,13 @@ async def handle_consent_response(
         # Also update in-process consent approvals for AutonomousAgent pre-checks
         try:
             from backend.services import autonomous_agent as aa
-            approved = choice in ("allow_once", "allow_always_exact", "allow_always_type", "alternative")
+
+            approved = choice in (
+                "allow_once",
+                "allow_always_exact",
+                "allow_always_type",
+                "alternative",
+            )
             with aa._consent_lock:
                 aa._consent_approvals[consent_id] = {
                     "approved": approved,
@@ -1719,9 +1734,13 @@ async def handle_consent_response(
                     "user_id": consent_user_id,
                     "org_id": consent_org_id,
                 }
-            logger.info(f"[NAVI API] ✅ Consent {consent_id} cached in-process (approved={approved})")
+            logger.info(
+                f"[NAVI API] ✅ Consent {consent_id} cached in-process (approved={approved})"
+            )
         except Exception as e:
-            logger.warning(f"[NAVI API] Failed to cache consent {consent_id} in-process: {e}")
+            logger.warning(
+                f"[NAVI API] Failed to cache consent {consent_id} in-process: {e}"
+            )
 
         return {
             "success": True,
@@ -1761,11 +1780,7 @@ async def get_consent_preferences(
         consent_service = get_consent_service(db)
         preferences = consent_service.get_user_preferences(user_id, org_id)
 
-        return {
-            "success": True,
-            "preferences": preferences,
-            "count": len(preferences)
-        }
+        return {"success": True, "preferences": preferences, "count": len(preferences)}
 
     except Exception as e:
         logger.error(f"[NAVI API] Error getting consent preferences: {e}")
@@ -1800,14 +1815,11 @@ async def delete_consent_preference(
                 status_code=404,
                 detail={
                     "success": False,
-                    "error": "Preference not found or you don't have permission to delete it"
-                }
+                    "error": "Preference not found or you don't have permission to delete it",
+                },
             )
 
-        return {
-            "success": True,
-            "message": "Preference deleted successfully"
-        }
+        return {"success": True, "message": "Preference deleted successfully"}
 
     except HTTPException:
         raise
@@ -1838,13 +1850,11 @@ async def get_consent_audit(
 
         # Get audit log from consent service
         consent_service = get_consent_service(db)
-        audit_log = consent_service.get_audit_log(user_id, org_id, limit=min(limit, 100))
+        audit_log = consent_service.get_audit_log(
+            user_id, org_id, limit=min(limit, 100)
+        )
 
-        return {
-            "success": True,
-            "audit_log": audit_log,
-            "count": len(audit_log)
-        }
+        return {"success": True, "audit_log": audit_log, "count": len(audit_log)}
 
     except Exception as e:
         logger.error(f"[NAVI API] Error getting consent audit log: {e}")
@@ -1888,7 +1898,9 @@ async def handle_prompt_response(
         # Derive user org consistently
         user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
         current_user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
-        current_user_id_str = str(current_user_id) if current_user_id is not None else None
+        current_user_id_str = (
+            str(current_user_id) if current_user_id is not None else None
+        )
         user_org_id_str = str(user_org_id) if user_org_id is not None else None
 
         # Validate prompt exists, is pending, and belongs to the authenticated user/org.
@@ -5134,8 +5146,12 @@ async def navi_chat(
     )
 
     try:
-        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
-        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+        user_id = str(
+            getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+        ).strip()
+        org_id = str(
+            getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+        ).strip()
         if not user_id:
             raise HTTPException(
                 status_code=401,
@@ -6506,8 +6522,12 @@ async def navi_chat_stream(
         request.message[:50] if request.message else "",
     )
 
-    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
-    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+    user_id = str(
+        getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+    ).strip()
+    org_id = str(
+        getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+    ).strip()
     mode = (request.mode or "chat-only").strip() or "chat-only"
     workspace_root = request.workspace_root or (request.workspace or {}).get(
         "workspace_root"
@@ -6890,14 +6910,6 @@ async def navi_chat_stream(
                             current_file_content = att_content
                         break
 
-            # Determine auto-execute mode
-            auto_execute = mode in (
-                "agent-full-access",
-                "agent_full_access",
-                "full-access",
-                "full_access",
-            )
-
             # Show current file context if available
             if current_file:
                 yield f"data: {json.dumps({'activity': {'kind': 'context', 'label': 'Active file', 'detail': current_file, 'status': 'done'}})}\n\n"
@@ -7079,7 +7091,9 @@ async def navi_chat_stream(
                                 },
                             )
                             memory_service.db.commit()
-                            logger.info("[NAVI-STREAM] Created conversation %s", conv_uuid)
+                            logger.info(
+                                "[NAVI-STREAM] Created conversation %s", conv_uuid
+                            )
                             owned_conv = memory_service.get_conversation(conv_uuid)
                             can_persist = bool(
                                 owned_conv and owned_conv.user_id == memory_user_id_int
@@ -7268,8 +7282,13 @@ async def navi_chat_stream_v2(
         stream_with_tools_anthropic,
         stream_with_tools_openai,
     )
-    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
-    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+
+    user_id = str(
+        getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+    ).strip()
+    org_id = str(
+        getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+    ).strip()
     if not user_id:
         raise HTTPException(
             status_code=401,
@@ -7621,6 +7640,7 @@ class AutonomousTaskRequest(BaseModel):
     state: Optional[dict] = None
     last_action_error: Optional[dict] = None
 
+
 def _get_vision_provider_for_model(model: Optional[str]):
     """
     Get the appropriate VisionProvider for the user's selected model.
@@ -7873,16 +7893,19 @@ async def navi_autonomous_task(
                         )
                         raise HTTPException(
                             status_code=403,
-                            detail="Access denied: You don't have permission to access this conversation"
+                            detail="Access denied: You don't have permission to access this conversation",
                         )
 
                     # Load conversation history from database
                     logger.info(
                         f"[NAVI Autonomous] Loading conversation {conv_uuid} from database"
                     )
-                    db_messages = memory_service.get_recent_messages(conv_uuid, limit=100)
+                    db_messages = memory_service.get_recent_messages(
+                        conv_uuid, limit=100
+                    )
                     conversation_history_from_db = [
-                        {"role": msg.role, "content": msg.content} for msg in db_messages
+                        {"role": msg.role, "content": msg.content}
+                        for msg in db_messages
                     ]
                     logger.info(
                         f"[NAVI Autonomous] Loaded {len(conversation_history_from_db)} messages from database"
@@ -8004,7 +8027,7 @@ async def navi_autonomous_task(
         """Generate SSE events from the autonomous agent with heartbeat to prevent timeout."""
         import asyncio
 
-        yield f"data: {json.dumps({'router_info': _build_router_info(routing_decision, mode=request.mode or 'agent-full-access', task_type='autonomous')}})\n\n"
+        yield f"data: {json.dumps({'router_info': _build_router_info(routing_decision, mode=request.mode or 'agent-full-access', task_type='autonomous')})}\n\n"
 
         async def heartbeat_wrapper(agent_generator):
             """Wrap agent generator with periodic heartbeat events to keep SSE connection alive."""
@@ -8099,7 +8122,7 @@ async def navi_autonomous_task(
                     "conversationId": request.conversation_id,
                     "endpoint": "autonomous",
                     "outcome": "success",
-                    "responseLength": len(\"\\n\".join(assistant_response_parts)),
+                    "responseLength": len("\n".join(assistant_response_parts)),
                     **routing_decision.to_public_dict(),
                 },
             )

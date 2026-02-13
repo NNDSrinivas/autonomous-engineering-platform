@@ -73,9 +73,7 @@ def validate_registry(registry: dict[str, Any]) -> None:
             if model_id in model_ids:
                 _fail(f"duplicate model id: {model_id}")
             if not VENDOR_ID_RE.match(model_id):
-                _fail(
-                    f"model id must be provider/model format; got '{model_id}'"
-                )
+                _fail(f"model id must be provider/model format; got '{model_id}'")
             model_ids.add(model_id)
 
     mode_ids: set[str] = set()
@@ -102,13 +100,9 @@ def validate_registry(registry: dict[str, Any]) -> None:
     default_model_id = defaults.get("defaultModelId")
 
     if default_mode_id not in mode_ids:
-        _fail(
-            f"defaults.defaultModeId '{default_mode_id}' is not a valid navi mode"
-        )
+        _fail(f"defaults.defaultModeId '{default_mode_id}' is not a valid navi mode")
     if default_model_id not in model_ids:
-        _fail(
-            f"defaults.defaultModelId '{default_model_id}' is not a known model id"
-        )
+        _fail(f"defaults.defaultModelId '{default_model_id}' is not a known model id")
 
 
 def main() -> int:

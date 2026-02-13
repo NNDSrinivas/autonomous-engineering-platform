@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from backend.services.model_router import ModelRouter, ModelRoutingError
@@ -36,7 +34,9 @@ def test_valid_vendor_model_is_honored(monkeypatch: pytest.MonkeyPatch) -> None:
     assert decision.provider == "openai"
 
 
-def test_invalid_vendor_model_falls_back_with_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invalid_vendor_model_falls_back_with_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     router = ModelRouter()
 
@@ -47,7 +47,9 @@ def test_invalid_vendor_model_falls_back_with_reason(monkeypatch: pytest.MonkeyP
     assert decision.effective_model_id == "openai/gpt-4o"
 
 
-def test_navi_mode_picks_first_available_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_navi_mode_picks_first_available_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     router = ModelRouter()
@@ -59,7 +61,9 @@ def test_navi_mode_picks_first_available_candidate(monkeypatch: pytest.MonkeyPat
     assert decision.was_fallback is False
 
 
-def test_private_mode_blocks_when_only_saas_available(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_private_mode_blocks_when_only_saas_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     router = ModelRouter()
 
@@ -79,7 +83,9 @@ def test_alias_normalization(monkeypatch: pytest.MonkeyPatch) -> None:
     assert decision.effective_model_id == "openai/gpt-4o"
 
 
-def test_stream_v2_fallback_when_provider_unsupported(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stream_v2_fallback_when_provider_unsupported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     router = ModelRouter()

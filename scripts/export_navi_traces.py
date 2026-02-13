@@ -36,7 +36,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def matches_filters(record: dict[str, Any], event_types: set[str], endpoints: set[str]) -> bool:
+def matches_filters(
+    record: dict[str, Any], event_types: set[str], endpoints: set[str]
+) -> bool:
     if event_types and record.get("event_type") not in event_types:
         return False
     if endpoints and record.get("endpoint") not in endpoints:
@@ -60,7 +62,9 @@ def main() -> int:
     total = 0
     exported = 0
 
-    with input_path.open("r", encoding="utf-8") as src, output_path.open("w", encoding="utf-8") as dst:
+    with input_path.open("r", encoding="utf-8") as src, output_path.open(
+        "w", encoding="utf-8"
+    ) as dst:
         for line in src:
             line = line.strip()
             if not line:

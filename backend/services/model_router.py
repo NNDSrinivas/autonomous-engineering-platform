@@ -78,7 +78,9 @@ class RoutingDecision:
 class ModelRouter:
     def __init__(self, registry_path: Optional[Path] = None) -> None:
         repo_root = Path(__file__).resolve().parents[2]
-        self.registry_path = registry_path or (repo_root / "shared" / "model-registry.json")
+        self.registry_path = registry_path or (
+            repo_root / "shared" / "model-registry.json"
+        )
         self.registry = self._load_registry()
         self.defaults = self.registry.get("defaults", {})
         self.providers = self.registry.get("providers", [])
@@ -118,7 +120,9 @@ class ModelRouter:
         requested_provider: Optional[str] = None,
     ) -> RoutingDecision:
         endpoint_key = self._normalize_endpoint(endpoint)
-        support = _ENDPOINT_PROVIDER_SUPPORT.get(endpoint_key, _ENDPOINT_PROVIDER_SUPPORT["stream"])
+        support = _ENDPOINT_PROVIDER_SUPPORT.get(
+            endpoint_key, _ENDPOINT_PROVIDER_SUPPORT["stream"]
+        )
 
         requested_id = (requested_model_or_mode_id or "").strip()
         requested_mode_id: Optional[str] = None
@@ -172,11 +176,17 @@ class ModelRouter:
             mode = self.mode_index.get(default_mode)
             requested_mode_id = default_mode
             if not mode:
-                raise ModelRoutingError("INVALID_MODE", "No valid NAVI mode available in registry")
+                raise ModelRoutingError(
+                    "INVALID_MODE", "No valid NAVI mode available in registry"
+                )
 
-        candidates: list[str] = [m for m in mode.get("candidateModelIds", []) if isinstance(m, str)]
+        candidates: list[str] = [
+            m for m in mode.get("candidateModelIds", []) if isinstance(m, str)
+        ]
         if not candidates:
-            raise ModelRoutingError("INVALID_MODE", f"Mode '{requested_mode_id}' has no candidates")
+            raise ModelRoutingError(
+                "INVALID_MODE", f"Mode '{requested_mode_id}' has no candidates"
+            )
 
         strict_private = bool((mode.get("policy") or {}).get("strictPrivate"))
 
@@ -205,7 +215,8 @@ class ModelRouter:
                 requested_mode_id=requested_mode_id,
                 effective_model_id=selected_model_id,
                 provider=model_cfg["provider"],
-                model=model_cfg.get("providerModel") or selected_model_id.split("/", 1)[1],
+                model=model_cfg.get("providerModel")
+                or selected_model_id.split("/", 1)[1],
                 was_fallback=was_fallback,
                 fallback_reason_code=fallback_reason_code,
                 fallback_reason=fallback_reason,
@@ -218,7 +229,9 @@ class ModelRouter:
             )
 
         default_model = self.defaults.get("defaultModelId")
-        if default_model and self._is_model_routable(default_model, endpoint_key, supported_providers, strict_private=False):
+        if default_model and self._is_model_routable(
+            default_model, endpoint_key, supported_providers, strict_private=False
+        ):
             model_cfg = self.model_index[default_model]
             return RoutingDecision(
                 requested_model_id=None,
@@ -244,22 +257,23 @@ class ModelRouter:
     ) -> RoutingDecision:
         endpoint_label = self._display_endpoint_label(endpoint_key)
         model_cfg = self.model_index.get(requested_model_id)
-        if model_cfg and self._is_model_routable(requested_model_id, endpoint_key, supported_providers, strict_private=False):
+        if model_cfg and self._is_model_routable(
+            requested_model_id, endpoint_key, supported_providers, strict_private=False
+        ):
             return RoutingDecision(
                 requested_model_id=requested_model_id,
                 requested_mode_id=None,
                 effective_model_id=requested_model_id,
                 provider=model_cfg["provider"],
-                model=model_cfg.get("providerModel") or requested_model_id.split("/", 1)[1],
+                model=model_cfg.get("providerModel")
+                or requested_model_id.split("/", 1)[1],
                 was_fallback=False,
                 fallback_reason_code=None,
                 fallback_reason=None,
             )
 
         reason_code = "MODEL_UNAVAILABLE"
-        reason = (
-            f"Requested model '{requested_model_id}' is unavailable or unsupported for endpoint '{endpoint_label}'."
-        )
+        reason = f"Requested model '{requested_model_id}' is unavailable or unsupported for endpoint '{endpoint_label}'."
         if requested_model_id not in self.model_index:
             reason_code = "UNKNOWN_MODEL_ID"
             reason = f"Requested model '{requested_model_id}' is not in registry."
@@ -273,12 +287,12 @@ class ModelRouter:
                 )
             elif not self._is_provider_configured(provider):
                 reason_code = "PROVIDER_NOT_CONFIGURED"
-                reason = (
-                    f"Provider '{provider}' is not configured for requested model '{requested_model_id}'."
-                )
+                reason = f"Provider '{provider}' is not configured for requested model '{requested_model_id}'."
 
         fallback_default = self.defaults.get("defaultModelId")
-        if fallback_default and self._is_model_routable(fallback_default, endpoint_key, supported_providers, strict_private=False):
+        if fallback_default and self._is_model_routable(
+            fallback_default, endpoint_key, supported_providers, strict_private=False
+        ):
             fallback_cfg = self.model_index[fallback_default]
             reason = f"{reason} Using '{fallback_default}'."
 
@@ -287,7 +301,8 @@ class ModelRouter:
                 requested_mode_id=None,
                 effective_model_id=fallback_default,
                 provider=fallback_cfg["provider"],
-                model=fallback_cfg.get("providerModel") or fallback_default.split("/", 1)[1],
+                model=fallback_cfg.get("providerModel")
+                or fallback_default.split("/", 1)[1],
                 was_fallback=True,
                 fallback_reason_code=reason_code,
                 fallback_reason=reason,
@@ -310,12 +325,15 @@ class ModelRouter:
     ) -> Optional[tuple[str, Optional[str]]]:
         first_failure_reason: Optional[str] = None
         for candidate in candidates:
-            if self._is_model_routable(candidate, endpoint_key, supported_providers, strict_private=strict_private):
+            if self._is_model_routable(
+                candidate,
+                endpoint_key,
+                supported_providers,
+                strict_private=strict_private,
+            ):
                 return candidate, first_failure_reason
             if first_failure_reason is None:
-                first_failure_reason = (
-                    f"Candidate '{candidate}' unavailable, unsupported, or not configured."
-                )
+                first_failure_reason = f"Candidate '{candidate}' unavailable, unsupported, or not configured."
         return None
 
     def _is_model_routable(
@@ -395,7 +413,6 @@ class ModelRouter:
             "autonomous": "/autonomous",
         }
         return mapping.get(endpoint_key, endpoint_key)
-
 
 
 _default_router: Optional[ModelRouter] = None

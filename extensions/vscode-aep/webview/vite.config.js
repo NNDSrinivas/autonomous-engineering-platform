@@ -9,7 +9,7 @@ exports.default = (0, vite_1.defineConfig)({
     base: "",
     server: {
         fs: {
-            allow: [(0, path_1.resolve)(__dirname, "../../../")]
+            allow: [(0, path_1.resolve)(__dirname, "../../../shared")]
         }
     },
     resolve: {

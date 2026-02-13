@@ -55,9 +55,25 @@ def test_navi_mode_picks_first_available_candidate(
     router = ModelRouter()
 
     decision = router.route("navi/intelligence", endpoint="stream")
+    mode_cfg = router.mode_index["navi/intelligence"]
+    expected_first_candidate = mode_cfg["candidateModelIds"][0]
 
     assert decision.requested_mode_id == "navi/intelligence"
-    assert decision.effective_model_id == "openai/gpt-5.2"
+    assert decision.effective_model_id == expected_first_candidate
+    assert decision.was_fallback is False
+
+
+def test_private_mode_routes_to_ollama_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    router = ModelRouter()
+
+    decision = router.route("navi/private", endpoint="stream")
+
+    assert decision.requested_mode_id == "navi/private"
+    assert decision.effective_model_id == "ollama/llama3.2"
+    assert decision.provider == "ollama"
     assert decision.was_fallback is False
 
 

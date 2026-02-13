@@ -7552,6 +7552,23 @@ async def navi_chat_stream_v2(
                 elif provider == "groq":
                     api_key = os.environ.get("GROQ_API_KEY", "")
                     base_url = "https://api.groq.com/openai/v1"
+                elif provider == "ollama":
+                    api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
+                    base_url = _ensure_openai_compatible_base_url(
+                        os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+                    )
+                elif provider == "self_hosted":
+                    api_key = (
+                        os.environ.get("SELF_HOSTED_API_KEY")
+                        or os.environ.get("OPENAI_API_KEY")
+                        or "self-hosted"
+                    )
+                    base_url = _ensure_openai_compatible_base_url(
+                        os.environ.get("SELF_HOSTED_API_BASE_URL")
+                        or os.environ.get("SELF_HOSTED_LLM_URL")
+                        or os.environ.get("VLLM_BASE_URL")
+                        or "http://localhost:8000"
+                    )
 
                 async for event in stream_with_tools_openai(
                     message=request.message,
@@ -7657,8 +7674,30 @@ def _get_vision_provider_for_model(model: Optional[str]):
         return VisionProvider.ANTHROPIC  # Default to Claude
 
     provider = "anthropic"
-    if isinstance(model, str) and "/" in model:
-        provider = model.split("/", 1)[0].strip().lower()
+    if isinstance(model, str):
+        raw = model.strip().lower()
+        if "/" in raw:
+            provider = raw.split("/", 1)[0].strip()
+        elif (
+            raw.startswith("gpt")
+            or raw.startswith("o1")
+            or raw.startswith("o3")
+            or raw.startswith("o4")
+        ):
+            provider = "openai"
+        elif raw.startswith("claude"):
+            provider = "anthropic"
+        elif raw.startswith("gemini"):
+            provider = "google"
+        elif raw.startswith("navi/"):
+            # Map NAVI modes to their default preferred providers for vision selection.
+            mode_map = {
+                "navi/intelligence": "openai",
+                "navi/fast": "openai",
+                "navi/deep": "google",
+                "navi/private": "anthropic",
+            }
+            provider = mode_map.get(raw, "anthropic")
 
     if provider == "openai":
         return VisionProvider.OPENAI
@@ -7669,6 +7708,15 @@ def _get_vision_provider_for_model(model: Optional[str]):
     else:
         # Groq and other providers don't have vision - fall back to Claude
         return VisionProvider.ANTHROPIC
+
+
+def _ensure_openai_compatible_base_url(base_url: str) -> str:
+    normalized = (base_url or "").strip().rstrip("/")
+    if not normalized:
+        return "https://api.openai.com/v1"
+    if normalized.endswith("/v1"):
+        return normalized
+    return f"{normalized}/v1"
 
 
 @router.post("/chat/autonomous")
@@ -7780,6 +7828,8 @@ async def navi_autonomous_task(
     )
 
     # Get API key based on provider
+    model_base_url: Optional[str] = None
+
     if provider == "anthropic":
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     elif provider == "openrouter":
@@ -7788,6 +7838,23 @@ async def navi_autonomous_task(
         api_key = os.environ.get("GROQ_API_KEY", "")
     elif provider == "google":
         api_key = os.environ.get("GOOGLE_API_KEY", "")
+    elif provider == "ollama":
+        api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        )
+    elif provider == "self_hosted":
+        api_key = (
+            os.environ.get("SELF_HOSTED_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "self-hosted"
+        )
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("SELF_HOSTED_API_BASE_URL")
+            or os.environ.get("SELF_HOSTED_LLM_URL")
+            or os.environ.get("VLLM_BASE_URL")
+            or "http://localhost:8000"
+        )
     else:
         api_key = os.environ.get("OPENAI_API_KEY", "")
 
@@ -8096,6 +8163,7 @@ async def navi_autonomous_task(
                 api_key=api_key,
                 provider=provider,
                 model=model,
+                base_url=model_base_url,
                 db_session=db,
                 user_id=user_id,
                 org_id=org_id,

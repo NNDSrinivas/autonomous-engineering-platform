@@ -1669,16 +1669,19 @@ class AutonomousAgent:
 
         # Initialize Redis client for distributed consent state
         from backend.core.config import settings
+
         self.redis_client: Optional[redis.Redis] = None
         try:
             self.redis_client = redis.from_url(
-                settings.redis_url,
-                encoding="utf-8",
-                decode_responses=True
+                settings.redis_url, encoding="utf-8", decode_responses=True
             )
-            logger.info(f"[AutonomousAgent] Redis client initialized: {settings.redis_url}")
+            logger.info(
+                f"[AutonomousAgent] Redis client initialized: {settings.redis_url}"
+            )
         except Exception as e:
-            logger.warning(f"[AutonomousAgent] Failed to initialize Redis (consent will fail): {e}")
+            logger.warning(
+                f"[AutonomousAgent] Failed to initialize Redis (consent will fail): {e}"
+            )
 
         # Initialize consent service for preferences and audit logging
         self.consent_service = get_consent_service(db=self.db_session)
@@ -1704,7 +1707,9 @@ class AutonomousAgent:
         while time.time() - start_time < timeout:
             response_data = consume_prompt_response(
                 prompt_id,
-                expected_user_id=str(self.user_id) if self.user_id is not None else None,
+                expected_user_id=(
+                    str(self.user_id) if self.user_id is not None else None
+                ),
                 expected_org_id=str(self.org_id) if self.org_id is not None else None,
             )
             if response_data:
@@ -2487,7 +2492,9 @@ class AutonomousAgent:
 
         return False
 
-    def _is_delete_request(self, request: str, context: Optional[TaskContext] = None) -> bool:
+    def _is_delete_request(
+        self, request: str, context: Optional[TaskContext] = None
+    ) -> bool:
         request_lower = (request or "").lower()
         if not request_lower:
             return False
@@ -2522,14 +2529,21 @@ class AutonomousAgent:
             return True
 
         # Handle "do the same" using conversation context
-        if "do the same" in request_lower or "same for" in request_lower or "same thing" in request_lower:
+        if (
+            "do the same" in request_lower
+            or "same for" in request_lower
+            or "same thing" in request_lower
+        ):
             history_text = ""
             if context and context.conversation_history:
                 history_text = " ".join(
-                    str(m.get("content", "")) for m in context.conversation_history[-12:]
+                    str(m.get("content", ""))
+                    for m in context.conversation_history[-12:]
                     if m.get("role") in ("user", "assistant")
                 ).lower()
-            if history_text and any(marker in history_text for marker in delete_markers):
+            if history_text and any(
+                marker in history_text for marker in delete_markers
+            ):
                 return True
 
         return False
@@ -2618,10 +2632,15 @@ class AutonomousAgent:
         ):
             return "dev"
 
-        if re.search(r"\b(run|rerun|execute)?\s*(tests?|test suite|pytest|jest|vitest)\b", request_lower):
+        if re.search(
+            r"\b(run|rerun|execute)?\s*(tests?|test suite|pytest|jest|vitest)\b",
+            request_lower,
+        ):
             return "test"
 
-        if re.search(r"\b(run|execute)\s+(build|compile|bundle)\b", request_lower) or re.search(
+        if re.search(
+            r"\b(run|execute)\s+(build|compile|bundle)\b", request_lower
+        ) or re.search(
             r"\bbuild\b.*\b(project|app|site|frontend|backend|server)\b", request_lower
         ):
             return "build"
@@ -2736,7 +2755,8 @@ class AutonomousAgent:
         # Fallback to conversation history for "do the same"
         if context and context.conversation_history:
             history_text = " ".join(
-                str(m.get("content", "")) for m in context.conversation_history[-12:]
+                str(m.get("content", ""))
+                for m in context.conversation_history[-12:]
                 if m.get("role") in ("user", "assistant")
             )
             for pattern in (r"`([^`]+)`", r'"([^"]+)"', r"'([^']+)'"):
@@ -2811,7 +2831,9 @@ class AutonomousAgent:
             if not base:
                 continue
             pattern = f"**/{base}" if "." in base else f"**/{base}.*"
-            matches = glob.glob(os.path.join(self.workspace_path, pattern), recursive=True)
+            matches = glob.glob(
+                os.path.join(self.workspace_path, pattern), recursive=True
+            )
             matches = [
                 os.path.relpath(m, self.workspace_path)
                 for m in matches
@@ -3290,8 +3312,14 @@ Use this context to understand existing patterns, dependencies, and architecture
 
                 # Try to infer the action from the request
                 request_lower = request.lower()
-                if any(word in request_lower for word in ["see", "show", "view", "look", "check"]):
-                    if any(word in request_lower for word in ["animation", "video", "result", "output"]):
+                if any(
+                    word in request_lower
+                    for word in ["see", "show", "view", "look", "check"]
+                ):
+                    if any(
+                        word in request_lower
+                        for word in ["animation", "video", "result", "output"]
+                    ):
                         label = "Run and display animation"
                         desc = "Execute the animation script and show the visual output"
                     elif any(word in request_lower for word in ["file", "code"]):
@@ -3764,7 +3792,7 @@ Return ONLY the JSON, no markdown or explanations."""
         decision: Dict[str, Any],
         requested_at: datetime,
         danger_level: Optional[str] = None,
-        cwd: Optional[str] = None
+        cwd: Optional[str] = None,
     ) -> Optional[str]:
         """
         Handle user's consent decision by saving preferences and logging to audit.
@@ -3781,7 +3809,9 @@ Return ONLY the JSON, no markdown or explanations."""
             Command to execute (original or alternative), or None if denied
         """
         if not self.user_id or not self.org_id:
-            logger.warning("[AutonomousAgent] Cannot handle consent decision without user/org ID")
+            logger.warning(
+                "[AutonomousAgent] Cannot handle consent decision without user/org ID"
+            )
             return None
 
         choice = decision.get("choice", "deny")
@@ -3795,14 +3825,14 @@ Return ONLY the JSON, no markdown or explanations."""
                     user_id=str(self.user_id),
                     org_id=str(self.org_id),
                     preference_type="exact_command",
-                    command=command
+                    command=command,
                 )
             elif choice == "allow_always_type":
                 self.consent_service.save_preference(
                     user_id=str(self.user_id),
                     org_id=str(self.org_id),
                     preference_type="command_type",
-                    command=command
+                    command=command,
                 )
 
             # Log decision to audit trail
@@ -3817,14 +3847,16 @@ Return ONLY the JSON, no markdown or explanations."""
                 shell="bash",
                 cwd=cwd,
                 danger_level=danger_level,
-                alternative_command=alternative_cmd
+                alternative_command=alternative_cmd,
             )
 
             # Determine which command to execute
             if choice == "deny":
                 return None
             elif choice == "alternative" and alternative_cmd:
-                logger.info(f"[AutonomousAgent] Using alternative command: {alternative_cmd}")
+                logger.info(
+                    f"[AutonomousAgent] Using alternative command: {alternative_cmd}"
+                )
                 return alternative_cmd
             else:
                 # allow_once, allow_always_exact, or allow_always_type
@@ -3834,7 +3866,11 @@ Return ONLY the JSON, no markdown or explanations."""
             logger.error(f"[AutonomousAgent] Failed to handle consent decision: {e}")
             # Still return the command if user approved, even if logging failed
             if choice != "deny":
-                return alternative_cmd if choice == "alternative" and alternative_cmd else command
+                return (
+                    alternative_cmd
+                    if choice == "alternative" and alternative_cmd
+                    else command
+                )
             return None
 
     async def _check_auto_allow(self, command: str) -> bool:
@@ -3853,9 +3889,7 @@ Return ONLY the JSON, no markdown or explanations."""
 
         try:
             pref_type = self.consent_service.check_auto_allow(
-                user_id=str(self.user_id),
-                org_id=str(self.org_id),
-                command=command
+                user_id=str(self.user_id), org_id=str(self.org_id), command=command
             )
 
             if pref_type:
@@ -3890,7 +3924,9 @@ Return ONLY the JSON, no markdown or explanations."""
             Returns {"choice": "deny"} if timeout or error
         """
         if not self.redis_client:
-            logger.error(f"[AutonomousAgent] Redis not available, denying consent {consent_id}")
+            logger.error(
+                f"[AutonomousAgent] Redis not available, denying consent {consent_id}"
+            )
             return {"choice": "deny"}
 
         start_time = time.time()
@@ -4033,7 +4069,9 @@ Return ONLY the JSON, no markdown or explanations."""
                 path = os.path.join(self.workspace_path, file_path)
 
                 # If the user requested deletion, do not "clear" the file - delete it
-                if content == "" and self._is_delete_request(context.original_request, context):
+                if content == "" and self._is_delete_request(
+                    context.original_request, context
+                ):
                     if not os.path.exists(path):
                         return {
                             "success": False,
@@ -4044,6 +4082,7 @@ Return ONLY the JSON, no markdown or explanations."""
                     )
                     import shlex
                     from backend.agent.tools.run_command import run_command as run_cmd
+
                     return await run_cmd(
                         user_id=str(self.user_id or "anonymous"),
                         command=f"rm {shlex.quote(file_path)}",
@@ -4594,12 +4633,15 @@ Return ONLY the JSON, no markdown or explanations."""
                 # Post-process visual outputs (animations, videos)
                 if response.get("success"):
                     try:
-                        from backend.services.visual_output_handler import VisualOutputHandler
+                        from backend.services.visual_output_handler import (
+                            VisualOutputHandler,
+                        )
 
                         visual_handler = VisualOutputHandler(self.workspace_path)
                         visual_result = await visual_handler.process_visual_output(
                             output=stdout_text + "\n" + stderr_text,
-                            created_files=context.files_created + context.files_modified
+                            created_files=context.files_created
+                            + context.files_modified,
                         )
 
                         if visual_result and visual_result.get("compiled"):
@@ -4611,7 +4653,9 @@ Return ONLY the JSON, no markdown or explanations."""
                                 f"[AutonomousAgent] ✅ Processed visual output: {visual_result.get('output_file')}"
                             )
                     except Exception as visual_err:
-                        logger.warning(f"Visual output processing failed (non-critical): {visual_err}")
+                        logger.warning(
+                            f"Visual output processing failed (non-critical): {visual_err}"
+                        )
 
                 return response
 
@@ -5252,11 +5296,15 @@ Return ONLY the JSON, no markdown or explanations."""
                                         consent_id = result.get("consent_id")
 
                                         # Check if command is auto-allowed by user preferences
-                                        auto_allowed = await self._check_auto_allow(command)
+                                        auto_allowed = await self._check_auto_allow(
+                                            command
+                                        )
 
                                         if auto_allowed:
                                             # Execute directly without user consent
-                                            logger.info("[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
+                                            logger.info(
+                                                "[AutonomousAgent] 🚀 Auto-allowed, executing without consent"
+                                            )
                                             args["consent_id"] = consent_id
                                             result = await self._execute_tool(
                                                 current_tool["name"], args, context
@@ -5269,31 +5317,55 @@ Return ONLY the JSON, no markdown or explanations."""
                                                     await self.redis_client.setex(
                                                         f"consent:{consent_id}",
                                                         300,  # 5 minute TTL
-                                                        json.dumps({
-                                                            "pending": True,
-                                                            "command": command,
-                                                            "requested_at": requested_at.isoformat(),
-                                                            "user_id": str(self.user_id) if self.user_id else None,
-                                                            "org_id": str(self.org_id) if self.org_id else None
-                                                        })
+                                                        json.dumps(
+                                                            {
+                                                                "pending": True,
+                                                                "command": command,
+                                                                "requested_at": requested_at.isoformat(),
+                                                                "user_id": (
+                                                                    str(self.user_id)
+                                                                    if self.user_id
+                                                                    else None
+                                                                ),
+                                                                "org_id": (
+                                                                    str(self.org_id)
+                                                                    if self.org_id
+                                                                    else None
+                                                                ),
+                                                            }
+                                                        ),
                                                     )
                                                 except Exception as e:
-                                                    logger.error(f"[AutonomousAgent] Failed to store consent in Redis: {e}")
+                                                    logger.error(
+                                                        f"[AutonomousAgent] Failed to store consent in Redis: {e}"
+                                                    )
 
                                             # Emit consent event to frontend
                                             yield consent_event
 
                                             # Wait for user to approve/deny consent
-                                            decision = await self._wait_for_consent(consent_id)
+                                            decision = await self._wait_for_consent(
+                                                consent_id
+                                            )
 
                                             # Handle the decision (save preferences, log audit)
-                                            command_to_execute = await self._handle_consent_decision(
-                                                consent_id=consent_id,
-                                                command=command,
-                                                decision=decision,
-                                                requested_at=requested_at if 'requested_at' in locals() else datetime.now(),
-                                                danger_level=result.get("danger_level"),
-                                                cwd=args.get("cwd", self.workspace_path)
+                                            command_to_execute = (
+                                                await self._handle_consent_decision(
+                                                    consent_id=consent_id,
+                                                    command=command,
+                                                    decision=decision,
+                                                    requested_at=(
+                                                        requested_at
+                                                        if "requested_at" in locals()
+                                                        else datetime.now()
+                                                    ),
+                                                    danger_level=result.get(
+                                                        "danger_level"
+                                                    ),
+                                                    cwd=args.get(
+                                                        "cwd", self.workspace_path
+                                                    ),
+                                                )
                                             )
 
                                             if command_to_execute:
@@ -5303,7 +5375,10 @@ Return ONLY the JSON, no markdown or explanations."""
                                                 )
                                                 args["consent_id"] = consent_id
                                                 # If alternative command, update the args
-                                                if decision.get("choice") == "alternative":
+                                                if (
+                                                    decision.get("choice")
+                                                    == "alternative"
+                                                ):
                                                     args["command"] = command_to_execute
                                                 result = await self._execute_tool(
                                                     current_tool["name"], args, context
@@ -5312,7 +5387,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                                 # Consent denied or timeout
                                                 result = {
                                                     "success": False,
-                                                    "error": "User denied consent or consent timed out"
+                                                    "error": "User denied consent or consent timed out",
                                                 }
 
                                     # Log result (unified method - warns if failed)
@@ -5494,7 +5569,7 @@ Return ONLY the JSON, no markdown or explanations."""
                     "Content-Type": "application/json",
                 }
 
-                base_url = "https://api.openai.com/v1"
+                base_url = self.base_url or "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
                     headers["Authorization"] = (
@@ -5505,6 +5580,22 @@ Return ONLY the JSON, no markdown or explanations."""
                     headers["Authorization"] = (
                         f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
                     )
+                elif self.provider == "ollama":
+                    base_url = os.environ.get("OLLAMA_BASE_URL", base_url)
+                    if not base_url.rstrip("/").endswith("/v1"):
+                        base_url = f"{base_url.rstrip('/')}/v1"
+                    headers.pop("Authorization", None)
+                elif self.provider == "self_hosted":
+                    base_url = (
+                        os.environ.get("SELF_HOSTED_API_BASE_URL")
+                        or os.environ.get("SELF_HOSTED_LLM_URL")
+                        or os.environ.get("VLLM_BASE_URL")
+                        or base_url
+                    )
+                    if not base_url.rstrip("/").endswith("/v1"):
+                        base_url = f"{base_url.rstrip('/')}/v1"
+                    if not self.api_key:
+                        headers.pop("Authorization", None)
 
                 logger.info(f"[AutonomousAgent] 📡 Sending request to {base_url}...")
 
@@ -5741,10 +5832,16 @@ Return ONLY the JSON, no markdown or explanations."""
 
                                     if auto_allowed:
                                         # Execute directly without user consent
-                                        logger.info("[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
-                                        tool_info["arguments"]["consent_id"] = consent_id
+                                        logger.info(
+                                            "[AutonomousAgent] 🚀 Auto-allowed, executing without consent"
+                                        )
+                                        tool_info["arguments"][
+                                            "consent_id"
+                                        ] = consent_id
                                         result = await self._execute_tool(
-                                            tool_info["name"], tool_info["arguments"], context
+                                            tool_info["name"],
+                                            tool_info["arguments"],
+                                            context,
                                         )
                                     else:
                                         # Store consent request in Redis
@@ -5754,31 +5851,53 @@ Return ONLY the JSON, no markdown or explanations."""
                                                 await self.redis_client.setex(
                                                     f"consent:{consent_id}",
                                                     300,  # 5 minute TTL
-                                                    json.dumps({
-                                                        "pending": True,
-                                                        "command": command,
-                                                        "requested_at": requested_at.isoformat(),
-                                                        "user_id": str(self.user_id) if self.user_id else None,
-                                                        "org_id": str(self.org_id) if self.org_id else None
-                                                    })
+                                                    json.dumps(
+                                                        {
+                                                            "pending": True,
+                                                            "command": command,
+                                                            "requested_at": requested_at.isoformat(),
+                                                            "user_id": (
+                                                                str(self.user_id)
+                                                                if self.user_id
+                                                                else None
+                                                            ),
+                                                            "org_id": (
+                                                                str(self.org_id)
+                                                                if self.org_id
+                                                                else None
+                                                            ),
+                                                        }
+                                                    ),
                                                 )
                                             except Exception as e:
-                                                logger.error(f"[AutonomousAgent] Failed to store consent in Redis: {e}")
+                                                logger.error(
+                                                    f"[AutonomousAgent] Failed to store consent in Redis: {e}"
+                                                )
 
                                         # Emit consent event to frontend
                                         yield consent_event
 
                                         # Wait for user to approve/deny consent
-                                        decision = await self._wait_for_consent(consent_id)
+                                        decision = await self._wait_for_consent(
+                                            consent_id
+                                        )
 
                                         # Handle the decision (save preferences, log audit)
-                                        command_to_execute = await self._handle_consent_decision(
-                                            consent_id=consent_id,
-                                            command=command,
-                                            decision=decision,
-                                            requested_at=requested_at if 'requested_at' in locals() else datetime.now(),
-                                            danger_level=result.get("danger_level"),
-                                            cwd=tool_info["arguments"].get("cwd", self.workspace_path)
+                                        command_to_execute = (
+                                            await self._handle_consent_decision(
+                                                consent_id=consent_id,
+                                                command=command,
+                                                decision=decision,
+                                                requested_at=(
+                                                    requested_at
+                                                    if "requested_at" in locals()
+                                                    else datetime.now()
+                                                ),
+                                                danger_level=result.get("danger_level"),
+                                                cwd=tool_info["arguments"].get(
+                                                    "cwd", self.workspace_path
+                                                ),
+                                            )
                                         )
 
                                         if command_to_execute:
@@ -5786,18 +5905,24 @@ Return ONLY the JSON, no markdown or explanations."""
                                             logger.info(
                                                 "[AutonomousAgent] 🔄 Retrying tool with consent approval"
                                             )
-                                            tool_info["arguments"]["consent_id"] = consent_id
+                                            tool_info["arguments"][
+                                                "consent_id"
+                                            ] = consent_id
                                             # If alternative command, update the args
                                             if decision.get("choice") == "alternative":
-                                                tool_info["arguments"]["command"] = command_to_execute
+                                                tool_info["arguments"][
+                                                    "command"
+                                                ] = command_to_execute
                                             result = await self._execute_tool(
-                                                tool_info["name"], tool_info["arguments"], context
+                                                tool_info["name"],
+                                                tool_info["arguments"],
+                                                context,
                                             )
                                         else:
                                             # Consent denied or timeout
                                             result = {
                                                 "success": False,
-                                                "error": "User denied consent or consent timed out"
+                                                "error": "User denied consent or consent timed out",
                                             }
 
                                 # Log result (unified method - warns if failed)
@@ -5851,7 +5976,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
                                 if auto_allowed:
                                     # Execute directly without user consent
-                                    logger.info("[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
+                                    logger.info(
+                                        "[AutonomousAgent] 🚀 Auto-allowed, executing without consent"
+                                    )
                                     tc["arguments"]["consent_id"] = consent_id
                                     result = await self._execute_tool(
                                         tc["name"], tc["arguments"], context
@@ -5864,16 +5991,28 @@ Return ONLY the JSON, no markdown or explanations."""
                                             await self.redis_client.setex(
                                                 f"consent:{consent_id}",
                                                 300,  # 5 minute TTL
-                                                json.dumps({
-                                                    "pending": True,
-                                                    "command": command,
-                                                    "requested_at": requested_at.isoformat(),
-                                                    "user_id": str(self.user_id) if self.user_id else None,
-                                                    "org_id": str(self.org_id) if self.org_id else None
-                                                })
+                                                json.dumps(
+                                                    {
+                                                        "pending": True,
+                                                        "command": command,
+                                                        "requested_at": requested_at.isoformat(),
+                                                        "user_id": (
+                                                            str(self.user_id)
+                                                            if self.user_id
+                                                            else None
+                                                        ),
+                                                        "org_id": (
+                                                            str(self.org_id)
+                                                            if self.org_id
+                                                            else None
+                                                        ),
+                                                    }
+                                                ),
                                             )
                                         except Exception as e:
-                                            logger.error(f"[AutonomousAgent] Failed to store consent in Redis: {e}")
+                                            logger.error(
+                                                f"[AutonomousAgent] Failed to store consent in Redis: {e}"
+                                            )
 
                                     # Emit consent event to frontend
                                     yield consent_event
@@ -5882,13 +6021,21 @@ Return ONLY the JSON, no markdown or explanations."""
                                     decision = await self._wait_for_consent(consent_id)
 
                                     # Handle the decision (save preferences, log audit)
-                                    command_to_execute = await self._handle_consent_decision(
-                                        consent_id=consent_id,
-                                        command=command,
-                                        decision=decision,
-                                        requested_at=requested_at if 'requested_at' in locals() else datetime.now(),
-                                        danger_level=result.get("danger_level"),
-                                        cwd=tc["arguments"].get("cwd", self.workspace_path)
+                                    command_to_execute = (
+                                        await self._handle_consent_decision(
+                                            consent_id=consent_id,
+                                            command=command,
+                                            decision=decision,
+                                            requested_at=(
+                                                requested_at
+                                                if "requested_at" in locals()
+                                                else datetime.now()
+                                            ),
+                                            danger_level=result.get("danger_level"),
+                                            cwd=tc["arguments"].get(
+                                                "cwd", self.workspace_path
+                                            ),
+                                        )
                                     )
 
                                     if command_to_execute:
@@ -5899,7 +6046,9 @@ Return ONLY the JSON, no markdown or explanations."""
                                         tc["arguments"]["consent_id"] = consent_id
                                         # If alternative command, update the args
                                         if decision.get("choice") == "alternative":
-                                            tc["arguments"]["command"] = command_to_execute
+                                            tc["arguments"][
+                                                "command"
+                                            ] = command_to_execute
                                         result = await self._execute_tool(
                                             tc["name"], tc["arguments"], context
                                         )
@@ -5907,7 +6056,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                         # Consent denied or timeout
                                         result = {
                                             "success": False,
-                                            "error": "User denied consent or consent timed out"
+                                            "error": "User denied consent or consent timed out",
                                         }
 
                             # Log result (unified method - warns if failed)
@@ -6175,13 +6324,14 @@ Return ONLY the JSON, no markdown or explanations."""
                             f"Multiple matches found for {candidate}. "
                             "Which file should I use?"
                         ),
-                        options=[
-                            {"value": m, "label": m} for m in matches[:10]
-                        ],
+                        options=[{"value": m, "label": m} for m in matches[:10]],
                     )
             elif status == "not_found":
                 candidate = preflight.get("candidate", "") or ""
-                if intent in ("delete", "move", "edit") and context.pending_prompt is None:
+                if (
+                    intent in ("delete", "move", "edit")
+                    and context.pending_prompt is None
+                ):
                     context.pending_prompt = create_user_prompt(
                         prompt_type="text",
                         title="File path",
@@ -6223,7 +6373,9 @@ Return ONLY the JSON, no markdown or explanations."""
             preflight_blocks.append(
                 f"--- COMMAND PREFLIGHT ---\n{command_preflight_note}\n--- END COMMAND PREFLIGHT ---"
             )
-        preflight_block = f"\n\n{chr(10).join(preflight_blocks)}" if preflight_blocks else ""
+        preflight_block = (
+            f"\n\n{chr(10).join(preflight_blocks)}" if preflight_blocks else ""
+        )
         enhanced_request = f"""{request}{preflight_block}
 
 --- ENVIRONMENT INFO (gathered automatically) ---
@@ -6287,9 +6439,7 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
             # Check if there's a pending prompt that needs user input
             if context.pending_prompt:
                 prompt = context.pending_prompt
-                logger.info(
-                    f"[AutonomousAgent] 💬 User prompt pending: {prompt.title}"
-                )
+                logger.info(f"[AutonomousAgent] 💬 User prompt pending: {prompt.title}")
                 from backend.api.navi import register_prompt_request
 
                 register_prompt_request(

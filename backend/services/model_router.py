@@ -10,19 +10,46 @@ from typing import Any, Dict, Iterable, Optional
 
 
 _ENDPOINT_PROVIDER_SUPPORT = {
-    "stream": {"openai", "anthropic", "google", "groq", "openrouter"},
-    "stream_v2": {"openai", "anthropic", "groq", "openrouter"},
-    "autonomous": {"openai", "anthropic", "google", "groq", "openrouter"},
+    "stream": {
+        "openai",
+        "anthropic",
+        "google",
+        "groq",
+        "openrouter",
+        "ollama",
+        "self_hosted",
+    },
+    "stream_v2": {
+        "openai",
+        "anthropic",
+        "groq",
+        "openrouter",
+        "ollama",
+        "self_hosted",
+    },
+    "autonomous": {
+        "openai",
+        "anthropic",
+        "google",
+        "groq",
+        "openrouter",
+        "ollama",
+        "self_hosted",
+    },
 }
 
 _PROVIDER_CREDENTIAL_KEYS: Dict[str, tuple[str, ...]] = {
     "openai": ("OPENAI_API_KEY",),
     "anthropic": ("ANTHROPIC_API_KEY",),
-    "google": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+    "google": ("GOOGLE_API_KEY",),
     "groq": ("GROQ_API_KEY",),
     "openrouter": ("OPENROUTER_API_KEY",),
     "ollama": ("OLLAMA_BASE_URL",),
-    "self_hosted": ("SELF_HOSTED_API_BASE_URL", "SELF_HOSTED_LLM_URL", "VLLM_BASE_URL"),
+    "self_hosted": (
+        "SELF_HOSTED_API_BASE_URL",
+        "SELF_HOSTED_LLM_URL",
+        "VLLM_BASE_URL",
+    ),
 }
 
 _ALIAS_TO_MODEL_ID = {

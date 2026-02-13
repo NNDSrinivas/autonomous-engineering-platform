@@ -78,7 +78,7 @@ async def send_message(
 
                         # Collect text events
                         elif event.get("type") == "text":
-                            content = event.get("content", "")
+                            content = event.get("text") or event.get("content", "")
                             assistant_response += content
                             # Print first 100 chars
                             if len(content) > 0:

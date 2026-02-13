@@ -576,13 +576,21 @@ try {
 ### 4. Add Cancellation
 
 ```typescript
-let eventSource: EventSource | null = null;
+let streamAbortController: AbortController | null = null;
+
+const startRequest = async () => {
+  streamAbortController = new AbortController();
+  await fetchEventSource(url, {
+    method: 'POST',
+    signal: streamAbortController.signal,
+    // ...
+  });
+};
 
 const cancelRequest = () => {
-  if (eventSource) {
-    eventSource.close();
-    setStatus('');
-  }
+  streamAbortController?.abort();
+  streamAbortController = null;
+  setStatus('');
 };
 
 // In UI

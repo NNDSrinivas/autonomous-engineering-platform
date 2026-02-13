@@ -9,7 +9,7 @@ const BACKEND_BASE = resolveBackendBase();
 const CHAT_URL = `${BACKEND_BASE}/api/navi/chat`;
 const CHAT_STREAM_URL = `${BACKEND_BASE}/api/navi/chat/stream`;
 const AUTONOMOUS_URL = `${BACKEND_BASE}/api/navi/chat/autonomous`;
-// Enable streaming for autonomous mode (agent), disable for other modes
+// Keep streaming enabled for all modes to provide consistent incremental UX.
 const USE_STREAMING = true;
 
 export interface LLMModel {

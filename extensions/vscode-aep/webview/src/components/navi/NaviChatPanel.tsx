@@ -557,17 +557,80 @@ type PanelStateSnapshot = {
   activityFilesOpen: boolean;
 };
 
-// NOTE: VS Code webview localStorage may not persist across reloads in all scenarios.
-// For production-grade persistence, consider using:
-// - VS Code webview state: acquireVsCodeApi().setState/getState
-// - Backend persistence via API calls
-// Current implementation provides best-effort local caching.
-const readPanelState = (sessionId: string): PanelStateSnapshot | null => {
-  if (typeof window === "undefined") return null;
+const getWebviewStateObject = (): Record<string, any> => {
+  const raw = vscodeApi.getState();
+  return raw && typeof raw === "object" ? (raw as Record<string, any>) : {};
+};
+
+const readPanelStateFromWebview = (sessionId: string): PanelStateSnapshot | null => {
   try {
-    const raw = window.localStorage.getItem(`${PANEL_STATE_PREFIX}${sessionId}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PanelStateSnapshot>;
+    const state = getWebviewStateObject();
+    const panelStateBySession = state[PANEL_STATE_WEBVIEW_KEY];
+    if (!panelStateBySession || typeof panelStateBySession !== "object") {
+      return null;
+    }
+    const snapshot = (panelStateBySession as Record<string, any>)[sessionId];
+    if (!snapshot || typeof snapshot !== "object") {
+      return null;
+    }
+    return snapshot as PanelStateSnapshot;
+  } catch {
+    return null;
+  }
+};
+
+const writePanelStateToWebview = (sessionId: string, snapshot: PanelStateSnapshot) => {
+  try {
+    const state = getWebviewStateObject();
+    const existingBySession =
+      state[PANEL_STATE_WEBVIEW_KEY] && typeof state[PANEL_STATE_WEBVIEW_KEY] === "object"
+        ? (state[PANEL_STATE_WEBVIEW_KEY] as Record<string, any>)
+        : {};
+    vscodeApi.setState({
+      ...state,
+      [PANEL_STATE_WEBVIEW_KEY]: {
+        ...existingBySession,
+        [sessionId]: snapshot,
+      },
+    });
+  } catch {
+    // ignore VS Code state errors
+  }
+};
+
+const clearPanelStateFromWebview = (sessionId: string) => {
+  try {
+    const state = getWebviewStateObject();
+    const existingBySession =
+      state[PANEL_STATE_WEBVIEW_KEY] && typeof state[PANEL_STATE_WEBVIEW_KEY] === "object"
+        ? { ...(state[PANEL_STATE_WEBVIEW_KEY] as Record<string, any>) }
+        : {};
+    if (!(sessionId in existingBySession)) {
+      return;
+    }
+    delete existingBySession[sessionId];
+    vscodeApi.setState({
+      ...state,
+      [PANEL_STATE_WEBVIEW_KEY]: existingBySession,
+    });
+  } catch {
+    // ignore VS Code state errors
+  }
+};
+
+const readPanelState = (sessionId: string): PanelStateSnapshot | null => {
+  const fromWebview = readPanelStateFromWebview(sessionId);
+  let parsed: Partial<PanelStateSnapshot> | null = fromWebview;
+  if (!parsed && typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(`${PANEL_STATE_PREFIX}${sessionId}`);
+      parsed = raw ? (JSON.parse(raw) as Partial<PanelStateSnapshot>) : null;
+    } catch {
+      parsed = null;
+    }
+  }
+  if (!parsed) return null;
+  try {
     return {
       terminalEntries: Array.isArray(parsed.terminalEntries)
         ? parsed.terminalEntries.slice(-MAX_TERMINAL_ENTRIES)
@@ -590,6 +653,7 @@ const readPanelState = (sessionId: string): PanelStateSnapshot | null => {
 };
 
 const writePanelState = (sessionId: string, snapshot: PanelStateSnapshot) => {
+  writePanelStateToWebview(sessionId, snapshot);
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(`${PANEL_STATE_PREFIX}${sessionId}`, JSON.stringify(snapshot));
@@ -599,6 +663,7 @@ const writePanelState = (sessionId: string, snapshot: PanelStateSnapshot) => {
 };
 
 const clearPanelState = (sessionId: string) => {
+  clearPanelStateFromWebview(sessionId);
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(`${PANEL_STATE_PREFIX}${sessionId}`);
@@ -1088,6 +1153,7 @@ const MAX_CONVERSATION_HISTORY = 25;
 const MAX_TERMINAL_ENTRIES = 6;
 const MAX_ACTIVITY_EVENTS = 60;
 const PANEL_STATE_PREFIX = "aep.navi.panelState.v1.";
+const PANEL_STATE_WEBVIEW_KEY = "aep.navi.panelState.bySession.v1";
 
 type GreetingKind = "simple" | "how_are_you" | "whats_up" | "time_of_day";
 

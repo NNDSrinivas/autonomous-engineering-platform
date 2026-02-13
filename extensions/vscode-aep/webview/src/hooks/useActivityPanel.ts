@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ActivityStep, FileChange, CommandPreview } from '../components/ActivityPanel';
+import * as vscodeApi from '../utils/vscodeApi';
 
 interface AgentRunMetadata {
   mode?: string;
@@ -16,12 +17,31 @@ type ActivityPanelSnapshot = {
 };
 
 const STORAGE_KEY = "aep.navi.activityPanel.v1";
+const VSCODE_STATE_KEY = "aep.navi.activityPanel.state.v1";
 
-// NOTE: VS Code webview localStorage may not persist across reloads in all scenarios.
-// For production-grade persistence, consider using VS Code webview state
-// (acquireVsCodeApi().setState/getState) or backend persistence.
-// Current implementation provides best-effort local caching.
+const getWebviewStateObject = (): Record<string, any> => {
+  const raw = vscodeApi.getState();
+  return raw && typeof raw === "object" ? (raw as Record<string, any>) : {};
+};
+
 const readSnapshot = (): ActivityPanelSnapshot | null => {
+  try {
+    const state = getWebviewStateObject();
+    const snapshot = state[VSCODE_STATE_KEY];
+    if (snapshot && typeof snapshot === "object") {
+      return {
+        steps: Array.isArray((snapshot as any).steps) ? (snapshot as any).steps : [],
+        currentStep:
+          typeof (snapshot as any).currentStep === "number"
+            ? (snapshot as any).currentStep
+            : undefined,
+        isVisible: Boolean((snapshot as any).isVisible),
+      };
+    }
+  } catch {
+    // ignore VS Code state errors and fall back to localStorage
+  }
+
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -38,6 +58,16 @@ const readSnapshot = (): ActivityPanelSnapshot | null => {
 };
 
 const writeSnapshot = (snapshot: ActivityPanelSnapshot) => {
+  try {
+    const state = getWebviewStateObject();
+    vscodeApi.setState({
+      ...state,
+      [VSCODE_STATE_KEY]: snapshot,
+    });
+  } catch {
+    // ignore VS Code state errors
+  }
+
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));

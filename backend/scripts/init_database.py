@@ -16,6 +16,7 @@ Usage:
 
 import os
 import sys
+import importlib
 from pathlib import Path
 
 # Add backend to path
@@ -30,57 +31,22 @@ from backend.core.config import settings
 # This is CRITICAL - if a model isn't imported, its table won't be created
 print("📦 Importing model modules...")
 
-# Core models
-try:
-    import backend.models  # noqa: F401
+MODEL_MODULES = [
+    "backend.models",
+    "backend.database.models.memory",
+    "backend.database.models.rbac",
+    "backend.database.models.enterprise_project",
+    "backend.database.models.memory_graph",
+    "backend.database.models.consent",
+    "backend.core.eventstore.models",
+]
 
-    print("   ✓ backend.models")
-except Exception as e:
-    print(f"   ⚠️  backend.models: {e}")
-
-# Database models (memory system)
-try:
-    import backend.database.models.memory  # noqa: F401
-
-    print("   ✓ backend.database.models.memory")
-except Exception as e:
-    print(f"   ⚠️  backend.database.models.memory: {e}")
-
-try:
-    import backend.database.models.rbac  # noqa: F401
-
-    print("   ✓ backend.database.models.rbac")
-except Exception as e:
-    print(f"   ⚠️  backend.database.models.rbac: {e}")
-
-try:
-    import backend.database.models.enterprise_project  # noqa: F401
-
-    print("   ✓ backend.database.models.enterprise_project")
-except Exception as e:
-    print(f"   ⚠️  backend.database.models.enterprise_project: {e}")
-
-try:
-    import backend.database.models.memory_graph  # noqa: F401
-
-    print("   ✓ backend.database.models.memory_graph")
-except Exception as e:
-    print(f"   ⚠️  backend.database.models.memory_graph: {e}")
-
-try:
-    import backend.database.models.consent  # noqa: F401
-
-    print("   ✓ backend.database.models.consent")
-except Exception as e:
-    print(f"   ⚠️  backend.database.models.consent: {e}")
-
-# Event store models (audit)
-try:
-    import backend.core.eventstore.models
-
-    print(f"   ✓ {backend.core.eventstore.models.__name__}")
-except Exception as e:
-    print(f"   ⚠️  backend.core.eventstore.models: {e}")
+for module_path in MODEL_MODULES:
+    try:
+        module = importlib.import_module(module_path)
+        print(f"   ✓ {module.__name__}")
+    except Exception as e:
+        print(f"   ⚠️  {module_path}: {e}")
 
 print()
 
@@ -191,7 +157,7 @@ def main():
         print(f"   - {table}")
     print()
 
-    # Create tables
+    # Create tables (bootstrap utility only; production schema changes should use Alembic)
     try:
         print("🔨 Creating tables...")
         Base.metadata.create_all(bind=engine, checkfirst=True)

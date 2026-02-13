@@ -882,6 +882,28 @@ Notes:
 ./scripts/check_extension_compile.sh
 ```
 
+#### **VSCode Extension Build Process**
+
+The VSCode extension (`extensions/vscode-aep`) includes an automated webview build process:
+
+**Automated Webview Building:**
+```bash
+cd extensions/vscode-aep
+npm run compile  # Builds webview (React/Vite) + TypeScript extension
+```
+
+The `compile` script automatically:
+1. Builds the webview React application (`webview/`) using Vite
+2. Outputs to `dist/webview/` directory
+3. Then compiles the TypeScript extension code
+
+**Development Workflow:**
+- **For extension development**: `npm run watch` (watches TypeScript only)
+- **For webview development**: `cd webview && npm run dev` (hot reload dev server)
+- **For publishing**: `npm run vscode:prepublish` (builds everything)
+
+**Note**: This ensures the webview is always up-to-date when packaging or publishing the extension, preventing the common issue of forgetting to build the webview separately.
+
 #### **Enterprise Ops Readiness**
 
 For production-oriented security and ops guidance (audit retention, encryption, JWT rotation),

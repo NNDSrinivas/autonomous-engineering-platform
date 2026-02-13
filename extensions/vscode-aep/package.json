@@ -220,7 +220,8 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "build:webview": "npm --prefix webview run build",
+    "compile": "npm run build:webview && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "demo-backend": "node demo-backend.js",

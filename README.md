@@ -68,8 +68,7 @@ python3.11 -m venv aep-venv
 source aep-venv/bin/activate
 pip install -r requirements.txt
 
-# Frontend setup
-cd frontend
+# Install all npm workspaces (frontend, extension, webview, packages)
 npm install
 
 # Copy environment configuration

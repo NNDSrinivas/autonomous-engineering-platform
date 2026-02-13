@@ -64,8 +64,8 @@ jobs:
             echo "STAGING_IMAGE=$DOCKERHUB_IMAGE" >> $GITHUB_ENV
             echo "Using DOCKERHUB_IMAGE"
           else
-            echo "No container image configured"
-            exit 1
+            echo "No container image configured via secrets; fallback build+push to ECR will be used"
+            echo "NEEDS_IMAGE_BUILD=1" >> $GITHUB_ENV
           fi
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -73,6 +73,29 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+      - name: Build and push fallback image to ECR
+        if: env.NEEDS_IMAGE_BUILD == '1'
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          ECR_REPO_NAME: navi-staging-backend
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO_URI="${REGISTRY}/${ECR_REPO_NAME}"
+
+          aws ecr describe-repositories --repository-names "${ECR_REPO_NAME}" >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name "${ECR_REPO_NAME}" >/dev/null
+
+          aws ecr get-login-password --region "${AWS_REGION}" | \
+            docker login --username AWS --password-stdin "${REGISTRY}"
+
+          IMAGE_TAG="${GITHUB_SHA}"
+          IMAGE_URI="${REPO_URI}:${IMAGE_TAG}"
+          docker build -t "${IMAGE_URI}" .
+          docker push "${IMAGE_URI}"
+
+          echo "STAGING_IMAGE=${IMAGE_URI}" >> "$GITHUB_ENV"
+          echo "Using fallback ECR image ${IMAGE_URI}"
       - name: Deploy staging via Terraform
         env:
           CONFIRM_APPLY: "1"

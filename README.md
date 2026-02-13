@@ -893,12 +893,15 @@ The VSCode extension (`extensions/vscode-aep`) includes an automated webview bui
 
 **Setup (One-Time):**
 ```bash
-cd extensions/vscode-aep
-npm install  # Installs extension dependencies + webview dependencies (via postinstall hook)
+# IMPORTANT: Run from repository root to install all workspace dependencies
+cd /path/to/autonomous-engineering-platform
+npm install  # Installs all workspaces: navi-contracts, frontend, extension, webview
 ```
 
 **Build Commands:**
 ```bash
+cd extensions/vscode-aep
+
 # Full build (webview + TypeScript extension)
 npm run compile
 
@@ -913,11 +916,11 @@ npm run vscode:prepublish  # Builds everything for production
 ```
 
 **How It Works:**
-1. `npm install` triggers `postinstall` hook → installs webview dependencies once
+1. `npm install` at repo root installs all npm workspaces (including webview dependencies)
 2. `npm run compile` builds webview (Vite 6.x) → compiles TypeScript extension
-3. `npm run watch` watches TypeScript only (no repeated webview builds - faster for development)
+3. `npm run watch` watches TypeScript only (no webview rebuild - faster for development)
 
-**Note**: Webview dependencies are installed automatically via the `postinstall` hook when you run `npm install` in the extension directory. This ensures dependencies are present without slowing down every compile. For development, use `npm run watch` for fast incremental TypeScript builds, and only run `npm run compile` when you need a full rebuild including the webview.
+**Note**: This repository uses npm workspaces. Always run `npm install` from the **repository root** to ensure all workspace dependencies (including `@aep/navi-contracts` local workspace) are correctly resolved. Running `npm install` in subdirectories may break local workspace dependency resolution. For development, use `npm run watch` for fast incremental TypeScript builds.
 
 #### **Enterprise Ops Readiness**
 

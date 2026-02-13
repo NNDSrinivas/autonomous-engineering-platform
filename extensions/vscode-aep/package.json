@@ -221,7 +221,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "postinstall": "npm run install:webview",
-    "install:webview": "cd webview && npm install",
+    "install:webview": "npm install --prefix webview",
     "build:webview": "npm --prefix webview run build",
     "compile": "npm run build:webview && tsc -p ./",
     "watch": "tsc -watch -p ./",

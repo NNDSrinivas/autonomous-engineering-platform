@@ -51,7 +51,9 @@ Transform how engineering teams work by providing an **autonomous AI assistant**
 - **Python 3.11.x** (recommended) or 3.9-3.12
   - ⚠️ Python 3.13+ not yet supported due to dependency compatibility
   - Install Python 3.11: `brew install python@3.11` (macOS) or download from [python.org](https://www.python.org)
-- **Node.js 16+**
+- **Node.js 20+** (recommended for VSCode extension development)
+  - Node.js 18+ supported for backend/frontend
+  - Install Node 20: `brew install node@20` (macOS) or download from [nodejs.org](https://nodejs.org)
 - **PostgreSQL**
 - **Redis** (optional for development, required for production)
 
@@ -884,7 +886,10 @@ Notes:
 
 #### **VSCode Extension Build Process**
 
-The VSCode extension (`extensions/vscode-aep`) includes an automated webview build process:
+The VSCode extension (`extensions/vscode-aep`) includes an automated webview build process.
+
+**Prerequisites:**
+- Node.js 20+ required (Vite 6.x build tooling requires Node 18.19+ or 20+)
 
 **Automated Webview Building:**
 ```bash
@@ -894,7 +899,7 @@ npm run compile  # Auto-installs webview deps + builds webview (React/Vite) + co
 
 The `compile` script automatically:
 1. **Installs webview dependencies** (via `precompile` hook running `npm --prefix webview install`)
-2. Builds the webview React application (`webview/`) using Vite
+2. Builds the webview React application (`webview/`) using Vite 6.x
 3. Outputs to `dist/webview/` directory
 4. Then compiles the TypeScript extension code
 

@@ -891,24 +891,33 @@ The VSCode extension (`extensions/vscode-aep`) includes an automated webview bui
 **Prerequisites:**
 - Node.js 20+ required (Vite 6.x build tooling requires Node 18.19+ or 20+)
 
-**Automated Webview Building:**
+**Setup (One-Time):**
 ```bash
 cd extensions/vscode-aep
-npm run compile  # Auto-installs webview deps + builds webview (React/Vite) + compiles TypeScript extension
+npm install  # Installs extension dependencies + webview dependencies (via postinstall hook)
 ```
 
-The `compile` script automatically:
-1. **Installs webview dependencies** (via `precompile` hook running `npm --prefix webview install`)
-2. Builds the webview React application (`webview/`) using Vite 6.x
-3. Outputs to `dist/webview/` directory
-4. Then compiles the TypeScript extension code
+**Build Commands:**
+```bash
+# Full build (webview + TypeScript extension)
+npm run compile
 
-**Development Workflow:**
-- **For extension development**: `npm run watch` (watches TypeScript only)
-- **For webview development**: `cd webview && npm run dev` (hot reload dev server)
-- **For publishing**: `npm run vscode:prepublish` (builds everything)
+# Development workflow (faster, TypeScript-only)
+npm run watch  # Use this for extension development - no webview rebuild
 
-**Note**: The precompile hook ensures webview dependencies are always installed before compilation, preventing build failures. This guarantees the webview is always up-to-date when packaging or publishing the extension.
+# Webview development (hot reload)
+cd webview && npm run dev  # Live preview at http://localhost:5173
+
+# Publishing
+npm run vscode:prepublish  # Builds everything for production
+```
+
+**How It Works:**
+1. `npm install` triggers `postinstall` hook → installs webview dependencies once
+2. `npm run compile` builds webview (Vite 6.x) → compiles TypeScript extension
+3. `npm run watch` watches TypeScript only (no repeated webview builds - faster for development)
+
+**Note**: Webview dependencies are installed automatically via the `postinstall` hook when you run `npm install` in the extension directory. This ensures dependencies are present without slowing down every compile. For development, use `npm run watch` for fast incremental TypeScript builds, and only run `npm run compile` when you need a full rebuild including the webview.
 
 #### **Enterprise Ops Readiness**
 

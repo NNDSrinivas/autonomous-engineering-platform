@@ -6169,6 +6169,24 @@ To get started, I need to analyze your codebase and create a detailed implementa
 
         logger.debug("Continuing to agent loop")
 
+        # Unified model routing for non-streaming /chat fallback path.
+        # This keeps behavior aligned with /stream, /stream/v2 and /autonomous.
+        try:
+            routing_decision = get_model_router().route(
+                requested_model_or_mode_id=request.model,
+                endpoint="stream",
+                requested_provider=request.provider,
+            )
+        except ModelRoutingError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": exc.code,
+                    "message": exc.message,
+                    "requestedModelId": request.model,
+                },
+            ) from exc
+
         # =================================================================
         # IMAGE PROCESSING: Check for image attachments and analyze them
         # This allows NAVI to "see" screenshots and images in the regular
@@ -6208,7 +6226,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
                             # Use vision AI to analyze the image
                             # Use the same provider as the user's selected model
                             vision_provider = _get_vision_provider_for_model(
-                                request.model
+                                routing_decision.effective_model_id
                             )
                             analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
@@ -6240,7 +6258,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
         agent_result = await run_agent_loop(
             user_id=user_id,
             message=augmented_message,  # Use augmented message with image context
-            model=_resolve_model(request.model),
+            model=routing_decision.model,
             mode=mode,
             db=db,
             attachments=[a.dict() for a in (request.attachments or [])],
@@ -6253,6 +6271,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
         # Core reply text (may be overridden below)
         reply = str(agent_result.get("reply") or "").strip()
         state: Dict[str, Any] = agent_result.get("state") or {}
+        state.setdefault("routing", _build_router_info(routing_decision, mode=mode))
 
         # ------------------------------------------------------------------
         # Repo fast-path enhancement:

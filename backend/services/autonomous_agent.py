@@ -1626,6 +1626,7 @@ class AutonomousAgent:
         api_key: str,
         provider: str = "openai",
         model: Optional[str] = None,
+        base_url: Optional[str] = None,
         db_session=None,  # Database session for checkpoint persistence and generation logging
         user_id: Optional[str] = None,  # User ID for generation logging
         org_id: Optional[str] = None,  # Organization ID for generation logging
@@ -1633,6 +1634,7 @@ class AutonomousAgent:
         self.workspace_path = workspace_path
         self.api_key = api_key
         self.provider = provider
+        self.base_url = base_url
         self.db_session = (
             db_session  # For checkpoint persistence and generation logging
         )

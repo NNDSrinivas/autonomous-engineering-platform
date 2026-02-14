@@ -387,6 +387,8 @@ class ModelRouter:
         if not self._is_provider_configured(provider):
             return False
 
+        # TODO(navi-model-router-v2): gate by model capabilities from registry
+        # (streaming/tools/json/vision/search). V1 routability is provider-level.
         return True
 
     def _is_provider_configured(self, provider_id: str) -> bool:

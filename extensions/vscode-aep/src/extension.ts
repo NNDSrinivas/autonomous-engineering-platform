@@ -594,8 +594,8 @@ const STORAGE_KEYS = {
 
 // Defaults if nothing stored yet
 const DEFAULT_MODEL = {
-  id: 'gpt-5.1',
-  label: 'ChatGPT 5.1',
+  id: 'navi/intelligence',
+  label: 'NAVI Intelligence',
 };
 
 const DEFAULT_MODE = {
@@ -9225,13 +9225,16 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
                 // Handle router info
                 if (parsed.router_info) {
+                  const routerInfo = parsed.router_info as Record<string, any>;
+                  const backendRunId =
+                    (typeof routerInfo.runId === 'string' && routerInfo.runId.trim()) ||
+                    (typeof routerInfo.run_id === 'string' && routerInfo.run_id.trim()) ||
+                    '';
+                  const routerRunId = backendRunId || runId;
                   this.postToWebview({
                     type: 'navi.router.info',
-                    provider: parsed.router_info.provider,
-                    model: parsed.router_info.model,
-                    mode: parsed.router_info.mode,
-                    task_type: parsed.router_info.task_type,
-                    auto_execute: parsed.router_info.auto_execute,
+                    ...routerInfo,
+                    runId: routerRunId,
                   });
                 }
 

@@ -6,9 +6,15 @@ export default defineConfig({
   plugins: [react()],
   root: ".",
   base: "",
+  server: {
+    fs: {
+      allow: [resolve(__dirname, "../../../shared")],
+    },
+  },
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src")
+      "@": resolve(__dirname, "src"),
+      "@shared": resolve(__dirname, "../../../shared"),
     }
   },
   optimizeDeps: {

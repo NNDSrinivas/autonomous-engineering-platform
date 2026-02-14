@@ -38,6 +38,7 @@ import time
 from asyncio.subprocess import STDOUT
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal, Tuple, no_type_check
+from uuid import uuid4
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
@@ -64,6 +65,12 @@ from backend.agent.intent_schema import (
     NaviIntent,
 )
 from backend.services.git_service import GitService
+from backend.services.model_router import (
+    ModelRoutingError,
+    RoutingDecision,
+    get_model_router,
+)
+from backend.services.trace_store import get_trace_store
 
 # Conversation memory for cross-session persistence
 from backend.services.memory.conversation_memory import ConversationMemoryService
@@ -220,6 +227,23 @@ def _resolve_model(model: Optional[str]) -> str:
     return model  # Return as-is if not an alias
 
 
+def _build_router_info(
+    decision: RoutingDecision,
+    *,
+    mode: Optional[str] = None,
+    task_type: Optional[str] = None,
+    auto_execute: Optional[bool] = None,
+) -> Dict[str, Any]:
+    router_info = decision.to_public_dict()
+    if mode is not None:
+        router_info["mode"] = mode
+    if task_type is not None:
+        router_info["task_type"] = task_type
+    if auto_execute is not None:
+        router_info["auto_execute"] = auto_execute
+    return router_info
+
+
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
 agent_router = APIRouter(prefix="/api/agent", tags=["agent-classify"])
 
@@ -232,10 +256,9 @@ def get_redis_client() -> redis.Redis:
     global _redis_client
     if _redis_client is None:
         from backend.core.config import settings as config_settings
+
         _redis_client = redis.from_url(
-            config_settings.redis_url,
-            encoding="utf-8",
-            decode_responses=True
+            config_settings.redis_url, encoding="utf-8", decode_responses=True
         )
     return _redis_client
 
@@ -268,7 +291,11 @@ def _resolve_user_org_ids_for_memory(
 
     if org_id_int is None and org_id:
         try:
-            org = db.query(Organization).filter(Organization.org_key == str(org_id)).one_or_none()
+            org = (
+                db.query(Organization)
+                .filter(Organization.org_key == str(org_id))
+                .one_or_none()
+            )
             if org:
                 org_id_int = int(org.id)
         except Exception as exc:
@@ -291,7 +318,9 @@ def _resolve_user_org_ids_for_memory(
             query = query.filter(DBUser.org_id == org_id_int)
         db_user = query.one_or_none()
         if db_user:
-            return int(db_user.id), org_id_int if org_id_int is not None else int(db_user.org_id)
+            return int(db_user.id), (
+                org_id_int if org_id_int is not None else int(db_user.org_id)
+            )
     except Exception as exc:
         logger.debug(
             "[NAVI] Unable to resolve user sub '%s' to numeric ID: %s",
@@ -1604,12 +1633,12 @@ async def handle_consent_response(
     try:
         redis_client = get_redis_client()
         body = await request.json()
-        choice = body.get("choice", "deny")  # 'allow_once', 'allow_always_exact', 'allow_always_type', 'deny', 'alternative'
+        choice = body.get(
+            "choice", "deny"
+        )  # 'allow_once', 'allow_always_exact', 'allow_always_type', 'deny', 'alternative'
         alternative_command = body.get("alternative_command")
 
-        logger.info(
-            f"[NAVI API] 🔐 Consent {consent_id}: decision={choice}"
-        )
+        logger.info(f"[NAVI API] 🔐 Consent {consent_id}: decision={choice}")
 
         # Validate consent exists in Redis
         consent_data = await redis_client.get(f"consent:{consent_id}")
@@ -1633,8 +1662,12 @@ async def handle_consent_response(
         consent_org_id = consent_record.get("org_id")
 
         # Derive current user/org IDs
-        current_user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
-        user_org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
+        current_user_id = str(
+            getattr(user, "user_id", None) or getattr(user, "id", None)
+        )
+        user_org_id = str(
+            getattr(user, "org_id", None) or getattr(user, "org_key", None)
+        )
 
         if consent_user_id and consent_user_id != current_user_id:
             logger.warning(
@@ -1676,7 +1709,7 @@ async def handle_consent_response(
         await redis_client.setex(
             f"consent:{consent_id}",
             60,  # Keep for 1 minute for agent to read
-            json.dumps(decision)
+            json.dumps(decision),
         )
 
         logger.info(f"[NAVI API] ✅ Consent {consent_id} decision stored in Redis")
@@ -1684,7 +1717,13 @@ async def handle_consent_response(
         # Also update in-process consent approvals for AutonomousAgent pre-checks
         try:
             from backend.services import autonomous_agent as aa
-            approved = choice in ("allow_once", "allow_always_exact", "allow_always_type", "alternative")
+
+            approved = choice in (
+                "allow_once",
+                "allow_always_exact",
+                "allow_always_type",
+                "alternative",
+            )
             with aa._consent_lock:
                 aa._consent_approvals[consent_id] = {
                     "approved": approved,
@@ -1695,9 +1734,13 @@ async def handle_consent_response(
                     "user_id": consent_user_id,
                     "org_id": consent_org_id,
                 }
-            logger.info(f"[NAVI API] ✅ Consent {consent_id} cached in-process (approved={approved})")
+            logger.info(
+                f"[NAVI API] ✅ Consent {consent_id} cached in-process (approved={approved})"
+            )
         except Exception as e:
-            logger.warning(f"[NAVI API] Failed to cache consent {consent_id} in-process: {e}")
+            logger.warning(
+                f"[NAVI API] Failed to cache consent {consent_id} in-process: {e}"
+            )
 
         return {
             "success": True,
@@ -1737,11 +1780,7 @@ async def get_consent_preferences(
         consent_service = get_consent_service(db)
         preferences = consent_service.get_user_preferences(user_id, org_id)
 
-        return {
-            "success": True,
-            "preferences": preferences,
-            "count": len(preferences)
-        }
+        return {"success": True, "preferences": preferences, "count": len(preferences)}
 
     except Exception as e:
         logger.error(f"[NAVI API] Error getting consent preferences: {e}")
@@ -1776,14 +1815,11 @@ async def delete_consent_preference(
                 status_code=404,
                 detail={
                     "success": False,
-                    "error": "Preference not found or you don't have permission to delete it"
-                }
+                    "error": "Preference not found or you don't have permission to delete it",
+                },
             )
 
-        return {
-            "success": True,
-            "message": "Preference deleted successfully"
-        }
+        return {"success": True, "message": "Preference deleted successfully"}
 
     except HTTPException:
         raise
@@ -1814,13 +1850,11 @@ async def get_consent_audit(
 
         # Get audit log from consent service
         consent_service = get_consent_service(db)
-        audit_log = consent_service.get_audit_log(user_id, org_id, limit=min(limit, 100))
+        audit_log = consent_service.get_audit_log(
+            user_id, org_id, limit=min(limit, 100)
+        )
 
-        return {
-            "success": True,
-            "audit_log": audit_log,
-            "count": len(audit_log)
-        }
+        return {"success": True, "audit_log": audit_log, "count": len(audit_log)}
 
     except Exception as e:
         logger.error(f"[NAVI API] Error getting consent audit log: {e}")
@@ -1864,7 +1898,9 @@ async def handle_prompt_response(
         # Derive user org consistently
         user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
         current_user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
-        current_user_id_str = str(current_user_id) if current_user_id is not None else None
+        current_user_id_str = (
+            str(current_user_id) if current_user_id is not None else None
+        )
         user_org_id_str = str(user_org_id) if user_org_id is not None else None
 
         # Validate prompt exists, is pending, and belongs to the authenticated user/org.
@@ -5110,8 +5146,12 @@ async def navi_chat(
     )
 
     try:
-        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
-        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+        user_id = str(
+            getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+        ).strip()
+        org_id = str(
+            getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+        ).strip()
         if not user_id:
             raise HTTPException(
                 status_code=401,
@@ -6129,6 +6169,24 @@ To get started, I need to analyze your codebase and create a detailed implementa
 
         logger.debug("Continuing to agent loop")
 
+        # Unified model routing for non-streaming /chat fallback path.
+        # This keeps behavior aligned with /stream, /stream/v2 and /autonomous.
+        try:
+            routing_decision = get_model_router().route(
+                requested_model_or_mode_id=request.model,
+                endpoint="stream",
+                requested_provider=request.provider,
+            )
+        except ModelRoutingError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": exc.code,
+                    "message": exc.message,
+                    "requestedModelId": request.model,
+                },
+            ) from exc
+
         # =================================================================
         # IMAGE PROCESSING: Check for image attachments and analyze them
         # This allows NAVI to "see" screenshots and images in the regular
@@ -6168,7 +6226,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
                             # Use vision AI to analyze the image
                             # Use the same provider as the user's selected model
                             vision_provider = _get_vision_provider_for_model(
-                                request.model
+                                routing_decision.effective_model_id
                             )
                             analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
@@ -6200,7 +6258,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
         agent_result = await run_agent_loop(
             user_id=user_id,
             message=augmented_message,  # Use augmented message with image context
-            model=_resolve_model(request.model),
+            model=routing_decision.model,
             mode=mode,
             db=db,
             attachments=[a.dict() for a in (request.attachments or [])],
@@ -6213,6 +6271,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
         # Core reply text (may be overridden below)
         reply = str(agent_result.get("reply") or "").strip()
         state: Dict[str, Any] = agent_result.get("state") or {}
+        state.setdefault("routing", _build_router_info(routing_decision, mode=mode))
 
         # ------------------------------------------------------------------
         # Repo fast-path enhancement:
@@ -6482,8 +6541,12 @@ async def navi_chat_stream(
         request.message[:50] if request.message else "",
     )
 
-    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
-    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+    user_id = str(
+        getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+    ).strip()
+    org_id = str(
+        getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+    ).strip()
     mode = (request.mode or "chat-only").strip() or "chat-only"
     workspace_root = request.workspace_root or (request.workspace or {}).get(
         "workspace_root"
@@ -6491,12 +6554,48 @@ async def navi_chat_stream(
     memory_user_id_int, memory_org_id_int = _resolve_user_org_ids_for_memory(
         db, user_id, org_id
     )
+    auto_execute_mode = mode in (
+        "agent-full-access",
+        "agent_full_access",
+        "full-access",
+        "full_access",
+    )
+    try:
+        routing_decision = get_model_router().route(
+            requested_model_or_mode_id=request.model,
+            endpoint="stream",
+            requested_provider=request.provider,
+        )
+    except ModelRoutingError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "requestedModelId": request.model,
+            },
+        ) from exc
+    trace_store = get_trace_store()
+    trace_task_id = request.conversation_id or f"stream-{uuid4()}"
+    trace_store.append(
+        "routing_decision",
+        {
+            "taskId": trace_task_id,
+            "conversationId": request.conversation_id,
+            "endpoint": "stream",
+            "mode": request.mode,
+            **routing_decision.to_public_dict(),
+        },
+    )
 
     async def generate_stream():
         """Generator for SSE events."""
         stream_session = StreamingSession()
 
         try:
+            # Emit routing metadata first for transparent model selection/fallback behavior.
+            yield f"data: {json.dumps({'router_info': _build_router_info(routing_decision, mode=mode, auto_execute=auto_execute_mode)})}\n\n"
+
             # Emit initial activity
             yield f"data: {json.dumps({'activity': {'kind': 'context', 'label': 'Starting', 'detail': 'Processing your request...', 'status': 'running'}})}\n\n"
 
@@ -6534,7 +6633,7 @@ async def navi_chat_stream(
                                 # Use vision AI to analyze the image
                                 # Use the same provider as the user's selected model
                                 vision_provider = _get_vision_provider_for_model(
-                                    request.model
+                                    routing_decision.effective_model_id
                                 )
                                 analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
@@ -6567,7 +6666,7 @@ async def navi_chat_stream(
                 agent_result = await run_agent_loop(
                     user_id=user_id,
                     message=augmented_message,
-                    model=_resolve_model(request.model),
+                    model=routing_decision.effective_model_id,
                     mode=mode,
                     db=db,
                     attachments=[a.dict() for a in (request.attachments or [])],
@@ -6592,7 +6691,6 @@ async def navi_chat_stream(
                 if actions:
                     yield f"data: {json.dumps({'actions': actions})}\n\n"
 
-                yield f"data: {json.dumps({'router_info': {'mode': mode, 'model': request.model}})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
 
@@ -6606,12 +6704,8 @@ async def navi_chat_stream(
                 )
                 from backend.services.unified_agent import UnifiedAgent, AgentEventType
 
-                # For unified agent, prefer OpenAI as it has more reliable tool-use
-                # Fall back to DEFAULT_LLM_PROVIDER if OpenAI key not available
-                provider = request.provider or "openai"
-                # Let unified agent select the appropriate model for the provider
-                # Don't use _resolve_model as it may return a model incompatible with provider
-                model_name = None  # UnifiedAgent will use its default for the provider
+                provider = routing_decision.provider
+                model_name = routing_decision.model
 
                 # Build project context
                 project_context = None
@@ -6636,8 +6730,6 @@ async def navi_chat_stream(
                         if msg.get("content")
                     ]
 
-                # Emit unified agent start event
-                yield f"data: {json.dumps({'router_info': {'provider': provider, 'model': model_name or 'auto', 'mode': 'unified_agent', 'task_type': 'action'}})}\n\n"
                 yield f"data: {json.dumps({'activity': {'kind': 'agent_start', 'label': 'Agent', 'detail': 'Starting unified agent with native tool-use...', 'status': 'running'}})}\n\n"
 
                 try:
@@ -6837,14 +6929,6 @@ async def navi_chat_stream(
                             current_file_content = att_content
                         break
 
-            # Determine auto-execute mode
-            auto_execute = mode in (
-                "agent-full-access",
-                "agent_full_access",
-                "full-access",
-                "full_access",
-            )
-
             # Show current file context if available
             if current_file:
                 yield f"data: {json.dumps({'activity': {'kind': 'context', 'label': 'Active file', 'detail': current_file, 'status': 'done'}})}\n\n"
@@ -6873,8 +6957,8 @@ async def navi_chat_stream(
             async for event in process_navi_request_streaming(
                 message=request.message,
                 workspace_path=workspace_root,
-                llm_provider=request.provider or "openai",
-                llm_model=_resolve_model(request.model),
+                llm_provider=routing_decision.provider,
+                llm_model=routing_decision.model,
                 api_key=None,
                 current_file=current_file,
                 current_file_content=current_file_content,
@@ -7026,7 +7110,9 @@ async def navi_chat_stream(
                                 },
                             )
                             memory_service.db.commit()
-                            logger.info("[NAVI-STREAM] Created conversation %s", conv_uuid)
+                            logger.info(
+                                "[NAVI-STREAM] Created conversation %s", conv_uuid
+                            )
                             owned_conv = memory_service.get_conversation(conv_uuid)
                             can_persist = bool(
                                 owned_conv and owned_conv.user_id == memory_user_id_int
@@ -7071,17 +7157,38 @@ async def navi_chat_stream(
                         mem_error,
                     )
 
-            # Include router info
-            yield f"data: {json.dumps({'router_info': {'provider': request.provider or 'openai', 'model': request.model, 'mode': mode, 'auto_execute': auto_execute}})}\n\n"
-
             # Include streaming metrics
             metrics = stream_session.get_metrics()
             yield f"data: {json.dumps(metrics)}\n\n"
+
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "stream",
+                    "outcome": "success",
+                    "messageLength": len(request.message or ""),
+                    "streamMetrics": metrics,
+                    **routing_decision.to_public_dict(),
+                },
+            )
 
             yield "data: [DONE]\n\n"
 
         except Exception as e:
             logger.error("[NAVI-STREAM] Streaming error: %s", e, exc_info=True)
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "stream",
+                    "outcome": "error",
+                    "error": str(e),
+                    **routing_decision.to_public_dict(),
+                },
+            )
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
             metrics = stream_session.get_metrics()
             yield f"data: {json.dumps(metrics)}\n\n"
@@ -7169,34 +7276,6 @@ class ToolStreamRequest(BaseModel):
     last_action_error: Optional[Dict[str, Any]] = None
 
 
-def _parse_model_string(model_str: Optional[str]) -> Tuple[str, str]:
-    """
-    Parse model string like 'openai/gpt-4o' into (provider, model).
-    Returns ('openai', 'gpt-4o') for default.
-    """
-    if not model_str:
-        return "openai", "gpt-4o"
-
-    if "/" in model_str:
-        parts = model_str.split("/", 1)
-        provider = parts[0].lower()
-        model = parts[1]
-        # Normalize provider names
-        if provider in ("openai", "gpt"):
-            return "openai", model
-        elif provider in ("anthropic", "claude"):
-            return "anthropic", model
-        elif provider in ("groq",):
-            return "groq", model
-        elif provider in ("openrouter",):
-            return "openrouter", model
-        else:
-            return provider, model
-    else:
-        # Just a model name, assume OpenAI
-        return "openai", model_str
-
-
 @router.post("/chat/stream/v2")
 async def navi_chat_stream_v2(
     request: ToolStreamRequest,
@@ -7222,8 +7301,13 @@ async def navi_chat_stream_v2(
         stream_with_tools_anthropic,
         stream_with_tools_openai,
     )
-    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
-    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+
+    user_id = str(
+        getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+    ).strip()
+    org_id = str(
+        getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+    ).strip()
     if not user_id:
         raise HTTPException(
             status_code=401,
@@ -7248,12 +7332,24 @@ async def navi_chat_stream_v2(
     if request.project_type:
         context["project_type"] = request.project_type
 
-    # Parse the model string (handles "openai/gpt-4o" format from extension)
-    provider, model_name = _parse_model_string(request.model)
+    try:
+        routing_decision = get_model_router().route(
+            requested_model_or_mode_id=request.model,
+            endpoint="stream_v2",
+            requested_provider=request.provider,
+        )
+    except ModelRoutingError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "requestedModelId": request.model,
+            },
+        ) from exc
 
-    # Override with explicit provider if given
-    if request.provider:
-        provider = request.provider
+    provider = routing_decision.provider
+    model_name = routing_decision.model
 
     logger.info(
         "[NAVI V2] Parsed model: provider=%s, model=%s, user=%s, org=%s",
@@ -7261,6 +7357,18 @@ async def navi_chat_stream_v2(
         model_name,
         user_id,
         org_id or "<none>",
+    )
+    trace_store = get_trace_store()
+    trace_task_id = request.conversation_id or f"stream-v2-{uuid4()}"
+    trace_store.append(
+        "routing_decision",
+        {
+            "taskId": trace_task_id,
+            "conversationId": request.conversation_id,
+            "endpoint": "stream_v2",
+            "mode": request.mode,
+            **routing_decision.to_public_dict(),
+        },
     )
 
     async def stream_generator():
@@ -7272,6 +7380,8 @@ async def navi_chat_stream_v2(
         from backend.agent.intent_schema import IntentKind
 
         try:
+            yield f"data: {json.dumps({'router_info': _build_router_info(routing_decision, mode=request.mode or 'agent')})}\n\n"
+
             # PHASE 0: Intent Classification (determines what analysis to do)
             # This is key to being DYNAMIC - we don't do heavy analysis for simple greetings
             intent = classify_intent(request.message)
@@ -7461,6 +7571,23 @@ async def navi_chat_stream_v2(
                 elif provider == "groq":
                     api_key = os.environ.get("GROQ_API_KEY", "")
                     base_url = "https://api.groq.com/openai/v1"
+                elif provider == "ollama":
+                    api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
+                    base_url = _ensure_openai_compatible_base_url(
+                        os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+                    )
+                elif provider == "self_hosted":
+                    api_key = (
+                        os.environ.get("SELF_HOSTED_API_KEY")
+                        or os.environ.get("OPENAI_API_KEY")
+                        or "self-hosted"
+                    )
+                    base_url = _ensure_openai_compatible_base_url(
+                        os.environ.get("SELF_HOSTED_API_BASE_URL")
+                        or os.environ.get("SELF_HOSTED_LLM_URL")
+                        or os.environ.get("VLLM_BASE_URL")
+                        or "http://localhost:8000"
+                    )
 
                 async for event in stream_with_tools_openai(
                     message=request.message,
@@ -7478,7 +7605,30 @@ async def navi_chat_stream_v2(
 
         except Exception as e:
             logger.exception(f"[NAVI V2] Stream error: {e}")
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "stream_v2",
+                    "outcome": "error",
+                    "error": str(e),
+                    **routing_decision.to_public_dict(),
+                },
+            )
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+        else:
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "stream_v2",
+                    "outcome": "success",
+                    "messageLength": len(request.message or ""),
+                    **routing_decision.to_public_dict(),
+                },
+            )
 
         yield "data: [DONE]\n\n"
 
@@ -7527,75 +7677,6 @@ class AutonomousTaskRequest(BaseModel):
     last_action_error: Optional[dict] = None
 
 
-def _map_model_to_provider(model: Optional[str]) -> tuple[str, str]:
-    """
-    Map a model ID to the correct provider and model name.
-
-    Handles formats like:
-    - "gpt-4o" -> ("openai", "gpt-4o")
-    - "openai/gpt-4o" -> ("openai", "gpt-4o")
-    - "anthropic/claude-3-sonnet" -> ("anthropic", "claude-sonnet-4-20250514")
-    - "gpt-5.1" -> ("openai", "gpt-4o")  # unknown models default to gpt-4o
-
-    Returns (provider, model_id) tuple.
-    """
-    if not model:
-        return "openai", "gpt-4o"
-
-    # Handle provider/model format (e.g., "openai/gpt-4o")
-    if "/" in model:
-        parts = model.split("/", 1)
-        provider_hint = parts[0].lower()
-        model_name = parts[1]
-    else:
-        provider_hint = ""
-        model_name = model
-
-    model_lower = model_name.lower()
-
-    # OpenAI models
-    if provider_hint == "openai" or any(
-        x in model_lower for x in ["gpt-4", "gpt-3", "o1-", "o3-", "davinci", "curie"]
-    ):
-        # Validate model name - only return known OpenAI models
-        valid_openai = [
-            "gpt-4o",
-            "gpt-4o-mini",
-            "gpt-4-turbo",
-            "gpt-4",
-            "gpt-3.5-turbo",
-            "o1-preview",
-            "o1-mini",
-            "o3-mini",
-        ]
-        if model_name in valid_openai:
-            return "openai", model_name
-        # Default to gpt-4o for unknown OpenAI models
-        return "openai", "gpt-4o"
-
-    # Anthropic models
-    if provider_hint == "anthropic" or any(x in model_lower for x in ["claude"]):
-        # Normalize claude model names to current versions
-        if "sonnet" in model_lower:
-            return "anthropic", "claude-sonnet-4-20250514"
-        elif "opus" in model_lower:
-            return "anthropic", "claude-opus-4-20250514"
-        elif "haiku" in model_lower:
-            return "anthropic", "claude-3-5-haiku-20241022"
-        return "anthropic", "claude-sonnet-4-20250514"  # Default to sonnet
-
-    # Groq models
-    if provider_hint == "groq" or any(x in model_lower for x in ["llama", "mixtral"]):
-        return "groq", model_name
-
-    # Google models
-    if provider_hint == "google" or any(x in model_lower for x in ["gemini", "palm"]):
-        return "google", model_name
-
-    # Default to OpenAI with gpt-4o for unknown models
-    return "openai", "gpt-4o"
-
-
 def _get_vision_provider_for_model(model: Optional[str]):
     """
     Get the appropriate VisionProvider for the user's selected model.
@@ -7611,7 +7692,31 @@ def _get_vision_provider_for_model(model: Optional[str]):
     if not model:
         return VisionProvider.ANTHROPIC  # Default to Claude
 
-    provider, _ = _map_model_to_provider(model)
+    provider = "anthropic"
+    if isinstance(model, str):
+        raw = model.strip().lower()
+        if "/" in raw:
+            provider = raw.split("/", 1)[0].strip()
+        elif (
+            raw.startswith("gpt")
+            or raw.startswith("o1")
+            or raw.startswith("o3")
+            or raw.startswith("o4")
+        ):
+            provider = "openai"
+        elif raw.startswith("claude"):
+            provider = "anthropic"
+        elif raw.startswith("gemini"):
+            provider = "google"
+        elif raw.startswith("navi/"):
+            # Map NAVI modes to their default preferred providers for vision selection.
+            mode_map = {
+                "navi/intelligence": "openai",
+                "navi/fast": "openai",
+                "navi/deep": "google",
+                "navi/private": "anthropic",
+            }
+            provider = mode_map.get(raw, "anthropic")
 
     if provider == "openai":
         return VisionProvider.OPENAI
@@ -7622,6 +7727,15 @@ def _get_vision_provider_for_model(model: Optional[str]):
     else:
         # Groq and other providers don't have vision - fall back to Claude
         return VisionProvider.ANTHROPIC
+
+
+def _ensure_openai_compatible_base_url(base_url: str) -> str:
+    normalized = (base_url or "").strip().rstrip("/")
+    if not normalized:
+        return "https://api.openai.com/v1"
+    if normalized.endswith("/v1"):
+        return normalized
+    return f"{normalized}/v1"
 
 
 @router.post("/chat/autonomous")
@@ -7697,18 +7811,44 @@ async def navi_autonomous_task(
     if not workspace_path:
         workspace_path = os.environ.get("AEP_WORKSPACE_PATH", os.getcwd())
 
-    # Map model to provider
-    if request.provider:
-        provider = request.provider
-        model = request.model
-    else:
-        provider, model = _map_model_to_provider(request.model)
+    try:
+        routing_decision = get_model_router().route(
+            requested_model_or_mode_id=request.model,
+            endpoint="autonomous",
+            requested_provider=request.provider,
+        )
+    except ModelRoutingError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "requestedModelId": request.model,
+            },
+        ) from exc
+
+    provider = routing_decision.provider
+    model = routing_decision.model
 
     logger.info(
         f"[NAVI Autonomous] Provider: {provider}, Model: {model}, Workspace: {workspace_path}"
     )
+    trace_store = get_trace_store()
+    trace_task_id = request.conversation_id or f"autonomous-{uuid4()}"
+    trace_store.append(
+        "routing_decision",
+        {
+            "taskId": trace_task_id,
+            "conversationId": request.conversation_id,
+            "endpoint": "autonomous",
+            "mode": request.mode,
+            **routing_decision.to_public_dict(),
+        },
+    )
 
     # Get API key based on provider
+    model_base_url: Optional[str] = None
+
     if provider == "anthropic":
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     elif provider == "openrouter":
@@ -7717,6 +7857,23 @@ async def navi_autonomous_task(
         api_key = os.environ.get("GROQ_API_KEY", "")
     elif provider == "google":
         api_key = os.environ.get("GOOGLE_API_KEY", "")
+    elif provider == "ollama":
+        api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        )
+    elif provider == "self_hosted":
+        api_key = (
+            os.environ.get("SELF_HOSTED_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "self-hosted"
+        )
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("SELF_HOSTED_API_BASE_URL")
+            or os.environ.get("SELF_HOSTED_LLM_URL")
+            or os.environ.get("VLLM_BASE_URL")
+            or "http://localhost:8000"
+        )
     else:
         api_key = os.environ.get("OPENAI_API_KEY", "")
 
@@ -7762,7 +7919,9 @@ async def navi_autonomous_task(
 
                         # Use vision AI to analyze the image
                         # Use the same provider as the user's selected model
-                        vision_provider = _get_vision_provider_for_model(request.model)
+                        vision_provider = _get_vision_provider_for_model(
+                            routing_decision.effective_model_id
+                        )
                         analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
                         vision_response = await VisionClient.analyze_image(
@@ -7820,16 +7979,19 @@ async def navi_autonomous_task(
                         )
                         raise HTTPException(
                             status_code=403,
-                            detail="Access denied: You don't have permission to access this conversation"
+                            detail="Access denied: You don't have permission to access this conversation",
                         )
 
                     # Load conversation history from database
                     logger.info(
                         f"[NAVI Autonomous] Loading conversation {conv_uuid} from database"
                     )
-                    db_messages = memory_service.get_recent_messages(conv_uuid, limit=100)
+                    db_messages = memory_service.get_recent_messages(
+                        conv_uuid, limit=100
+                    )
                     conversation_history_from_db = [
-                        {"role": msg.role, "content": msg.content} for msg in db_messages
+                        {"role": msg.role, "content": msg.content}
+                        for msg in db_messages
                     ]
                     logger.info(
                         f"[NAVI Autonomous] Loaded {len(conversation_history_from_db)} messages from database"
@@ -7951,6 +8113,8 @@ async def navi_autonomous_task(
         """Generate SSE events from the autonomous agent with heartbeat to prevent timeout."""
         import asyncio
 
+        yield f"data: {json.dumps({'router_info': _build_router_info(routing_decision, mode=request.mode or 'agent-full-access', task_type='autonomous')})}\n\n"
+
         async def heartbeat_wrapper(agent_generator):
             """Wrap agent generator with periodic heartbeat events to keep SSE connection alive."""
             last_event_time = time.time()
@@ -8018,6 +8182,7 @@ async def navi_autonomous_task(
                 api_key=api_key,
                 provider=provider,
                 model=model,
+                base_url=model_base_url,
                 db_session=db,
                 user_id=user_id,
                 org_id=org_id,
@@ -8037,9 +8202,31 @@ async def navi_autonomous_task(
                     if text_chunk:
                         assistant_response_parts.append(text_chunk)
                 yield f"data: {json.dumps(event)}\n\n"
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "autonomous",
+                    "outcome": "success",
+                    "responseLength": len("\n".join(assistant_response_parts)),
+                    **routing_decision.to_public_dict(),
+                },
+            )
 
         except Exception as e:
             logger.exception(f"[NAVI Autonomous] Error: {e}")
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "autonomous",
+                    "outcome": "error",
+                    "error": str(e),
+                    **routing_decision.to_public_dict(),
+                },
+            )
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
 
         # =========================================================================

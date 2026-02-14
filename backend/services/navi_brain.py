@@ -6718,8 +6718,12 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             "groq": "GROQ_API_KEY",
             "mistral": "MISTRAL_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "self_hosted": "SELF_HOSTED_API_KEY",
         }
-        return os.getenv(env_vars.get(self.provider, ""), "")
+        api_key = os.getenv(env_vars.get(self.provider, ""), "")
+        if self.provider == "self_hosted" and not api_key:
+            api_key = os.getenv("OPENAI_API_KEY", "")
+        return api_key
 
     def _get_default_model(self) -> str:
         """Get default model for provider"""
@@ -6731,6 +6735,7 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             "mistral": "mistral-large-latest",
             "openrouter": "anthropic/claude-3-5-sonnet-20241022",
             "ollama": "llama3",
+            "self_hosted": "qwen2.5-coder",
         }
         return defaults.get(self.provider, "claude-3-5-sonnet-20241022")
 
@@ -6766,8 +6771,17 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             "mistral": "https://api.mistral.ai/v1",
             "openrouter": "https://openrouter.ai/api/v1",
             "ollama": "http://localhost:11434",
+            "self_hosted": (
+                os.getenv("SELF_HOSTED_API_BASE_URL")
+                or os.getenv("SELF_HOSTED_LLM_URL")
+                or os.getenv("VLLM_BASE_URL")
+                or "http://localhost:8000/v1"
+            ),
         }
-        return urls.get(self.provider, urls["anthropic"])
+        url = urls.get(self.provider, urls["anthropic"])
+        if self.provider == "self_hosted" and not url.rstrip("/").endswith("/v1"):
+            return f"{url.rstrip('/')}/v1"
+        return url
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session"""
@@ -7993,6 +8007,7 @@ Respond with JSON only."""
                     self.provider == "openai"
                     or self.provider == "groq"
                     or self.provider == "openrouter"
+                    or self.provider == "self_hosted"
                 ):
                     result = await self._call_openai_compatible(
                         prompt, conversation_history, context
@@ -8253,6 +8268,8 @@ Respond with JSON only."""
         if self.provider == "openrouter":
             headers["HTTP-Referer"] = "https://navi.dev"
             headers["X-Title"] = "NAVI"
+        elif self.provider == "self_hosted" and not self.api_key:
+            headers.pop("Authorization", None)
 
         async with session.post(
             f"{self.base_url}/chat/completions",
@@ -8358,7 +8375,7 @@ Respond with JSON only."""
                 prompt, conversation_history
             ):
                 yield chunk
-        elif self.provider in ("openai", "groq", "openrouter"):
+        elif self.provider in ("openai", "groq", "openrouter", "self_hosted"):
             async for chunk in self._call_openai_streaming(
                 prompt, conversation_history
             ):
@@ -8518,6 +8535,8 @@ Respond with JSON only."""
         if self.provider == "openrouter":
             headers["HTTP-Referer"] = "https://navi.dev"
             headers["X-Title"] = "NAVI"
+        elif self.provider == "self_hosted" and not self.api_key:
+            headers.pop("Authorization", None)
 
         full_response = ""
         thinking_buffer = ""

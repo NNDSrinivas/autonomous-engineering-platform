@@ -1061,9 +1061,12 @@ html.light .navi-status-text--done {
   transform: translateX(-50%);
   z-index: 9999;
   font-size: 11px;
+  line-height: 1.35;
   padding: 6px 12px;
   border-radius: 6px;
   color: #ffffff;
+  max-width: min(680px, calc(100% - 32px));
+  white-space: pre-line;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   animation: naviToastSlideUp 0.2s ease-out;
   pointer-events: auto;
@@ -4202,6 +4205,20 @@ html.light .navi-slash-menu {
   background: hsl(var(--secondary));
   border-color: hsl(var(--primary) / 0.4);
   transform: translateY(-1px);
+}
+
+.navi-chat-advanced-toggle.is-active {
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.12);
+}
+
+.navi-chat-advanced-note {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  padding: 4px 8px;
 }
 
 /* Branch indicator - prominent styling */

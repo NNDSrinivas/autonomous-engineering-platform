@@ -7965,7 +7965,17 @@ async def _run_autonomous_job(job_id: str) -> None:
         consecutive_failures = 0
         while True:
             await asyncio.sleep(20)
-            renewed = await job_manager.renew_runner_lock(job_id, runner_token)
+            try:
+                renewed = await job_manager.renew_runner_lock(job_id, runner_token)
+            except DistributedLockUnavailableError as exc:
+                # Treat distributed lock unavailability as renewal failure
+                logger.warning(
+                    "[NAVI Jobs] Distributed lock unavailable during renewal for %s: %s",
+                    job_id,
+                    exc,
+                )
+                renewed = False
+
             if renewed:
                 consecutive_failures = 0
                 continue
@@ -8010,6 +8020,14 @@ async def _run_autonomous_job(job_id: str) -> None:
         )
     except HTTPException:
         # Another worker might have moved terminal/canceled state before this runner started.
+        # Release runner resources before returning.
+        if lock_heartbeat_task and not lock_heartbeat_task.done():
+            lock_heartbeat_task.cancel()
+            try:
+                await lock_heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        await job_manager.release_runner_lock(job_id, runner_token)
         return
 
     await job_manager.clear_cancel_request(job_id)

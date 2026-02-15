@@ -175,12 +175,26 @@ class BaseLLMAdapter(ABC):
 class OpenAIAdapter(BaseLLMAdapter):
     """Adapter for OpenAI and OpenAI-compatible APIs (Groq, Together, OpenRouter)"""
 
-    @staticmethod
-    def _normalize_openai_model_name(model: str) -> str:
-        """Strip provider prefix (openai/model) before calling OpenAI-compatible APIs."""
+    def _normalize_openai_model_name(self, model: str) -> str:
+        """Normalize internal provider-qualified model IDs for OpenAI-compatible APIs."""
         normalized = (model or "").strip()
-        if "/" in normalized:
-            normalized = normalized.split("/", 1)[1]
+        if "/" not in normalized:
+            return normalized
+
+        prefix, remainder = normalized.split("/", 1)
+        provider_prefixes = {provider.value for provider in LLMProvider}
+        preserve_namespaced = {LLMProvider.OPENROUTER, LLMProvider.TOGETHER}
+
+        # OpenRouter/Together model IDs are frequently namespaced (for example,
+        # anthropic/claude-3.5-sonnet and meta-llama/Llama-3.3-70B-...).
+        if self.config.provider in preserve_namespaced:
+            if prefix == self.config.provider.value:
+                return remainder
+            return normalized
+
+        # Strip only internal provider-qualified IDs (openai/gpt-4o, groq/llama-...).
+        if prefix in provider_prefixes:
+            return remainder
         return normalized
 
     @staticmethod

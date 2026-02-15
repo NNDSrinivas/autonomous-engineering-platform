@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from backend.services.job_manager import JobManager
@@ -77,3 +79,30 @@ async def test_create_job_requires_user_id() -> None:
     manager = JobManager()
     with pytest.raises(ValueError, match="user_id is required"):
         await manager.create_job(payload={"message": "x"}, user_id="", org_id="org-1")
+
+
+@pytest.mark.asyncio
+async def test_get_job_refreshes_cached_next_sequence_from_redis() -> None:
+    manager = JobManager()
+    fake_redis = _FakeRedis()
+    manager._redis = fake_redis
+    manager._redis_available = True
+
+    created = await manager.create_job(
+        payload={"message": "sequence refresh"},
+        user_id="user-1",
+        org_id="org-1",
+    )
+    cached = await manager.require_job(created.job_id)
+    local_next_sequence = cached.next_sequence
+    assert local_next_sequence >= 2
+
+    # Simulate another worker advancing the record sequence in Redis.
+    remote = cached.to_serializable()
+    remote["next_sequence"] = local_next_sequence + 5
+    remote["status"] = "running"
+    await fake_redis.set(manager._record_key(created.job_id), json.dumps(remote))
+
+    refreshed = await manager.require_job(created.job_id)
+    assert refreshed.status == "running"
+    assert refreshed.next_sequence == local_next_sequence + 5

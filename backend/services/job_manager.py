@@ -496,6 +496,9 @@ class JobManager:
             # Refresh metadata from Redis for cross-worker visibility.
             refreshed = await self._load_record_redis(job_id)
             if refreshed:
+                refreshed_events: Optional[List[Dict[str, Any]]] = None
+                if refreshed.next_sequence > record.next_sequence:
+                    refreshed_events = await self._load_events_redis(job_id)
                 async with record.condition:
                     record.updated_at = refreshed.updated_at
                     record.status = refreshed.status
@@ -506,6 +509,17 @@ class JobManager:
                     record.metadata = refreshed.metadata
                     record.pending_approval = refreshed.pending_approval
                     record.error = refreshed.error
+                    # Keep sequence monotonic across workers to prevent
+                    # duplicate/out-of-order event sequence assignment.
+                    if refreshed.next_sequence > record.next_sequence:
+                        record.next_sequence = refreshed.next_sequence
+                    if refreshed_events:
+                        record.events = refreshed_events[-self._max_events :]
+                        max_seq = max(
+                            int(evt.get("sequence", 0)) for evt in record.events
+                        )
+                        if max_seq >= record.next_sequence:
+                            record.next_sequence = max_seq + 1
             return record
         return await self._hydrate_from_redis(job_id)
 

@@ -197,7 +197,11 @@ async def test_two_worker_uvicorn_duplicate_runner_lock() -> None:
     env["AEP_ALLOW_DISTRIBUTED_DEGRADE"] = "false"
     # Use local Redis directly for locking semantics in this harness.
     # Force worker processes to use the same verified Redis endpoint as test process.
+    # Set both REDIS_URL and NAVI_TEST_REDIS_URL to prevent DB split-brain
     env["REDIS_URL"] = redis_url
+    env["NAVI_TEST_REDIS_URL"] = redis_url
+    # Provide mock API key so ModelRouter can route (job won't actually execute LLM calls in lock test)
+    env.setdefault("OPENAI_API_KEY", "test-key-for-routing")
 
     cmd = [
         sys.executable,

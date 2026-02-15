@@ -8,6 +8,15 @@ import redis.asyncio as redis
 from backend.services.job_manager import JobManager
 
 
+def _redis_required_in_ci() -> bool:
+    return os.getenv("REQUIRE_REDIS_FOR_LOCK_TESTS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 async def _connect_test_redis() -> redis.Redis:
     url = (
         os.getenv("NAVI_TEST_REDIS_URL")
@@ -19,7 +28,7 @@ async def _connect_test_redis() -> redis.Redis:
         await client.ping()
     except Exception as exc:
         await client.aclose()
-        if os.getenv("CI"):
+        if os.getenv("CI") and _redis_required_in_ci():
             pytest.fail(
                 f"Redis required in CI for lock integration test ({url}): {exc}"
             )

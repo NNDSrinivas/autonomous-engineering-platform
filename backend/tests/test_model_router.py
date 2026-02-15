@@ -136,3 +136,18 @@ def test_stream_v2_fallback_when_provider_unsupported(
     assert decision.fallback_reason is not None
     assert "/stream/v2" in decision.fallback_reason
     assert "google" in decision.fallback_reason
+
+
+def test_openrouter_model_routes_with_openrouter_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    router = ModelRouter()
+
+    decision = router.route("openrouter/claude-3.5-sonnet", endpoint="autonomous")
+
+    assert decision.requested_model_id == "openrouter/claude-3.5-sonnet"
+    assert decision.effective_model_id == "openrouter/claude-3.5-sonnet"
+    assert decision.provider == "openrouter"
+    assert decision.model == "anthropic/claude-3.5-sonnet"
+    assert decision.was_fallback is False

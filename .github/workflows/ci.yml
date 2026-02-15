@@ -98,6 +98,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       NAVI_TEST_REDIS_URL: redis://127.0.0.1:6379/15
       CI: "true"
+      REQUIRE_REDIS_FOR_LOCK_TESTS: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -1713,6 +1713,27 @@ class AutonomousAgent:
             logger.warning("[AutonomousAgent] Cancel-check callback failed: %s", exc)
             return False
 
+    def _normalize_openai_compatible_model_name(self, model: Any) -> Any:
+        if not isinstance(model, str):
+            return model
+
+        normalized = model.strip()
+        if "/" not in normalized:
+            return normalized
+
+        prefix, remainder = normalized.split("/", 1)
+        # OpenRouter model IDs are often namespaced (anthropic/..., meta-llama/...).
+        # Preserve those, while still stripping explicit internal prefixes like
+        # openrouter/<model> and openai/<model>.
+        if self.provider == "openrouter":
+            if prefix == "openrouter":
+                return remainder
+            return normalized
+
+        if prefix in {"openai", "groq", "ollama", "self_hosted", "self-hosted"}:
+            return remainder
+        return normalized
+
     async def _terminate_process_tree(
         self, process: asyncio.subprocess.Process, *, reason: str
     ) -> None:
@@ -5976,9 +5997,7 @@ Return ONLY the JSON, no markdown or explanations."""
         async with aiohttp.ClientSession() as session:
             while True:
                 payload = {
-                    "model": self.model.split("/", 1)[1]
-                    if isinstance(self.model, str) and "/" in self.model
-                    else self.model,
+                    "model": self._normalize_openai_compatible_model_name(self.model),
                     "messages": full_messages,
                     "tools": NAVI_FUNCTIONS_OPENAI,
                     "stream": True,

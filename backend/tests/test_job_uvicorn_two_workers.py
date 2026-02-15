@@ -5,6 +5,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -13,6 +14,15 @@ from uuid import uuid4
 import httpx
 import pytest
 import redis.asyncio as redis
+
+
+def _redis_required_in_ci() -> bool:
+    return os.getenv("REQUIRE_REDIS_FOR_LOCK_TESTS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _repo_root() -> Path:
@@ -37,7 +47,7 @@ async def _connect_test_redis() -> redis.Redis:
         await client.ping()
     except Exception as exc:
         await client.aclose()
-        if os.getenv("CI"):
+        if os.getenv("CI") and _redis_required_in_ci():
             pytest.fail(
                 f"Redis required in CI for 2-worker lock harness ({url}): {exc}"
             )
@@ -56,18 +66,48 @@ async def _cleanup_namespace(client: redis.Redis, namespace: str) -> None:
             break
 
 
-async def _wait_http_ready(base_url: str, timeout_seconds: float = 30.0) -> None:
+def _tail_file(path: str, max_chars: int = 8000) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            content = fh.read()
+            if len(content) > max_chars:
+                return content[-max_chars:]
+            return content
+    except Exception:
+        return ""
+
+
+async def _wait_http_ready(
+    base_url: str,
+    *,
+    proc: subprocess.Popen,
+    log_path: str,
+    timeout_seconds: float = 90.0,
+) -> None:
     deadline = time.monotonic() + timeout_seconds
+    readiness_paths = ("/health", "/health-fast", "/ready")
     async with httpx.AsyncClient(timeout=3.0) as client:
         while time.monotonic() < deadline:
-            try:
-                response = await client.get(f"{base_url}/health")
-                if response.status_code == 200:
-                    return
-            except Exception:
-                pass
+            if proc.poll() is not None:
+                logs = _tail_file(log_path)
+                raise RuntimeError(
+                    f"uvicorn exited early with code {proc.returncode}. recent logs:\n{logs}"
+                )
+
+            for path in readiness_paths:
+                try:
+                    response = await client.get(f"{base_url}{path}")
+                    if response.status_code == 200:
+                        return
+                except Exception:
+                    continue
             await asyncio.sleep(0.25)
-    raise TimeoutError(f"Timed out waiting for server readiness at {base_url}/health")
+
+    logs = _tail_file(log_path)
+    raise TimeoutError(
+        f"Timed out waiting for server readiness at {base_url} "
+        f"(checked: {', '.join(readiness_paths)}). recent logs:\n{logs}"
+    )
 
 
 async def _wait_non_queued_status(
@@ -153,17 +193,26 @@ async def test_two_worker_uvicorn_duplicate_runner_lock() -> None:
         "--log-level",
         "warning",
     ]
+    with tempfile.NamedTemporaryFile(
+        mode="w+",
+        prefix="uvicorn-two-workers-",
+        suffix=".log",
+        delete=False,
+    ) as log_file:
+        log_path = log_file.name
+
+    log_handle = open(log_path, "a", encoding="utf-8")
     proc = subprocess.Popen(
         cmd,
         cwd=str(_repo_root()),
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
         start_new_session=True,
     )
 
     try:
-        await _wait_http_ready(base_url)
+        await _wait_http_ready(base_url, proc=proc, log_path=log_path)
         async with httpx.AsyncClient(timeout=20.0) as client:
             create_resp = await client.post(
                 f"{base_url}/api/jobs",
@@ -230,6 +279,14 @@ async def test_two_worker_uvicorn_duplicate_runner_lock() -> None:
             # Best effort cleanup if still running.
             await client.post(f"{base_url}/api/jobs/{job_id}/cancel")
     finally:
+        try:
+            log_handle.close()
+        except Exception:
+            pass
         _terminate_server_process(proc)
         await _cleanup_namespace(redis_client, namespace)
         await redis_client.aclose()
+        try:
+            os.unlink(log_path)
+        except OSError:
+            pass

@@ -123,6 +123,16 @@
       ]
     },
     {
+      "id": "openrouter",
+      "label": "OpenRouter",
+      "type": "saas",
+      "models": [
+        {"id": "openrouter/claude-sonnet-4", "name": "Claude Sonnet 4 (OpenRouter)", "description": "OpenRouter route to Anthropic Sonnet 4", "providerModel": "anthropic/claude-sonnet-4", "capabilities": {"streaming": true, "tools": true, "json": true, "vision": true, "search": false}},
+        {"id": "openrouter/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet (OpenRouter)", "description": "OpenRouter route to Anthropic Claude 3.5 Sonnet", "providerModel": "anthropic/claude-3.5-sonnet", "capabilities": {"streaming": true, "tools": true, "json": true, "vision": true, "search": false}},
+        {"id": "openrouter/llama-3.3-70b", "name": "Llama 3.3 70B (OpenRouter)", "description": "OpenRouter route to Meta Llama 3.3 70B", "providerModel": "meta-llama/llama-3.3-70b-instruct", "capabilities": {"streaming": true, "tools": true, "json": true, "vision": false, "search": false}}
+      ]
+    },
+    {
       "id": "ollama",
       "label": "Ollama",
       "type": "local",

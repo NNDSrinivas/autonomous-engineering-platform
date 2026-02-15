@@ -155,6 +155,17 @@ class ModelRouter:
             if isinstance(mode_id, str):
                 self.mode_index[mode_id] = mode
 
+        # Validate that defaultModeId is configured and exists
+        default_mode_id = self.defaults.get("defaultModeId")
+        if not default_mode_id:
+            raise ValueError(
+                "ModelRouter misconfigured: defaultModeId must be set in model-registry.json"
+            )
+        if default_mode_id not in self.mode_index:
+            raise ValueError(
+                f"ModelRouter misconfigured: defaultModeId '{default_mode_id}' does not exist in naviModes"
+            )
+
     def _load_registry(self) -> Dict[str, Any]:
         with self.registry_path.open("r", encoding="utf-8") as fh:
             return json.load(fh)
@@ -205,6 +216,12 @@ class ModelRouter:
 
         # defensive fallback to default mode
         default_mode = self.defaults.get("defaultModeId")
+        if not default_mode:
+            # This should never happen due to init validation, but be defensive
+            raise ModelRoutingError(
+                "NO_DEFAULT_MODE",
+                "No default mode configured in registry",
+            )
         return self._route_mode(
             requested_mode_id=default_mode,
             endpoint_key=endpoint_key,

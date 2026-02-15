@@ -17,23 +17,43 @@ def _redis_required_in_ci() -> bool:
     }
 
 
-async def _connect_test_redis() -> redis.Redis:
-    url = (
-        os.getenv("NAVI_TEST_REDIS_URL")
-        or os.getenv("REDIS_URL")
-        or "redis://127.0.0.1:6379/15"
-    )
-    client = redis.from_url(url, encoding="utf-8", decode_responses=True)
-    try:
-        await client.ping()
-    except Exception as exc:
-        await client.aclose()
-        if os.getenv("CI") and _redis_required_in_ci():
-            pytest.fail(
-                f"Redis required in CI for lock integration test ({url}): {exc}"
-            )
-        pytest.skip(f"Redis unreachable for integration lock test ({url}): {exc}")
-    return client
+def _candidate_redis_urls() -> list[str]:
+    primary_test_url = os.getenv("NAVI_TEST_REDIS_URL")
+    primary_url = os.getenv("REDIS_URL")
+    candidates = [
+        primary_test_url,
+        primary_url,
+        "redis://127.0.0.1:6379/15",
+        "redis://localhost:6379/15",
+        "redis://redis:6379/15",
+    ]
+    # Preserve order while dropping empty/duplicate values.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for url in candidates:
+        normalized = str(url or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(normalized)
+    return ordered
+
+
+async def _connect_test_redis() -> tuple[redis.Redis, str]:
+    errors: list[str] = []
+    for url in _candidate_redis_urls():
+        client = redis.from_url(url, encoding="utf-8", decode_responses=True)
+        try:
+            await client.ping()
+            return client, url
+        except Exception as exc:
+            errors.append(f"{url}: {exc}")
+            await client.aclose()
+
+    detail = "; ".join(errors) or "no redis URLs configured"
+    if os.getenv("CI") and _redis_required_in_ci():
+        pytest.fail(f"Redis required in CI for lock integration test: {detail}")
+    pytest.skip(f"Redis unreachable for integration lock test: {detail}")
 
 
 async def _cleanup_namespace(client: redis.Redis, namespace: str) -> None:
@@ -49,7 +69,7 @@ async def _cleanup_namespace(client: redis.Redis, namespace: str) -> None:
 
 @pytest.mark.asyncio
 async def test_runner_lock_lua_with_real_redis() -> None:
-    client = await _connect_test_redis()
+    client, _ = await _connect_test_redis()
     namespace = f"navi:test:jobs:{uuid4().hex}"
 
     manager_a = JobManager()

@@ -25,6 +25,27 @@ def _redis_required_in_ci() -> bool:
     }
 
 
+def _candidate_redis_urls() -> list[str]:
+    primary_test_url = os.getenv("NAVI_TEST_REDIS_URL")
+    primary_url = os.getenv("REDIS_URL")
+    candidates = [
+        primary_test_url,
+        primary_url,
+        "redis://127.0.0.1:6379/15",
+        "redis://localhost:6379/15",
+        "redis://redis:6379/15",
+    ]
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for url in candidates:
+        normalized = str(url or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(normalized)
+    return ordered
+
+
 def _repo_root() -> Path:
     # backend/tests -> backend -> repo root
     return Path(__file__).resolve().parents[2]
@@ -36,23 +57,21 @@ def _find_free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-async def _connect_test_redis() -> redis.Redis:
-    url = (
-        os.getenv("NAVI_TEST_REDIS_URL")
-        or os.getenv("REDIS_URL")
-        or "redis://127.0.0.1:6379/15"
-    )
-    client = redis.from_url(url, encoding="utf-8", decode_responses=True)
-    try:
-        await client.ping()
-    except Exception as exc:
-        await client.aclose()
-        if os.getenv("CI") and _redis_required_in_ci():
-            pytest.fail(
-                f"Redis required in CI for 2-worker lock harness ({url}): {exc}"
-            )
-        pytest.skip(f"Redis unreachable for 2-worker lock harness ({url}): {exc}")
-    return client
+async def _connect_test_redis() -> tuple[redis.Redis, str]:
+    errors: list[str] = []
+    for url in _candidate_redis_urls():
+        client = redis.from_url(url, encoding="utf-8", decode_responses=True)
+        try:
+            await client.ping()
+            return client, url
+        except Exception as exc:
+            errors.append(f"{url}: {exc}")
+            await client.aclose()
+
+    detail = "; ".join(errors) or "no redis URLs configured"
+    if os.getenv("CI") and _redis_required_in_ci():
+        pytest.fail(f"Redis required in CI for 2-worker lock harness: {detail}")
+    pytest.skip(f"Redis unreachable for 2-worker lock harness: {detail}")
 
 
 async def _cleanup_namespace(client: redis.Redis, namespace: str) -> None:
@@ -166,7 +185,7 @@ def _terminate_server_process(proc: subprocess.Popen) -> None:
     os.name == "nt", reason="uvicorn process-group control test targets POSIX"
 )
 async def test_two_worker_uvicorn_duplicate_runner_lock() -> None:
-    redis_client = await _connect_test_redis()
+    redis_client, redis_url = await _connect_test_redis()
     namespace = f"navi:test:workers2:{uuid4().hex}"
     port = _find_free_port()
     base_url = f"http://127.0.0.1:{port}"
@@ -177,7 +196,8 @@ async def test_two_worker_uvicorn_duplicate_runner_lock() -> None:
     env["NAVI_JOB_NAMESPACE"] = namespace
     env["AEP_ALLOW_DISTRIBUTED_DEGRADE"] = "false"
     # Use local Redis directly for locking semantics in this harness.
-    env.setdefault("REDIS_URL", "redis://127.0.0.1:6379/15")
+    # Force worker processes to use the same verified Redis endpoint as test process.
+    env["REDIS_URL"] = redis_url
 
     cmd = [
         sys.executable,

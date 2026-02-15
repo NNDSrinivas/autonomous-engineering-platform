@@ -109,15 +109,41 @@ jobs:
       - run: pip install pytest requests
       - name: Wait for Redis
         run: |
-          for i in {1..30}; do
-            if redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG; then
-              echo "Redis is ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Redis did not become ready in time"
-          exit 1
+          python - <<'PY'
+          import os
+          import sys
+          import time
+          import redis
+
+          urls = [
+              os.getenv("NAVI_TEST_REDIS_URL"),
+              os.getenv("REDIS_URL"),
+              "redis://127.0.0.1:6379/15",
+              "redis://localhost:6379/15",
+              "redis://redis:6379/15",
+          ]
+          candidates = []
+          seen = set()
+          for url in urls:
+              v = (url or "").strip()
+              if v and v not in seen:
+                  seen.add(v)
+                  candidates.append(v)
+
+          for attempt in range(1, 31):
+              for url in candidates:
+                  try:
+                      client = redis.from_url(url, decode_responses=True)
+                      client.ping()
+                      print(f"Redis is ready at {url}")
+                      sys.exit(0)
+                  except Exception:
+                      pass
+              time.sleep(1)
+
+          print(f"Redis did not become ready. candidates={candidates}")
+          sys.exit(1)
+          PY
       - name: Distributed lock tests
         run: |
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"

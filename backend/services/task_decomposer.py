@@ -235,6 +235,7 @@ Include realistic task IDs (t001, t002, etc.) and proper dependencies between ta
 
     def _parse_decomposition_response(self, response: str) -> DecompositionResult:
         """Parse the LLM response into a DecompositionResult"""
+
         def extract_outer_json_block(text: str) -> Optional[str]:
             start = text.find("{")
             end = text.rfind("}") + 1
@@ -246,7 +247,9 @@ Include realistic task IDs (t001, t002, etc.) and proper dependencies between ta
         candidates: List[str] = []
 
         # 1) Prefer fenced ```json blocks.
-        for m in re.finditer(r"```json\s*(.*?)\s*```", response, re.DOTALL | re.IGNORECASE):
+        for m in re.finditer(
+            r"```json\s*(.*?)\s*```", response, re.DOTALL | re.IGNORECASE
+        ):
             block = m.group(1).strip()
             if block:
                 candidates.append(block)
@@ -255,7 +258,9 @@ Include realistic task IDs (t001, t002, etc.) and proper dependencies between ta
                     candidates.append(outer)
 
         # 2) Try any fenced code block (some models omit `json` language tag).
-        for m in re.finditer(r"```(?:[a-zA-Z0-9_-]+)?\s*(.*?)\s*```", response, re.DOTALL):
+        for m in re.finditer(
+            r"```(?:[a-zA-Z0-9_-]+)?\s*(.*?)\s*```", response, re.DOTALL
+        ):
             block = m.group(1).strip()
             if block:
                 candidates.append(block)

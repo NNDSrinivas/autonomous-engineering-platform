@@ -287,19 +287,19 @@ class TaskContext:
         default_factory=dict
     )  # Track which step updates have been emitted
     # Enterprise mode fields
-    enterprise_project_id: Optional[str] = (
-        None  # Link to EnterpriseProject if running in enterprise mode
-    )
-    enterprise_controller: Optional[EnhancedIterationController] = (
-        None  # Enterprise iteration controller
-    )
+    enterprise_project_id: Optional[
+        str
+    ] = None  # Link to EnterpriseProject if running in enterprise mode
+    enterprise_controller: Optional[
+        EnhancedIterationController
+    ] = None  # Enterprise iteration controller
     checkpoint_interval: int = (
         10  # Create checkpoint every N iterations in enterprise mode
     )
     last_checkpoint_iteration: int = 0  # Track when last checkpoint was created
-    gate_detector: Optional[CheckpointGateDetector] = (
-        None  # Human checkpoint gate detector
-    )
+    gate_detector: Optional[
+        CheckpointGateDetector
+    ] = None  # Human checkpoint gate detector
     pending_gate: Optional[GateTrigger] = None  # Gate waiting for human decision
     pending_prompt: Optional[PromptRequest] = None  # Prompt waiting for user input
     last_verification_failed: bool = False  # Track if last verification attempt failed
@@ -2062,7 +2062,9 @@ class AutonomousAgent:
         Build deterministic guidance for production-readiness audits so the model
         executes concrete checks instead of returning checklist-only prose.
         """
-        project_type, _, commands = ProjectAnalyzer.detect_project_type(self.workspace_path)
+        project_type, _, commands = ProjectAnalyzer.detect_project_type(
+            self.workspace_path
+        )
         package_manager = self._detect_package_manager()
 
         install_cmd = {
@@ -2110,11 +2112,17 @@ class AutonomousAgent:
                 "next start",
             ]
             start_cmd = next(
-                (cmd for cmd in start_candidates if cmd.startswith(package_manager) or cmd == "next start"),
+                (
+                    cmd
+                    for cmd in start_candidates
+                    if cmd.startswith(package_manager) or cmd == "next start"
+                ),
                 "npm run start",
             )
             audit_steps.append(f"- {start_cmd}")
-            audit_steps.append("- Verify app health with curl to localhost (or configured port)")
+            audit_steps.append(
+                "- Verify app health with curl to localhost (or configured port)"
+            )
 
         checks = [
             "Build",
@@ -3420,7 +3428,10 @@ Use this context to understand existing patterns, dependencies, and architecture
                     "docker ps >/dev/null 2>&1 && echo 'yes' || echo 'no'",
                 ),
                 # Package managers
-                ("Homebrew", "brew --version 2>/dev/null | head -1 || echo 'not found'"),
+                (
+                    "Homebrew",
+                    "brew --version 2>/dev/null | head -1 || echo 'not found'",
+                ),
                 # OS info
                 ("OS", "uname -s 2>/dev/null"),
                 # Current directory info
@@ -3599,7 +3610,9 @@ Use this context to understand existing patterns, dependencies, and architecture
                 pm = (
                     "npm"
                     if "npm" in request_lower
-                    else "yarn" if "yarn" in request_lower else "pnpm"
+                    else "yarn"
+                    if "yarn" in request_lower
+                    else "pnpm"
                 )
                 label = f"Install dependencies with {pm}"
                 desc = f"Running {pm} install to install project dependencies"
@@ -5982,14 +5995,14 @@ Return ONLY the JSON, no markdown or explanations."""
                 base_url = self.base_url or "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
-                    )
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
                 elif self.provider == "groq":
                     base_url = "https://api.groq.com/openai/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
-                    )
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
                 elif self.provider == "ollama":
                     base_url = os.environ.get("OLLAMA_BASE_URL", base_url)
                     if not base_url.rstrip("/").endswith("/v1"):
@@ -6131,10 +6144,10 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if tc.get("function", {}).get("name"):
                                         # Convert OpenAI-sanitized name back to original NAVI name
                                         openai_name = tc["function"]["name"]
-                                        tool_calls[idx]["name"] = (
-                                            OPENAI_TO_NAVI_TOOL_NAME.get(
-                                                openai_name, openai_name
-                                            )
+                                        tool_calls[idx][
+                                            "name"
+                                        ] = OPENAI_TO_NAVI_TOOL_NAME.get(
+                                            openai_name, openai_name
                                         )
                                     if tc.get("function", {}).get("arguments"):
                                         tool_calls[idx]["arguments"] += tc["function"][
@@ -6623,9 +6636,7 @@ Return ONLY the JSON, no markdown or explanations."""
             max_runtime_seconds = DEFAULT_AUTONOMOUS_MAX_RUNTIME_SECONDS
         if max_runtime_seconds <= 0:
             max_runtime_seconds = DEFAULT_AUTONOMOUS_MAX_RUNTIME_SECONDS
-        logger.info(
-            f"[AutonomousAgent] ⏱️ Runtime cap: {max_runtime_seconds}s"
-        )
+        logger.info(f"[AutonomousAgent] ⏱️ Runtime cap: {max_runtime_seconds}s")
 
         yield {"type": "status", "status": "planning", "task_id": context.task_id}
 
@@ -6728,9 +6739,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
         # Update first step to in_progress (running)
         if plan_steps and context.plan_id:
-            context.step_progress_emitted[0] = (
-                "running"  # Track that we've emitted step 0 as running
-            )
+            context.step_progress_emitted[
+                0
+            ] = "running"  # Track that we've emitted step 0 as running
             yield {
                 "type": "step_update",
                 "data": {

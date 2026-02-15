@@ -20,7 +20,9 @@ async def _connect_test_redis() -> redis.Redis:
     except Exception as exc:
         await client.aclose()
         if os.getenv("CI"):
-            pytest.fail(f"Redis required in CI for lock integration test ({url}): {exc}")
+            pytest.fail(
+                f"Redis required in CI for lock integration test ({url}): {exc}"
+            )
         pytest.skip(f"Redis unreachable for integration lock test ({url}): {exc}")
     return client
 

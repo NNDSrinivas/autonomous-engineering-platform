@@ -66,7 +66,9 @@ async def test_runner_lock_renew_and_release_require_owner_token() -> None:
     await manager.release_runner_lock(job_id, owner_a)
     assert await manager.has_active_runner(job_id) is False
 
-    renewed_after_release = await manager.renew_runner_lock(job_id, owner_a, ttl_seconds=30)
+    renewed_after_release = await manager.renew_runner_lock(
+        job_id, owner_a, ttl_seconds=30
+    )
     assert renewed_after_release is False
 
 

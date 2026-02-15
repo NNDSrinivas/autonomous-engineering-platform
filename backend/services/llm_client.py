@@ -250,12 +250,9 @@ class OpenAIAdapter(BaseLLMAdapter):
         # OpenAI GPT-4o/GPT-4.1/GPT-4.2/GPT-5/o-series expect max_completion_tokens
         # on /chat/completions; max_tokens can trigger 400 invalid_request_error.
         model_name = normalized_model.lower()
-        if (
-            self.config.provider == LLMProvider.OPENAI
-            and any(
-                x in model_name
-                for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]
-            )
+        if self.config.provider == LLMProvider.OPENAI and any(
+            x in model_name
+            for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]
         ):
             payload["max_completion_tokens"] = self.config.max_tokens
         else:
@@ -327,7 +324,10 @@ class OpenAIAdapter(BaseLLMAdapter):
 
         # Use max_completion_tokens for newer OpenAI models (GPT-4o, GPT-5.x, o1/o3/o4)
         model_name = normalized_model.lower()
-        if any(x in model_name for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]):
+        if any(
+            x in model_name
+            for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]
+        ):
             payload = {
                 "model": normalized_model,
                 "messages": msgs,

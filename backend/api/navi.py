@@ -136,9 +136,9 @@ class RunState(BaseModel):
     context: ContextPack
     plan: Optional[Plan] = None
     current_step: int = 0
-    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = (
-        "idle"
-    )
+    status: Literal[
+        "idle", "planning", "executing", "verifying", "done", "failed"
+    ] = "idle"
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: float = Field(default_factory=time.time)
 
@@ -1393,7 +1393,9 @@ async def analyze_working_changes(
                             "severity": (
                                 "high"
                                 if any(i["severity"] == "high" for i in issues)
-                                else "medium" if issues else "low"
+                                else "medium"
+                                if issues
+                                else "low"
                             ),
                             "issues": issues,
                             "diff": change.get("diff", "")[:1000],
@@ -7537,7 +7539,9 @@ async def navi_chat_stream_v2(
                                 break
                             last_event_time = time.time()
                             yield payload
-                            pending_task = asyncio.create_task(event_generator.__anext__())
+                            pending_task = asyncio.create_task(
+                                event_generator.__anext__()
+                            )
                             continue
 
                         now = time.time()
@@ -8044,6 +8048,7 @@ async def _run_autonomous_job(job_id: str) -> None:
         )
 
         with db_session() as run_db:
+
             async def _job_cancel_requested() -> bool:
                 try:
                     latest = await job_manager.require_job(job_id)
@@ -8173,7 +8178,9 @@ async def _run_autonomous_job(job_id: str) -> None:
 
                 if event_type == "complete":
                     saw_complete = True
-                    summary = event.get("summary", {}) if isinstance(event, dict) else {}
+                    summary = (
+                        event.get("summary", {}) if isinstance(event, dict) else {}
+                    )
                     success = bool(summary.get("success", True))
                     stopped_reason = str(summary.get("stopped_reason", ""))
                     if stopped_reason == "human_gate_pending":
@@ -8210,7 +8217,12 @@ async def _run_autonomous_job(job_id: str) -> None:
                         )
                         await job_manager.update_metadata(
                             job_id,
-                            {"checkpoint": {"phase": "completed", "captured_at": time.time()}},
+                            {
+                                "checkpoint": {
+                                    "phase": "completed",
+                                    "captured_at": time.time(),
+                                }
+                            },
                         )
 
                 await job_manager.append_event(job_id, event)
@@ -8307,7 +8319,9 @@ async def _require_owned_job(job_id: str, user: User):
 
     current_user_id, current_org_id = _resolve_authenticated_context(user)
     if not current_user_id:
-        raise HTTPException(status_code=401, detail="Missing authenticated user context")
+        raise HTTPException(
+            status_code=401, detail="Missing authenticated user context"
+        )
     if job.user_id and str(job.user_id) != str(current_user_id):
         raise HTTPException(status_code=403, detail="Forbidden")
     if job.org_id and not current_org_id:
@@ -8443,7 +8457,9 @@ async def resume_background_job(
             "message": "Job already running",
         }
     if job.status not in {"queued", "paused_for_approval"}:
-        raise HTTPException(status_code=409, detail=f"Cannot resume job in status {job.status}")
+        raise HTTPException(
+            status_code=409, detail=f"Cannot resume job in status {job.status}"
+        )
     if job.status == "paused_for_approval" and job.pending_approval:
         raise HTTPException(
             status_code=409,
@@ -8573,9 +8589,15 @@ async def cancel_background_job(
     job = await _require_owned_job(job_id, user)
     job_manager = get_job_manager()
     if _is_terminal_job_status(job.status):
-        return {"success": True, "job": job.to_public(), "message": f"Job already {job.status}"}
+        return {
+            "success": True,
+            "job": job.to_public(),
+            "message": f"Job already {job.status}",
+        }
     if job.status not in {"queued", "running", "paused_for_approval"}:
-        raise HTTPException(status_code=409, detail=f"Cannot cancel job in status {job.status}")
+        raise HTTPException(
+            status_code=409, detail=f"Cannot cancel job in status {job.status}"
+        )
 
     requester = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "")
     await job_manager.request_cancel(job_id, requested_by=requester or None)
@@ -8604,8 +8626,12 @@ async def approve_background_job_gate(
             detail="Job has no pending approval payload",
         )
 
-    current_user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "")
-    current_org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "")
+    current_user_id = str(
+        getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+    )
+    current_org_id = str(
+        getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+    )
 
     approval_result: Dict[str, Any] = {
         "decision": request.decision or request.choice or "approved",
@@ -8615,7 +8641,9 @@ async def approve_background_job_gate(
     pending_approval = dict(job.pending_approval or {})
     approval_type = str(pending_approval.get("type") or "").strip().lower()
     if not approval_type:
-        raise HTTPException(status_code=409, detail="Malformed pending approval payload")
+        raise HTTPException(
+            status_code=409, detail="Malformed pending approval payload"
+        )
 
     requested_gate_id = str(request.gate_id or "").strip()
     pending_gate_id = str(
@@ -8631,9 +8659,14 @@ async def approve_background_job_gate(
         )
 
     decision_value = str(approval_result.get("decision") or "").strip().lower()
-    deny_decision = decision_value in {"deny", "denied", "reject", "rejected", "cancel", "stop"} or decision_value.startswith(
-        "deny"
-    )
+    deny_decision = decision_value in {
+        "deny",
+        "denied",
+        "reject",
+        "rejected",
+        "cancel",
+        "stop",
+    } or decision_value.startswith("deny")
     resume_required = False
     resume_context_parts: List[str] = []
     if approval_result.get("decision"):
@@ -8644,7 +8677,9 @@ async def approve_background_job_gate(
     # Wire into existing consent pipeline when consent_id is provided.
     consent_id = request.consent_id or pending_approval.get("consent_id")
     if approval_type == "consent" and not consent_id:
-        raise HTTPException(status_code=400, detail="consent_id is required for consent approvals")
+        raise HTTPException(
+            status_code=400, detail="consent_id is required for consent approvals"
+        )
 
     if consent_id:
         choice = request.choice or "allow_once"

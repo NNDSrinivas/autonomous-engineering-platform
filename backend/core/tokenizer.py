@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from backend.core.config import get_settings
@@ -24,6 +25,12 @@ class SimpleCharTokenizer:
 
 
 def _should_allow_fallback() -> bool:
+    app_env = (os.getenv("APP_ENV") or "").lower()
+    if app_env in {"test", "ci"}:
+        return True
+    if os.getenv("CI", "").lower() in {"1", "true", "yes"}:
+        return True
+
     settings = get_settings()
     if getattr(settings, "tokenizer_fallback_enabled", False):
         return True

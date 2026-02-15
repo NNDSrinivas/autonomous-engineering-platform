@@ -66,8 +66,14 @@ async def test_duplicate_runner_prevention_concurrent_start(
                 assert status_code == 200, body
                 assert body.get("success") is True, body
 
-            started_flags = [bool(first[1].get("started")), bool(second[1].get("started"))]
-            assert started_flags.count(True) == 1, {"first": first[1], "second": second[1]}
+            started_flags = [
+                bool(first[1].get("started")),
+                bool(second[1].get("started")),
+            ]
+            assert started_flags.count(True) == 1, {
+                "first": first[1],
+                "second": second[1],
+            }
             non_started = first[1] if not first[1].get("started") else second[1]
             assert non_started.get("started") is False, non_started
             assert non_started.get("message") == "Job already running", non_started
@@ -81,7 +87,9 @@ async def test_duplicate_runner_prevention_concurrent_start(
             assert third_body.get("started") is False, third_body
 
             events = await manager.get_events_after(job_id, 0)
-            job_started_count = sum(1 for event in events if event.get("type") == "job_started")
+            job_started_count = sum(
+                1 for event in events if event.get("type") == "job_started"
+            )
             assert job_started_count == 1, [event.get("type") for event in events]
 
             allow_complete.set()

@@ -35,6 +35,7 @@ DEFAULT_LOCK_TTL_SECONDS = 90
 class DistributedLockUnavailableError(RuntimeError):
     """Raised when Redis-backed runner locking is required but unavailable."""
 
+
 _RELEASE_LOCK_LUA = """
 if redis.call('GET', KEYS[1]) == ARGV[1] then
   return redis.call('DEL', KEYS[1])
@@ -135,10 +136,9 @@ class JobManager:
         )
         self._ttl_seconds = max(300, int(os.getenv("NAVI_JOB_TTL_SECONDS", "86400")))
         self._namespace = os.getenv("NAVI_JOB_NAMESPACE", "navi:jobs")
-        self._allow_distributed_degrade = (
-            str(os.getenv("AEP_ALLOW_DISTRIBUTED_DEGRADE", "false")).strip().lower()
-            in {"1", "true", "yes", "on"}
-        )
+        self._allow_distributed_degrade = str(
+            os.getenv("AEP_ALLOW_DISTRIBUTED_DEGRADE", "false")
+        ).strip().lower() in {"1", "true", "yes", "on"}
         self._redis_configured = False
         self._redis: Optional[redis.Redis] = None
         self._redis_available = False
@@ -205,7 +205,11 @@ class JobManager:
     @staticmethod
     def _event_size_bytes(event_payload: Dict[str, Any]) -> int:
         try:
-            return len(json.dumps(event_payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            return len(
+                json.dumps(
+                    event_payload, ensure_ascii=False, separators=(",", ":")
+                ).encode("utf-8")
+            )
         except Exception:
             return len(str(event_payload).encode("utf-8"))
 
@@ -220,7 +224,9 @@ class JobManager:
             return ""
         return str(value)
 
-    def _truncate_for_event_storage(self, value: Any, *, max_string_len: int = 4096) -> Any:
+    def _truncate_for_event_storage(
+        self, value: Any, *, max_string_len: int = 4096
+    ) -> Any:
         if isinstance(value, str):
             if len(value) <= max_string_len:
                 return value
@@ -266,7 +272,11 @@ class JobManager:
         }
 
     async def acquire_runner_lock(
-        self, job_id: str, owner_token: str, *, ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS
+        self,
+        job_id: str,
+        owner_token: str,
+        *,
+        ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
     ) -> bool:
         async def _acquire_local_lock() -> bool:
             # Best-effort local lock: allow only one active task in this process.
@@ -294,7 +304,11 @@ class JobManager:
             ) from exc
 
     async def renew_runner_lock(
-        self, job_id: str, owner_token: str, *, ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS
+        self,
+        job_id: str,
+        owner_token: str,
+        *,
+        ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
     ) -> bool:
         if not self._redis_available or not self._redis:
             return True
@@ -354,12 +368,18 @@ class JobManager:
         if not self._redis_available or not self._redis:
             return
         try:
-            await self._redis.set(self._record_key(record.job_id), json.dumps(record.to_serializable()))
+            await self._redis.set(
+                self._record_key(record.job_id), json.dumps(record.to_serializable())
+            )
             await self._redis.expire(self._record_key(record.job_id), self._ttl_seconds)
         except Exception as exc:
-            logger.warning("[JobManager] Failed to persist job record %s: %s", record.job_id, exc)
+            logger.warning(
+                "[JobManager] Failed to persist job record %s: %s", record.job_id, exc
+            )
 
-    async def _append_event_redis(self, job_id: str, event_payload: Dict[str, Any]) -> None:
+    async def _append_event_redis(
+        self, job_id: str, event_payload: Dict[str, Any]
+    ) -> None:
         if not self._redis_available or not self._redis:
             return
         try:
@@ -369,7 +389,9 @@ class JobManager:
             await self._redis.ltrim(key, -self._max_events, -1)
             await self._redis.expire(key, self._ttl_seconds)
         except Exception as exc:
-            logger.warning("[JobManager] Failed to persist job event %s: %s", job_id, exc)
+            logger.warning(
+                "[JobManager] Failed to persist job event %s: %s", job_id, exc
+            )
 
     async def _load_record_redis(self, job_id: str) -> Optional[JobRecord]:
         if not self._redis_available or not self._redis:
@@ -571,7 +593,9 @@ class JobManager:
             record.condition.notify_all()
             return record
 
-    async def request_cancel(self, job_id: str, requested_by: Optional[str] = None) -> JobRecord:
+    async def request_cancel(
+        self, job_id: str, requested_by: Optional[str] = None
+    ) -> JobRecord:
         record = await self.require_job(job_id)
         async with record.condition:
             metadata = dict(record.metadata or {})
@@ -648,13 +672,17 @@ class JobManager:
         )
         return record
 
-    async def get_events_after(self, job_id: str, after_sequence: int) -> List[Dict[str, Any]]:
+    async def get_events_after(
+        self, job_id: str, after_sequence: int
+    ) -> List[Dict[str, Any]]:
         record = await self.require_job(job_id)
         redis_events = await self._load_events_redis(job_id)
         if redis_events:
             async with record.lock:
                 record.events = redis_events[-self._max_events :]
-                max_seq = max((int(evt.get("sequence", 0)) for evt in record.events), default=0)
+                max_seq = max(
+                    (int(evt.get("sequence", 0)) for evt in record.events), default=0
+                )
                 if max_seq >= record.next_sequence:
                     record.next_sequence = max_seq + 1
         async with record.lock:

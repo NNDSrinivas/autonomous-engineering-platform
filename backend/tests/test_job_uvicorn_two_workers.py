@@ -38,7 +38,9 @@ async def _connect_test_redis() -> redis.Redis:
     except Exception as exc:
         await client.aclose()
         if os.getenv("CI"):
-            pytest.fail(f"Redis required in CI for 2-worker lock harness ({url}): {exc}")
+            pytest.fail(
+                f"Redis required in CI for 2-worker lock harness ({url}): {exc}"
+            )
         pytest.skip(f"Redis unreachable for 2-worker lock harness ({url}): {exc}")
     return client
 
@@ -68,7 +70,9 @@ async def _wait_http_ready(base_url: str, timeout_seconds: float = 30.0) -> None
     raise TimeoutError(f"Timed out waiting for server readiness at {base_url}/health")
 
 
-async def _wait_non_queued_status(base_url: str, job_id: str, timeout_seconds: float = 10.0) -> str:
+async def _wait_non_queued_status(
+    base_url: str, job_id: str, timeout_seconds: float = 10.0
+) -> str:
     deadline = time.monotonic() + timeout_seconds
     async with httpx.AsyncClient(timeout=5.0) as client:
         while time.monotonic() < deadline:
@@ -118,7 +122,9 @@ def _terminate_server_process(proc: subprocess.Popen) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(os.name == "nt", reason="uvicorn process-group control test targets POSIX")
+@pytest.mark.skipif(
+    os.name == "nt", reason="uvicorn process-group control test targets POSIX"
+)
 async def test_two_worker_uvicorn_duplicate_runner_lock() -> None:
     redis_client = await _connect_test_redis()
     namespace = f"navi:test:workers2:{uuid4().hex}"
@@ -183,7 +189,10 @@ async def test_two_worker_uvicorn_duplicate_runner_lock() -> None:
             assert first[1].get("success") is True, first
             assert second[1].get("success") is True, second
 
-            started_count = [bool(first[1].get("started")), bool(second[1].get("started"))].count(True)
+            started_count = [
+                bool(first[1].get("started")),
+                bool(second[1].get("started")),
+            ].count(True)
             assert started_count == 1, {"first": first[1], "second": second[1]}
             non_started = first[1] if not first[1].get("started") else second[1]
             assert non_started.get("started") is False, non_started
@@ -207,7 +216,9 @@ async def test_two_worker_uvicorn_duplicate_runner_lock() -> None:
             # Allow event persistence to settle and verify only one job_started emission.
             job_started_count = 0
             for _ in range(20):
-                events = await _read_job_events_from_redis(redis_client, namespace, job_id)
+                events = await _read_job_events_from_redis(
+                    redis_client, namespace, job_id
+                )
                 job_started_count = sum(
                     1 for event in events if str(event.get("type")) == "job_started"
                 )

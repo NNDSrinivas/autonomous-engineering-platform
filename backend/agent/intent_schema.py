@@ -74,7 +74,9 @@ class IntentKind(str, Enum):
     GENERATE_TESTS = "generate_tests"
     RUN_LINT = "run_lint"
     RUN_BUILD = "run_build"
-    PROD_READINESS_AUDIT = "prod_readiness_audit"  # verify prod/deploy readiness with concrete checks
+    PROD_READINESS_AUDIT = (
+        "prod_readiness_audit"  # verify prod/deploy readiness with concrete checks
+    )
     RUN_CUSTOM_COMMAND = "run_custom_command"
 
     # --- Project management / collaboration ----------------------------------

@@ -6756,11 +6756,24 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
         Normalize OpenAI-compatible model IDs before calling /chat/completions.
 
         Router metadata may keep provider-qualified IDs (e.g. openai/gpt-5.2),
-        but OpenAI-compatible providers expect provider-specific model names.
+        but provider-specific behavior varies:
+        - OpenRouter/Together: preserve vendor namespaces (anthropic/claude-3.5-sonnet)
+        - OpenAI/others: strip routing prefixes (openai/gpt-4o -> gpt-4o)
         """
         normalized = (model or "").strip()
+        if not normalized:
+            return normalized
+
+        # OpenRouter expects fully qualified vendor/model IDs
+        if self.provider == "openrouter":
+            # Strip internal "openrouter/" prefix if present, but preserve vendor namespace
+            if normalized.startswith("openrouter/"):
+                return normalized.split("/", 1)[1]
+            return normalized
+
+        # For other OpenAI-compatible providers, strip any routing prefix
         if "/" in normalized:
-            normalized = normalized.split("/", 1)[1]
+            return normalized.split("/", 1)[1]
         return normalized
 
     def _fallback_model_on_error(self, model: str, error_text: str) -> Optional[str]:

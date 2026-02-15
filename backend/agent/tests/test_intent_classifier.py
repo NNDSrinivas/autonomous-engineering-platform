@@ -84,6 +84,16 @@ class TestIntentClassifier:
             intent = self.classifier.classify(message)
             assert intent.family == IntentFamily.PROJECT_MANAGEMENT
 
+    def test_prod_readiness_classification(self):
+        """Prod-readiness queries should route to engineering audit intent."""
+        message = (
+            "Is this project fully implemented end to end? "
+            "Is everything working and ready for prod deployment?"
+        )
+        intent = self.classifier.classify(message)
+        assert intent.family == IntentFamily.ENGINEERING
+        assert intent.kind == IntentKind.PROD_READINESS_AUDIT
+
     def test_metadata_influence(self):
         """Test that metadata influences classification."""
         message = "Handle this request"

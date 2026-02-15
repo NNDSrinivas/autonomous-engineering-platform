@@ -53,6 +53,7 @@ jobs:
     env:
       SECRET_KEY: test-secret-for-ci
       JWT_SECRET: test-jwt-secret-for-ci
+      JWT_ENABLED: "false"
       DATABASE_URL: sqlite:///./test.db
       APP_ENV: ci
       ENABLE_AUDIT_LOGGING: false
@@ -71,6 +72,44 @@ jobs:
           alembic upgrade head
           pytest -q backend/tests
           pytest -q tests -m "not integration"
+
+  distributed-lock-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      SECRET_KEY: test-secret-for-ci
+      JWT_SECRET: test-jwt-secret-for-ci
+      JWT_ENABLED: "false"
+      DATABASE_URL: sqlite:///./test.db
+      APP_ENV: ci
+      ENABLE_AUDIT_LOGGING: false
+      OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
+      CI_NON_BLOCKING_DB_CHECKS: true
+      REDIS_URL: redis://127.0.0.1:6379/0
+      NAVI_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: pip install pytest requests
+      - name: Distributed lock tests
+        run: |
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          pytest -q backend/tests/test_job_manager_locking_redis.py
+          pytest -q backend/tests/test_job_uvicorn_two_workers.py
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -202,7 +241,7 @@ jobs:
           kill $MAIN_PID 2>/dev/null || true
 
   e2e-smoke:
-    needs: [lint, unit-tests, integration-tests]
+    needs: [lint, unit-tests, distributed-lock-tests, integration-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:

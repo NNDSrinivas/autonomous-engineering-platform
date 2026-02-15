@@ -72,6 +72,37 @@ def _contains_any(text: str, keywords: Iterable[str]) -> bool:
     return any(k in text for k in keywords)
 
 
+def _is_prod_readiness_query(text: str) -> bool:
+    """Detect prod-readiness / go-live verification requests."""
+    readiness_signals = (
+        "prod ready",
+        "production ready",
+        "ready for prod",
+        "ready for production",
+        "prod readiness",
+        "production readiness",
+        "go live",
+        "fully implemented",
+        "end-to-end",
+        "end to end",
+        "ready for prod deployment",
+        "ready for production deployment",
+    )
+    if not _contains_any(text, readiness_signals):
+        return False
+
+    verification_signals = (
+        "check",
+        "verify",
+        "working",
+        "stable",
+        "deployment",
+        "deploy",
+        "?",
+    )
+    return _contains_any(text, verification_signals)
+
+
 def _priority_from_text(text: str) -> IntentPriority:
     if _contains_any(text, ("p0", "sev0", "sev 0", "production down", "outage")):
         return IntentPriority.CRITICAL
@@ -539,6 +570,11 @@ class IntentClassifier:
     # ------------------------------------------------------------------ #
 
     def _infer_family(self, text: str) -> IntentFamily:
+        # Keep readiness audits in engineering so they route to repo tooling,
+        # not project-management ticket summaries.
+        if _is_prod_readiness_query(text):
+            return IntentFamily.ENGINEERING
+
         # Check for simple greetings first (before other classifications)
         if _contains_any(
             text,
@@ -706,6 +742,9 @@ class IntentClassifier:
     def _infer_kind(self, text: str, family: IntentFamily) -> IntentKind:
         # Engineering intents
         if family == IntentFamily.ENGINEERING:
+            if _is_prod_readiness_query(text):
+                return IntentKind.PROD_READINESS_AUDIT
+
             # Check for greetings first
             greeting_terms = (
                 "hi",
@@ -1055,6 +1094,9 @@ class IntentClassifier:
 
         # Project management intents
         if family == IntentFamily.PROJECT_MANAGEMENT:
+            if _is_prod_readiness_query(text):
+                return IntentKind.PROD_READINESS_AUDIT
+
             # Check for Jira "my issues" patterns
             if _contains_any(
                 text,
@@ -1582,6 +1624,8 @@ class IntentClassifier:
     def _default_max_steps_for_kind(self, kind: IntentKind) -> int:
         if kind in {IntentKind.RUN_TESTS, IntentKind.RUN_LINT, IntentKind.RUN_BUILD}:
             return 4
+        if kind == IntentKind.PROD_READINESS_AUDIT:
+            return 10
         if kind in {
             IntentKind.FIX_BUG,
             IntentKind.IMPLEMENT_FEATURE,
@@ -1599,6 +1643,7 @@ class IntentClassifier:
             IntentKind.IMPLEMENT_FEATURE,
             IntentKind.REFACTOR_CODE,
             IntentKind.UPDATE_DEPENDENCIES,
+            IntentKind.PROD_READINESS_AUDIT,
         }
 
     def _command_for_test_like_intent(
@@ -1645,6 +1690,8 @@ class IntentClassifier:
             return "Create the requested file(s) with appropriate implementation."
         if kind == IntentKind.MODIFY_CODE:
             return "Apply the requested edits to the codebase."
+        if kind == IntentKind.PROD_READINESS_AUDIT:
+            return "Run concrete verification commands and report whether this repo is production-ready."
         return raw_text
 
     def _confidence_score(self, kind: IntentKind, raw_text: str) -> float:
@@ -1662,6 +1709,7 @@ class IntentClassifier:
             IntentKind.REVIEW_PR,
             IntentKind.GENERATE_RELEASE_NOTES,
             IntentKind.DEPLOY,
+            IntentKind.PROD_READINESS_AUDIT,
         }:
             return 0.85
         return 0.6

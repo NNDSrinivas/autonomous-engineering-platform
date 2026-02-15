@@ -46,3 +46,23 @@ export const decodeAuthToken = (token: string | null): AuthProfile | null => {
   }
 };
 
+export const isAdminUser = (): boolean => {
+  const token = getAuthToken();
+  if (!token) return false;
+
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+
+  try {
+    // Properly decode base64url by replacing URL-safe chars and adding padding
+    let payloadB64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    // Add padding if needed
+    while (payloadB64.length % 4 !== 0) payloadB64 += "=";
+
+    const payload = JSON.parse(atob(payloadB64));
+    return payload.role === "admin" || (Array.isArray(payload.roles) && payload.roles.includes("admin"));
+  } catch {
+    return false;
+  }
+};
+

@@ -43,7 +43,7 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -71,6 +71,12 @@ from backend.services.model_router import (
     get_model_router,
 )
 from backend.services.trace_store import get_trace_store
+from backend.services.job_manager import (
+    DistributedLockUnavailableError,
+    TERMINAL_STATUSES,
+    get_job_manager,
+)
+from backend.database.session import db_session
 
 # Conversation memory for cross-session persistence
 from backend.services.memory.conversation_memory import ConversationMemoryService
@@ -246,6 +252,7 @@ def _build_router_info(
 
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
 agent_router = APIRouter(prefix="/api/agent", tags=["agent-classify"])
+jobs_router = APIRouter(prefix="/api/jobs", tags=["navi-jobs"])
 
 # Redis client for distributed consent state
 _redis_client: Optional[redis.Redis] = None
@@ -1631,7 +1638,6 @@ async def handle_consent_response(
     Requires authentication to prevent unauthorized consent manipulation.
     """
     try:
-        redis_client = get_redis_client()
         body = await request.json()
         choice = body.get(
             "choice", "deny"
@@ -1640,114 +1646,20 @@ async def handle_consent_response(
 
         logger.info(f"[NAVI API] 🔐 Consent {consent_id}: decision={choice}")
 
-        # Validate consent exists in Redis
-        consent_data = await redis_client.get(f"consent:{consent_id}")
-        if not consent_data:
-            logger.warning(
-                f"[NAVI API] Consent {consent_id} not found in Redis (expired or already processed)"
-            )
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "success": False,
-                    "consent_id": consent_id,
-                    "error": "Consent not found or has expired",
-                },
-            )
-
-        consent_record = json.loads(consent_data)
-
-        # Validate user/org ownership to prevent consent hijacking
-        consent_user_id = consent_record.get("user_id")
-        consent_org_id = consent_record.get("org_id")
-
-        # Derive current user/org IDs
         current_user_id = str(
-            getattr(user, "user_id", None) or getattr(user, "id", None)
+            getattr(user, "user_id", None) or getattr(user, "id", None) or ""
         )
-        user_org_id = str(
-            getattr(user, "org_id", None) or getattr(user, "org_key", None)
-        )
-
-        if consent_user_id and consent_user_id != current_user_id:
-            logger.warning(
-                f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
-            )
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "success": False,
-                    "consent_id": consent_id,
-                    "error": "Unauthorized: You do not have permission to approve this consent",
-                },
-            )
-
-        if consent_org_id and user_org_id and consent_org_id != user_org_id:
-            logger.warning(
-                f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
-            )
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "success": False,
-                    "consent_id": consent_id,
-                    "error": "Unauthorized: This consent belongs to a different organization",
-                },
-            )
-
-        # Update consent decision in Redis while preserving ownership metadata.
-        decision = dict(consent_record)
-        decision.update(
-            {
-                "choice": choice,
-                "alternative_command": alternative_command,
-                "pending": False,
-                "responded_at": datetime.now().isoformat(),
-            }
+        current_org_id = str(
+            getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
         )
 
-        await redis_client.setex(
-            f"consent:{consent_id}",
-            60,  # Keep for 1 minute for agent to read
-            json.dumps(decision),
+        return await _apply_consent_decision(
+            consent_id=consent_id,
+            choice=choice,
+            alternative_command=alternative_command,
+            current_user_id=current_user_id,
+            current_org_id=current_org_id,
         )
-
-        logger.info(f"[NAVI API] ✅ Consent {consent_id} decision stored in Redis")
-
-        # Also update in-process consent approvals for AutonomousAgent pre-checks
-        try:
-            from backend.services import autonomous_agent as aa
-
-            approved = choice in (
-                "allow_once",
-                "allow_always_exact",
-                "allow_always_type",
-                "alternative",
-            )
-            with aa._consent_lock:
-                aa._consent_approvals[consent_id] = {
-                    "approved": approved,
-                    "pending": False,
-                    "choice": choice,
-                    "alternative_command": alternative_command,
-                    "updated_at": datetime.now().isoformat(),
-                    "user_id": consent_user_id,
-                    "org_id": consent_org_id,
-                }
-            logger.info(
-                f"[NAVI API] ✅ Consent {consent_id} cached in-process (approved={approved})"
-            )
-        except Exception as e:
-            logger.warning(
-                f"[NAVI API] Failed to cache consent {consent_id} in-process: {e}"
-            )
-
-        return {
-            "success": True,
-            "consent_id": consent_id,
-            "choice": choice,
-            "message": f"Consent decision '{choice}' recorded",
-        }
 
     except HTTPException:
         # Re-raise HTTPException to preserve correct HTTP status codes (403/404)
@@ -6258,7 +6170,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
         agent_result = await run_agent_loop(
             user_id=user_id,
             message=augmented_message,  # Use augmented message with image context
-            model=routing_decision.model,
+            model=routing_decision.effective_model_id,
             mode=mode,
             db=db,
             attachments=[a.dict() for a in (request.attachments or [])],
@@ -7429,6 +7341,8 @@ async def navi_chat_stream_v2(
                 IntentKind.GENERATE_TESTS,
                 IntentKind.RUN_LINT,
                 IntentKind.RUN_BUILD,
+                IntentKind.DEPLOY,
+                IntentKind.PROD_READINESS_AUDIT,
                 IntentKind.EXPLAIN_CODE,
                 IntentKind.EXPLAIN_ERROR,
                 IntentKind.ARCHITECTURE_OVERVIEW,
@@ -7540,26 +7454,28 @@ async def navi_chat_stream_v2(
             # PHASE 3: Stream LLM response with tools
             yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'llm_call', 'label': 'Generating response', 'detail': 'Thinking...', 'status': 'running'}})}\n\n"
 
-            if provider == "anthropic":
-                api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-                # Use a valid Claude model
-                if not model_name or "gpt" in model_name.lower():
-                    model_name_use = "claude-sonnet-4-20250514"
-                else:
-                    model_name_use = model_name
+            async def provider_event_generator():
+                if provider == "anthropic":
+                    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+                    # Use a valid Claude model
+                    if not model_name or "gpt" in model_name.lower():
+                        model_name_use = "claude-sonnet-4-20250514"
+                    else:
+                        model_name_use = model_name
 
-                async for event in stream_with_tools_anthropic(
-                    message=request.message,
-                    workspace_path=workspace_path,
-                    api_key=api_key,
-                    model=model_name_use,
-                    context=enhanced_context,  # Use enhanced context with file info
-                    conversation_history=request.conversation_history,  # Pass conversation history for context
-                    conversation_id=request.conversation_id,  # Pass session ID for memory tracking
-                ):
-                    yield f"data: {json.dumps(event.to_dict())}\n\n"
+                    async for event in stream_with_tools_anthropic(
+                        message=request.message,
+                        workspace_path=workspace_path,
+                        api_key=api_key,
+                        model=model_name_use,
+                        context=enhanced_context,  # Use enhanced context with file info
+                        conversation_history=request.conversation_history,  # Pass conversation history for context
+                        conversation_id=request.conversation_id,  # Pass session ID for memory tracking
+                    ):
+                        yield event.to_dict()
+                    return
 
-            else:  # OpenAI or compatible
+                # OpenAI or compatible
                 api_key = os.environ.get("OPENAI_API_KEY", "")
                 model_name_use = model_name or "gpt-4o"
 
@@ -7598,7 +7514,59 @@ async def navi_chat_stream_v2(
                     context=enhanced_context,  # Use enhanced context with file info
                     conversation_history=request.conversation_history,  # Pass conversation history for context
                 ):
-                    yield f"data: {json.dumps(event.to_dict())}\n\n"
+                    yield event.to_dict()
+
+            async def heartbeat_wrapper(event_generator):
+                last_event_time = time.time()
+                start_time = time.time()
+                heartbeat_interval = 10
+                heartbeat_count = 0
+                pending_task = None
+
+                try:
+                    pending_task = asyncio.create_task(event_generator.__anext__())
+                    while True:
+                        done, _ = await asyncio.wait(
+                            {pending_task}, timeout=heartbeat_interval
+                        )
+
+                        if done:
+                            try:
+                                payload = await pending_task
+                            except StopAsyncIteration:
+                                break
+                            last_event_time = time.time()
+                            yield payload
+                            pending_task = asyncio.create_task(event_generator.__anext__())
+                            continue
+
+                        now = time.time()
+                        if now - last_event_time >= heartbeat_interval:
+                            heartbeat_count += 1
+                            yield {
+                                "type": "heartbeat",
+                                "heartbeat": True,
+                                "timestamp": int(now * 1000),
+                                "message": "Still working...",
+                                "elapsed_seconds": int(now - start_time),
+                                "heartbeat_count": heartbeat_count,
+                            }
+                            last_event_time = now
+                finally:
+                    if pending_task is not None and not pending_task.done():
+                        pending_task.cancel()
+                        try:
+                            await pending_task
+                        except asyncio.CancelledError:
+                            pass
+
+                    try:
+                        await event_generator.aclose()
+                    except Exception:
+                        pass
+
+            async for payload in heartbeat_wrapper(provider_event_generator()):
+                yield f"data: {json.dumps(payload)}\n\n"
 
             # Mark LLM activity as done
             yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'llm_call', 'label': 'Generating response', 'detail': 'Complete', 'status': 'done'}})}\n\n"
@@ -7677,6 +7645,26 @@ class AutonomousTaskRequest(BaseModel):
     last_action_error: Optional[dict] = None
 
 
+class JobCreateRequest(AutonomousTaskRequest):
+    """Create a background autonomous job."""
+
+    auto_start: bool = True
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class JobApprovalRequest(BaseModel):
+    """Approval payload for a paused job gate (consent/human checkpoint)."""
+
+    # Consent-style approval (wired to existing consent flow)
+    consent_id: Optional[str] = None
+    choice: Optional[str] = "allow_once"
+    alternative_command: Optional[str] = None
+    # Generic gate acknowledgement metadata
+    gate_id: Optional[str] = None
+    decision: Optional[str] = None
+    comment: Optional[str] = None
+
+
 def _get_vision_provider_for_model(model: Optional[str]):
     """
     Get the appropriate VisionProvider for the user's selected model.
@@ -7736,6 +7724,1003 @@ def _ensure_openai_compatible_base_url(base_url: str) -> str:
     if normalized.endswith("/v1"):
         return normalized
     return f"{normalized}/v1"
+
+
+def _resolve_authenticated_context(user: User) -> tuple[Optional[str], Optional[str]]:
+    """Resolve user/org identifiers for request ownership checks."""
+    if settings.is_development() or settings.is_test():
+        user_id = (
+            os.environ.get("DEV_USER_ID")
+            or getattr(user, "user_id", None)
+            or getattr(user, "id", None)
+        )
+        org_id = (
+            os.environ.get("DEV_ORG_ID")
+            or getattr(user, "org_id", None)
+            or getattr(user, "org_key", None)
+        )
+    else:
+        user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+        org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+        if not user_id or not org_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Authenticated user and organization context are required",
+            )
+    return (
+        str(user_id) if user_id is not None else None,
+        str(org_id) if org_id is not None else None,
+    )
+
+
+def _resolve_provider_credentials(
+    provider: str,
+) -> tuple[str, Optional[str]]:
+    """Resolve API key/base URL for provider execution."""
+    model_base_url: Optional[str] = None
+    if provider == "anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    elif provider == "openrouter":
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    elif provider == "groq":
+        api_key = os.environ.get("GROQ_API_KEY", "")
+    elif provider == "google":
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+    elif provider == "ollama":
+        api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        )
+    elif provider == "self_hosted":
+        api_key = (
+            os.environ.get("SELF_HOSTED_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "self-hosted"
+        )
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("SELF_HOSTED_API_BASE_URL")
+            or os.environ.get("SELF_HOSTED_LLM_URL")
+            or os.environ.get("VLLM_BASE_URL")
+            or "http://localhost:8000"
+        )
+    else:
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+    return api_key, model_base_url
+
+
+def _is_terminal_job_status(status: Optional[str]) -> bool:
+    return (status or "").lower() in TERMINAL_STATUSES
+
+
+_JOB_ALLOWED_TRANSITIONS: Dict[str, set[str]] = {
+    "queued": {"running", "canceled", "failed"},
+    "running": {"paused_for_approval", "completed", "failed", "canceled"},
+    "paused_for_approval": {"queued", "running", "failed", "canceled"},
+    "completed": set(),
+    "failed": set(),
+    "canceled": set(),
+}
+
+
+async def _transition_job_status(
+    job_id: str,
+    *,
+    to_status: str,
+    phase: Optional[str] = None,
+    error: Optional[str] = None,
+    pending_approval: Any = None,
+    allow_same: bool = True,
+) -> None:
+    """Enforce job state-machine transitions."""
+    job_manager = get_job_manager()
+    job = await job_manager.require_job(job_id)
+    current = (job.status or "").lower()
+    target = (to_status or "").lower()
+    if not target:
+        raise HTTPException(status_code=400, detail="Invalid target status")
+
+    if current == target:
+        if not allow_same:
+            raise HTTPException(
+                status_code=409, detail=f"Job already in status '{current}'"
+            )
+    else:
+        allowed = _JOB_ALLOWED_TRANSITIONS.get(current, set())
+        if target not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Invalid job transition: {current} -> {target}",
+            )
+
+    await job_manager.set_status(
+        job_id,
+        status=target,
+        phase=phase,
+        error=error,
+        pending_approval=pending_approval,
+    )
+
+
+async def _apply_consent_decision(
+    *,
+    consent_id: str,
+    choice: str,
+    alternative_command: Optional[str],
+    current_user_id: Optional[str],
+    current_org_id: Optional[str],
+) -> Dict[str, Any]:
+    """Persist consent decision in Redis and in-process cache."""
+    redis_client = get_redis_client()
+    consent_data = await redis_client.get(f"consent:{consent_id}")
+    if not consent_data:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Consent not found or has expired",
+            },
+        )
+
+    consent_record = json.loads(consent_data)
+    consent_user_id = consent_record.get("user_id")
+    consent_org_id = consent_record.get("org_id")
+
+    if (
+        consent_user_id
+        and current_user_id
+        and str(consent_user_id) != str(current_user_id)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Unauthorized: You do not have permission to approve this consent",
+            },
+        )
+    if consent_org_id and current_org_id and str(consent_org_id) != str(current_org_id):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Unauthorized: This consent belongs to a different organization",
+            },
+        )
+
+    decision = dict(consent_record)
+    decision.update(
+        {
+            "choice": choice,
+            "alternative_command": alternative_command,
+            "pending": False,
+            "responded_at": datetime.now().isoformat(),
+        }
+    )
+    await redis_client.setex(
+        f"consent:{consent_id}",
+        60,
+        json.dumps(decision),
+    )
+
+    # Keep in-process cache aligned for fast consent checks
+    try:
+        from backend.services import autonomous_agent as aa
+
+        approved = choice in (
+            "allow_once",
+            "allow_always_exact",
+            "allow_always_type",
+            "alternative",
+        )
+        with aa._consent_lock:
+            aa._consent_approvals[consent_id] = {
+                "approved": approved,
+                "pending": False,
+                "choice": choice,
+                "alternative_command": alternative_command,
+                "updated_at": datetime.now().isoformat(),
+                "user_id": consent_user_id,
+                "org_id": consent_org_id,
+            }
+    except Exception as exc:
+        logger.warning("[NAVI API] Failed to update in-process consent cache: %s", exc)
+
+    return {
+        "success": True,
+        "consent_id": consent_id,
+        "choice": choice,
+        "message": f"Consent decision '{choice}' recorded",
+    }
+
+
+async def _run_autonomous_job(job_id: str) -> None:
+    """Background runner that executes AutonomousAgent and appends replayable events."""
+    from backend.services.autonomous_agent import AutonomousAgent
+
+    job_manager = get_job_manager()
+    job = await job_manager.require_job(job_id)
+    payload = dict(job.payload or {})
+    job_metadata = dict(job.metadata or {})
+    runner_token = f"{os.getpid()}:{uuid4()}"
+    lock_heartbeat_task: Optional[asyncio.Task] = None
+    lock_lost = asyncio.Event()
+
+    acquired = await job_manager.acquire_runner_lock(job_id, runner_token)
+    if not acquired:
+        logger.info("[NAVI Jobs] Skipping duplicate runner start for %s", job_id)
+        await job_manager.append_event(
+            job_id,
+            {
+                "type": "runner_already_active",
+                "message": "Runner already active for this job; duplicate start ignored.",
+            },
+        )
+        return
+
+    async def _lock_heartbeat() -> None:
+        consecutive_failures = 0
+        while True:
+            await asyncio.sleep(20)
+            renewed = await job_manager.renew_runner_lock(job_id, runner_token)
+            if renewed:
+                consecutive_failures = 0
+                continue
+
+            consecutive_failures += 1
+            if consecutive_failures == 1:
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "lock_renew_failed",
+                        "message": "Runner lock renew failed; retrying",
+                        "attempt": consecutive_failures,
+                    },
+                )
+            if consecutive_failures >= 3:
+                logger.warning(
+                    "[NAVI Jobs] Lost runner lock heartbeat for %s; stopping runner",
+                    job_id,
+                )
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "runner_lock_lost",
+                        "message": "Runner lock could not be renewed; canceling job to avoid duplicate execution",
+                    },
+                )
+                await job_manager.request_cancel(
+                    job_id, requested_by="system:runner_lock_lost"
+                )
+                lock_lost.set()
+                return
+
+    lock_heartbeat_task = asyncio.create_task(_lock_heartbeat())
+
+    try:
+        await _transition_job_status(
+            job_id,
+            to_status="running",
+            phase="planning",
+            pending_approval=None,
+            allow_same=True,
+        )
+    except HTTPException:
+        # Another worker might have moved terminal/canceled state before this runner started.
+        return
+
+    await job_manager.clear_cancel_request(job_id)
+    await job_manager.append_event(
+        job_id,
+        {"type": "job_started", "message": "Background execution started"},
+    )
+
+    try:
+        request_model = AutonomousTaskRequest(**payload)
+        workspace_path = request_model.workspace_path or request_model.workspace_root
+        if not workspace_path:
+            workspace_path = os.environ.get("AEP_WORKSPACE_PATH", os.getcwd())
+
+        routing_decision = get_model_router().route(
+            requested_model_or_mode_id=request_model.model,
+            endpoint="autonomous",
+            requested_provider=request_model.provider,
+        )
+        provider = routing_decision.provider
+        model = routing_decision.model
+        api_key, model_base_url = _resolve_provider_credentials(provider)
+
+        await job_manager.append_event(
+            job_id,
+            {
+                "type": "router_info",
+                "router_info": _build_router_info(
+                    routing_decision,
+                    mode=request_model.mode or "agent-full-access",
+                    task_type="autonomous_job",
+                ),
+            },
+        )
+
+        with db_session() as run_db:
+            async def _job_cancel_requested() -> bool:
+                try:
+                    latest = await job_manager.require_job(job_id)
+                except KeyError:
+                    return True
+                if latest.status == "canceled":
+                    return True
+                return await job_manager.is_cancel_requested(job_id)
+
+            agent = AutonomousAgent(
+                workspace_path=workspace_path,
+                api_key=api_key,
+                provider=provider,
+                model=model,
+                base_url=model_base_url,
+                db_session=run_db,
+                user_id=job.user_id,
+                org_id=job.org_id,
+                cancel_check=_job_cancel_requested,
+            )
+
+            continuation_count = int(job_metadata.get("continuation_count", 0) or 0)
+            resume_context = str(job_metadata.get("resume_context", "") or "").strip()
+            effective_request = request_model.message
+            if continuation_count > 0 and resume_context:
+                effective_request = (
+                    f"{request_model.message}\n\n"
+                    f"[RESUME CONTEXT]\n"
+                    f"This run is a continuation after human approval.\n"
+                    f"{resume_context}\n"
+                )
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "job_resumed",
+                        "continuation_count": continuation_count,
+                        "message": "Resuming job after approval",
+                    },
+                )
+
+            saw_complete = False
+            saw_pending_gate = False
+            async for event in agent.execute_task(
+                request=effective_request,
+                run_verification=request_model.run_verification,
+                conversation_history=request_model.conversation_history or [],
+            ):
+                # Real cancel path: stop run when cancellation requested.
+                current_job_state = await job_manager.require_job(job_id)
+                if (
+                    lock_lost.is_set()
+                    or current_job_state.status == "canceled"
+                    or await job_manager.is_cancel_requested(job_id)
+                ):
+                    await job_manager.append_event(
+                        job_id,
+                        {
+                            "type": "cancel_requested",
+                            "message": "Cancellation requested. Stopping execution.",
+                        },
+                    )
+                    raise asyncio.CancelledError()
+
+                event_type = str(event.get("type", "")).strip()
+                if event_type == "status":
+                    status_value = str(event.get("status", "")).lower()
+                    if status_value:
+                        await job_manager.set_status(job_id, phase=status_value)
+
+                if event_type == "command.consent_required":
+                    await _transition_job_status(
+                        job_id,
+                        to_status="paused_for_approval",
+                        phase="awaiting_consent",
+                        pending_approval={
+                            "type": "consent",
+                            "consent_id": event.get("data", {}).get("consent_id"),
+                            "command": event.get("data", {}).get("command"),
+                        },
+                        allow_same=True,
+                    )
+                    await job_manager.update_metadata(
+                        job_id,
+                        {
+                            "checkpoint": {
+                                "phase": "awaiting_consent",
+                                "event_type": "command.consent_required",
+                                "captured_at": time.time(),
+                            }
+                        },
+                    )
+                elif event_type == "human_gate":
+                    gate_data = event.get("data", {}) if isinstance(event, dict) else {}
+                    await _transition_job_status(
+                        job_id,
+                        to_status="paused_for_approval",
+                        phase="awaiting_human_gate",
+                        pending_approval={
+                            "type": "human_gate",
+                            "gate": gate_data,
+                        },
+                        allow_same=True,
+                    )
+                    await job_manager.update_metadata(
+                        job_id,
+                        {
+                            "checkpoint": {
+                                "phase": "awaiting_human_gate",
+                                "event_type": "human_gate",
+                                "iteration": gate_data.get("iteration"),
+                                "gate_type": gate_data.get("gate_type"),
+                                "captured_at": time.time(),
+                            }
+                        },
+                    )
+                    saw_pending_gate = True
+                elif event_type and event_type not in {"heartbeat"}:
+                    current = await job_manager.require_job(job_id)
+                    if current.status == "paused_for_approval":
+                        await _transition_job_status(
+                            job_id,
+                            to_status="running",
+                            phase="executing",
+                            pending_approval=None,
+                            allow_same=True,
+                        )
+
+                if event_type == "complete":
+                    saw_complete = True
+                    summary = event.get("summary", {}) if isinstance(event, dict) else {}
+                    success = bool(summary.get("success", True))
+                    stopped_reason = str(summary.get("stopped_reason", ""))
+                    if stopped_reason == "human_gate_pending":
+                        saw_pending_gate = True
+                        await _transition_job_status(
+                            job_id,
+                            to_status="paused_for_approval",
+                            phase="awaiting_human_gate",
+                            pending_approval={
+                                "type": "human_gate",
+                                "summary": summary.get("pending_gate", {}),
+                            },
+                            allow_same=True,
+                        )
+                        await job_manager.update_metadata(
+                            job_id,
+                            {
+                                "checkpoint": {
+                                    "phase": "awaiting_human_gate",
+                                    "event_type": "complete.human_gate_pending",
+                                    "pending_gate": summary.get("pending_gate", {}),
+                                    "captured_at": time.time(),
+                                }
+                            },
+                        )
+                    else:
+                        await _transition_job_status(
+                            job_id,
+                            to_status="completed" if success else "failed",
+                            phase="completed" if success else "failed",
+                            error=summary.get("error") if not success else None,
+                            pending_approval=None,
+                            allow_same=True,
+                        )
+                        await job_manager.update_metadata(
+                            job_id,
+                            {"checkpoint": {"phase": "completed", "captured_at": time.time()}},
+                        )
+
+                await job_manager.append_event(job_id, event)
+
+            if not saw_complete:
+                # Ensure terminal state when upstream exits without explicit "complete"
+                current = await job_manager.require_job(job_id)
+                if not _is_terminal_job_status(current.status):
+                    await _transition_job_status(
+                        job_id,
+                        to_status="completed",
+                        phase="completed",
+                        pending_approval=None,
+                        allow_same=True,
+                    )
+            elif saw_pending_gate:
+                # Keep paused status terminal for this run segment.
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "job_paused",
+                        "message": "Job paused awaiting human decision",
+                    },
+                )
+                return
+
+        current = await job_manager.require_job(job_id)
+        if current.status == "completed":
+            await job_manager.append_event(
+                job_id,
+                {"type": "job_completed", "message": "Background job completed"},
+            )
+        elif current.status == "failed":
+            await job_manager.append_event(
+                job_id,
+                {
+                    "type": "job_failed",
+                    "message": current.error or "Background job failed",
+                },
+            )
+    except asyncio.CancelledError:
+        try:
+            await _transition_job_status(
+                job_id,
+                to_status="canceled",
+                phase="canceled",
+                pending_approval=None,
+                allow_same=True,
+            )
+        except HTTPException:
+            pass
+        await job_manager.append_event(
+            job_id,
+            {"type": "job_canceled", "message": "Background job canceled"},
+        )
+        raise
+    except Exception as exc:
+        logger.exception("[NAVI Jobs] Background execution failed for %s", job_id)
+        try:
+            await _transition_job_status(
+                job_id,
+                to_status="failed",
+                phase="failed",
+                error=str(exc),
+                pending_approval=None,
+                allow_same=True,
+            )
+        except HTTPException:
+            pass
+        await job_manager.append_event(
+            job_id,
+            {"type": "error", "error": str(exc)},
+        )
+        await job_manager.append_event(
+            job_id,
+            {"type": "job_failed", "message": str(exc)},
+        )
+    finally:
+        if lock_heartbeat_task and not lock_heartbeat_task.done():
+            lock_heartbeat_task.cancel()
+            try:
+                await lock_heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        await job_manager.release_runner_lock(job_id, runner_token)
+
+
+async def _require_owned_job(job_id: str, user: User):
+    """Fetch job and enforce user/org ownership."""
+    job_manager = get_job_manager()
+    job = await job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    current_user_id, current_org_id = _resolve_authenticated_context(user)
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Missing authenticated user context")
+    if job.user_id and str(job.user_id) != str(current_user_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if job.org_id and not current_org_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if job.org_id and str(job.org_id) != str(current_org_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return job
+
+
+async def _start_job_runner(job_id: str) -> Dict[str, Any]:
+    """Start a background runner if not already running in this process."""
+    job_manager = get_job_manager()
+    job = await job_manager.require_job(job_id)
+    if _is_terminal_job_status(job.status):
+        return {"started": False, "reason": f"job_{job.status}"}
+    try:
+        if await job_manager.has_active_runner(job_id):
+            return {"started": False, "reason": "already_running"}
+    except DistributedLockUnavailableError:
+        return {"started": False, "reason": "distributed_lock_unavailable"}
+    task = asyncio.create_task(_run_autonomous_job(job_id))
+    task_registered = await job_manager.set_task_if_idle(job_id, task)
+    if not task_registered:
+        task.cancel()
+        return {"started": False, "reason": "already_running"}
+    return {"started": True}
+
+
+@router.post("/jobs")
+@jobs_router.post("")
+async def create_background_job(
+    request: JobCreateRequest,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Create a long-running autonomous job and optionally start it immediately."""
+    user_id, org_id = _resolve_authenticated_context(user)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Missing authenticated user")
+
+    job_manager = get_job_manager()
+    record = await job_manager.create_job(
+        payload=request.model_dump(),
+        user_id=user_id,
+        org_id=org_id,
+        metadata=request.metadata or {},
+    )
+
+    start_result: Dict[str, Any] = {"started": False, "reason": "not_requested"}
+    if request.auto_start:
+        start_result = await _start_job_runner(record.job_id)
+        if start_result.get("reason") == "distributed_lock_unavailable":
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Distributed runner lock unavailable (Redis). "
+                    "Background start is temporarily unavailable."
+                ),
+            )
+
+    return {
+        "success": True,
+        "job": record.to_public(),
+        "events_url": f"/api/jobs/{record.job_id}/events",
+        "started": bool(start_result.get("started")),
+        "start_reason": start_result.get("reason"),
+    }
+
+
+@router.post("/jobs/{job_id}/start")
+@jobs_router.post("/{job_id}/start")
+async def start_background_job(
+    job_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Start a queued background job."""
+    job = await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+
+    if job.status == "running":
+        return {
+            "success": True,
+            "started": False,
+            "job": job.to_public(),
+            "message": "Job already running",
+        }
+    if _is_terminal_job_status(job.status):
+        raise HTTPException(status_code=409, detail=f"Job already {job.status}")
+    if job.status != "queued":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job must be queued before start (current: {job.status})",
+        )
+
+    start_result = await _start_job_runner(job_id)
+    if not start_result.get("started"):
+        if start_result.get("reason") == "distributed_lock_unavailable":
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Distributed runner lock unavailable (Redis). "
+                    "Cannot start job safely."
+                ),
+            )
+        return {
+            "success": True,
+            "started": False,
+            "job": (await job_manager.require_job(job_id)).to_public(),
+            "message": "Job already running",
+        }
+    return {
+        "success": True,
+        "started": True,
+        "job": (await job_manager.require_job(job_id)).to_public(),
+    }
+
+
+@router.post("/jobs/{job_id}/resume")
+@jobs_router.post("/{job_id}/resume")
+async def resume_background_job(
+    job_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Resume a job that is queued or paused for approval."""
+    job = await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+    if _is_terminal_job_status(job.status):
+        raise HTTPException(status_code=409, detail=f"Job already {job.status}")
+    if job.status == "running":
+        return {
+            "success": True,
+            "started": False,
+            "job": job.to_public(),
+            "message": "Job already running",
+        }
+    if job.status not in {"queued", "paused_for_approval"}:
+        raise HTTPException(status_code=409, detail=f"Cannot resume job in status {job.status}")
+    if job.status == "paused_for_approval" and job.pending_approval:
+        raise HTTPException(
+            status_code=409,
+            detail="Job is waiting for approval. Submit /approve before resuming.",
+        )
+
+    start_result = await _start_job_runner(job_id)
+    if not start_result.get("started"):
+        if start_result.get("reason") == "distributed_lock_unavailable":
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Distributed runner lock unavailable (Redis). "
+                    "Cannot resume job safely."
+                ),
+            )
+        return {
+            "success": True,
+            "started": False,
+            "job": (await job_manager.require_job(job_id)).to_public(),
+            "message": "Job already running",
+        }
+    return {
+        "success": True,
+        "started": True,
+        "job": (await job_manager.require_job(job_id)).to_public(),
+    }
+
+
+@router.get("/jobs/{job_id}")
+@jobs_router.get("/{job_id}")
+async def get_background_job(
+    job_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Get current background job status."""
+    job = await _require_owned_job(job_id, user)
+    return {"success": True, "job": job.to_public()}
+
+
+@router.get("/jobs/{job_id}/events")
+@jobs_router.get("/{job_id}/events")
+async def stream_background_job_events(
+    job_id: str,
+    after_sequence: int = Query(0, ge=0),
+    user: User = Depends(require_role(Role.VIEWER)),
+):
+    """SSE stream for job events with replay via sequence cursor."""
+    await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+
+    async def event_stream():
+        cursor = after_sequence
+
+        # Initial replay for reattach.
+        replay = await job_manager.get_events_after(job_id, cursor)
+        for event in replay:
+            cursor = max(cursor, int(event.get("sequence", cursor)))
+            yield f"data: {json.dumps(event)}\n\n"
+
+        while True:
+            current = await job_manager.require_job(job_id)
+            if _is_terminal_job_status(current.status):
+                done_event = {
+                    "type": "job_terminal",
+                    "job_id": job_id,
+                    "job_status": current.status,
+                    "sequence": cursor,
+                    "timestamp": int(time.time() * 1000),
+                }
+                yield f"data: {json.dumps(done_event)}\n\n"
+                yield "data: [DONE]\n\n"
+                break
+
+            new_events = await job_manager.wait_for_events(
+                job_id,
+                after_sequence=cursor,
+                timeout_seconds=15.0,
+            )
+            if new_events:
+                for event in new_events:
+                    cursor = max(cursor, int(event.get("sequence", cursor)))
+                    yield f"data: {json.dumps(event)}\n\n"
+                continue
+
+            heartbeat = {
+                "type": "heartbeat",
+                "job_id": job_id,
+                "job_status": current.status,
+                "sequence": cursor,
+                "timestamp": int(time.time() * 1000),
+                "message": "Job still running",
+            }
+            yield f"data: {json.dumps(heartbeat)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/jobs/{job_id}/cancel")
+@jobs_router.post("/{job_id}/cancel")
+async def cancel_background_job(
+    job_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Cancel a running/queued background job."""
+    job = await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+    if _is_terminal_job_status(job.status):
+        return {"success": True, "job": job.to_public(), "message": f"Job already {job.status}"}
+    if job.status not in {"queued", "running", "paused_for_approval"}:
+        raise HTTPException(status_code=409, detail=f"Cannot cancel job in status {job.status}")
+
+    requester = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "")
+    await job_manager.request_cancel(job_id, requested_by=requester or None)
+    record = await job_manager.cancel_job(job_id)
+    return {"success": True, "job": record.to_public()}
+
+
+@router.post("/jobs/{job_id}/approve")
+@jobs_router.post("/{job_id}/approve")
+async def approve_background_job_gate(
+    job_id: str,
+    request: JobApprovalRequest,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Approve a paused job checkpoint (consent or generic gate acknowledgement)."""
+    job = await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+    if job.status != "paused_for_approval":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not awaiting approval (current status: {job.status})",
+        )
+    if not job.pending_approval:
+        raise HTTPException(
+            status_code=409,
+            detail="Job has no pending approval payload",
+        )
+
+    current_user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "")
+    current_org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "")
+
+    approval_result: Dict[str, Any] = {
+        "decision": request.decision or request.choice or "approved",
+        "gate_id": request.gate_id,
+        "comment": request.comment,
+    }
+    pending_approval = dict(job.pending_approval or {})
+    approval_type = str(pending_approval.get("type") or "").strip().lower()
+    if not approval_type:
+        raise HTTPException(status_code=409, detail="Malformed pending approval payload")
+
+    requested_gate_id = str(request.gate_id or "").strip()
+    pending_gate_id = str(
+        pending_approval.get("gate_id")
+        or pending_approval.get("consent_id")
+        or pending_approval.get("type")
+        or ""
+    ).strip()
+    if requested_gate_id and pending_gate_id and requested_gate_id != pending_gate_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Provided gate_id does not match pending approval",
+        )
+
+    decision_value = str(approval_result.get("decision") or "").strip().lower()
+    deny_decision = decision_value in {"deny", "denied", "reject", "rejected", "cancel", "stop"} or decision_value.startswith(
+        "deny"
+    )
+    resume_required = False
+    resume_context_parts: List[str] = []
+    if approval_result.get("decision"):
+        resume_context_parts.append(f"Decision: {approval_result['decision']}")
+    if request.comment:
+        resume_context_parts.append(f"Comment: {request.comment}")
+
+    # Wire into existing consent pipeline when consent_id is provided.
+    consent_id = request.consent_id or pending_approval.get("consent_id")
+    if approval_type == "consent" and not consent_id:
+        raise HTTPException(status_code=400, detail="consent_id is required for consent approvals")
+
+    if consent_id:
+        choice = request.choice or "allow_once"
+        approval_result["consent"] = await _apply_consent_decision(
+            consent_id=str(consent_id),
+            choice=choice,
+            alternative_command=request.alternative_command,
+            current_user_id=current_user_id,
+            current_org_id=current_org_id,
+        )
+        resume_context_parts.append(f"Consent choice: {choice}")
+        # If task stopped while waiting for consent, restart the run.
+        if not deny_decision and not (job.task and not job.task.done()):
+            resume_required = True
+    elif approval_type == "human_gate":
+        resume_required = not deny_decision
+
+    continuation_count = int((job.metadata or {}).get("continuation_count", 0) or 0)
+    if deny_decision:
+        await job_manager.request_cancel(job_id, requested_by=current_user_id or None)
+        if job.task and not job.task.done():
+            job.task.cancel()
+        await _transition_job_status(
+            job_id,
+            to_status="canceled",
+            phase="canceled",
+            pending_approval=None,
+            allow_same=True,
+        )
+        await job_manager.update_metadata(
+            job_id,
+            {
+                "last_approval": approval_result,
+                "resume_context": "; ".join(resume_context_parts) or "Approval denied",
+            },
+        )
+        await job_manager.append_event(
+            job_id,
+            {
+                "type": "approval_denied",
+                "approval": approval_result,
+                "message": "Approval denied by user; job canceled",
+            },
+        )
+    elif resume_required:
+        await job_manager.update_metadata(
+            job_id,
+            {
+                "continuation_count": continuation_count + 1,
+                "resume_context": "; ".join(resume_context_parts) or "Approval granted",
+                "last_approval": approval_result,
+            },
+        )
+        await _transition_job_status(
+            job_id,
+            to_status="queued",
+            phase="resuming",
+            pending_approval=None,
+            allow_same=True,
+        )
+    else:
+        await _transition_job_status(
+            job_id,
+            to_status="running",
+            phase="executing",
+            pending_approval=None,
+            allow_same=True,
+        )
+    await job_manager.append_event(
+        job_id,
+        {
+            "type": "approval_recorded",
+            "approval": approval_result,
+        },
+    )
+    if resume_required:
+        await job_manager.append_event(
+            job_id,
+            {
+                "type": "job_resuming",
+                "message": "Approval recorded. Restarting job from checkpoint context.",
+            },
+        )
+        await _start_job_runner(job_id)
+    return {
+        "success": True,
+        "job": (await job_manager.require_job(job_id)).to_public(),
+        "approval": approval_result,
+    }
 
 
 @router.post("/chat/autonomous")

@@ -2183,6 +2183,37 @@ export default function NaviChatPanel({
     });
   };
 
+  const appendNarrativeChunk = (
+    existing: Array<{ id: string; text: string; timestamp: string }>,
+    text: string,
+    timestamp: string
+  ): Array<{ id: string; text: string; timestamp: string }> => {
+    if (!text) return existing;
+    if (existing.length === 0) {
+      return [{ id: makeActivityId(), text, timestamp }];
+    }
+    const last = existing[existing.length - 1];
+    const lastMs = Date.parse(last.timestamp || "");
+    const incomingMs = Date.parse(timestamp || "");
+    const mergeWindowMs = 1200;
+    const canMerge =
+      Number.isFinite(lastMs) &&
+      Number.isFinite(incomingMs) &&
+      incomingMs - lastMs <= mergeWindowMs;
+
+    if (!canMerge) {
+      return [...existing, { id: makeActivityId(), text, timestamp }];
+    }
+
+    const merged = [...existing];
+    merged[merged.length - 1] = {
+      ...last,
+      text: `${last.text}${text}`,
+      timestamp,
+    };
+    return merged;
+  };
+
   const rekeyPerActionActivities = (fromId: string, toId: string) => {
     setPerActionActivities((prev) => {
       if (!prev.has(fromId)) return prev;
@@ -3550,6 +3581,70 @@ export default function NaviChatPanel({
           }
           clearSendTimeout();
         }
+        return;
+      }
+
+      // Extension-side context/memory messages that are informational for now.
+      // Handle as no-op to avoid "Unhandled message type" log spam.
+      if (msg.type === "workspaceContext") {
+        return;
+      }
+
+      if (msg.type === "memory.update") {
+        return;
+      }
+
+      if (msg.type === "navi.plan") {
+        return;
+      }
+
+      if (msg.type === "navi.stream.error") {
+        const errorText = String(
+          msg.error || msg.message || "Streaming was interrupted. Please retry."
+        ).trim();
+        setSending(false);
+        setIsAnalyzing(false);
+        clearSendTimeout();
+        lastLiveProgressRef.current = "";
+        pushActivityEvent({
+          id: makeActivityId(),
+          kind: "error",
+          label: "Stream Error",
+          detail: errorText,
+          status: "error",
+          timestamp: msg.timestamp || nowIso(),
+        });
+        setMessages((prev) => {
+          const streamingIdx = [...prev]
+            .reverse()
+            .findIndex((m) => m.role === "assistant" && m.isStreaming);
+          if (streamingIdx >= 0) {
+            const actualIdx = prev.length - 1 - streamingIdx;
+            return prev.map((m, idx) =>
+              idx === actualIdx
+                ? {
+                    ...m,
+                    isStreaming: false,
+                    content: m.content
+                      ? `${m.content}\n\n---\n⚠️ ${errorText}`
+                      : `⚠️ ${errorText}`,
+                  }
+                : m
+            );
+          }
+          return [
+            ...prev,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: `⚠️ ${errorText}`,
+              createdAt: nowIso(),
+              isStreaming: false,
+            },
+          ];
+        });
+        showToast(errorText, "error");
+        return;
       }
 
       // Handle streaming message start - update existing placeholder or create new
@@ -3742,8 +3837,12 @@ export default function NaviChatPanel({
               `fallback:${fallbackCode}:${normalized.requestedModelId || "unknown"}:${normalized.effectiveModelId || "unknown"}`;
             if (!endpointFallbackToastShownRef.current.has(requestKey)) {
               endpointFallbackToastShownRef.current.add(requestKey);
+              const endpointTip =
+                typeof reason === "string" && reason.includes("/stream/v2")
+                  ? "Tip: Switch to /stream or use NAVI Intelligence mode to auto-select a compatible model."
+                  : "Tip: Try a different provider or use NAVI Intelligence mode to auto-select a compatible model.";
               showToast(
-                `${reason}\nTip: Switch to /stream or use NAVI Intelligence mode to auto-select a compatible model.`,
+                `${reason}\n${endpointTip}`,
                 "warning"
               );
             }
@@ -4151,32 +4250,22 @@ export default function NaviChatPanel({
       if (msg.type === "navi.narrative" || msg.type === "action.narrative") {
         const narrativeText = msg.text || msg.narrative || "";
         const actionIndex = typeof msg.actionIndex === 'number' ? msg.actionIndex : currentActionIndexRef.current;
+        const narrativeTimestamp = msg.timestamp || nowIso();
         console.log('[NaviChatPanel] 💬 Narrative received:', narrativeText.substring(0, 100), 'for action:', actionIndex);
 
         // Add to the live narrative stream (Claude Code-like display)
         if (narrativeText) {
-          setNarrativeLines((prev) => [
-            ...prev,
-            {
-              id: makeActivityId(),
-              text: narrativeText,
-              // Use backend timestamp if available for accurate chronological ordering
-              timestamp: msg.timestamp || nowIso(),
-            },
-          ]);
+          setNarrativeLines((prev) =>
+            appendNarrativeChunk(prev, narrativeText, narrativeTimestamp)
+          );
         }
 
         // Also add to per-action narratives if we have an action context
         if (narrativeText && actionIndex !== null) {
-          updatePerActionNarratives(actionIndex, (existing) => ([
-            ...existing,
-            {
-              id: makeActivityId(),
-              text: narrativeText,
-              // Use backend timestamp if available for accurate chronological ordering
-              timestamp: msg.timestamp || nowIso(),
-            },
-          ]));
+          updatePerActionNarratives(
+            actionIndex,
+            (existing) => appendNarrativeChunk(existing, narrativeText, narrativeTimestamp)
+          );
         }
         return;
       }
@@ -6784,6 +6873,7 @@ export default function NaviChatPanel({
     }, LONG_TASK_TIMEOUT_MS);
 
     const hasVsCodeHost = vscodeApi.hasVsCodeHost();
+    const { effectiveRoot } = getEffectiveWorkspace();
 
     if (hasVsCodeHost) {
       try {
@@ -6808,6 +6898,7 @@ export default function NaviChatPanel({
           type: "sendMessage",
           text,
           attachments,
+          workspaceRoot: effectiveRoot,
           modelId: modelIdToSend,
           modeId: chatMode,
           orgId: ORG,
@@ -7859,8 +7950,37 @@ export default function NaviChatPanel({
     return normalized;
   };
 
+  const escapeHtml = (value: string): string =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const sanitizeHttpUrl = (rawUrl: string): string | null => {
+    const compact = rawUrl.replace(/\s+/g, "");
+    try {
+      const parsed = new URL(compact);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return null;
+      }
+      return parsed.toString();
+    } catch {
+      return null;
+    }
+  };
+
+  const normalizeProseArtifacts = (value: string): string =>
+    value
+      .replace(/([A-Za-z0-9])\s+([’'])\s+([A-Za-z0-9])/g, "$1$2$3")
+      .replace(/([A-Za-z0-9])\s*-\s*([A-Za-z0-9])/g, "$1-$2")
+      .replace(/\s+([,.;:!?])/g, "$1")
+      .replace(/([([{])\s+/g, "$1")
+      .replace(/\s+([)\]}])/g, "$1");
+
   const renderCodeBlock = (code: string, language: string, key: string) => {
-    let highlightedCode = code;
+    let highlightedCode = escapeHtml(code);
     const prismLang = language === 'js' ? 'javascript'
       : language === 'ts' ? 'typescript'
         : language === 'py' ? 'python'
@@ -8106,11 +8226,13 @@ export default function NaviChatPanel({
       // Pattern allows spaces in: "http ://", "http: //", "http :/ /", etc.
       const markdownLinkPattern = /\[([^\]]+)\]\((https?\s*:\s*\/\s*\/\s*[^)]+)\)/g;
       result = result.replace(markdownLinkPattern, (_match, text, url) => {
-        // Clean up URL: remove ALL spaces from the URL
-        const cleanUrl = url.replace(/\s+/g, '');
+        const cleanUrl = sanitizeHttpUrl(url);
+        if (!cleanUrl) {
+          return text;
+        }
         const cleanTextForCompare = text.replace(/\s+/g, '');
         const displayText = cleanTextForCompare === cleanUrl ? cleanUrl : text.trim();
-        return `<a href="${cleanUrl}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+        return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
       });
 
       // URL pattern - matches http/https links with potential spaces (LLM tokenization)
@@ -8124,13 +8246,14 @@ export default function NaviChatPanel({
         if (/href="$/.test(before) || /">$/.test(before)) {
           return url; // Don't modify - already in anchor
         }
-        // Clean up URL: remove all internal spaces
-        let cleanUrl = url.replace(/\s+/g, '');
-        // Only strip trailing period/comma if it's at the very end (likely punctuation, not part of URL)
-        if (/[.,;:!?]$/.test(cleanUrl) && !/:\d+[.,;:!?]?$/.test(cleanUrl)) {
-          cleanUrl = cleanUrl.replace(/[.,;:!?]+$/, '');
+        const trailingMatch = url.match(/[.,;:!?]+$/);
+        const trailingPunctuation = trailingMatch ? trailingMatch[0] : "";
+        const rawUrl = trailingPunctuation ? url.slice(0, -trailingPunctuation.length) : url;
+        const cleanUrl = sanitizeHttpUrl(rawUrl);
+        if (!cleanUrl) {
+          return url;
         }
-        return `<a href="${cleanUrl}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
+        return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
       });
 
       // File path pattern - matches common code file paths
@@ -8153,10 +8276,11 @@ export default function NaviChatPanel({
         const pathWithoutLine = pathPart.replace(/:(\d+)$/, '');
         const iconColor = getFileIconColor(pathWithoutLine);
         const dataLine = lineNum ? ` data-line="${lineNum}"` : '';
+        const safePathAttr = escapeHtml(pathWithoutLine);
         // Use file-type specific SVG icon
         const svgIcon = getFileIconSvg(pathWithoutLine, iconColor);
         // Wrap in span with SVG icon
-        return `${leading}<span class="navi-file-link">${svgIcon}<a href="#" class="navi-link navi-link--file" data-file-path="${pathWithoutLine}"${dataLine}>${pathWithoutLine}</a></span>`;
+        return `${leading}<span class="navi-file-link">${svgIcon}<a href="#" class="navi-link navi-link--file" data-file-path="${safePathAttr}"${dataLine}>${safePathAttr}</a></span>`;
       });
 
       return result;
@@ -8164,11 +8288,13 @@ export default function NaviChatPanel({
 
     // Render a text block with markdown-like formatting
     const renderTextBlock = (text: string, keyPrefix: string, isStreaming = false) => {
+      const normalizedText = normalizeProseArtifacts(text);
+
       // During streaming, render as flowing text to avoid fragmentation
       // Only apply paragraph formatting after streaming completes
       if (isStreaming) {
         // Simple inline rendering during streaming
-        let formatted = text
+        let formatted = escapeHtml(normalizedText)
           .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
           .replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
         formatted = makeLinksClickable(formatted);
@@ -8184,7 +8310,7 @@ export default function NaviChatPanel({
       // - Preserve newlines before markdown elements (headers, lists)
 
       // Split by double newlines to get true paragraphs
-      const paragraphs = text.split(/\n\n+/);
+      const paragraphs = normalizedText.split(/\n\n+/);
 
       return paragraphs.map((paragraph, pIdx) => {
         // Check if this paragraph contains markdown elements that need line-by-line processing
@@ -8201,7 +8327,7 @@ export default function NaviChatPanel({
         if (hasMarkdownElements) {
           // Helper to format inline markdown (bold, code, links)
           const formatInline = (content: string): string => {
-            let result = content
+            let result = escapeHtml(content)
               .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
               .replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
             return makeLinksClickable(result);
@@ -8301,7 +8427,7 @@ export default function NaviChatPanel({
         }
 
         // Handle bold text
-        const formattedLine = flowingText.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        const formattedLine = escapeHtml(flowingText).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         // Handle inline code
         const withCode = formattedLine.replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
         // Make URLs and file paths clickable
@@ -10271,10 +10397,9 @@ export default function NaviChatPanel({
                         if (item.itemType === 'narrative') {
                           const lastItem = mergedItems[mergedItems.length - 1];
                           if (lastItem && lastItem.itemType === 'narrative') {
-                            // Combine with previous narrative - no space if last ends with opening bracket/paren
-                            const lastChar = lastItem.text.slice(-1);
-                            const separator = ['[', '(', '\n'].includes(lastChar) ? '' : ' ';
-                            lastItem.text += separator + item.text;
+                            // Preserve exact stream text order; avoid injecting artificial spaces
+                            // that split words like "Pr isma" or "part ially".
+                            lastItem.text += item.text;
                           } else {
                             mergedItems.push({ ...item });
                           }
@@ -10623,20 +10748,22 @@ export default function NaviChatPanel({
                       // Render narrative text block helper with markdown formatting
                       // Handles: **bold**, `code`, URLs, markdown links, lists, line breaks, fenced code blocks
                       const renderNarrativeItem = (text: string, id: string) => {
+                        const normalizedText = normalizeProseArtifacts(text);
                         // First, check for fenced code blocks (```...```)
                         const codeBlockRegex = /```\s*([\w+-]*)\s*\n?([\s\S]*?)```/g;
-                        const hasCodeBlocks = codeBlockRegex.test(text);
+                        const hasCodeBlocks = codeBlockRegex.test(normalizedText);
 
                         if (hasCodeBlocks) {
                           // Need formatMarkdown defined early for code block text parts
                           const formatMd = (input: string): string => {
-                            let result = input;
+                            let result = escapeHtml(input);
                             result = result.replace(/^###\s+(.+)$/gm, '<h3 class="navi-heading-3">$1</h3>');
                             result = result.replace(/^##\s+(.+)$/gm, '<h2 class="navi-heading-2">$1</h2>');
                             result = result.replace(/^#\s+(.+)$/gm, '<h1 class="navi-heading-1">$1</h1>');
                             result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
                             result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
                             result = result.replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
+                            result = makeLinksClickable(result);
                             return result;
                           };
 
@@ -10647,10 +10774,10 @@ export default function NaviChatPanel({
                           const regex = /```\s*([\w+-]*)\s*\n?([\s\S]*?)```/g;
                           let match;
 
-                          while ((match = regex.exec(text)) !== null) {
+                          while ((match = regex.exec(normalizedText)) !== null) {
                             // Add text before code block (with markdown formatting)
                             if (match.index > lastIndex) {
-                              const beforeText = text.slice(lastIndex, match.index).trim();
+                              const beforeText = normalizedText.slice(lastIndex, match.index).trim();
                               if (beforeText) {
                                 parts.push(
                                   <div
@@ -10671,8 +10798,8 @@ export default function NaviChatPanel({
                           }
 
                           // Add remaining text after last code block (with markdown formatting)
-                          if (lastIndex < text.length) {
-                            const afterText = text.slice(lastIndex).trim();
+                          if (lastIndex < normalizedText.length) {
+                            const afterText = normalizedText.slice(lastIndex).trim();
                             if (afterText) {
                               parts.push(
                                 <div
@@ -10693,7 +10820,7 @@ export default function NaviChatPanel({
 
                         // Format text with markdown-like syntax (for non-code-block content)
                         const formatMarkdown = (input: string): string => {
-                          let result = input;
+                          let result = escapeHtml(input);
                           // Handle markdown headers (### Header)
                           result = result.replace(/^###\s+(.+)$/gm, '<h3 class="navi-heading-3">$1</h3>');
                           result = result.replace(/^##\s+(.+)$/gm, '<h2 class="navi-heading-2">$1</h2>');
@@ -10704,40 +10831,21 @@ export default function NaviChatPanel({
                           result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
                           // Handle inline code `code`
                           result = result.replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
-                          // Handle markdown links [text](url) - process these FIRST
-                          // Also handle URLs with accidental spaces (LLM tokenization artifact)
-                          result = result.replace(
-                            /\[([^\]]+)\]\((https?:\/\/\s*[^)]+)\)/g,
-                            (_match, linkText, url) => {
-                              // Clean up URL: remove spaces that might have been introduced by LLM tokenization
-                              const cleanUrl = url.replace(/\s+/g, '');
-                              const cleanTextForCompare = linkText.replace(/\s+/g, '');
-                              const displayText = cleanTextForCompare === cleanUrl ? cleanUrl : linkText.trim();
-                              return `<a href="${cleanUrl}" class="navi-inline-link" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
-                            }
-                          );
-                          // Handle plain URLs (skip if preceded by [ or ]( which indicates markdown link syntax)
-                          result = result.replace(
-                            /(?<!\]\()(https?\s*:\s*\/\s*\/\s*[^\s<>)\]]+)/g,
-                            (url) => {
-                              const cleanUrl = url.replace(/\s+/g, '');
-                              return `<a href="${cleanUrl}" class="navi-inline-link" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
-                            }
-                          );
+                          result = makeLinksClickable(result);
                           return result;
                         };
 
                         // Check if text has markdown structure (lists, multiple paragraphs)
-                        const hasStructure = text.includes('\n') && (
-                          text.includes('- ') ||
-                          text.includes('* ') ||
-                          /\d+\.\s/.test(text) ||
-                          text.includes('\n\n')
+                        const hasStructure = normalizedText.includes('\n') && (
+                          normalizedText.includes('- ') ||
+                          normalizedText.includes('* ') ||
+                          /\d+\.\s/.test(normalizedText) ||
+                          normalizedText.includes('\n\n')
                         );
 
                         if (hasStructure) {
                           // Render with proper structure
-                          const lines = text.split('\n');
+                          const lines = normalizedText.split('\n');
                           const elements: React.ReactNode[] = [];
                           let currentList: React.ReactNode[] = [];
                           let listType: 'ul' | 'ol' | null = null;
@@ -10830,7 +10938,7 @@ export default function NaviChatPanel({
                           <span
                             key={id}
                             className="navi-narrative-chunk"
-                            dangerouslySetInnerHTML={{ __html: formatMarkdown(text) }}
+                            dangerouslySetInnerHTML={{ __html: formatMarkdown(normalizedText) }}
                           />
                         );
                       };

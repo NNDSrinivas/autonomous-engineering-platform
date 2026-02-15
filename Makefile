@@ -1,4 +1,4 @@
-.PHONY: dev up down migrate rev lint test
+.PHONY: dev up down migrate rev lint test redis-up redis-down ci-lock-tests
 
 up:
 	docker compose up -d
@@ -58,6 +58,15 @@ test:
 
 redis-test:
 	REDIS_URL=redis://localhost:6379/0 pytest -q tests/test_broadcast_redis.py
+
+redis-up:
+	docker compose up -d redis
+
+redis-down:
+	docker compose stop redis
+
+ci-lock-tests:
+	JWT_ENABLED=false REDIS_URL=redis://127.0.0.1:6379/0 NAVI_TEST_REDIS_URL=redis://127.0.0.1:6379/15 CI=true pytest -q backend/tests/test_job_manager_locking_redis.py backend/tests/test_job_uvicorn_two_workers.py
 
 e2e-smoke:
 	python3 scripts/smoke_navi_v2_e2e.py --runs 1

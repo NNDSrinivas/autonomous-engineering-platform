@@ -54,9 +54,14 @@ def test_navi_mode_picks_first_available_candidate(
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     router = ModelRouter()
 
-    decision = router.route("navi/intelligence", endpoint="stream")
     mode_cfg = router.mode_index["navi/intelligence"]
+    # Keep this test deterministic by pinning candidates to stable IDs.
+    mode_cfg["candidateModelIds"] = [
+        "openai/gpt-4o",
+        "anthropic/claude-3.5-sonnet",
+    ]
     expected_first_candidate = mode_cfg["candidateModelIds"][0]
+    decision = router.route("navi/intelligence", endpoint="stream")
 
     assert decision.requested_mode_id == "navi/intelligence"
     assert decision.effective_model_id == expected_first_candidate
@@ -97,6 +102,23 @@ def test_alias_normalization(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert decision.requested_model_id == "openai/gpt-4o"
     assert decision.effective_model_id == "openai/gpt-4o"
+
+
+def test_frontend_provider_hint_normalizes_before_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    router = ModelRouter()
+
+    decision = router.route(
+        "gpt-5.1",
+        endpoint="stream",
+        requested_provider="openai_navra",
+    )
+
+    assert decision.requested_model_id == "openai/gpt-5.1"
+    assert decision.effective_model_id == "openai/gpt-5.1"
+    assert decision.was_fallback is False
 
 
 def test_stream_v2_fallback_when_provider_unsupported(

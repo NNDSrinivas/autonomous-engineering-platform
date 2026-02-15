@@ -35,13 +35,19 @@ class TraceStore:
                 **payload,
             }
             line = json.dumps(record, ensure_ascii=True)
+            # V1 keeps writes simple and append-only (open/write/close per event).
             with self._lock:
                 with self.trace_path.open("a", encoding="utf-8") as fh:
                     fh.write(line)
                     fh.write("\n")
         except Exception as exc:
             # Tracing should never break user-facing request handling.
-            logger.warning("[TraceStore] Failed to append trace event: %s", exc)
+            logger.warning(
+                "[TraceStore] Failed to append trace event type=%s path=%s error=%s",
+                event_type,
+                self.trace_path,
+                exc,
+            )
 
 
 _default_trace_store: Optional[TraceStore] = None

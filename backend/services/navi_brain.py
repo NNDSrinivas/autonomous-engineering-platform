@@ -6722,7 +6722,9 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
         }
         api_key = os.getenv(env_vars.get(self.provider, ""), "")
         if self.provider == "self_hosted" and not api_key:
-            api_key = os.getenv("OPENAI_API_KEY", "")
+            logger.warning(
+                "[NAVI] SELF_HOSTED_API_KEY is not set; self_hosted provider may require explicit auth."
+            )
         return api_key
 
     def _get_default_model(self) -> str:
@@ -6749,6 +6751,18 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             return alias_map.get(model, model)
         return model
 
+    def _normalize_openai_model_name(self, model: str) -> str:
+        """
+        Normalize OpenAI-compatible model IDs before calling /chat/completions.
+
+        Router metadata may keep provider-qualified IDs (e.g. openai/gpt-5.2),
+        but OpenAI-compatible providers expect provider-specific model names.
+        """
+        normalized = (model or "").strip()
+        if "/" in normalized:
+            normalized = normalized.split("/", 1)[1]
+        return normalized
+
     def _fallback_model_on_error(self, model: str, error_text: str) -> Optional[str]:
         """Return a fallback model if the provider reports an invalid model."""
         if self.provider != "anthropic":
@@ -6760,6 +6774,51 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                 return normalized
             return "claude-3-5-sonnet-20241022"
         return None
+
+    @staticmethod
+    async def _read_error_body(response: aiohttp.ClientResponse) -> Any:
+        text = await response.text()
+        try:
+            return json.loads(text)
+        except Exception:
+            return text
+
+    def _log_openai_400_debug(
+        self,
+        *,
+        model: str,
+        endpoint: str,
+        stream: bool,
+        payload: Dict[str, Any],
+        error_body: Any,
+    ) -> None:
+        logger.error(
+            "[NAVI] OpenAI-compatible 400 debug | model=%s endpoint=%s stream=%s payload=%s error.body=%s",
+            model,
+            endpoint,
+            stream,
+            payload,
+            error_body,
+        )
+
+    def _log_openai_request_debug(
+        self,
+        *,
+        model: str,
+        endpoint: str,
+        stream: bool,
+        payload: Dict[str, Any],
+    ) -> None:
+        logger.info(
+            "[NAVI] OpenAI-compatible request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s payload=%s",
+            self.provider,
+            endpoint,
+            model,
+            stream,
+            len(payload.get("messages", [])) if isinstance(payload, dict) else 0,
+            bool(payload.get("tools")) if isinstance(payload, dict) else False,
+            payload,
+        )
 
     def _get_base_url(self) -> str:
         """Get base URL for provider"""
@@ -8252,8 +8311,11 @@ Respond with JSON only."""
         if self.provider == "openai" and self._requires_max_completion_tokens():
             tokens_key = "max_completion_tokens"
 
+        model = self._normalize_model(self.model)
+        if self.provider in {"openai", "openrouter", "groq", "self_hosted"}:
+            model = self._normalize_openai_model_name(model)
         payload = {
-            "model": self.model,
+            "model": model,
             tokens_key: 8192,
             "temperature": 0.7,
             "messages": messages,
@@ -8271,15 +8333,30 @@ Respond with JSON only."""
         elif self.provider == "self_hosted" and not self.api_key:
             headers.pop("Authorization", None)
 
+        endpoint = f"{self.base_url}/chat/completions"
+        self._log_openai_request_debug(
+            model=model,
+            endpoint=endpoint,
+            stream=False,
+            payload=payload,
+        )
         async with session.post(
-            f"{self.base_url}/chat/completions",
+            endpoint,
             headers=headers,
             json=payload,
             timeout=aiohttp.ClientTimeout(total=120),
         ) as response:
             if response.status != 200:
-                error = await response.text()
-                raise Exception(f"API error: {error}")
+                error_body = await self._read_error_body(response)
+                if response.status == 400:
+                    self._log_openai_400_debug(
+                        model=model,
+                        endpoint=endpoint,
+                        stream=False,
+                        payload=payload,
+                        error_body=error_body,
+                    )
+                raise Exception(f"API error: {error_body}")
 
             data = await response.json()
             # Safe extraction with fallback
@@ -8519,8 +8596,11 @@ Respond with JSON only."""
         if self.provider == "openai" and self._requires_max_completion_tokens():
             tokens_key = "max_completion_tokens"
 
+        model = self._normalize_model(self.model)
+        if self.provider in {"openai", "openrouter", "groq", "self_hosted"}:
+            model = self._normalize_openai_model_name(model)
         payload = {
-            "model": self.model,
+            "model": model,
             tokens_key: 8192,
             "temperature": 0.7,
             "messages": messages,
@@ -8541,15 +8621,30 @@ Respond with JSON only."""
         full_response = ""
         thinking_buffer = ""
 
+        endpoint = f"{self.base_url}/chat/completions"
+        self._log_openai_request_debug(
+            model=model,
+            endpoint=endpoint,
+            stream=True,
+            payload=payload,
+        )
         async with session.post(
-            f"{self.base_url}/chat/completions",
+            endpoint,
             headers=headers,
             json=payload,
             timeout=aiohttp.ClientTimeout(total=120),
         ) as response:
             if response.status != 200:
-                error = await response.text()
-                raise Exception(f"API error: {error}")
+                error_body = await self._read_error_body(response)
+                if response.status == 400:
+                    self._log_openai_400_debug(
+                        model=model,
+                        endpoint=endpoint,
+                        stream=True,
+                        payload=payload,
+                        error_body=error_body,
+                    )
+                raise Exception(f"API error: {error_body}")
 
             async for line in response.content:
                 line = line.decode("utf-8").strip()
@@ -8584,6 +8679,7 @@ Respond with JSON only."""
 
             # Yield complete response
             yield {"complete": full_response}
+            return
 
     def _parse_response(self, llm_response: str) -> NaviResponse:
         """Parse LLM response into NaviResponse"""

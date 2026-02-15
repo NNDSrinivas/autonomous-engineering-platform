@@ -66,6 +66,26 @@ _ALIAS_TO_MODEL_ID = {
     "gemini-2.5-pro": "google/gemini-2.5-pro",
 }
 
+_PROVIDER_HINT_TO_ID = {
+    "openai": "openai",
+    "openai_navra": "openai",
+    "openai_byok": "openai",
+    "anthropic": "anthropic",
+    "anthropic_byok": "anthropic",
+    "google": "google",
+    "gemini": "google",
+    "google_byok": "google",
+    "gemini_byok": "google",
+    "groq": "groq",
+    "groq_byok": "groq",
+    "openrouter": "openrouter",
+    "openrouter_byok": "openrouter",
+    "ollama": "ollama",
+    "self_hosted": "self_hosted",
+    "self-hosted": "self_hosted",
+    "selfhosted": "self_hosted",
+}
+
 
 class ModelRoutingError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
@@ -156,7 +176,8 @@ class ModelRouter:
         requested_model_id: Optional[str] = None
 
         if requested_provider and requested_id and "/" not in requested_id:
-            requested_id = f"{requested_provider.strip().lower()}/{requested_id}"
+            provider_hint = self._normalize_provider_hint(requested_provider)
+            requested_id = f"{provider_hint}/{requested_id}"
 
         if not requested_id:
             requested_mode_id = self.defaults.get("defaultModeId")
@@ -433,6 +454,13 @@ class ModelRouter:
             return f"groq/{raw}"
 
         return raw
+
+    @staticmethod
+    def _normalize_provider_hint(raw: str) -> str:
+        normalized = (raw or "").strip().lower()
+        if not normalized:
+            return "openai"
+        return _PROVIDER_HINT_TO_ID.get(normalized, normalized)
 
     @staticmethod
     def _display_endpoint_label(endpoint_key: str) -> str:

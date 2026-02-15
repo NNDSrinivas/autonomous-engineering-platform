@@ -17,6 +17,74 @@ NAVI has strong technical foundations and is **production-ready for pilot deploy
 - ✅ **VSCode Extension Build Automation**: Automated webview build integrated into compile process (Feb 13, 2026)
 - ⚠️ **Technical debt identified**: Provider code path duplication (Feb 10, 2026) - Documented for future refactoring (P2)
 
+## Background Job + Runtime Hardening (Feb 15, 2026)
+
+### Implemented
+- ✅ Added long-running job API surface for autonomous tasks:
+  - `POST /api/jobs`
+  - `POST /api/jobs/{job_id}/start`
+  - `POST /api/jobs/{job_id}/resume`
+  - `GET /api/jobs/{job_id}`
+  - `GET /api/jobs/{job_id}/events` (SSE with replay cursor)
+  - `POST /api/jobs/{job_id}/cancel`
+  - `POST /api/jobs/{job_id}/approve`
+- ✅ Added ownership/auth enforcement for job operations (`user_id` required at creation; owned-job checks on read/start/resume/events/cancel/approve).
+- ✅ Added explicit job state transition enforcement for queued/running/paused/completed/failed/canceled flows.
+- ✅ Added replayable event model with sequence cursor + event/payload truncation bounds to avoid unbounded growth.
+- ✅ Added Redis-backed durability for job record/events (with in-process execution control).
+
+### Locking + Duplicate Runner Prevention
+- ✅ Implemented Redis runner lock with atomic Lua scripts:
+  - Compare-and-renew (`PEXPIRE`) only if token matches.
+  - Compare-and-release (`DEL`) only if token matches.
+- ✅ Added runner lock heartbeat loop during execution.
+- ✅ Added lock-loss handling (`lock_renew_failed`, `runner_lock_lost`) with cancel request to prevent split-brain execution.
+- ✅ Added deterministic start contract (`started: true|false` + reason semantics) and event-level verification (`job_started` emitted once per run).
+
+### Cancellation Reliability
+- ✅ Implemented real command cancellation in autonomous tool execution:
+  - subprocess launched with `start_new_session=True` (POSIX),
+  - terminate via process-group `SIGTERM`, escalate to `SIGKILL`,
+  - concurrent stdout/stderr draining to avoid pipe deadlocks.
+- ✅ Job loop cancellation now emits terminal cancellation state/event.
+
+### Redis Failure Policy (Safety Fix)
+- ✅ Updated runtime behavior to **fail closed by default** when distributed lock backend is configured but unavailable.
+- ✅ `start`/`resume` now surface `503` for distributed lock unavailability (instead of silently degrading in production-like mode).
+- ✅ Optional explicit degrade flag supported for controlled environments only:
+  - `AEP_ALLOW_DISTRIBUTED_DEGRADE=true`
+- ✅ Local/dev behavior remains supported when Redis is not configured at startup.
+
+### Test Coverage Added
+- ✅ `backend/tests/test_job_manager_locking.py`
+  - lock ownership semantics (unit)
+  - job creation ownership requirement
+- ✅ `backend/tests/test_job_manager_locking_redis.py`
+  - real Redis integration: acquire/renew/release/token mismatch/expiry behavior
+  - CI guard: fail if Redis is required but unavailable
+- ✅ `backend/tests/test_autonomous_cancel.py`
+  - verifies process-group termination (including child-process tree)
+  - verifies command cancel path returns cancel exit semantics
+- ✅ `backend/tests/test_job_duplicate_runner.py`
+  - concurrent `start` race: exactly one `started=true`
+  - third `start` while running returns `started=false`
+  - exactly one `job_started` event
+- ✅ `backend/tests/test_job_uvicorn_two_workers.py`
+  - true process-boundary race using `uvicorn --workers 2`
+  - validates exactly one `started=true` across concurrent `/start`
+  - validates exactly one `job_started` persisted in Redis event log
+  - requires Redis; skipped locally if unavailable, fails in CI when Redis is required
+
+### Current Validation Snapshot
+- ✅ Targeted hardening suite: `5 passed, 2 skipped` (Redis-dependent tests skip locally when Redis is unavailable).
+
+### CI Enforcement
+- ✅ GitHub Actions now includes a dedicated `distributed-lock-tests` job with Redis service.
+- ✅ This job runs:
+  - `backend/tests/test_job_manager_locking_redis.py`
+  - `backend/tests/test_job_uvicorn_two_workers.py`
+- ✅ CI sets `CI=true` and Redis URLs, so Redis-dependent lock tests fail if Redis is unavailable (no silent pass-through).
+
 ## Readiness Rating
 - **Pilot production (friendly teams)**: ✅ **READY NOW** (E2E validated, all critical security fixes complete)
 - **Enterprise production**: ⚠️ **2-3 weeks (target Feb 26, 2026)** (needs monitoring dashboards, SLOs, incident runbooks)

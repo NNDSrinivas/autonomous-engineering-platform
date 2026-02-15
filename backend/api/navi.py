@@ -136,9 +136,9 @@ class RunState(BaseModel):
     context: ContextPack
     plan: Optional[Plan] = None
     current_step: int = 0
-    status: Literal[
-        "idle", "planning", "executing", "verifying", "done", "failed"
-    ] = "idle"
+    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = (
+        "idle"
+    )
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: float = Field(default_factory=time.time)
 
@@ -1393,9 +1393,7 @@ async def analyze_working_changes(
                             "severity": (
                                 "high"
                                 if any(i["severity"] == "high" for i in issues)
-                                else "medium"
-                                if issues
-                                else "low"
+                                else "medium" if issues else "low"
                             ),
                             "issues": issues,
                             "diff": change.get("diff", "")[:1000],
@@ -8142,12 +8140,16 @@ async def _run_autonomous_job(job_id: str) -> None:
                     )
                 elif event_type == "human_gate":
                     gate_data = event.get("data", {}) if isinstance(event, dict) else {}
+                    gate_id = str(
+                        gate_data.get("gate_id") or gate_data.get("id") or ""
+                    ).strip()
                     await _transition_job_status(
                         job_id,
                         to_status="paused_for_approval",
                         phase="awaiting_human_gate",
                         pending_approval={
                             "type": "human_gate",
+                            "gate_id": gate_id or None,
                             "gate": gate_data,
                         },
                         allow_same=True,
@@ -8185,13 +8187,23 @@ async def _run_autonomous_job(job_id: str) -> None:
                     stopped_reason = str(summary.get("stopped_reason", ""))
                     if stopped_reason == "human_gate_pending":
                         saw_pending_gate = True
+                        pending_gate = (
+                            summary.get("pending_gate", {})
+                            if isinstance(summary, dict)
+                            else {}
+                        )
+                        pending_gate_id = str(
+                            pending_gate.get("gate_id") or pending_gate.get("id") or ""
+                        ).strip()
                         await _transition_job_status(
                             job_id,
                             to_status="paused_for_approval",
                             phase="awaiting_human_gate",
                             pending_approval={
                                 "type": "human_gate",
-                                "summary": summary.get("pending_gate", {}),
+                                "gate_id": pending_gate_id or None,
+                                "gate": pending_gate,
+                                "summary": pending_gate,
                             },
                             allow_same=True,
                         )
@@ -8646,9 +8658,19 @@ async def approve_background_job_gate(
         )
 
     requested_gate_id = str(request.gate_id or "").strip()
+    pending_gate = pending_approval.get("gate")
+    pending_summary = pending_approval.get("summary")
+    if not isinstance(pending_gate, dict):
+        pending_gate = {}
+    if not isinstance(pending_summary, dict):
+        pending_summary = {}
     pending_gate_id = str(
         pending_approval.get("gate_id")
         or pending_approval.get("consent_id")
+        or pending_gate.get("gate_id")
+        or pending_gate.get("id")
+        or pending_summary.get("gate_id")
+        or pending_summary.get("id")
         or pending_approval.get("type")
         or ""
     ).strip()
@@ -8763,9 +8785,43 @@ async def approve_background_job_gate(
                 "message": "Approval recorded. Restarting job from checkpoint context.",
             },
         )
-        await _start_job_runner(job_id)
+        start_result = await _start_job_runner(job_id)
+        if not start_result.get("started"):
+            if start_result.get("reason") == "distributed_lock_unavailable":
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "job_resume_failed",
+                        "reason": "distributed_lock_unavailable",
+                        "message": (
+                            "Distributed runner lock unavailable. "
+                            "Job remains queued until resume is retried."
+                        ),
+                    },
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Distributed runner lock unavailable (Redis). "
+                        "Cannot resume job safely."
+                    ),
+                )
+            return {
+                "success": True,
+                "started": False,
+                "job": (await job_manager.require_job(job_id)).to_public(),
+                "approval": approval_result,
+                "message": "Job already running",
+            }
+        return {
+            "success": True,
+            "started": True,
+            "job": (await job_manager.require_job(job_id)).to_public(),
+            "approval": approval_result,
+        }
     return {
         "success": True,
+        "started": False,
         "job": (await job_manager.require_job(job_id)).to_public(),
         "approval": approval_result,
     }

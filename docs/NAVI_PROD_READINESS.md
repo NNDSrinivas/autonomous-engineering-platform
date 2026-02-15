@@ -78,6 +78,19 @@ NAVI has strong technical foundations and is **production-ready for pilot deploy
 ### Current Validation Snapshot
 - ✅ Targeted hardening suite: `5 passed, 2 skipped` (Redis-dependent tests skip locally when Redis is unavailable).
 
+### PR #67 Follow-Up Fixes (Feb 15, 2026)
+- ✅ Human-gate pause payload now persists a top-level `gate_id` (in addition to `gate`) for deterministic approval matching.
+- ✅ Approval matching now supports nested gate IDs from legacy payloads (`pending_approval.gate.id` / `pending_approval.summary.id`) to avoid false `409` responses.
+- ✅ `/api/jobs/{job_id}/approve` now propagates resume failures consistently:
+  - returns `503` when distributed lock backend is unavailable,
+  - emits `job_resume_failed`,
+  - returns explicit `started: true|false` in approval responses.
+- ✅ Added approval regression tests in `backend/tests/test_job_approve_gate.py`:
+  - nested human-gate ID acceptance,
+  - distributed-lock resume failure surfacing.
+- ✅ Fixed VS Code webview runtime crash (`makeLinksClickable is not defined`) by promoting linkification helper to shared component scope in `extensions/vscode-aep/webview/src/components/navi/NaviChatPanel.tsx`.
+- ✅ Extension build revalidated: `npm run compile --prefix extensions/vscode-aep`.
+
 ### CI Enforcement
 - ✅ GitHub Actions now includes a dedicated `distributed-lock-tests` job with Redis service.
 - ✅ This job runs:

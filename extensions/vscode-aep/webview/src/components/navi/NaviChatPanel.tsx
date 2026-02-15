@@ -7971,6 +7971,47 @@ export default function NaviChatPanel({
     }
   };
 
+  // Shared linkification helper used across message and narrative renderers.
+  // Keep this scope-level so helper calls outside renderMessageContent do not crash.
+  const makeLinksClickable = (html: string): string => {
+    let result = html;
+
+    const markdownLinkPattern = /\[([^\]]+)\]\((https?\s*:\s*\/\s*\/\s*[^)]+)\)/g;
+    result = result.replace(markdownLinkPattern, (_match, text, url) => {
+      const cleanUrl = sanitizeHttpUrl(url);
+      if (!cleanUrl) {
+        return text;
+      }
+      const cleanTextForCompare = String(text || "").replace(/\s+/g, "");
+      const displayText =
+        cleanTextForCompare === cleanUrl ? cleanUrl : String(text || "").trim();
+      return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+    });
+
+    const urlPattern = /(https?\s*:\s*\/\s*\/\s*[^\s<>"'\[\]]+)/g;
+    result = result.replace(
+      urlPattern,
+      (url: string, _p1: string, position: number) => {
+        const before = result.substring(Math.max(0, position - 15), position);
+        if (/href="$/.test(before) || /">$/.test(before)) {
+          return url;
+        }
+        const trailingMatch = url.match(/[.,;:!?]+$/);
+        const trailingPunctuation = trailingMatch ? trailingMatch[0] : "";
+        const rawUrl = trailingPunctuation
+          ? url.slice(0, -trailingPunctuation.length)
+          : url;
+        const cleanUrl = sanitizeHttpUrl(rawUrl);
+        if (!cleanUrl) {
+          return url;
+        }
+        return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
+      }
+    );
+
+    return result;
+  };
+
   const normalizeProseArtifacts = (value: string): string =>
     value
       .replace(/([A-Za-z0-9])\s+([’'])\s+([A-Za-z0-9])/g, "$1$2$3")

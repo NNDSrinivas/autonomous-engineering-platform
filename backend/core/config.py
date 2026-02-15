@@ -112,6 +112,10 @@ class Settings(BaseSettings):
             if env_app_env in ["dev", "test"]:
                 # Check for any fields in the input data that aren't defined in the model
                 allowed_fields = set(cls.model_fields.keys())
+                # Also include field aliases to allow environment variables with uppercase names
+                for field_name, field_info in cls.model_fields.items():
+                    if field_info.alias:
+                        allowed_fields.add(field_info.alias)
                 input_fields = set(values.keys())
                 extra_fields = input_fields - allowed_fields
                 if extra_fields:

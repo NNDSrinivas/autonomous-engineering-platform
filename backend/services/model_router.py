@@ -460,7 +460,8 @@ class ModelRouter:
             return raw
 
         lowered = raw.lower()
-        if lowered.startswith("gpt") or lowered.startswith("o"):
+        # Match GPT models and o-series models (o1, o3, o4, etc.) but not "ollama" or "openrouter"
+        if lowered.startswith("gpt") or (lowered.startswith("o") and len(lowered) > 1 and lowered[1].isdigit()):
             return f"openai/{raw}"
         if lowered.startswith("claude"):
             return f"anthropic/{raw}"

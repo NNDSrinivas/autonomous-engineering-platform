@@ -941,6 +941,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('aep.signIn', async () => {
       await globalAuthService?.startLogin();
       cachedAuthToken = await globalAuthService?.getToken();
+      await vscode.commands.executeCommand('aep.notifyAuthStateChange', Boolean(cachedAuthToken));
     })
   );
 
@@ -948,6 +949,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('aep.signOut', async () => {
       await globalAuthService?.logout();
       cachedAuthToken = undefined;
+      await vscode.commands.executeCommand('aep.notifyAuthStateChange', false);
     })
   );
 
@@ -1633,6 +1635,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private _activeBackgroundJobId: string | null = null;
   private _activeBackgroundJobSequence: number = 0;
   private _handledBackgroundGateIds = new Set<string>();
+  private _lastAuthPromptAt: number = 0;
 
   // Command output tracking for focusTerminal and showOutput functionality
   private _commandOutputs = new Map<string, { command: string; cwd?: string; stdout: string; stderr: string; exitCode?: number; durationMs?: number }>();
@@ -1733,6 +1736,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     try {
       const baseUrl = this.getBackendBaseUrl();
       const chatUrl = `${baseUrl}/api/navi/chat`;
+      const orgId = this.getOrgId();
+      const userId = this.getUserId();
 
       console.log(`[AEP] 🚀 Calling backend: ${chatUrl}`);
 
@@ -1742,25 +1747,31 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         thinking: true
       });
 
-      const response = await fetch(chatUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await this.fetchWithAuth(
+        chatUrl,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            message: content,
+            mode: mode,
+            model: model,
+            conversation_id: this._conversationId,
+            conversationHistory: this._messages.slice(-MAX_CONVERSATION_HISTORY).map((msg, index) => ({
+              id: `${Date.now()}-${index}`,
+              type: msg.role,
+              content: msg.content,
+              timestamp: new Date().toISOString(),
+            })),
+            state: [...this._messages].reverse().find(m => m.role === 'assistant')?.state || undefined
+          })
         },
-        body: JSON.stringify({
-          message: content,
-          mode: mode,
-          model: model,
-          conversation_id: this._conversationId,
-          conversationHistory: this._messages.slice(-MAX_CONVERSATION_HISTORY).map((msg, index) => ({
-            id: `${Date.now()}-${index}`,
-            type: msg.role,
-            content: msg.content,
-            timestamp: new Date().toISOString(),
-          })),
-          state: [...this._messages].reverse().find(m => m.role === 'assistant')?.state || undefined
-        })
-      });
+        {
+          orgId,
+          userId,
+          contentType: 'application/json',
+          contextLabel: '/api/navi/chat',
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`Backend API error: ${response.status} ${response.statusText}`);
@@ -1938,6 +1949,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private async callPlanningAPI(content: string, intent: any, intentKind: string, mode: string, model: string): Promise<void> {
     try {
       const baseUrl = this.getBackendBaseUrl().replace('/api/navi/chat', '');
+      const orgId = this.getOrgId();
+      const userId = this.getUserId();
 
       console.log(`[AEP] 🧠 Starting intelligent planning for: "${content}" (${intentKind})`);
 
@@ -1955,23 +1968,29 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // No trust in classifiers yet - deterministic routing only
       const backendIntentKind = 'fix_diagnostics';      // Step 2: Generate execution plan using new planning API
       console.log(`[AEP] 📋 Generating execution plan...`);
-      const planResponse = await fetch(`${baseUrl}/api/navi/plan`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const planResponse = await this.fetchWithAuth(
+        `${baseUrl}/api/navi/plan`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            message: content,
+            intent: {
+              raw_text: content,
+              kind: backendIntentKind,
+              confidence: intent.confidence || 0.7,
+              source: "chat",
+              context: intent.context || {}
+            },
+            context: contextPack
+          })
         },
-        body: JSON.stringify({
-          message: content,
-          intent: {
-            raw_text: content,
-            kind: backendIntentKind,
-            confidence: intent.confidence || 0.7,
-            source: "chat",
-            context: intent.context || {}
-          },
-          context: contextPack
-        })
-      });
+        {
+          orgId,
+          userId,
+          contentType: 'application/json',
+          contextLabel: '/api/navi/plan',
+        }
+      );
 
       if (!planResponse.ok) {
         throw new Error(`Planning API error: ${planResponse.status} ${planResponse.statusText}`);
@@ -2035,20 +2054,28 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private async executeNextPlanStep(sessionId: string, toolResult?: any): Promise<void> {
     try {
       const baseUrl = this.getBackendBaseUrl().replace('/api/navi/chat', '');
+      const orgId = this.getOrgId();
+      const userId = this.getUserId();
 
       console.log(`[AEP] 🔄 Executing next plan step for session: ${sessionId}`);
 
       // Call next step API
-      const nextResponse = await fetch(`${baseUrl}/api/navi/next`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const nextResponse = await this.fetchWithAuth(
+        `${baseUrl}/api/navi/next`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            run_id: sessionId,
+            tool_result: toolResult
+          })
         },
-        body: JSON.stringify({
-          run_id: sessionId,
-          tool_result: toolResult
-        })
-      });
+        {
+          orgId,
+          userId,
+          contentType: 'application/json',
+          contextLabel: '/api/navi/next',
+        }
+      );
 
       if (!nextResponse.ok) {
         throw new Error(`Next step API error: ${nextResponse.status} ${nextResponse.statusText}`);
@@ -2462,6 +2489,153 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     return undefined;
   }
 
+  private async ensureLiveAuthToken(explicit?: string): Promise<string | undefined> {
+    const configured = this.getAuthToken(explicit);
+    if (configured && configured.trim()) {
+      return configured.trim();
+    }
+    try {
+      const token = await globalAuthService?.getToken();
+      if (token && token.trim()) {
+        cachedAuthToken = token.trim();
+        return token.trim();
+      }
+    } catch (err) {
+      console.warn('[AEP] Failed to refresh auth token from secret storage:', err);
+    }
+    return undefined;
+  }
+
+  private async buildAuthHeadersAsync(
+    orgId: string,
+    userId: string,
+    contentType?: string,
+    explicitAuthToken?: string
+  ): Promise<Record<string, string>> {
+    const liveToken = await this.ensureLiveAuthToken(explicitAuthToken);
+    return this.buildAuthHeaders(orgId, userId, contentType, liveToken);
+  }
+
+  private isAuthFailureStatus(status: number): boolean {
+    return status === 401 || status === 403;
+  }
+
+  private async notifyAuthRequired(
+    status: number,
+    detail: string,
+    contextLabel?: string
+  ): Promise<void> {
+    const trimmedDetail = (detail || '').trim();
+    const authMessage =
+      trimmedDetail ||
+      (status === 403
+        ? 'Forbidden. Sign in required to access NAVI.'
+        : 'Unauthorized. Sign in required to access NAVI.');
+
+    this.postToWebview({
+      type: 'auth.required',
+      status,
+      message: authMessage,
+      detail: authMessage,
+      context: contextLabel || 'backend',
+      timestamp: new Date().toISOString(),
+    });
+
+    this.postToWebview({
+      type: 'navi.stream.error',
+      error: `HTTP ${status}: ${authMessage}`,
+      timestamp: new Date().toISOString(),
+      canRetry: true,
+      authRequired: true,
+    });
+
+    const now = Date.now();
+    if (now - this._lastAuthPromptAt > 20000) {
+      this._lastAuthPromptAt = now;
+      const action = await vscode.window.showWarningMessage(
+        `NAVI backend returned HTTP ${status}. Sign in is required.`,
+        'Sign in'
+      );
+      if (action === 'Sign in') {
+        await vscode.commands.executeCommand('aep.signIn');
+      }
+    }
+  }
+
+  private async emitCurrentAuthState(): Promise<void> {
+    const authToken = await this.ensureLiveAuthToken();
+    const user = await globalAuthService?.getUserInfo();
+    this.postToWebview({
+      type: 'auth.stateChange',
+      isAuthenticated: Boolean(authToken),
+      authToken,
+      user,
+      orgId: user?.org,
+      userId: user?.sub,
+    });
+  }
+
+  private async fetchWithAuth(
+    url: string,
+    init: RequestInit,
+    options: {
+      orgId?: string;
+      userId?: string;
+      authToken?: string;
+      contentType?: string;
+      contextLabel?: string;
+      suppressAuthPrompt?: boolean;
+    } = {}
+  ): Promise<Response> {
+    const orgId = this.getOrgId(options.orgId);
+    const userId = this.getUserId(options.userId);
+
+    const baseHeaders = await this.buildAuthHeadersAsync(
+      orgId,
+      userId,
+      options.contentType,
+      options.authToken
+    );
+
+    const headerOverrides: Record<string, string> = {};
+    const rawHeaders = init.headers;
+    if (rawHeaders instanceof Headers) {
+      rawHeaders.forEach((value, key) => {
+        headerOverrides[key] = value;
+      });
+    } else if (Array.isArray(rawHeaders)) {
+      for (const [key, value] of rawHeaders) {
+        headerOverrides[key] = value;
+      }
+    } else if (rawHeaders && typeof rawHeaders === 'object') {
+      Object.assign(headerOverrides, rawHeaders as Record<string, string>);
+    }
+
+    const mergedHeaders: Record<string, string> = {
+      ...baseHeaders,
+      ...headerOverrides,
+    };
+
+    const response = await fetch(url, {
+      ...init,
+      headers: mergedHeaders,
+    });
+
+    if (this.isAuthFailureStatus(response.status) && !options.suppressAuthPrompt) {
+      const detail = await response
+        .clone()
+        .text()
+        .catch(() => response.statusText || '');
+      await this.notifyAuthRequired(
+        response.status,
+        detail,
+        options.contextLabel || url
+      );
+    }
+
+    return response;
+  }
+
   private buildAuthHeaders(
     orgId: string,
     userId: string,
@@ -2505,14 +2679,16 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   ): Promise<any | null> {
     try {
       const baseUrl = this.getBackendBaseUrl();
+      const headers = await this.buildAuthHeadersAsync(orgId, userId, 'application/json');
       const resp = await fetch(`${baseUrl}/api/org/scan/status`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Org-Id': orgId,
-          'X-User-Id': userId,
-        },
+        headers,
       });
+      if (this.isAuthFailureStatus(resp.status)) {
+        const text = await resp.text().catch(() => resp.statusText);
+        await this.notifyAuthRequired(resp.status, text, '/api/org/scan/status');
+        return null;
+      }
       if (!resp.ok) {
         return null;
       }
@@ -2531,14 +2707,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const baseUrl = this.getBackendBaseUrl();
       const url = new URL(`${baseUrl}/api/org/scan/consent`);
       url.searchParams.set('allow_secrets', 'false');
+      const headers = await this.buildAuthHeadersAsync(orgId, userId, 'application/json');
       const resp = await fetch(url.toString(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Org-Id': orgId,
-          'X-User-Id': userId,
-        },
+        headers,
       });
+      if (this.isAuthFailureStatus(resp.status)) {
+        const text = await resp.text().catch(() => resp.statusText);
+        await this.notifyAuthRequired(resp.status, text, '/api/org/scan/consent');
+      }
       return resp.ok;
     } catch (err) {
       console.warn('[AEP] Org scan consent failed:', err);
@@ -2557,14 +2734,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       if (workspaceRoot) {
         url.searchParams.set('workspace_root', workspaceRoot);
       }
+      const headers = await this.buildAuthHeadersAsync(orgId, userId, 'application/json');
       const resp = await fetch(url.toString(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Org-Id': orgId,
-          'X-User-Id': userId,
-        },
+        headers,
       });
+      if (this.isAuthFailureStatus(resp.status)) {
+        const text = await resp.text().catch(() => resp.statusText);
+        await this.notifyAuthRequired(resp.status, text, '/api/org/scan/run');
+      }
       return resp.ok;
     } catch (err) {
       console.warn('[AEP] Org scan trigger failed:', err);
@@ -2816,14 +2994,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   ): Promise<boolean> {
     try {
       const baseUrl = this.getBackendBaseUrl();
+      const headers = await this.buildAuthHeadersAsync(orgId, userId, 'application/json');
       const resp = await fetch(`${baseUrl}${path}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Org-Id': orgId,
-          'X-User-Id': userId,
-        },
+        headers,
       });
+      if (this.isAuthFailureStatus(resp.status)) {
+        const text = await resp.text().catch(() => resp.statusText);
+        await this.notifyAuthRequired(resp.status, text, path);
+      }
       return resp.ok;
     } catch (err) {
       console.warn('[AEP] Org scan action failed:', err);
@@ -2954,6 +3133,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           case 'webview.ready': {
             this._webviewReady = true;
             this.flushPendingConsentMessages();
+            await this.emitCurrentAuthState();
             break;
           }
           case 'requestWorkspaceContext': {
@@ -3678,18 +3858,21 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             // Send backend status to webview
             const baseUrl = this.getBackendBaseUrl();
             try {
-              const res = await fetch(`${baseUrl}/api/navi/chat`, {
+              const res = await this.fetchWithAuth(
+                `${baseUrl}/api/navi/chat`,
+                {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Org-Id': this.getOrgId(),
-                },
                 body: JSON.stringify({
                   message: 'health_check',
                   attachments: [],
                   workspace_root: null
                 }),
-              });
+                },
+                {
+                  contentType: 'application/json',
+                  contextLabel: '/api/navi/chat (health_check)',
+                }
+              );
               if (!res.ok) {
                 const text = await res.text().catch(() => '');
                 throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
@@ -5172,15 +5355,23 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
               // Call the NAVI backend to generate the follow-up
               // Using the correct ChatRequest format: message (not messages)
-              const response = await fetch(`${baseUrl}/api/navi/chat`, {
-                method: 'POST',
-                headers: this.buildAuthHeaders(orgId, userId, 'application/json'),
-                body: JSON.stringify({
-                  message: followUpPrompt,
-                  model: 'gpt-4o-mini', // Use fast model for quick follow-ups
-                  mode: 'chat-only',
-                }),
-              });
+              const response = await this.fetchWithAuth(
+                `${baseUrl}/api/navi/chat`,
+                {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    message: followUpPrompt,
+                    model: 'gpt-4o-mini', // Use fast model for quick follow-ups
+                    mode: 'chat-only',
+                  }),
+                },
+                {
+                  orgId,
+                  userId,
+                  contentType: 'application/json',
+                  contextLabel: '/api/navi/chat (generateActionFollowUp)',
+                }
+              );
 
               if (!response.ok) {
                 console.error('[AEP] generateActionFollowUp request failed:', response.status);
@@ -5237,15 +5428,23 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 diffsText,
               ].join('\n');
 
-              const response = await fetch(`${baseUrl}/api/navi/chat`, {
-                method: 'POST',
-                headers: this.buildAuthHeaders(orgId, userId, 'application/json'),
-                body: JSON.stringify({
-                  message: summaryPrompt,
-                  model: 'gpt-4o-mini',
-                  mode: 'chat-only',
-                }),
-              });
+              const response = await this.fetchWithAuth(
+                `${baseUrl}/api/navi/chat`,
+                {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    message: summaryPrompt,
+                    model: 'gpt-4o-mini',
+                    mode: 'chat-only',
+                  }),
+                },
+                {
+                  orgId,
+                  userId,
+                  contentType: 'application/json',
+                  contextLabel: '/api/navi/chat (generatePerFileSummaries)',
+                }
+              );
 
               if (!response.ok) {
                 console.error('[AEP] generatePerFileSummaries request failed:', response.status);
@@ -7931,10 +8130,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private shouldUseAutonomousAgent(message: string): boolean {
     const lowerMessage = message.toLowerCase().trim();
 
-    // Production readiness checks should execute real verification commands.
+    // Production readiness checks default to deterministic audit-plan mode.
+    // Explicit "run/execute now" phrasing still enables execution via autonomous/jobs.
     if (this.isProdReadinessAuditRequest(lowerMessage)) {
-      console.log('[AEP] 🧪 Prod-readiness request detected - using autonomous mode');
-      return true;
+      const explicitExecute = /(run|execute|start|launch)\s+(the\s+)?(checks?|audit|commands?|verification)/i.test(lowerMessage)
+        || /\b(run now|do it now|proceed)\b/i.test(lowerMessage);
+      if (explicitExecute) {
+        console.log('[AEP] 🧪 Prod-readiness execution requested - using autonomous mode');
+        return true;
+      }
+      console.log('[AEP] 🧪 Prod-readiness assessment detected - using dedicated audit-plan mode');
+      return false;
     }
 
     // Very short messages (< 10 chars) - likely greetings, not action requests
@@ -8207,6 +8413,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private shouldUseBackgroundJob(message: string, isEnterpriseRequest: boolean): boolean {
     if (isEnterpriseRequest) return true;
     const lower = message.toLowerCase();
+    if (
+      this.isProdReadinessAuditRequest(lower) &&
+      /(run|execute|start|launch)\s+(the\s+)?(checks?|audit|commands?|verification)/i.test(lower)
+    ) {
+      return true;
+    }
     const longTaskPatterns = [
       /\bbuild\s+(a\s+)?(full|complete|end.?to.?end)\s+(app|application|platform|system)\b/i,
       /\bimplement\s+(an?\s+)?end.?to.?end\b/i,
@@ -8322,23 +8534,23 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     if (!selected) return;
 
     try {
-      const headers = this.buildAuthHeaders(
-        this.getOrgId(orgId),
-        this.getUserId(userId),
-        'application/json',
-        authToken
-      );
-      headers.Accept = 'application/json';
-      const response = await fetch(
+      const response = await this.fetchWithAuth(
         `${this.getBackendBaseUrl()}/api/jobs/${jobId}/approve`,
         {
           method: 'POST',
-          headers,
+          headers: { Accept: 'application/json' },
           body: JSON.stringify({
             gate_id: gateId || undefined,
             decision: selected.id,
             comment: `Selected: ${selected.label}`,
           }),
+        },
+        {
+          orgId: this.getOrgId(orgId),
+          userId: this.getUserId(userId),
+          authToken,
+          contentType: 'application/json',
+          contextLabel: `/api/jobs/${jobId}/approve`,
         }
       );
       if (!response.ok) {
@@ -8609,45 +8821,48 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         const baseUrl = this.getBackendBaseUrl();
         if (!backgroundJobId) {
           this.emitLiveProgress('Creating background job...', 38);
-          const createHeaders = this.buildAuthHeaders(
-            resolvedOrgId,
-            resolvedUserId,
-            'application/json',
-            liveAuthToken
-          );
-          createHeaders.Accept = 'application/json';
-          const createResponse = await fetch(`${baseUrl}/api/jobs`, {
-            method: 'POST',
-            headers: createHeaders,
-            body: JSON.stringify({
-              message: text,
-              conversation_history: historyPayload,
-              conversation_id: this._conversationId,
-              model: modelId,
-              mode: modeId,
-              user_id: resolvedUserId,
-              attachments: (attachments ?? []).map((att) => ({
-                kind: att.kind,
-                content: att.content,
-                language: att.language,
-                name: path.basename(att.path || ''),
-                path: att.path,
-              })),
-              workspace_root: workspaceRoot,
-              current_file: currentFileRelative,
-              current_file_content: currentFileContent,
-              selection: selection,
-              errors: errors.slice(0, 20),
-              state: previousState || undefined,
-              auto_start: true,
-              metadata: {
-                source: 'vscode-aep',
+          const createResponse = await this.fetchWithAuth(
+            `${baseUrl}/api/jobs`,
+            {
+              method: 'POST',
+              headers: { Accept: 'application/json' },
+              body: JSON.stringify({
+                message: text,
+                conversation_history: historyPayload,
                 conversation_id: this._conversationId,
+                model: modelId,
                 mode: modeId,
-              },
-            }),
-            signal: controller.signal,
-          });
+                user_id: resolvedUserId,
+                attachments: (attachments ?? []).map((att) => ({
+                  kind: att.kind,
+                  content: att.content,
+                  language: att.language,
+                  name: path.basename(att.path || ''),
+                  path: att.path,
+                })),
+                workspace_root: workspaceRoot,
+                current_file: currentFileRelative,
+                current_file_content: currentFileContent,
+                selection: selection,
+                errors: errors.slice(0, 20),
+                state: previousState || undefined,
+                auto_start: true,
+                metadata: {
+                  source: 'vscode-aep',
+                  conversation_id: this._conversationId,
+                  mode: modeId,
+                },
+              }),
+              signal: controller.signal,
+            },
+            {
+              orgId: resolvedOrgId,
+              userId: resolvedUserId,
+              authToken: liveAuthToken,
+              contentType: 'application/json',
+              contextLabel: '/api/jobs',
+            }
+          );
           const createText = await createResponse.text();
           if (!createResponse.ok) {
             throw new Error(`Failed to create background job: HTTP ${createResponse.status} ${createText}`);
@@ -8672,20 +8887,23 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         } else {
           if (resumeBackgroundJob) {
             this.emitLiveProgress('Resuming background job...', 40);
-            const resumeHeaders = this.buildAuthHeaders(
-              resolvedOrgId,
-              resolvedUserId,
-              'application/json',
-              liveAuthToken
-            );
-            resumeHeaders.Accept = 'application/json';
             try {
-              const resumeResponse = await fetch(`${baseUrl}/api/jobs/${backgroundJobId}/resume`, {
-                method: 'POST',
-                headers: resumeHeaders,
-                body: JSON.stringify({}),
-                signal: controller.signal,
-              });
+              const resumeResponse = await this.fetchWithAuth(
+                `${baseUrl}/api/jobs/${backgroundJobId}/resume`,
+                {
+                  method: 'POST',
+                  headers: { Accept: 'application/json' },
+                  body: JSON.stringify({}),
+                  signal: controller.signal,
+                },
+                {
+                  orgId: resolvedOrgId,
+                  userId: resolvedUserId,
+                  authToken: liveAuthToken,
+                  contentType: 'application/json',
+                  contextLabel: `/api/jobs/${backgroundJobId}/resume`,
+                }
+              );
               if (!resumeResponse.ok && resumeResponse.status !== 409) {
                 const resumeText = await resumeResponse.text();
                 console.warn('[AEP] Background job resume returned error:', resumeResponse.status, resumeText);
@@ -8755,17 +8973,19 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         console.log('[AEP] 📡 About to fetch streaming URL:', streamUrl);
-        const streamHeaders = this.buildAuthHeaders(
+        const streamHeaders: Record<string, string> = {
+          Accept: 'text/event-stream',
+        };
+        if (streamMethod !== 'GET') {
+          streamHeaders['Content-Type'] = 'application/json';
+        }
+        const authPreviewHeaders = await this.buildAuthHeadersAsync(
           resolvedOrgId,
           resolvedUserId,
-          'application/json',
+          streamMethod === 'GET' ? undefined : 'application/json',
           liveAuthToken
         );
-        streamHeaders.Accept = 'text/event-stream';
-        if (streamMethod === 'GET') {
-          delete streamHeaders['Content-Type'];
-        }
-        if (!streamHeaders.Authorization) {
+        if (!authPreviewHeaders.Authorization) {
           console.warn('[AEP] ⚠️ No auth token available for streaming request');
         }
         if (!streamBody && streamMethod === 'POST') {
@@ -8792,12 +9012,22 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             last_action_error: lastErrorContext
           });
         }
-        const streamResponse = await fetch(streamUrl, {
-          method: streamMethod,
-          headers: streamHeaders,
-          body: streamMethod === 'POST' ? streamBody : undefined,
-          signal: controller.signal
-        });
+        const streamResponse = await this.fetchWithAuth(
+          streamUrl,
+          {
+            method: streamMethod,
+            headers: streamHeaders,
+            body: streamMethod === 'POST' ? streamBody : undefined,
+            signal: controller.signal
+          },
+          {
+            orgId: resolvedOrgId,
+            userId: resolvedUserId,
+            authToken: liveAuthToken,
+            contentType: streamMethod === 'GET' ? undefined : 'application/json',
+            contextLabel: streamUrl,
+          }
+        );
 
         // Clear the error after including it in a request
         if (lastErrorContext) {
@@ -8807,6 +9037,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         console.log('[AEP] 📡 Stream response received, status:', streamResponse.status, streamResponse.ok);
 
         if (!streamResponse.ok) {
+          if (this.isAuthFailureStatus(streamResponse.status)) {
+            throw new Error(`Authentication required (HTTP ${streamResponse.status}). Sign in and retry.`);
+          }
           throw new Error(`Stream HTTP ${streamResponse.status}`);
         }
 
@@ -9684,7 +9917,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           error: `${errorMsg}${streamResumeHint}`,
           timestamp: new Date().toISOString(),
           canRetry: true,
+          authRequired: /auth|unauthorized|forbidden|http 401|http 403/i.test(errorMsg),
         });
+
+        if (/auth|unauthorized|forbidden|http 401|http 403/i.test(errorMsg.toLowerCase())) {
+          throw streamErr;
+        }
 
         if (useBackgroundJob) {
           // Background jobs keep running server-side; don't fall back to synchronous /chat.
@@ -9715,43 +9953,52 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // BUT don't fall back if we successfully processed tool calls (even without narrative text)
       const streamingSucceeded = useStreaming && (streamedContent || hasSeenToolCalls);
       if (!streamingSucceeded) {
-        const nonStreamHeaders = this.buildAuthHeaders(
+        const authPreviewHeaders = await this.buildAuthHeadersAsync(
           resolvedOrgId,
           resolvedUserId,
           'application/json',
           liveAuthToken
         );
 
-        if (!nonStreamHeaders.Authorization) {
+        if (!authPreviewHeaders.Authorization) {
           console.warn('[AEP] ⚠️ No auth token available for non-streaming request');
         }
 
-        const response = await fetch(nonStreamUrl, {
-          method: 'POST',
-          headers: nonStreamHeaders,
-          body: JSON.stringify({
-            message: text,
-            conversation_history: historyPayload,  // Snake case to match backend
-            conversation_id: this._conversationId,  // Session ID for conversation tracking
-            model: modelId,
-            mode: modeId,
-            user_id: resolvedUserId,
-            attachments: (attachments ?? []).map((att) => ({
-              kind: att.kind,
-              content: att.content,
-              language: att.language,
-              name: path.basename(att.path || ''),
-              path: att.path,
-            })),
-            workspace_root: workspaceRoot,
-            current_file: currentFileRelative,
-            current_file_content: currentFileContent,
-            selection: selection,
-            errors: errors.slice(0, 20),
-            state: previousState || undefined
-          }),
-          signal: controller.signal
-        });
+        const response = await this.fetchWithAuth(
+          nonStreamUrl,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              message: text,
+              conversation_history: historyPayload,  // Snake case to match backend
+              conversation_id: this._conversationId,  // Session ID for conversation tracking
+              model: modelId,
+              mode: modeId,
+              user_id: resolvedUserId,
+              attachments: (attachments ?? []).map((att) => ({
+                kind: att.kind,
+                content: att.content,
+                language: att.language,
+                name: path.basename(att.path || ''),
+                path: att.path,
+              })),
+              workspace_root: workspaceRoot,
+              current_file: currentFileRelative,
+              current_file_content: currentFileContent,
+              selection: selection,
+              errors: errors.slice(0, 20),
+              state: previousState || undefined
+            }),
+            signal: controller.signal
+          },
+          {
+            orgId: resolvedOrgId,
+            userId: resolvedUserId,
+            authToken: liveAuthToken,
+            contentType: 'application/json',
+            contextLabel: '/api/navi/chat',
+          }
+        );
 
         const rawText = await response.text();
         if (!response.ok) {
@@ -10020,7 +10267,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
   private async handleJiraListIntent(originalMessage: string): Promise<void> {
     try {
-      const res = await fetch(`${this.getBackendBaseUrl()}/api/navi/jira-tasks?user_id=default_user&limit=20`);
+      const orgId = this.getOrgId();
+      const userId = this.getUserId();
+      const res = await this.fetchWithAuth(
+        `${this.getBackendBaseUrl()}/api/navi/jira-tasks?user_id=${encodeURIComponent(userId)}&limit=20`,
+        { method: 'GET' },
+        {
+          orgId,
+          userId,
+          contextLabel: '/api/navi/jira-tasks',
+        }
+      );
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${await res.text()}`);
@@ -10079,7 +10336,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     // Non-blocking background sync of Jira tasks
     const config = vscode.workspace.getConfiguration('aep');
     const baseUrl = this.getBackendBaseUrl();
-    const userId = config.get<string>('navi.userId') || 'srinivas@example.com';
+    const userId = this.getUserId(config.get<string>('navi.userId'));
+    const orgId = this.getOrgId();
 
     const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
     const syncUrl = `${cleanBaseUrl}/api/org/sync/jira`;
@@ -10087,14 +10345,22 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     console.log('[Extension Host] [AEP] Triggering background Jira sync...');
 
     // Fire and forget - don't await
-    fetch(syncUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: userId,
-        max_issues: 20
-      })
-    })
+    this.fetchWithAuth(
+      syncUrl,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: userId,
+          max_issues: 20
+        })
+      },
+      {
+        orgId,
+        userId,
+        contentType: 'application/json',
+        contextLabel: '/api/org/sync/jira',
+      }
+    )
       .then(async (response) => {
         if (response.ok) {
           const data = await response.json();
@@ -10128,7 +10394,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     try {
       const config = vscode.workspace.getConfiguration('aep');
       const baseUrl = this.getBackendBaseUrl();
-      const userId = config.get<string>('navi.userId') || 'srinivas@example.com';
+      const userId = this.getUserId(config.get<string>('navi.userId'));
+      const orgId = this.getOrgId();
 
       // Remove /api/navi/chat suffix if present
       const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
@@ -10136,12 +10403,20 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       console.log('[Extension Host] [AEP] Fetching Jira tasks from:', url);
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
+      const response = await this.fetchWithAuth(
+        url,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        },
+        {
+          orgId,
+          userId,
+          contextLabel: '/api/navi/jira-tasks',
         }
-      });
+      );
 
       if (!response.ok) {
         vscode.window.showErrorMessage(
@@ -10171,7 +10446,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     try {
       const config = vscode.workspace.getConfiguration('aep');
       const baseUrl = this.getBackendBaseUrl();
-      const userId = config.get<string>('navi.userId') || 'srinivas@example.com';
+      const userId = this.getUserId(config.get<string>('navi.userId'));
+      const orgId = this.getOrgId();
 
       // Remove /api/navi/chat suffix if present
       const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
@@ -10182,16 +10458,22 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // Show thinking state
       this.postToWebview({ type: 'botThinking', value: true });
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
+      const response = await this.fetchWithAuth(
+        url,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            user_id: userId,
+            jira_key: jiraKey
+          })
         },
-        body: JSON.stringify({
-          user_id: userId,
-          jira_key: jiraKey
-        })
-      });
+        {
+          orgId,
+          userId,
+          contentType: 'application/json',
+          contextLabel: '/api/navi/task-brief',
+        }
+      );
 
       if (!response.ok) {
         vscode.window.showErrorMessage(
@@ -11277,19 +11559,24 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           const llmAdapter = {
             generateCodeFix: async (prompt: string): Promise<string> => {
               const baseUrl = this.getBackendBaseUrl();
-              const response = await fetch(`${baseUrl}/api/navi/chat`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Org-Id': this.getOrgId(),
+              const response = await this.fetchWithAuth(
+                `${baseUrl}/api/navi/chat`,
+                {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    message: prompt,
+                    attachments: [],
+                    workspace_root: this.getActiveWorkspaceRoot(),
+                    model: 'gpt-4o-mini', // Use fast model for syntax fixes
+                  }),
                 },
-                body: JSON.stringify({
-                  message: prompt,
-                  attachments: [],
-                  workspace_root: this.getActiveWorkspaceRoot(),
-                  model: 'gpt-4o-mini', // Use fast model for syntax fixes
-                }),
-              });
+                {
+                  orgId: this.getOrgId(),
+                  userId: this.getUserId(),
+                  contentType: 'application/json',
+                  contextLabel: '/api/navi/chat (generateCodeFix)',
+                }
+              );
 
               if (!response.ok) {
                 throw new Error(`LLM request failed: ${response.status}`);
@@ -12209,9 +12496,18 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     let backendMemory: any = null;
     try {
       const baseUrl = this.getBackendBaseUrl();
-      const userId = 'default_user';
-      const resp = await fetch(
-        `${baseUrl}/api/navi/memory/recent?user_id=${encodeURIComponent(userId)}&limit=50`
+      const userId = this.getUserId();
+      const orgId = this.getOrgId();
+      const resp = await this.fetchWithAuth(
+        `${baseUrl}/api/navi/memory/recent?user_id=${encodeURIComponent(userId)}&limit=50`,
+        {
+          method: 'GET',
+        },
+        {
+          orgId,
+          userId,
+          contextLabel: '/api/navi/memory/recent',
+        }
       );
       if (resp.ok) {
         const data: any = await resp.json();
@@ -12298,7 +12594,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
   private async sendMemoryToBackend(kind: string, payload: any) {
     const baseUrl = this.getBackendBaseUrl();
-    const userId = 'default_user';
+    const userId = this.getUserId();
+    const orgId = this.getOrgId();
     const body = {
       source: 'vscode',
       event_type: kind,
@@ -12313,11 +12610,20 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         ...payload,
       },
     };
-    await fetch(`${baseUrl}/api/events/ingest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    await this.fetchWithAuth(
+      `${baseUrl}/api/events/ingest`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+      {
+        orgId,
+        userId,
+        contentType: 'application/json',
+        contextLabel: '/api/events/ingest',
+        suppressAuthPrompt: true, // Memory ingestion is best-effort and shouldn't spam auth prompts.
+      }
+    );
   }
 
   private toWebUrl(remote: string): string | null {
@@ -14738,11 +15044,13 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         // fall back to timestamp when stat fails
       }
 
+      const liveAuthToken = await this.ensureLiveAuthToken();
+      const authUser = await globalAuthService?.getUserInfo();
       const webviewConfig = {
         backendBaseUrl: this.getBackendBaseUrl(),
-        orgId: this.getOrgId(),
-        userId: this.getUserId(),
-        authToken: this.getAuthToken()
+        orgId: authUser?.org || this.getOrgId(),
+        userId: authUser?.sub || this.getUserId(),
+        authToken: liveAuthToken || this.getAuthToken()
       };
 
       // Update the HTML to use webview URIs and add VS Code API

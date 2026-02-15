@@ -872,6 +872,57 @@ const countLines = (text?: string): number => {
   return text.split("\n").length;
 };
 
+const escapeLinkHtml = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const sanitizeHttpUrl = (rawUrl: string): string | null => {
+  const compact = rawUrl.replace(/\s+/g, "");
+  try {
+    const parsed = new URL(compact);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+};
+
+const makeLinksClickableSafe = (html: string): string => {
+  let result = html;
+  const markdownLinkPattern = /\[([^\]]+)\]\((https?\s*:\s*\/\s*\/\s*[^)]+)\)/g;
+  result = result.replace(markdownLinkPattern, (_match, text, url) => {
+    const cleanUrl = sanitizeHttpUrl(url);
+    if (!cleanUrl) return text;
+    const cleanTextForCompare = String(text || "").replace(/\s+/g, "");
+    const displayText =
+      cleanTextForCompare === cleanUrl ? cleanUrl : String(text || "").trim();
+    return `<a href="${escapeLinkHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+  });
+
+  const urlPattern = /(https?\s*:\s*\/\s*\/\s*[^\s<>"'\[\]]+)/g;
+  result = result.replace(urlPattern, (url: string, _p1: string, position: number) => {
+    const before = result.substring(Math.max(0, position - 15), position);
+    if (/href="$/.test(before) || /">$/.test(before)) {
+      return url;
+    }
+    const trailingMatch = url.match(/[.,;:!?]+$/);
+    const trailingPunctuation = trailingMatch ? trailingMatch[0] : "";
+    const rawUrl = trailingPunctuation ? url.slice(0, -trailingPunctuation.length) : url;
+    const cleanUrl = sanitizeHttpUrl(rawUrl);
+    if (!cleanUrl) {
+      return url;
+    }
+    return `<a href="${escapeLinkHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
+  });
+  return result;
+};
+
 const countUnifiedDiffStats = (diff?: string): { additions: number; deletions: number } | null => {
   if (!diff) return null;
   let additions = 0;
@@ -3239,6 +3290,20 @@ export default function NaviChatPanel({
         return;
       }
 
+      if (msg.type === "auth.required") {
+        const detail = String(
+          msg.message || msg.detail || "Your session is missing a valid token."
+        );
+        setAuthRequired(true);
+        setAuthRequiredDetail(detail);
+        pendingAuthRetryRef.current = true;
+        setSending(false);
+        setIsAnalyzing(false);
+        clearSendTimeout();
+        showToast("Sign in required to continue.", "warning");
+        return;
+      }
+
       // NEW: inline toast from extension
       if (msg.type === 'toast' && msg.message) {
         showToast(msg.message, msg.kind || 'info');
@@ -3602,6 +3667,18 @@ export default function NaviChatPanel({
         const errorText = String(
           msg.error || msg.message || "Streaming was interrupted. Please retry."
         ).trim();
+        const normalizedError = errorText.toLowerCase();
+        if (
+          msg.authRequired ||
+          normalizedError.includes("http 401") ||
+          normalizedError.includes("http 403") ||
+          normalizedError.includes("unauthorized") ||
+          normalizedError.includes("forbidden")
+        ) {
+          setAuthRequired(true);
+          setAuthRequiredDetail(errorText);
+          pendingAuthRetryRef.current = true;
+        }
         setSending(false);
         setIsAnalyzing(false);
         clearSendTimeout();
@@ -3643,7 +3720,10 @@ export default function NaviChatPanel({
             },
           ];
         });
-        showToast(errorText, "error");
+        showToast(
+          msg.authRequired ? "Sign in required to continue." : errorText,
+          msg.authRequired ? "warning" : "error"
+        );
         return;
       }
 
@@ -5390,7 +5470,9 @@ export default function NaviChatPanel({
           const normalizedMessage = String(message).toLowerCase();
           if (
             normalizedMessage.includes("http 401") ||
+            normalizedMessage.includes("http 403") ||
             normalizedMessage.includes("unauthorized") ||
+            normalizedMessage.includes("forbidden") ||
             normalizedMessage.includes("authorization header") ||
             normalizedMessage.includes("missing or invalid authorization")
           ) {
@@ -8338,7 +8420,7 @@ export default function NaviChatPanel({
         let formatted = escapeHtml(normalizedText)
           .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
           .replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
-        formatted = makeLinksClickable(formatted);
+        formatted = makeLinksClickableSafe(formatted);
         // Convert newlines to spaces for flowing text during streaming
         formatted = formatted.replace(/\n/g, ' ');
         return <span key={keyPrefix} dangerouslySetInnerHTML={{ __html: formatted }} />;
@@ -8371,7 +8453,7 @@ export default function NaviChatPanel({
             let result = escapeHtml(content)
               .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
               .replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
-            return makeLinksClickable(result);
+            return makeLinksClickableSafe(result);
           };
 
           const elements: React.ReactNode[] = [];
@@ -8472,7 +8554,7 @@ export default function NaviChatPanel({
         // Handle inline code
         const withCode = formattedLine.replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
         // Make URLs and file paths clickable
-        const withLinks = makeLinksClickable(withCode);
+        const withLinks = makeLinksClickableSafe(withCode);
         return <p key={`${keyPrefix}-${pIdx}`} dangerouslySetInnerHTML={{ __html: withLinks }} />;
       });
     };
@@ -10804,7 +10886,7 @@ export default function NaviChatPanel({
                             result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
                             result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
                             result = result.replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
-                            result = makeLinksClickable(result);
+                            result = makeLinksClickableSafe(result);
                             return result;
                           };
 
@@ -10872,7 +10954,7 @@ export default function NaviChatPanel({
                           result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
                           // Handle inline code `code`
                           result = result.replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
-                          result = makeLinksClickable(result);
+                          result = makeLinksClickableSafe(result);
                           return result;
                         };
 

@@ -59,6 +59,7 @@ jobs:
       ENABLE_AUDIT_LOGGING: false
       OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
       CI_NON_BLOCKING_DB_CHECKS: true
+      REQUIRE_REDIS_FOR_LOCK_TESTS: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -106,6 +107,17 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements.txt
       - run: pip install pytest requests
+      - name: Wait for Redis
+        run: |
+          for i in {1..30}; do
+            if redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG; then
+              echo "Redis is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Redis did not become ready in time"
+          exit 1
       - name: Distributed lock tests
         run: |
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"

@@ -17,7 +17,91 @@ NAVI has strong technical foundations and is **production-ready for pilot deploy
 - ✅ **VSCode Extension Build Automation**: Automated webview build integrated into compile process (Feb 13, 2026)
 - ⚠️ **Technical debt identified**: Provider code path duplication (Feb 10, 2026) - Documented for future refactoring (P2)
 
+## Go-Live Checklist (Pilot vs Enterprise)
+
+### Scope
+- Pilot = first 10 paying orgs under controlled rollout.
+- Enterprise = broad production rollout across orgs/workspaces.
+
+### Security + Auth
+- Exit criteria (Pilot):
+  - JWT auth enforced in production (`JWT_ENABLED=true`).
+  - VS Code extension attaches `Authorization` header for chat/stream/jobs/events.
+  - 401/403 surfaces explicit Sign-in CTA in webview (no silent timeout loops).
+  - Connector/provider tokens encrypted at rest (Fernet/KMS-backed path).
+- Exit criteria (Enterprise):
+  - Key rotation policy + documented break-glass procedure.
+  - Security review sign-off for auth, token storage, and approval gates.
+
+### Reliability + Runtime
+- Exit criteria (Pilot):
+  - Background jobs enabled for long tasks; resume/reattach/cancel verified.
+  - Distributed lock enforcement fail-closed (Redis outage => safe 503).
+  - Duplicate-runner tests passing (single-process + 2-worker uvicorn harness).
+- Exit criteria (Enterprise):
+  - Staging soak test 24h+ with no P0/P1 incidents.
+  - Chaos/rollback drill completed and documented.
+
+### Observability + Operations
+- Exit criteria (Pilot):
+  - Correlated run/job logging in backend events.
+  - Error/timeout/auth-failure alerts connected to on-call channel.
+  - Runbook for stream failures, job resume, Redis lock outage, auth outage.
+- Exit criteria (Enterprise):
+  - SLO dashboards (availability, latency, job completion rate, error budget).
+  - Pager/on-call rotation active with escalation matrix.
+
+### Cost + Quotas
+- Exit criteria (Pilot):
+  - Org-level rate limiting enabled for API and autonomous runs.
+  - LLM cost metrics visible per org/project.
+- Exit criteria (Enterprise):
+  - Hard quota ceilings + alert thresholds + auto-throttle policy.
+  - Monthly cost review + anomaly alerts.
+
+### Deployment + Rollback
+- Exit criteria (Pilot):
+  - Staging deployment pass: chat, stream, jobs, approvals.
+  - One-click rollback validated in staging.
+- Exit criteria (Enterprise):
+  - Blue/green or canary strategy with documented rollback ownership.
+  - Post-deploy verification checklist automated in CI/CD.
+
+### Final Go/No-Go Rules
+- Pilot Go-Live:
+  - All security/reliability pilot criteria green.
+  - No open P0/P1 issues.
+  - On-call + rollback owner assigned for launch week.
+- Enterprise Go-Live:
+  - Pilot stable for at least 2 weeks with acceptable error budget.
+  - Enterprise criteria green across security, reliability, observability, and quotas.
+
 ## Background Job + Runtime Hardening (Feb 15, 2026)
+
+## PROD_READINESS_AUDIT Workflow (Feb 15, 2026)
+
+### Routing behavior
+- Prod-readiness assessment prompts (for example: "ready for prod?", "go live checklist", "deployment readiness") now default to deterministic audit-plan mode.
+- Explicit execution prompts (for example: "run these checks now") route to autonomous/background-job execution path.
+
+### Plan output contract
+- NAVI returns a one-page audit plan grouped by:
+  - build/test
+  - runtime smoke
+  - env/config completeness
+  - security/secrets
+  - observability/ops
+  - deployment/rollback
+- Each section includes:
+  - concrete commands
+  - pass criteria
+  - expected evidence location
+- Response always includes a clear approval prompt to execute checks.
+
+### Execution contract
+- Multi-step audit execution uses the background-job system with stream replay and approvals.
+- Human-gate + command consent flows remain enforced.
+- Cancel requests terminate subprocess trees (process-group TERM/KILL path).
 
 ### Implemented
 - ✅ Added long-running job API surface for autonomous tasks:
@@ -79,6 +163,8 @@ NAVI has strong technical foundations and is **production-ready for pilot deploy
 - ✅ Targeted hardening suite: `5 passed, 2 skipped` (Redis-dependent tests skip locally when Redis is unavailable).
 
 ### PR #67 Follow-Up Fixes (Feb 15, 2026)
+- ✅ VS Code extension auth bootstrap now rehydrates live token/user from secret storage and attaches `Authorization` headers to chat/stream/jobs/events/memory endpoints.
+- ✅ 401/403 handling now emits explicit `auth.required` events in the extension and shows a Sign-in CTA in webview instead of hanging on long stream timeouts.
 - ✅ Human-gate pause payload now persists a top-level `gate_id` (in addition to `gate`) for deterministic approval matching.
 - ✅ Approval matching now supports nested gate IDs from legacy payloads (`pending_approval.gate.id` / `pending_approval.summary.id`) to avoid false `409` responses.
 - ✅ `/api/jobs/{job_id}/approve` now propagates resume failures consistently:

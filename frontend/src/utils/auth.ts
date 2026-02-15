@@ -46,6 +46,14 @@ export const decodeAuthToken = (token: string | null): AuthProfile | null => {
   }
 };
 
+/**
+ * Check if the current user has admin role based on JWT claims.
+ *
+ * ⚠️ WARNING: This is for UI hints only (show/hide admin features).
+ * DO NOT use for authorization - the JWT is decoded client-side without
+ * signature verification and can be trivially spoofed by editing localStorage.
+ * All admin API access MUST be enforced server-side.
+ */
 export const isAdminUser = (): boolean => {
   const token = getAuthToken();
   if (!token) return false;

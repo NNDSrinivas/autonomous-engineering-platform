@@ -7842,6 +7842,14 @@ def _get_vision_provider_for_model(model: Optional[str]):
             }
             provider = mode_map.get(raw, "anthropic")
 
+    # Block external vision providers for private/local models
+    if provider in ("ollama", "self_hosted", "groq", "openrouter"):
+        raise ValueError(
+            f"Vision/image attachments are not supported with {provider} provider. "
+            "Private mode requires a local vision model, which is not yet implemented. "
+            "Please use a SaaS provider (OpenAI, Anthropic, Google) for image analysis."
+        )
+
     if provider == "openai":
         return VisionProvider.OPENAI
     elif provider == "anthropic":
@@ -7849,7 +7857,7 @@ def _get_vision_provider_for_model(model: Optional[str]):
     elif provider == "google":
         return VisionProvider.GOOGLE
     else:
-        # Groq and other providers don't have vision - fall back to Claude
+        # Unknown provider - fall back to Claude for backward compatibility
         return VisionProvider.ANTHROPIC
 
 

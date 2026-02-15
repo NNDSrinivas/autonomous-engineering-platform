@@ -1740,9 +1740,22 @@ class AutonomousAgent:
         if process.returncode is not None:
             return
         try:
-            if process.pid and hasattr(os, "killpg"):
+            # Try to kill process group if available
+            pgid = None
+            if process.pid and hasattr(os, "killpg") and hasattr(os, "getpgid"):
                 try:
-                    os.killpg(process.pid, signal.SIGTERM)
+                    pgid = os.getpgid(process.pid)
+                except ProcessLookupError:
+                    # Process already gone
+                    return
+                except Exception:
+                    # Could not determine process group; fall back to per-process signals
+                    pgid = None
+
+            if pgid is not None:
+                # Terminate the process group
+                try:
+                    os.killpg(pgid, signal.SIGTERM)
                 except ProcessLookupError:
                     return
                 except Exception:
@@ -1752,12 +1765,13 @@ class AutonomousAgent:
                     return
                 except asyncio.TimeoutError:
                     try:
-                        os.killpg(process.pid, signal.SIGKILL)
+                        os.killpg(pgid, signal.SIGKILL)
                     except ProcessLookupError:
                         return
                     except Exception:
                         process.kill()
             else:
+                # No valid process group; fall back to terminating just this process
                 process.terminate()
             await process.wait()
         except Exception as exc:

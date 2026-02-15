@@ -30,7 +30,6 @@ _ENDPOINT_PROVIDER_SUPPORT = {
     "autonomous": {
         "openai",
         "anthropic",
-        "google",
         "groq",
         "openrouter",
         "ollama",

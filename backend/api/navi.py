@@ -8507,11 +8507,24 @@ async def stream_background_job_events(
         while True:
             current = await job_manager.require_job(job_id)
             if _is_terminal_job_status(current.status):
+                # Drain any pending terminal events (e.g., completion/error metadata)
+                # before closing the SSE stream.
+                final_events = await job_manager.wait_for_events(
+                    job_id,
+                    after_sequence=cursor,
+                    timeout_seconds=1.0,
+                )
+                if final_events:
+                    for event in final_events:
+                        cursor = max(cursor, int(event.get("sequence", cursor)))
+                        yield f"data: {json.dumps(event)}\n\n"
+                    continue
+
                 done_event = {
                     "type": "job_terminal",
                     "job_id": job_id,
                     "job_status": current.status,
-                    "sequence": cursor,
+                    "sequence": cursor + 1,
                     "timestamp": int(time.time() * 1000),
                 }
                 yield f"data: {json.dumps(done_event)}\n\n"

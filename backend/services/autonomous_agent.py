@@ -5539,9 +5539,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
                         if response.status == 400:
                             logger.error(
-                                "[AutonomousAgent] OpenAI-compatible 400 debug | model=%s endpoint=%s stream=%s payload=%s error.body=%s",
+                                "[AutonomousAgent] Anthropic 400 debug | model=%s endpoint=%s stream=%s payload=%s error.body=%s",
                                 self.model,
-                                f"{base_url}/chat/completions",
+                                "https://api.anthropic.com/v1/messages",
                                 True,
                                 payload,
                                 error_body,

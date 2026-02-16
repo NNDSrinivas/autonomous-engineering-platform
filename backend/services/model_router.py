@@ -49,7 +49,6 @@ _PROVIDER_CREDENTIAL_KEYS: Dict[str, tuple[str, ...]] = {
         "SELF_HOSTED_LLM_URL",
         "VLLM_BASE_URL",
     ),
-    "test": ("TEST_API_KEY",),  # For testing
 }
 
 _ALIAS_TO_MODEL_ID = {
@@ -231,6 +230,7 @@ class ModelRouter:
     def _load_model_facts(self, repo_root: Path) -> Dict[str, Dict[str, Any]]:
         """Load Phase 1 flat registry and return model facts keyed by model ID."""
         env = self.runtime_env
+        registry_dir = self.registry_path.parent
         direct_registry_path = (os.getenv("MODEL_REGISTRY_PATH") or "").strip()
         if direct_registry_path:
             registry_path = Path(direct_registry_path)
@@ -243,7 +243,7 @@ class ModelRouter:
         else:
             # Determine registry path based on runtime environment.
             registry_filename = f"model-registry-{env}.json"
-            registry_path = repo_root / "shared" / registry_filename
+            registry_path = registry_dir / registry_filename
 
             if not registry_path.exists():
                 # Fallback to dev registry only for dev-like environments.
@@ -251,7 +251,7 @@ class ModelRouter:
                     raise ValueError(
                         f"ModelRouter misconfigured: missing facts registry '{registry_filename}' for APP_ENV={env}"
                     )
-                registry_path = repo_root / "shared" / "model-registry-dev.json"
+                registry_path = registry_dir / "model-registry-dev.json"
 
         with open(registry_path, "r", encoding="utf-8") as fh:
             registry_data = json.load(fh)

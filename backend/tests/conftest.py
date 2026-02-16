@@ -162,3 +162,286 @@ def get_edges_for_node(session: Session, foreign_id: str, org_id: str = TEST_ORG
     )
 
     return edges
+
+
+# ============================================================================
+# Phase 2 Model Router Test Fixtures
+# ============================================================================
+
+import json
+from backend.services.model_router import ModelRouter
+
+
+def _write_json(path: Path, obj: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, indent=2), encoding="utf-8")
+
+
+def _minimal_legacy_registry() -> dict:
+    """
+    Minimal legacy registry (shared/model-registry.json shape) that:
+    - defines providers + models referenced by modes
+    - keeps provider IDs aligned with facts registry providers
+    """
+    return {
+        "version": "1.0.0",
+        "defaults": {
+            "defaultModeId": "navi/intelligence",
+            "defaultModelId": "openai/gpt-4o",
+        },
+        "providers": [
+            {
+                "id": "openai",
+                "type": "saas",
+                "models": [
+                    {"id": "openai/gpt-4o", "providerModel": "gpt-4o", "streaming": True, "tools": True, "json": True, "vision": True},
+                    {"id": "openai/gpt-4o-mini", "providerModel": "gpt-4o-mini", "streaming": True, "tools": True, "json": True},
+                    {"id": "openai/gpt-5.2", "providerModel": "gpt-5.2", "streaming": True, "tools": True, "json": True, "vision": True},
+                    {"id": "openai/gpt-5-mini", "providerModel": "gpt-5-mini", "streaming": True, "tools": True, "json": True},
+                    {"id": "openai/o3", "providerModel": "o3", "streaming": True, "tools": True, "json": True},
+                ],
+            },
+            {
+                "id": "anthropic",
+                "type": "saas",
+                "models": [
+                    {"id": "anthropic/claude-sonnet-4", "providerModel": "claude-sonnet-4", "streaming": True, "tools": True, "json": True},
+                    {"id": "anthropic/claude-opus-4", "providerModel": "claude-opus-4", "streaming": True, "tools": True, "json": True},
+                ],
+            },
+            {
+                "id": "google",
+                "type": "saas",
+                "models": [
+                    {"id": "google/gemini-2.5-pro", "providerModel": "gemini-2.5-pro", "streaming": True, "json": True},
+                ],
+            },
+            {
+                "id": "groq",
+                "type": "saas",
+                "models": [
+                    {"id": "groq/llama-3.3-70b-versatile", "providerModel": "llama-3.3-70b-versatile", "streaming": True},
+                ],
+            },
+            {
+                "id": "ollama",
+                "type": "local",
+                "models": [
+                    {"id": "ollama/llama3.2", "providerModel": "llama3.2", "streaming": True},
+                ],
+            },
+            {
+                "id": "self_hosted",
+                "type": "self_hosted",
+                "models": [
+                    {"id": "self_hosted/qwen2.5-coder", "providerModel": "qwen2.5-coder", "streaming": True, "tools": True},
+                ],
+            },
+            {
+                "id": "test",
+                "type": "saas",
+                "models": [
+                    {"id": "test/model-1", "providerModel": "test-model-1", "streaming": True, "tools": True, "json": True},
+                    {"id": "test/expensive-model", "providerModel": "test-expensive", "streaming": True, "tools": True},
+                    {"id": "test/vision-model", "providerModel": "test-vision", "streaming": True, "vision": True},
+                    {"id": "test/premium-model", "providerModel": "test-premium", "streaming": True},
+                    {"id": "test/disabled-model", "providerModel": "test-disabled", "streaming": True},
+                ],
+            },
+        ],
+        "naviModes": [
+            {
+                "id": "navi/intelligence",
+                "label": "NAVI Intelligence",
+                "candidateModelIds": ["openai/gpt-5.2", "anthropic/claude-sonnet-4", "openai/gpt-4o"],
+                "policy": {"strictPrivate": False},
+            },
+            {
+                "id": "navi/fast",
+                "label": "NAVI Fast",
+                "candidateModelIds": ["openai/gpt-5-mini", "openai/gpt-4o-mini", "groq/llama-3.3-70b-versatile"],
+                "policy": {"strictPrivate": False},
+            },
+            {
+                "id": "navi/deep",
+                "label": "NAVI Deep",
+                "candidateModelIds": ["anthropic/claude-opus-4", "openai/o3", "google/gemini-2.5-pro"],
+                "policy": {"strictPrivate": False},
+            },
+            {
+                "id": "navi/private",
+                "label": "NAVI Private",
+                "candidateModelIds": ["ollama/llama3.2", "self_hosted/qwen2.5-coder"],
+                "policy": {"strictPrivate": True},
+            },
+            {
+                "id": "navi/test-policy",
+                "label": "Test Mode with Policy",
+                "candidateModelIds": ["test/model-1", "test/expensive-model"],
+                "policy": {
+                    "requiredCapabilities": ["tool-use"],
+                    "maxCostUSD": 0.01,
+                    "strictPrivate": False
+                },
+            },
+        ],
+    }
+
+
+@pytest.fixture()
+def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    Creates a ModelRouter wired to:
+    - a temp legacy registry (registry_path param)
+    - a temp facts registry (MODEL_REGISTRY_PATH env var)
+    - deterministic env vars for provider config checks
+    """
+    # Ensure deterministic environment
+    monkeypatch.setenv("APP_ENV", "dev")
+
+    # Provider creds (make providers "configured" when needed)
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test")
+    monkeypatch.setenv("GROQ_API_KEY", "test")
+    monkeypatch.setenv("TEST_API_KEY", "test")  # For test provider
+
+    # Special cases:
+    # Ollama requires OLLAMA_HOST if provider_id == "ollama"
+    monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
+
+    # self_hosted requires one of: SELF_HOSTED_API_BASE_URL / SELF_HOSTED_LLM_URL / VLLM_BASE_URL
+    monkeypatch.setenv("SELF_HOSTED_LLM_URL", "http://localhost:8000")
+
+    # Monkeypatch "test" provider into credential keys (test-only, not in production)
+    from backend.services import model_router
+    original_keys = model_router._PROVIDER_CREDENTIAL_KEYS.copy()
+    model_router._PROVIDER_CREDENTIAL_KEYS["test"] = ("TEST_API_KEY",)
+
+    # Cleanup after test
+    def restore_keys():
+        model_router._PROVIDER_CREDENTIAL_KEYS.clear()
+        model_router._PROVIDER_CREDENTIAL_KEYS.update(original_keys)
+    monkeypatch.undo = restore_keys
+
+    # Write legacy registry to temp
+    legacy_path = tmp_path / "shared" / "model-registry.json"
+    _write_json(legacy_path, _minimal_legacy_registry())
+
+    # Write facts registry to temp
+    # IMPORTANT: this must match your Phase 1 schema shape: {environment, models:[...]}
+    facts_path = tmp_path / "shared" / "model-registry-dev.json"
+    facts = {
+        "schemaVersion": 1,
+        "environment": "dev",
+        "models": [
+            # Production models
+            {
+                "id": "openai/gpt-4o",
+                "provider": "openai",
+                "enabled": True,
+                "capabilities": ["chat", "tool-use", "json", "vision", "streaming"],
+                "pricing": {"currency": "USD", "inputPer1KTokens": 0.0025, "outputPer1KTokens": 0.01},
+                "governance": {"tier": "standard", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "limits": {"maxInputTokens": 128000, "maxOutputTokens": 16384},
+                "displayName": "GPT-4o",
+                "productionApproved": True,
+            },
+            {
+                "id": "openai/gpt-5.2",
+                "provider": "openai",
+                "enabled": True,
+                "capabilities": ["chat", "tool-use", "json", "vision", "streaming", "long-context"],
+                "pricing": {"currency": "USD", "inputPer1KTokens": 0.00175, "outputPer1KTokens": 0.014},
+                "governance": {"tier": "premium", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "limits": {"maxInputTokens": 128000, "maxOutputTokens": 16384},
+                "displayName": "GPT-5.2",
+                "productionApproved": True,
+            },
+            {
+                "id": "ollama/llama3.2",
+                "provider": "ollama",
+                "enabled": True,
+                "capabilities": ["chat", "streaming"],
+                "pricing": {"currency": "USD", "inputPer1KTokens": 0.0, "outputPer1KTokens": 0.0},
+                "governance": {"tier": "budget", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "limits": {"maxInputTokens": 8192, "maxOutputTokens": 2048},
+                "displayName": "Llama 3.2 (Ollama)",
+                "productionApproved": True,
+            },
+            {
+                "id": "self_hosted/qwen2.5-coder",
+                "provider": "self_hosted",
+                "enabled": True,
+                "capabilities": ["chat", "tool-use", "streaming"],
+                "pricing": {"currency": "USD", "inputPer1KTokens": 0.0, "outputPer1KTokens": 0.0},
+                "governance": {"tier": "standard", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "limits": {"maxInputTokens": 8192, "maxOutputTokens": 2048},
+                "displayName": "Qwen 2.5 Coder (Self-hosted)",
+                "productionApproved": True,
+            },
+            # Test models for Phase 2 tests
+            {
+                "id": "test/model-1",
+                "provider": "test",
+                "enabled": True,
+                "capabilities": ["chat", "tool-use", "json", "streaming"],
+                "pricing": {"currency": "USD", "inputPer1KTokens": 0.001, "outputPer1KTokens": 0.002},
+                "governance": {"tier": "budget", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "limits": {"maxInputTokens": 8192, "maxOutputTokens": 2048},
+                "displayName": "Test Model 1",
+                "productionApproved": True,
+            },
+            {
+                "id": "test/expensive-model",
+                "provider": "test",
+                "enabled": True,
+                "capabilities": ["chat", "tool-use", "streaming"],
+                "pricing": {"currency": "USD", "inputPer1KTokens": 0.05, "outputPer1KTokens": 0.1},
+                "governance": {"tier": "premium", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "limits": {"maxInputTokens": 32768, "maxOutputTokens": 8192},
+                "displayName": "Expensive Test Model",
+                "productionApproved": True,
+            },
+            {
+                "id": "test/vision-model",
+                "provider": "test",
+                "enabled": True,
+                "capabilities": ["chat", "vision", "streaming"],
+                "pricing": {"currency": "USD", "inputPer1KTokens": 0.003, "outputPer1KTokens": 0.012},
+                "governance": {"tier": "standard", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "limits": {"maxInputTokens": 16384, "maxOutputTokens": 4096},
+                "displayName": "Vision Test Model",
+                "productionApproved": True,
+            },
+            {
+                "id": "test/premium-model",
+                "provider": "test",
+                "enabled": True,
+                "capabilities": ["chat", "tool-use", "json", "streaming"],
+                "pricing": {"currency": "USD", "inputPer1KTokens": 0.01, "outputPer1KTokens": 0.03},
+                "governance": {"tier": "premium", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "limits": {"maxInputTokens": 32768, "maxOutputTokens": 8192},
+                "displayName": "Premium Test Model",
+                "productionApproved": True,
+            },
+            {
+                "id": "test/disabled-model",
+                "provider": "test",
+                "enabled": False,  # Explicitly disabled for testing factsEnabled
+                "capabilities": ["chat"],
+                "pricing": {"currency": "USD", "inputPer1KTokens": 0.001, "outputPer1KTokens": 0.002},
+                "governance": {"tier": "budget", "allowedEnvironments": ["dev"]},
+                "limits": {"maxInputTokens": 4096, "maxOutputTokens": 1024},
+                "displayName": "Disabled Test Model",
+                "productionApproved": False,
+            },
+        ],
+    }
+    _write_json(facts_path, facts)
+
+    # Force router to use our temp facts registry regardless of repo_root
+    monkeypatch.setenv("MODEL_REGISTRY_PATH", str(facts_path))
+
+    router = ModelRouter(registry_path=legacy_path)
+    return router, legacy_path, facts_path

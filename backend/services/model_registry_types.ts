@@ -1,5 +1,12 @@
 export type RegistryEnvironment = "dev" | "staging" | "prod";
-export type ModelProvider = "openai" | "anthropic" | "google" | "groq" | "azure-openai" | "custom";
+export type ModelProvider =
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "groq"
+  | "azure-openai"
+  | "ollama"
+  | "self_hosted";
 export type GovernanceTier = "premium" | "standard" | "budget";
 export type ModelCapability =
   | "chat"

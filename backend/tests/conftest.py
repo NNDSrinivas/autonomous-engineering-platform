@@ -386,7 +386,9 @@ def _minimal_legacy_registry() -> dict:
 
 
 @pytest.fixture()
-def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def router_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+):
     """
     Creates a ModelRouter wired to:
     - a temp legacy registry (registry_path param)
@@ -416,12 +418,12 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     original_keys = model_router._PROVIDER_CREDENTIAL_KEYS.copy()
     model_router._PROVIDER_CREDENTIAL_KEYS["test"] = ("TEST_API_KEY",)
 
-    # Cleanup after test
+    # Cleanup after test using finalizer to avoid breaking pytest's monkeypatch cleanup
     def restore_keys():
         model_router._PROVIDER_CREDENTIAL_KEYS.clear()
         model_router._PROVIDER_CREDENTIAL_KEYS.update(original_keys)
 
-    monkeypatch.undo = restore_keys
+    request.addfinalizer(restore_keys)
 
     # Write legacy registry to temp
     legacy_path = tmp_path / "shared" / "model-registry.json"

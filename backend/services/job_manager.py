@@ -69,6 +69,7 @@ class JobRecord:
     events: List[Dict[str, Any]] = field(default_factory=list)
     next_sequence: int = 1
     task: Optional[asyncio.Task] = None
+    local_runner_token: Optional[str] = None  # Tracks local lock ownership when Redis unavailable
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     condition: asyncio.Condition = field(init=False)
 
@@ -279,11 +280,13 @@ class JobManager:
         ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
     ) -> bool:
         async def _acquire_local_lock() -> bool:
-            # Best-effort local lock: allow only one active task in this process.
+            # Best-effort local lock: track ownership with local_runner_token
+            # rather than record.task existence to avoid self-blocking on first acquisition.
             record = await self.require_job(job_id)
             async with record.lock:
-                if record.task and not record.task.done():
+                if record.local_runner_token is not None:
                     return False
+                record.local_runner_token = owner_token
                 return True
 
         if not self._redis_available or not self._redis:
@@ -332,6 +335,11 @@ class JobManager:
 
     async def release_runner_lock(self, job_id: str, owner_token: str) -> None:
         if not self._redis_available or not self._redis:
+            # Clear local lock ownership token
+            record = await self.require_job(job_id)
+            async with record.lock:
+                if record.local_runner_token == owner_token:
+                    record.local_runner_token = None
             return
         try:
             lock_key = self._lock_key(job_id)
@@ -585,6 +593,9 @@ class JobManager:
         async with record.condition:
             if status is not None:
                 record.status = status
+                # Clear local lock ownership when reaching terminal state
+                if status in TERMINAL_STATUSES:
+                    record.local_runner_token = None
             if phase is not None:
                 record.phase = phase
             if error is not None:

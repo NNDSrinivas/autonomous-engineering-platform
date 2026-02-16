@@ -5061,6 +5061,40 @@ async def navi_chat(
         request.message[:50],
         request.workspace,
     )
+    # Dedicated prod-readiness assessment path should remain available even when
+    # provider keys are missing (deterministic plan mode does not require LLM calls).
+    try:
+        from backend.agent.intent_classifier import classify_intent
+        from backend.agent.intent_schema import IntentKind
+
+        classified_intent = classify_intent(request.message)
+        if (
+            classified_intent.kind == IntentKind.PROD_READINESS_AUDIT
+            and not _is_prod_readiness_execute_message(request.message)
+        ):
+            workspace_root = request.workspace_root or (request.workspace or {}).get(
+                "workspace_root"
+            )
+            plan_text = _build_prod_readiness_audit_plan(
+                workspace_root=workspace_root,
+                execution_supported=bool(workspace_root),
+            )
+            return ChatResponse(
+                content=plan_text,
+                actions=[],
+                agentRun=None,
+                reply=plan_text,
+                should_stream=False,
+                state={
+                    "intent": "prod_readiness_audit",
+                    "mode": "plan_only",
+                    "execution_available": bool(workspace_root),
+                },
+                duration_ms=0,
+            )
+    except Exception:
+        logger.exception("[NAVI-CHAT] Prod-readiness intent pre-check failed")
+
     if not OPENAI_ENABLED:
         # Still return a `content` field so the extension stays happy
         msg = (
@@ -5205,37 +5239,6 @@ async def navi_chat(
         is_work_question = any(
             indicator in msg_lower for indicator in work_question_indicators
         )
-
-        # Dedicated prod-readiness assessment path:
-        # deterministic plan output by default (no decomposition/autonomous side effects).
-        try:
-            from backend.agent.intent_classifier import classify_intent
-            from backend.agent.intent_schema import IntentKind
-
-            classified_intent = classify_intent(request.message)
-            if (
-                classified_intent.kind == IntentKind.PROD_READINESS_AUDIT
-                and not _is_prod_readiness_execute_message(request.message)
-            ):
-                plan_text = _build_prod_readiness_audit_plan(
-                    workspace_root=workspace_root,
-                    execution_supported=bool(workspace_root),
-                )
-                return ChatResponse(
-                    content=plan_text,
-                    actions=[],
-                    agentRun=None,
-                    reply=plan_text,
-                    should_stream=False,
-                    state={
-                        "intent": "prod_readiness_audit",
-                        "mode": "plan_only",
-                        "execution_available": bool(workspace_root),
-                    },
-                    duration_ms=0,
-                )
-        except Exception:
-            logger.exception("[NAVI-CHAT] Prod-readiness intent pre-check failed")
 
         if (
             len(msg_lower) <= 60
@@ -7352,6 +7355,64 @@ async def navi_chat_stream_v2(
     if request.project_type:
         context["project_type"] = request.project_type
 
+    # Deterministic prod-readiness plan should not require model routing or provider keys.
+    try:
+        from backend.agent.intent_classifier import classify_intent
+        from backend.agent.intent_schema import IntentKind
+
+        preclassified_intent = classify_intent(request.message)
+    except Exception:
+        preclassified_intent = None
+        logger.exception("[NAVI V2] Failed to classify intent before routing")
+
+    if (
+        preclassified_intent
+        and preclassified_intent.kind == IntentKind.PROD_READINESS_AUDIT
+        and not _is_prod_readiness_execute_message(request.message)
+    ):
+
+        async def prod_readiness_stream_generator():
+            try:
+                intent_activity = {
+                    "type": "activity",
+                    "activity": {
+                        "kind": "intent",
+                        "label": "Understanding request",
+                        "detail": f"Detected: {preclassified_intent.kind.value} ({int(preclassified_intent.confidence * 100)}%)",
+                        "status": "done",
+                    },
+                }
+                yield f"data: {json.dumps(intent_activity)}\n\n"
+                intent_event = {
+                    "type": "intent",
+                    "intent": {
+                        "family": preclassified_intent.family.value,
+                        "kind": preclassified_intent.kind.value,
+                        "confidence": preclassified_intent.confidence,
+                    },
+                }
+                yield f"data: {json.dumps(intent_event)}\n\n"
+                plan_text = _build_prod_readiness_audit_plan(
+                    workspace_root=workspace_path,
+                    execution_supported=bool(workspace_path),
+                )
+                yield f"data: {json.dumps({'type': 'text', 'text': plan_text, 'timestamp': int(time.time() * 1000)})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            except Exception as e:
+                logger.exception(f"[NAVI V2] Prod-readiness short-circuit error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            prod_readiness_stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     try:
         routing_decision = get_model_router().route(
             requested_model_or_mode_id=request.model,
@@ -8545,12 +8606,18 @@ async def create_background_job(
     if request.auto_start:
         start_result = await _start_job_runner(record.job_id)
         if start_result.get("reason") == "distributed_lock_unavailable":
+            # Job was created but couldn't be started - include job_id to prevent orphaning
             raise HTTPException(
                 status_code=503,
-                detail=(
-                    "Distributed runner lock unavailable (Redis). "
-                    "Background start is temporarily unavailable."
-                ),
+                detail={
+                    "message": (
+                        "Distributed runner lock unavailable (Redis). "
+                        "Background start is temporarily unavailable."
+                    ),
+                    "job_id": record.job_id,
+                    "job": record.to_public(),
+                    "events_url": f"/api/jobs/{record.job_id}/events",
+                },
             )
 
     return {

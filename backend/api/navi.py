@@ -88,6 +88,11 @@ from backend.services.consent_service import get_consent_service
 import redis.asyncio as redis
 from datetime import datetime
 
+# Phase 4 Budget Governance
+from backend.services.budget_manager import BudgetExceeded
+from backend.services.budget_manager_singleton import get_budget_manager
+from backend.services.budget_lifecycle import budget_guard, build_budget_scopes
+
 # NOTE: ProjectAnalyzer is in backend/services/navi_brain.py
 # The /api/navi/chat endpoint in chat.py uses navi_brain.py's implementation
 
@@ -6625,6 +6630,47 @@ async def navi_chat_stream(
                 "requestedModelId": request.model,
             },
         ) from exc
+
+    # ---------------------------
+    # Phase 4 Budget Governance
+    # Reserve BEFORE StreamingResponse so we can return 429/503 cleanly.
+    # Generator will only commit/release via budget_guard(pre_reserved_token=...).
+    # ---------------------------
+    budget_mgr = get_budget_manager()
+    estimated_tokens = 2500  # conservative default
+    final_scopes = []
+    pre_reserved_token = None
+
+    provider = getattr(routing_decision, "provider", None)
+    model_name = getattr(routing_decision, "model", None)
+
+    if budget_mgr is None and os.getenv("BUDGET_ENFORCEMENT_MODE", "strict").lower() == "strict":
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "BUDGET_ENFORCEMENT_UNAVAILABLE", "message": "Budget enforcement unavailable"},
+        )
+
+    if budget_mgr is not None and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled":
+        final_scopes = build_budget_scopes(
+            budget_manager=budget_mgr,
+            org_id=org_id or "org:unknown",
+            user_id=user_id or None,
+            provider_id=provider,
+            model_id=model_name,
+        )
+        try:
+            pre_reserved_token = await budget_mgr.reserve(estimated_tokens, final_scopes)
+        except BudgetExceeded as e:
+            if e.code == "BUDGET_EXCEEDED":
+                raise HTTPException(
+                    status_code=429,
+                    detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+                )
+            raise HTTPException(
+                status_code=503,
+                detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+            )
+
     trace_store = get_trace_store()
     trace_task_id = request.conversation_id or f"stream-{uuid4()}"
     trace_store.append(
@@ -7004,39 +7050,96 @@ async def navi_chat_stream(
                     len(conversation_history_for_llm),
                 )
 
-            async for event in process_navi_request_streaming(
-                message=request.message,
-                workspace_path=workspace_root,
-                llm_provider=routing_decision.provider,
-                llm_model=routing_decision.model,
-                api_key=None,
-                current_file=current_file,
-                current_file_content=current_file_content,
-                selection=selection,
-                open_files=None,
-                errors=errors,
-                conversation_history=conversation_history_for_llm,
-            ):
-                # Stream activity events
-                if "activity" in event:
-                    activity = event["activity"]
-                    if activity.get("kind") == "file_read":
-                        files_read_live.append(activity.get("detail", ""))
-                    yield f"data: {json.dumps({'activity': activity})}\n\n"
+            # Phase 4: Budget enforcement with reserve/commit/release lifecycle
+            if budget_mgr is not None and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled" and pre_reserved_token is not None:
+                async with budget_guard(
+                    budget_mgr,
+                    final_scopes,
+                    estimated_tokens,
+                    pre_reserved_token=pre_reserved_token,
+                ) as budget_ctx:
+                    if os.getenv("BUDGET_TEST_THROW_AFTER_RESERVE") == "1":
+                        raise RuntimeError("Test exception after reserve")
 
-                # Stream narrative events (conversational explanations like Claude Code)
-                elif "narrative" in event:
-                    narrative_text = event["narrative"]
-                    yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
+                    async for event in process_navi_request_streaming(
+                        message=request.message,
+                        workspace_path=workspace_root,
+                        llm_provider=routing_decision.provider,
+                        llm_model=routing_decision.model,
+                        api_key=None,
+                        current_file=current_file,
+                        current_file_content=current_file_content,
+                        selection=selection,
+                        open_files=None,
+                        errors=errors,
+                        conversation_history=conversation_history_for_llm,
+                    ):
+                        # Token tracking: support common shapes
+                        try:
+                            if isinstance(event, dict):
+                                if event.get("type") == "usage" and event.get("total_tokens") is not None:
+                                    budget_ctx["actual_tokens"] = int(event["total_tokens"])
+                                elif isinstance(event.get("usage"), dict):
+                                    tt = event["usage"].get("total_tokens")
+                                    if tt is not None:
+                                        budget_ctx["actual_tokens"] = int(tt)
+                        except Exception:
+                            pass
 
-                # Stream thinking content
-                elif "thinking" in event:
-                    thinking_text = event["thinking"]
-                    yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+                        # Stream activity events
+                        if "activity" in event:
+                            activity = event["activity"]
+                            if activity.get("kind") == "file_read":
+                                files_read_live.append(activity.get("detail", ""))
+                            yield f"data: {json.dumps({'activity': activity})}\n\n"
 
-                # Capture final result
-                elif "result" in event:
-                    navi_result = event["result"]
+                        # Stream narrative events (conversational explanations like Claude Code)
+                        elif "narrative" in event:
+                            narrative_text = event["narrative"]
+                            yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
+
+                        # Stream thinking content
+                        elif "thinking" in event:
+                            thinking_text = event["thinking"]
+                            yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+
+                        # Capture final result
+                        elif "result" in event:
+                            navi_result = event["result"]
+            else:
+                async for event in process_navi_request_streaming(
+                    message=request.message,
+                    workspace_path=workspace_root,
+                    llm_provider=routing_decision.provider,
+                    llm_model=routing_decision.model,
+                    api_key=None,
+                    current_file=current_file,
+                    current_file_content=current_file_content,
+                    selection=selection,
+                    open_files=None,
+                    errors=errors,
+                    conversation_history=conversation_history_for_llm,
+                ):
+                    # Stream activity events
+                    if "activity" in event:
+                        activity = event["activity"]
+                        if activity.get("kind") == "file_read":
+                            files_read_live.append(activity.get("detail", ""))
+                        yield f"data: {json.dumps({'activity': activity})}\n\n"
+
+                    # Stream narrative events (conversational explanations like Claude Code)
+                    elif "narrative" in event:
+                        narrative_text = event["narrative"]
+                        yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
+
+                    # Stream thinking content
+                    elif "thinking" in event:
+                        thinking_text = event["thinking"]
+                        yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+
+                    # Capture final result
+                    elif "result" in event:
+                        navi_result = event["result"]
 
             # Process final result
             if navi_result:
@@ -7478,6 +7581,44 @@ async def navi_chat_stream_v2(
     provider = routing_decision.provider
     model_name = routing_decision.model
 
+    # ---------------------------
+    # Phase 4 Budget Governance
+    # Reserve BEFORE StreamingResponse so we can return 429/503 cleanly.
+    # Generator will only commit/release via budget_guard(pre_reserved_token=...).
+    # ---------------------------
+    budget_mgr = get_budget_manager()
+    estimated_tokens = 2500  # conservative default
+    final_scopes = []
+    pre_reserved_token = None
+
+    if budget_mgr is None and os.getenv("BUDGET_ENFORCEMENT_MODE", "strict").lower() == "strict":
+        # Strict mode requires enforcement available; fail closed.
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "BUDGET_ENFORCEMENT_UNAVAILABLE", "message": "Budget enforcement unavailable"},
+        )
+
+    if budget_mgr is not None and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled":
+        final_scopes = build_budget_scopes(
+            budget_manager=budget_mgr,
+            org_id=org_id or "org:unknown",
+            user_id=user_id or None,
+            provider_id=provider,
+            model_id=model_name,
+        )
+        try:
+            pre_reserved_token = await budget_mgr.reserve(estimated_tokens, final_scopes)
+        except BudgetExceeded as e:
+            if e.code == "BUDGET_EXCEEDED":
+                raise HTTPException(
+                    status_code=429,
+                    detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+                )
+            raise HTTPException(
+                status_code=503,
+                detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+            )
+
     logger.info(
         "[NAVI V2] Parsed model: provider=%s, model=%s, user=%s, org=%s",
         provider,
@@ -7809,8 +7950,32 @@ async def navi_chat_stream_v2(
                     except Exception:
                         pass
 
-            async for payload in heartbeat_wrapper(provider_event_generator()):
-                yield f"data: {json.dumps(payload)}\n\n"
+            # Phase 4: Budget enforcement with reserve/commit/release lifecycle
+            if budget_mgr is not None and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled" and pre_reserved_token is not None:
+                async with budget_guard(
+                    budget_mgr,
+                    final_scopes,
+                    estimated_tokens,
+                    pre_reserved_token=pre_reserved_token,
+                ) as budget_ctx:
+                    # Test 0: exception after reserve, before first yield
+                    if os.getenv("BUDGET_TEST_THROW_AFTER_RESERVE") == "1":
+                        raise RuntimeError("Test exception after reserve")
+
+                    async for payload in heartbeat_wrapper(provider_event_generator()):
+                        # Token tracking: provider yields {"type":"usage","total_tokens":1234}
+                        try:
+                            if isinstance(payload, dict) and payload.get("type") == "usage":
+                                t = payload.get("total_tokens")
+                                if t is not None:
+                                    budget_ctx["actual_tokens"] = int(t)
+                        except Exception:
+                            pass
+
+                        yield f"data: {json.dumps(payload)}\n\n"
+            else:
+                async for payload in heartbeat_wrapper(provider_event_generator()):
+                    yield f"data: {json.dumps(payload)}\n\n"
 
             # Mark LLM activity as done
             yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'llm_call', 'label': 'Generating response', 'detail': 'Complete', 'status': 'done'}})}\n\n"

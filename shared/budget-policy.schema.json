@@ -1,0 +1,63 @@
+{
+  "title": "NAVI Budget Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "day_boundary", "units", "defaults"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "day_boundary": {
+      "type": "string",
+      "description": "Phase 4 requires UTC buckets",
+      "enum": ["UTC"]
+    },
+    "units": {
+      "type": "string",
+      "description": "Phase 4 budgets are token-based",
+      "minLength": 1
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["per_day"],
+      "properties": {
+        "per_day": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "orgs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["per_day"],
+        "properties": { "per_day": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "users": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["per_day"],
+        "properties": { "per_day": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["per_day"],
+        "properties": { "per_day": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "models": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["per_day"],
+        "properties": { "per_day": { "type": "integer", "minimum": 0 } }
+      }
+    }
+  }
+}

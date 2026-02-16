@@ -87,7 +87,7 @@ redis.call("EXPIRE", key_prefix .. ":seq", window_sec * 2)
 local all_calls = redis.call("ZRANGE", window_key, 0, -1)
 local failure_count = 0
 for _, call in ipairs(all_calls) do
-    if string.match(call, ":failure$") or string.match(call, ":timeout$") then
+    if string.match(call, ":failure:") or string.match(call, ":timeout:") then
         failure_count = failure_count + 1
     end
 end
@@ -268,8 +268,8 @@ class RedisCircuitBreaker:
         failure_count = sum(
             1
             for call in all_calls
-            if isinstance(call, bytes) and (call.endswith(b":failure") or call.endswith(b":timeout"))
-            or isinstance(call, str) and (call.endswith(":failure") or call.endswith(":timeout"))
+            if isinstance(call, bytes) and (b":failure:" in call or b":timeout:" in call)
+            or isinstance(call, str) and (":failure:" in call or ":timeout:" in call)
         )
 
         if failure_count >= self.failure_threshold:

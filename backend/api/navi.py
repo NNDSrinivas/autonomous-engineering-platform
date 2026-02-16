@@ -5092,9 +5092,12 @@ async def navi_chat(
         from backend.agent.intent_schema import IntentKind
 
         classified_intent = classify_intent(request.message)
-        if (
+        is_prod_readiness_intent = (
             classified_intent.kind == IntentKind.PROD_READINESS_AUDIT
-            and not _is_prod_readiness_execute_message(request.message)
+            or _looks_like_prod_readiness_assessment(request.message)
+        )
+        if is_prod_readiness_intent and not _is_prod_readiness_execute_message(
+            request.message
         ):
             workspace_root = request.workspace_root or (request.workspace or {}).get(
                 "workspace_root"
@@ -7389,20 +7392,39 @@ async def navi_chat_stream_v2(
         preclassified_intent = None
         logger.exception("[NAVI V2] Failed to classify intent before routing")
 
-    if (
+    is_prod_readiness_stream_request = _looks_like_prod_readiness_assessment(
+        request.message
+    ) or (
         preclassified_intent
         and preclassified_intent.kind == IntentKind.PROD_READINESS_AUDIT
-        and not _is_prod_readiness_execute_message(request.message)
+    )
+    if is_prod_readiness_stream_request and not _is_prod_readiness_execute_message(
+        request.message
     ):
 
         async def prod_readiness_stream_generator():
             try:
+                intent_kind = (
+                    preclassified_intent.kind.value
+                    if preclassified_intent is not None
+                    else "prod_readiness_audit"
+                )
+                intent_family = (
+                    preclassified_intent.family.value
+                    if preclassified_intent is not None
+                    else "engineering"
+                )
+                intent_confidence = (
+                    float(preclassified_intent.confidence)
+                    if preclassified_intent is not None
+                    else 0.9
+                )
                 intent_activity = {
                     "type": "activity",
                     "activity": {
                         "kind": "intent",
                         "label": "Understanding request",
-                        "detail": f"Detected: {preclassified_intent.kind.value} ({int(preclassified_intent.confidence * 100)}%)",
+                        "detail": f"Detected: {intent_kind} ({int(intent_confidence * 100)}%)",
                         "status": "done",
                     },
                 }
@@ -7410,9 +7432,9 @@ async def navi_chat_stream_v2(
                 intent_event = {
                     "type": "intent",
                     "intent": {
-                        "family": preclassified_intent.family.value,
-                        "kind": preclassified_intent.kind.value,
-                        "confidence": preclassified_intent.confidence,
+                        "family": intent_family,
+                        "kind": intent_kind,
+                        "confidence": intent_confidence,
                     },
                 }
                 yield f"data: {json.dumps(intent_event)}\n\n"

@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Histogram, Gauge
 
 # Total number of LLM calls by phase, model, and status
 LLM_CALLS = Counter(
@@ -76,4 +76,23 @@ TASK_COMPLETION_TIME = Histogram(
     "Total task completion time in milliseconds",
     ["status"],
     buckets=(1000, 5000, 10000, 30000, 60000, 120000, 300000),
+)
+
+# Phase 3: Provider health tracking metrics
+PROVIDER_CALLS = Counter(
+    "aep_provider_calls_total",
+    "Provider calls (attempted)",
+    ["provider", "status"],  # success|error|timeout
+)
+
+PROVIDER_ERRORS = Counter(
+    "aep_provider_errors_total",
+    "Provider errors by type",
+    ["provider", "error_type"],  # http|timeout|network|rate_limit|auth|unknown
+)
+
+CIRCUIT_BREAKER_STATE = Gauge(
+    "aep_circuit_breaker_state",
+    "Circuit breaker state (0=closed,1=open,2=half_open)",
+    ["provider"],
 )

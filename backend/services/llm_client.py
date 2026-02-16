@@ -123,12 +123,26 @@ API_BASES = {
 }
 
 
+def _map_error_type(status_code: int) -> str:
+    """Map HTTP status code to error type for health tracking"""
+    if status_code == 401 or status_code == 403:
+        return "auth"
+    elif status_code == 429:
+        return "rate_limit"
+    elif status_code >= 500:
+        return "http"
+    else:
+        return "unknown"
+
+
 class BaseLLMAdapter(ABC):
     """Base adapter for LLM providers"""
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig, health_tracker=None, health_provider_id=None):
         self.config = config
         self.client = httpx.AsyncClient(timeout=config.timeout)
+        self.health_tracker = health_tracker
+        self.health_provider_id = health_provider_id
 
     @abstractmethod
     async def complete(
@@ -338,13 +352,31 @@ class OpenAIAdapter(BaseLLMAdapter):
             len(msgs),
             bool(payload.get("tools")),
         )
-        response = await self.client.post(
-            endpoint,
-            headers=headers,
-            json=payload,
-        )
+
+        provider_id = self.health_provider_id or self.config.provider.value
+
+        try:
+            response = await self.client.post(
+                endpoint,
+                headers=headers,
+                json=payload,
+            )
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+
         if response.status_code >= 400:
             error_body = self._parse_error_body(response)
+            if self.health_tracker:
+                self.health_tracker.record_failure(
+                    provider_id,
+                    _map_error_type(response.status_code),
+                )
             if response.status_code == 400:
                 self._log_openai_400_debug(
                     endpoint=endpoint,
@@ -367,7 +399,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         choice = data["choices"][0]
         message = choice["message"]
 
-        return LLMResponse(
+        resp = LLMResponse(
             content=message.get("content", ""),
             model=data.get("model", self.config.model),
             provider=self.config.provider.value,
@@ -376,6 +408,12 @@ class OpenAIAdapter(BaseLLMAdapter):
             finish_reason=choice.get("finish_reason"),
             raw_response=data,
         )
+
+        # Success - record after all error paths checked
+        if self.health_tracker:
+            self.health_tracker.record_success(provider_id)
+
+        return resp
 
     async def stream(self, messages: List[LLMMessage]) -> AsyncGenerator[str, None]:
         api_key = self._get_api_key()
@@ -416,67 +454,87 @@ class OpenAIAdapter(BaseLLMAdapter):
             }
 
         endpoint = f"{api_base}/chat/completions"
-        async with self.client.stream(
-            "POST",
-            endpoint,
-            headers=headers,
-            json=payload,
-        ) as response:
-            logger.info(
-                "[LLMClient] OpenAI request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s",
-                self.config.provider.value,
-                endpoint,
-                normalized_model,
-                True,
-                len(msgs),
-                bool(payload.get("tools")),
-            )
-            if response.status_code >= 400:
-                error_text = (await response.aread()).decode(errors="replace")
-                try:
-                    error_body: Union[Dict[str, Any], str] = json.loads(error_text)
-                except Exception:
-                    error_body = error_text
+        provider_id = self.health_provider_id or self.config.provider.value
 
-                if response.status_code == 400:
-                    self._log_openai_400_debug(
-                        endpoint=endpoint,
-                        model=normalized_model,
-                        stream=True,
-                        payload=payload,
-                        error_body=error_body,
-                    )
-                else:
-                    max_log_length = 4096
-                    if len(error_text) > max_log_length:
-                        error_text = error_text[:max_log_length] + "...[truncated]"
-                    logger.error(
-                        "OpenAI API error: %s - %s",
-                        response.status_code,
-                        error_text,
-                    )
-                # Raise sanitized error to avoid leaking provider error bodies into API responses/events
-                error_code = self._extract_error_code(error_body)
-                if error_code:
-                    raise RuntimeError(
-                        f"OpenAI-compatible API error (status={response.status_code}, code={error_code})"
-                    )
-                raise RuntimeError(
-                    f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
+        try:
+            async with self.client.stream(
+                "POST",
+                endpoint,
+                headers=headers,
+                json=payload,
+            ) as response:
+                logger.info(
+                    "[LLMClient] OpenAI request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s",
+                    self.config.provider.value,
+                    endpoint,
+                    normalized_model,
+                    True,
+                    len(msgs),
+                    bool(payload.get("tools")),
                 )
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
+                if response.status_code >= 400:
+                    if self.health_tracker:
+                        self.health_tracker.record_failure(
+                            provider_id,
+                            _map_error_type(response.status_code),
+                        )
+                    error_text = (await response.aread()).decode(errors="replace")
                     try:
-                        chunk = json.loads(data)
-                        delta = chunk["choices"][0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                    except json.JSONDecodeError:
-                        continue
+                        error_body: Union[Dict[str, Any], str] = json.loads(error_text)
+                    except Exception:
+                        error_body = error_text
+
+                    if response.status_code == 400:
+                        self._log_openai_400_debug(
+                            endpoint=endpoint,
+                            model=normalized_model,
+                            stream=True,
+                            payload=payload,
+                            error_body=error_body,
+                        )
+                    else:
+                        max_log_length = 4096
+                        if len(error_text) > max_log_length:
+                            error_text = error_text[:max_log_length] + "...[truncated]"
+                        logger.error(
+                            "OpenAI API error: %s - %s",
+                            response.status_code,
+                            error_text,
+                        )
+                    # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+                    error_code = self._extract_error_code(error_body)
+                    if error_code:
+                        raise RuntimeError(
+                            f"OpenAI-compatible API error (status={response.status_code}, code={error_code})"
+                        )
+                    raise RuntimeError(
+                        f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
+                    )
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data = line[6:]
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            delta = chunk["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield content
+                        except json.JSONDecodeError:
+                            continue
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+        else:
+            # Success - only if no exception
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
 
 
 class AnthropicAdapter(BaseLLMAdapter):
@@ -788,7 +846,7 @@ class OllamaAdapter(BaseLLMAdapter):
                     continue
 
 
-def get_adapter(config: LLMConfig) -> BaseLLMAdapter:
+def get_adapter(config: LLMConfig, health_tracker=None, health_provider_id=None) -> BaseLLMAdapter:
     """Get the appropriate adapter for the provider"""
     adapters = {
         LLMProvider.OPENAI: OpenAIAdapter,
@@ -802,7 +860,11 @@ def get_adapter(config: LLMConfig) -> BaseLLMAdapter:
     }
 
     adapter_class = adapters.get(config.provider, OpenAIAdapter)
-    return adapter_class(config)
+    return adapter_class(
+        config,
+        health_tracker=health_tracker,
+        health_provider_id=health_provider_id,
+    )
 
 
 class LLMClient:
@@ -837,6 +899,8 @@ class LLMClient:
         max_tokens: int = 4096,
         system_prompt: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
+        health_tracker=None,
+        health_provider_id: Optional[str] = None,
         **kwargs,
     ):
         if isinstance(provider, str):
@@ -854,7 +918,13 @@ class LLMClient:
             extra_params=kwargs,
         )
 
-        self.adapter = get_adapter(self.config)
+        self.health_tracker = health_tracker
+        self.health_provider_id = health_provider_id
+        self.adapter = get_adapter(
+            self.config,
+            health_tracker=self.health_tracker,
+            health_provider_id=self.health_provider_id,
+        )
 
     async def complete(
         self,
@@ -881,7 +951,11 @@ class LLMClient:
             for key, value in kwargs.items():
                 if hasattr(self.config, key):
                     setattr(self.config, key, value)
-            self.adapter = get_adapter(self.config)
+            self.adapter = get_adapter(
+                self.config,
+                health_tracker=self.health_tracker,
+                health_provider_id=self.health_provider_id,
+            )
 
         return await self.adapter.complete(messages)
 

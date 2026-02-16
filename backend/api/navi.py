@@ -7903,7 +7903,7 @@ class JobApprovalRequest(BaseModel):
 
     # Consent-style approval (wired to existing consent flow)
     consent_id: Optional[str] = None
-    choice: Optional[str] = "allow_once"
+    choice: Optional[str] = None
     alternative_command: Optional[str] = None
     # Generic gate acknowledgement metadata
     gate_id: Optional[str] = None
@@ -8203,6 +8203,51 @@ async def _apply_consent_decision(
         "choice": choice,
         "message": f"Consent decision '{choice}' recorded",
     }
+
+
+_CONSENT_CHOICE_SYNONYMS = {
+    "allow_once": "allow_once",
+    "allow-once": "allow_once",
+    "allow_once_exact": "allow_always_exact",
+    "allow_always_exact": "allow_always_exact",
+    "allow-always-exact": "allow_always_exact",
+    "allow_exact": "allow_always_exact",
+    "allow_always_type": "allow_always_type",
+    "allow-always-type": "allow_always_type",
+    "allow_type": "allow_always_type",
+    "deny": "deny",
+    "denied": "deny",
+    "reject": "deny",
+    "rejected": "deny",
+    "stop": "deny",
+    "cancel": "deny",
+    "alternative": "alternative",
+    "alternate": "alternative",
+    "allow_alternative": "alternative",
+    "allow-alternative": "alternative",
+}
+
+
+def _resolve_consent_choice(request: JobApprovalRequest) -> str:
+    """Resolve consent choice from explicit choice or decision fields."""
+
+    def _normalize(value: Optional[str]) -> str:
+        return str(value or "").strip().lower()
+
+    choice_value = _normalize(request.choice)
+    if choice_value:
+        return _CONSENT_CHOICE_SYNONYMS.get(choice_value, choice_value)
+
+    decision_value = _normalize(request.decision)
+    if decision_value:
+        if decision_value in _CONSENT_CHOICE_SYNONYMS:
+            return _CONSENT_CHOICE_SYNONYMS[decision_value]
+        if decision_value.startswith("allow"):
+            return "allow_once"
+        if decision_value in {"approve", "approved", "accept", "accepted", "continue"}:
+            return "allow_once"
+
+    return "allow_once"
 
 
 async def _run_autonomous_job(job_id: str) -> None:
@@ -8840,14 +8885,19 @@ async def stream_background_job_events(
                         yield f"data: {json.dumps(event)}\n\n"
                     continue
 
-                done_event = {
-                    "type": "job_terminal",
-                    "job_id": job_id,
-                    "job_status": current.status,
-                    "sequence": cursor + 1,
-                    "timestamp": int(time.time() * 1000),
-                }
-                yield f"data: {json.dumps(done_event)}\n\n"
+                should_emit_terminal_event = cursor > after_sequence or (
+                    cursor == 0 and after_sequence == 0
+                )
+                if should_emit_terminal_event:
+                    done_event = {
+                        "type": "job_terminal",
+                        "job_id": job_id,
+                        "job_status": current.status,
+                        # Keep synthetic terminal cursor stable across reconnects.
+                        "sequence": max(cursor, 1),
+                        "timestamp": int(time.time() * 1000),
+                    }
+                    yield f"data: {json.dumps(done_event)}\n\n"
                 yield "data: [DONE]\n\n"
                 break
 
@@ -8996,7 +9046,7 @@ async def approve_background_job_gate(
         )
 
     if consent_id:
-        choice = request.choice or "allow_once"
+        choice = _resolve_consent_choice(request)
         approval_result["consent"] = await _apply_consent_decision(
             consent_id=str(consent_id),
             choice=choice,

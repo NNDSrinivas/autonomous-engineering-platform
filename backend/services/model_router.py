@@ -49,6 +49,8 @@ _PROVIDER_CREDENTIAL_KEYS: Dict[str, tuple[str, ...]] = {
         "SELF_HOSTED_LLM_URL",
         "VLLM_BASE_URL",
     ),
+    # Test-only provider used in unit fixtures.
+    "test": ("TEST_API_KEY",),
 }
 
 _ALIAS_TO_MODEL_ID = {
@@ -252,6 +254,9 @@ class ModelRouter:
                         f"ModelRouter misconfigured: missing facts registry '{registry_filename}' for APP_ENV={env}"
                     )
                 registry_path = registry_dir / "model-registry-dev.json"
+                if not registry_path.exists():
+                    # Dev/test environments may intentionally run without Phase 1 facts.
+                    return {}
 
         with open(registry_path, "r", encoding="utf-8") as fh:
             registry_data = json.load(fh)

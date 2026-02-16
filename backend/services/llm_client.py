@@ -646,38 +646,44 @@ class AnthropicAdapter(BaseLLMAdapter):
                 )
             response.raise_for_status()
 
-        data = response.json()
+        try:
+            data = response.json()
 
-        # Extract content from Anthropic response
-        content = ""
-        tool_calls = []
-        for block in data.get("content", []):
-            if block["type"] == "text":
-                content += block["text"]
-            elif block["type"] == "tool_use":
-                tool_calls.append(
-                    {
-                        "id": block["id"],
-                        "type": "function",
-                        "function": {
-                            "name": block["name"],
-                            "arguments": json.dumps(block["input"]),
-                        },
-                    }
-                )
+            # Extract content from Anthropic response
+            content = ""
+            tool_calls = []
+            for block in data.get("content", []):
+                if block["type"] == "text":
+                    content += block["text"]
+                elif block["type"] == "tool_use":
+                    tool_calls.append(
+                        {
+                            "id": block["id"],
+                            "type": "function",
+                            "function": {
+                                "name": block["name"],
+                                "arguments": json.dumps(block["input"]),
+                            },
+                        }
+                    )
 
-        resp = LLMResponse(
-            content=content,
-            model=data.get("model", self.config.model),
-            provider=self.config.provider.value,
-            usage={
-                "prompt_tokens": data.get("usage", {}).get("input_tokens", 0),
-                "completion_tokens": data.get("usage", {}).get("output_tokens", 0),
-            },
-            tool_calls=tool_calls if tool_calls else None,
-            finish_reason=data.get("stop_reason"),
-            raw_response=data,
-        )
+            resp = LLMResponse(
+                content=content,
+                model=data.get("model", self.config.model),
+                provider=self.config.provider.value,
+                usage={
+                    "prompt_tokens": data.get("usage", {}).get("input_tokens", 0),
+                    "completion_tokens": data.get("usage", {}).get("output_tokens", 0),
+                },
+                tool_calls=tool_calls if tool_calls else None,
+                finish_reason=data.get("stop_reason"),
+                raw_response=data,
+            )
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+            # Malformed response - record as provider failure
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise ValueError(f"Malformed Anthropic response: {e}") from e
 
         # Success - record after all error paths checked
         if self.health_tracker:
@@ -828,24 +834,30 @@ class GoogleAdapter(BaseLLMAdapter):
                 )
             response.raise_for_status()
 
-        data = response.json()
+        try:
+            data = response.json()
 
-        # Extract content from Gemini response
-        content = ""
-        candidates = data.get("candidates", [])
-        if candidates:
-            parts = candidates[0].get("content", {}).get("parts", [])
-            for part in parts:
-                content += part.get("text", "")
+            # Extract content from Gemini response
+            content = ""
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                for part in parts:
+                    content += part.get("text", "")
 
-        resp = LLMResponse(
-            content=content,
-            model=self.config.model,
-            provider=self.config.provider.value,
-            usage=data.get("usageMetadata", {}),
-            finish_reason=candidates[0].get("finishReason") if candidates else None,
-            raw_response=data,
-        )
+            resp = LLMResponse(
+                content=content,
+                model=self.config.model,
+                provider=self.config.provider.value,
+                usage=data.get("usageMetadata", {}),
+                finish_reason=candidates[0].get("finishReason") if candidates else None,
+                raw_response=data,
+            )
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+            # Malformed response - record as provider failure
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise ValueError(f"Malformed Google response: {e}") from e
 
         # Success - record after all error paths checked
         if self.health_tracker:
@@ -986,18 +998,24 @@ class OllamaAdapter(BaseLLMAdapter):
                 )
             response.raise_for_status()
 
-        data = response.json()
+        try:
+            data = response.json()
 
-        resp = LLMResponse(
-            content=data.get("message", {}).get("content", ""),
-            model=data.get("model", self.config.model),
-            provider=self.config.provider.value,
-            usage={
-                "prompt_tokens": data.get("prompt_eval_count", 0),
-                "completion_tokens": data.get("eval_count", 0),
-            },
-            raw_response=data,
-        )
+            resp = LLMResponse(
+                content=data.get("message", {}).get("content", ""),
+                model=data.get("model", self.config.model),
+                provider=self.config.provider.value,
+                usage={
+                    "prompt_tokens": data.get("prompt_eval_count", 0),
+                    "completion_tokens": data.get("eval_count", 0),
+                },
+                raw_response=data,
+            )
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            # Malformed response - record as provider failure
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise ValueError(f"Malformed Ollama response: {e}") from e
 
         # Success - record after all error paths checked
         if self.health_tracker:

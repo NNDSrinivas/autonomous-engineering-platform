@@ -263,7 +263,8 @@ class RedisCircuitBreaker:
         failure_count = sum(
             1
             for call in all_calls
-            if call.endswith(b":failure") or call.endswith(b":timeout")
+            if isinstance(call, bytes) and (call.endswith(b":failure") or call.endswith(b":timeout"))
+            or isinstance(call, str) and (call.endswith(":failure") or call.endswith(":timeout"))
         )
 
         if failure_count >= self.failure_threshold:

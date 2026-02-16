@@ -113,6 +113,7 @@ if failure_count >= failure_threshold then
 end
 
 -- Still CLOSED
+redis.call("EXPIRE", state_key, 86400)  -- 24h TTL for consistency
 return {0, #all_calls, failure_count}
 """
 

@@ -4,6 +4,8 @@ Unit tests for ProviderHealthTracker.
 Tests health tracker metrics integration and multi-provider management.
 """
 
+import time
+
 import pytest
 
 try:
@@ -237,3 +239,50 @@ class TestLazyBreakerInitialization:
 
         # Should be the same instance
         assert breaker1 is breaker2
+
+
+class TestProbeLease:
+    """Test HALF_OPEN probe lease to prevent thundering herd."""
+
+    def test_single_probe_allowed_in_half_open(self, tracker, redis_client):
+        """In HALF_OPEN state, only one worker can acquire probe lease."""
+        # Force circuit to OPEN state
+        for _ in range(5):
+            tracker.record_failure("openai", "http")
+
+        # Verify it's OPEN
+        assert tracker.is_circuit_open("openai") is True
+
+        # Force transition to HALF_OPEN by setting open_at to past
+        redis_client.set("circuit:{openai}:open_at", str(time.time() - 100))
+
+        # First check should acquire probe lease
+        is_open_1 = tracker.is_circuit_open("openai")
+        assert is_open_1 is False  # Probe lease acquired
+
+        # Second check (simulating another worker) should NOT acquire lease
+        is_open_2 = tracker.is_circuit_open("openai")
+        assert is_open_2 is True  # Blocked, lease held by worker 1
+
+        # Third check should also be blocked
+        is_open_3 = tracker.is_circuit_open("openai")
+        assert is_open_3 is True  # Blocked, lease held by worker 1
+
+    def test_probe_lease_expires(self, tracker, redis_client):
+        """Probe lease expires after TTL, allowing retry."""
+        # Force circuit to HALF_OPEN
+        for _ in range(5):
+            tracker.record_failure("openai", "http")
+        redis_client.set("circuit:{openai}:open_at", str(time.time() - 100))
+
+        # First worker acquires lease
+        assert tracker.is_circuit_open("openai") is False
+
+        # Second worker blocked
+        assert tracker.is_circuit_open("openai") is True
+
+        # Wait for lease to expire (default TTL is 5 seconds)
+        time.sleep(6)
+
+        # Now another worker can acquire lease
+        assert tracker.is_circuit_open("openai") is False

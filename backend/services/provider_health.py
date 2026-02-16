@@ -169,7 +169,11 @@ class ProviderHealthTracker:
         Check if circuit breaker is OPEN (blocking requests).
 
         Returns:
-            True if circuit is OPEN, False otherwise (CLOSED or HALF_OPEN)
+            True if circuit is OPEN, False otherwise (CLOSED or HALF_OPEN with lease)
+
+        HALF_OPEN behavior:
+            Uses atomic probe lease to ensure only ONE worker sends probe request,
+            preventing thundering herd across multiple workers.
         """
         try:
             breaker = self._get_breaker(provider_id)
@@ -178,8 +182,25 @@ class ProviderHealthTracker:
             # Update gauge to reflect time-based transitions (OPEN → HALF_OPEN)
             self._update_circuit_state_metric(provider_id, state)
 
-            # HALF_OPEN allows single probe request, so return False
-            return state == CircuitState.OPEN
+            if state == CircuitState.OPEN:
+                return True
+
+            if state == CircuitState.HALF_OPEN:
+                # Only allow request if we can acquire probe lease
+                # This prevents thundering herd - only one worker probes
+                if breaker.try_acquire_probe_lease():
+                    logger.info(
+                        f"Provider {provider_id} in HALF_OPEN: probe lease acquired, allowing probe request"
+                    )
+                    return False  # Allow this request as the probe
+                else:
+                    logger.debug(
+                        f"Provider {provider_id} in HALF_OPEN: probe lease held by another worker, blocking"
+                    )
+                    return True  # Block, another worker is probing
+
+            # CLOSED state
+            return False
 
         except Exception as e:
             logger.error(

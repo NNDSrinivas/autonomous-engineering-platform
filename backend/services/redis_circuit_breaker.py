@@ -182,6 +182,29 @@ class RedisCircuitBreaker:
             # Fail-safe: assume CLOSED (allow traffic) on error
             return CircuitState.CLOSED
 
+    def try_acquire_probe_lease(self, ttl_sec: int = 5) -> bool:
+        """
+        Atomically try to acquire probe lease for HALF_OPEN state.
+
+        Returns:
+            True if lease acquired (this worker can send probe request)
+            False if lease already held by another worker
+
+        The lease expires after ttl_sec to allow retry if probe hangs/fails.
+        """
+        try:
+            probe_key = f"{self.key_prefix}:probe_lease"
+            # SET NX EX: atomically set only if not exists, with expiration
+            result = self.redis.set(probe_key, "1", nx=True, ex=ttl_sec)
+            return result is True
+        except Exception as e:
+            logger.error(
+                f"Error acquiring probe lease for {self.provider_id}: {e}",
+                exc_info=True,
+            )
+            # Fail-safe: allow probe on error
+            return True
+
     def _record_call(self, result: str) -> CircuitState:
         """
         Record call result and update circuit state atomically.

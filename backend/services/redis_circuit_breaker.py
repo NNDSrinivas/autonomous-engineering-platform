@@ -294,17 +294,21 @@ class RedisCircuitBreaker:
             open_at = self.redis.get(open_at_key)
             if open_at and (now - float(open_at)) >= self.open_duration_sec:
                 self.redis.set(state_key, "2")
+                self.redis.expire(state_key, 86400)  # 24h TTL
                 state = 2
 
         # HALF_OPEN: probe result
         if state == 2:
             if result == "success":
                 self.redis.set(state_key, "0")
+                self.redis.expire(state_key, 86400)  # 24h TTL
                 self.redis.delete(window_key, open_at_key)
                 return CircuitState.CLOSED
             else:
                 self.redis.set(state_key, "1")
+                self.redis.expire(state_key, 86400)  # 24h TTL
                 self.redis.set(open_at_key, str(now))
+                self.redis.expire(open_at_key, 86400)  # 24h TTL
                 return CircuitState.OPEN
 
         # CLOSED: sliding window
@@ -333,7 +337,11 @@ class RedisCircuitBreaker:
 
         if failure_count >= self.failure_threshold:
             self.redis.set(state_key, "1")
+            self.redis.expire(state_key, 86400)  # 24h TTL
             self.redis.set(open_at_key, str(now))
+            self.redis.expire(open_at_key, 86400)  # 24h TTL
             return CircuitState.OPEN
 
+        # Still CLOSED - set TTL for consistency
+        self.redis.expire(state_key, 86400)  # 24h TTL
         return CircuitState.CLOSED

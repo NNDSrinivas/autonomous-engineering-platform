@@ -268,8 +268,17 @@ class TestProbeLease:
         is_open_3 = tracker.is_circuit_open("openai")
         assert is_open_3 is True  # Blocked, lease held by worker 1
 
-    def test_probe_lease_expires(self, tracker, redis_client):
+    def test_probe_lease_expires(self, redis_client):
         """Probe lease expires after TTL, allowing retry."""
+        # Create tracker with short probe lease TTL for faster test
+        from backend.services.redis_circuit_breaker import RedisCircuitBreaker
+
+        breaker = RedisCircuitBreaker(
+            redis_client, "openai", probe_lease_ttl=1  # 1 second TTL
+        )
+        tracker = ProviderHealthTracker(redis_client)
+        tracker._breakers["openai"] = breaker
+
         # Force circuit to HALF_OPEN
         for _ in range(5):
             tracker.record_failure("openai", "http")
@@ -281,8 +290,8 @@ class TestProbeLease:
         # Second worker blocked
         assert tracker.is_circuit_open("openai") is True
 
-        # Wait for lease to expire (default TTL is 5 seconds)
-        time.sleep(6)
+        # Wait for lease to expire (1 second TTL + margin)
+        time.sleep(1.5)
 
         # Now another worker can acquire lease
         assert tracker.is_circuit_open("openai") is False

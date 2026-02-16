@@ -377,7 +377,12 @@ class OpenAIAdapter(BaseLLMAdapter):
 
         if response.status_code >= 400:
             error_body = self._parse_error_body(response)
-            if self.health_tracker:
+            # Only record provider-health failures (not client errors like 400)
+            # 5xx: provider errors, 429: rate limiting, 401/403: auth issues
+            if self.health_tracker and (
+                response.status_code >= 500
+                or response.status_code in (401, 403, 429)
+            ):
                 self.health_tracker.record_failure(
                     provider_id,
                     _map_error_type(response.status_code),
@@ -628,7 +633,10 @@ class AnthropicAdapter(BaseLLMAdapter):
             raise
 
         if response.status_code >= 400:
-            if self.health_tracker:
+            # Only record provider-health failures (not client errors)
+            if self.health_tracker and (
+                response.status_code >= 500 or response.status_code in (401, 403, 429)
+            ):
                 self.health_tracker.record_failure(
                     provider_id,
                     _map_error_type(response.status_code),
@@ -711,7 +719,11 @@ class AnthropicAdapter(BaseLLMAdapter):
                 json=payload,
             ) as response:
                 if response.status_code >= 400:
-                    if self.health_tracker:
+                    # Only record provider-health failures (not client errors)
+                    if self.health_tracker and (
+                        response.status_code >= 500
+                        or response.status_code in (401, 403, 429)
+                    ):
                         self.health_tracker.record_failure(
                             provider_id,
                             _map_error_type(response.status_code),
@@ -803,7 +815,10 @@ class GoogleAdapter(BaseLLMAdapter):
             raise
 
         if response.status_code >= 400:
-            if self.health_tracker:
+            # Only record provider-health failures (not client errors)
+            if self.health_tracker and (
+                response.status_code >= 500 or response.status_code in (401, 403, 429)
+            ):
                 self.health_tracker.record_failure(
                     provider_id,
                     _map_error_type(response.status_code),
@@ -871,7 +886,11 @@ class GoogleAdapter(BaseLLMAdapter):
         try:
             async with self.client.stream("POST", url, json=payload) as response:
                 if response.status_code >= 400:
-                    if self.health_tracker:
+                    # Only record provider-health failures (not client errors)
+                    if self.health_tracker and (
+                        response.status_code >= 500
+                        or response.status_code in (401, 403, 429)
+                    ):
                         self.health_tracker.record_failure(
                             provider_id,
                             _map_error_type(response.status_code),
@@ -954,7 +973,10 @@ class OllamaAdapter(BaseLLMAdapter):
             raise
 
         if response.status_code >= 400:
-            if self.health_tracker:
+            # Only record provider-health failures (not client errors)
+            if self.health_tracker and (
+                response.status_code >= 500 or response.status_code in (401, 403, 429)
+            ):
                 self.health_tracker.record_failure(
                     provider_id,
                     _map_error_type(response.status_code),
@@ -1002,7 +1024,11 @@ class OllamaAdapter(BaseLLMAdapter):
                 "POST", f"{api_base}/chat", json=payload
             ) as response:
                 if response.status_code >= 400:
-                    if self.health_tracker:
+                    # Only record provider-health failures (not client errors)
+                    if self.health_tracker and (
+                        response.status_code >= 500
+                        or response.status_code in (401, 403, 429)
+                    ):
                         self.health_tracker.record_failure(
                             provider_id,
                             _map_error_type(response.status_code),

@@ -119,6 +119,7 @@ class RedisCircuitBreaker:
         window_sec: Sliding window duration for failure tracking (default 60s)
         failure_threshold: Failures to trigger OPEN state (default 5)
         open_duration_sec: How long to stay OPEN before HALF_OPEN probe (default 30s)
+        probe_lease_ttl: TTL for HALF_OPEN probe lease in seconds (default 5s)
     """
 
     def __init__(
@@ -128,12 +129,14 @@ class RedisCircuitBreaker:
         window_sec: int = 60,
         failure_threshold: int = 5,
         open_duration_sec: int = 30,
+        probe_lease_ttl: int = 5,
     ):
         self.redis = redis_client
         self.provider_id = provider_id
         self.window_sec = window_sec
         self.failure_threshold = failure_threshold
         self.open_duration_sec = open_duration_sec
+        self.probe_lease_ttl = probe_lease_ttl
         # Use Redis hash tag so all related keys share the same cluster hash slot
         self.key_prefix = f"circuit:{{{provider_id}}}"
 
@@ -196,9 +199,12 @@ class RedisCircuitBreaker:
             # Fail-safe: assume CLOSED (allow traffic) on error
             return CircuitState.CLOSED
 
-    def try_acquire_probe_lease(self, ttl_sec: int = 5) -> bool:
+    def try_acquire_probe_lease(self, ttl_sec: int = None) -> bool:
         """
         Atomically try to acquire probe lease for HALF_OPEN state.
+
+        Args:
+            ttl_sec: Optional TTL override (uses self.probe_lease_ttl if not provided)
 
         Returns:
             True if lease acquired (this worker can send probe request)
@@ -208,8 +214,9 @@ class RedisCircuitBreaker:
         """
         try:
             probe_key = f"{self.key_prefix}:probe_lease"
+            ttl = ttl_sec if ttl_sec is not None else self.probe_lease_ttl
             # SET NX EX: atomically set only if not exists, with expiration
-            result = self.redis.set(probe_key, "1", nx=True, ex=ttl_sec)
+            result = self.redis.set(probe_key, "1", nx=True, ex=ttl)
             return result is True
         except Exception as e:
             logger.error(

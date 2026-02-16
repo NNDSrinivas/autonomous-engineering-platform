@@ -369,7 +369,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "unknown")
@@ -543,7 +543,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "unknown")
@@ -621,7 +621,7 @@ class AnthropicAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "unknown")
@@ -737,7 +737,7 @@ class AnthropicAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "unknown")
@@ -796,7 +796,7 @@ class GoogleAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "unknown")
@@ -902,7 +902,7 @@ class GoogleAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "unknown")
@@ -947,7 +947,7 @@ class OllamaAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "unknown")
@@ -1026,7 +1026,7 @@ class OllamaAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "unknown")

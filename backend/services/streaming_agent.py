@@ -255,6 +255,7 @@ async def stream_with_tools_anthropic(
         model=model,
         api_key=api_key,
         health_tracker=router.health_tracker,
+        health_provider_id="anthropic",
     )
 
     async for chunk in client.stream(messages):

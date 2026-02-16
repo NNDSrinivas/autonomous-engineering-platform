@@ -190,8 +190,10 @@ async def stream_with_tools_openai(
             messages.append(LLMMessage(role=role, content=content))
     messages.append(LLMMessage(role="user", content=message))
 
+    llm_provider = "openai" if provider == "self_hosted" else provider
+
     client = LLMClient(
-        provider=provider,
+        provider=llm_provider,
         model=model,
         api_key=api_key,
         api_base=base_url,

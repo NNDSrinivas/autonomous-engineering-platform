@@ -241,6 +241,21 @@ class OpenAIAdapter(BaseLLMAdapter):
         # For string errors, only log type and length
         return {"error_type": "string", "length": len(str(error_body))}
 
+    @staticmethod
+    def _extract_error_code(error_body: Union[Dict[str, Any], str]) -> str | None:
+        """Extract non-sensitive error code/type for exception messages."""
+        if isinstance(error_body, dict):
+            error_data = error_body.get("error", {})
+            if isinstance(error_data, dict):
+                # Try common error code/type fields
+                return (
+                    error_data.get("code")
+                    or error_data.get("type")
+                    or error_body.get("code")
+                    or error_body.get("type")
+                )
+        return None
+
     def _log_openai_400_debug(
         self,
         *,
@@ -338,8 +353,14 @@ class OpenAIAdapter(BaseLLMAdapter):
                     payload=payload,
                     error_body=error_body,
                 )
+            # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+            error_code = self._extract_error_code(error_body)
+            if error_code:
+                raise RuntimeError(
+                    f"OpenAI-compatible API error (status={response.status_code}, code={error_code})"
+                )
             raise RuntimeError(
-                f"OpenAI-compatible API error ({response.status_code}): {error_body}"
+                f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
             )
         data = response.json()
 
@@ -434,8 +455,14 @@ class OpenAIAdapter(BaseLLMAdapter):
                         response.status_code,
                         error_text,
                     )
+                # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+                error_code = self._extract_error_code(error_body)
+                if error_code:
+                    raise RuntimeError(
+                        f"OpenAI-compatible API error (status={response.status_code}, code={error_code})"
+                    )
                 raise RuntimeError(
-                    f"OpenAI-compatible API error ({response.status_code}): {error_body}"
+                    f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
                 )
             async for line in response.aiter_lines():
                 if line.startswith("data: "):

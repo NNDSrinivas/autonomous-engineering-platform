@@ -6797,6 +6797,21 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             return text
 
     @staticmethod
+    def _extract_error_code(error_body: Any) -> str | None:
+        """Extract non-sensitive error code/type for exception messages."""
+        if isinstance(error_body, dict):
+            error_data = error_body.get("error", {})
+            if isinstance(error_data, dict):
+                # Try common error code/type fields
+                return (
+                    error_data.get("code")
+                    or error_data.get("type")
+                    or error_body.get("code")
+                    or error_body.get("type")
+                )
+        return None
+
+    @staticmethod
     def _is_llm_payload_debug_enabled() -> bool:
         value = str(os.getenv("NAVI_DEBUG_LLM_PAYLOADS", "")).strip().lower()
         return value in {"1", "true", "yes", "on"}
@@ -8499,7 +8514,20 @@ Respond with JSON only."""
                         payload=payload,
                         error_body=error_body,
                     )
-                raise Exception(f"API error: {error_body}")
+                # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+                request_id = response.headers.get("x-request-id") or response.headers.get(
+                    "X-Request-ID"
+                )
+                error_code = self._extract_error_code(error_body)
+                if request_id and error_code:
+                    raise Exception(
+                        f"API error: status={response.status}, code={error_code}, request_id={request_id}"
+                    )
+                if request_id:
+                    raise Exception(f"API error: status={response.status}, request_id={request_id}")
+                if error_code:
+                    raise Exception(f"API error: status={response.status}, code={error_code}")
+                raise Exception(f"API error: status={response.status}")
 
             data = await response.json()
             # Safe extraction with fallback
@@ -8787,7 +8815,20 @@ Respond with JSON only."""
                         payload=payload,
                         error_body=error_body,
                     )
-                raise Exception(f"API error: {error_body}")
+                # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+                request_id = response.headers.get("x-request-id") or response.headers.get(
+                    "X-Request-ID"
+                )
+                error_code = self._extract_error_code(error_body)
+                if request_id and error_code:
+                    raise Exception(
+                        f"API error: status={response.status}, code={error_code}, request_id={request_id}"
+                    )
+                if request_id:
+                    raise Exception(f"API error: status={response.status}, request_id={request_id}")
+                if error_code:
+                    raise Exception(f"API error: status={response.status}, code={error_code}")
+                raise Exception(f"API error: status={response.status}")
 
             async for line in response.content:
                 line = line.decode("utf-8").strip()

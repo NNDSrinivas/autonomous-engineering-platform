@@ -8,8 +8,8 @@ export type AuthProfile = {
 };
 
 /**
- * Decode a base64url-encoded string (RFC 4648 §5).
- * Replaces URL-safe chars and adds padding as needed.
+ * Decode a base64url-encoded string (RFC 4648 §5) to UTF-8.
+ * Replaces URL-safe chars, adds padding, and properly handles Unicode.
  */
 function decodeBase64Url(base64url: string): string {
   // Replace URL-safe chars with standard base64
@@ -18,7 +18,13 @@ function decodeBase64Url(base64url: string): string {
   while (base64.length % 4 !== 0) {
     base64 += "=";
   }
-  return atob(base64);
+  // atob returns a binary string; decode as UTF-8 to handle Unicode correctly
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return new TextDecoder("utf-8").decode(bytes);
 }
 
 /**

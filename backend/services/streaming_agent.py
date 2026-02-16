@@ -164,6 +164,7 @@ async def stream_with_tools_openai(
     base_url: str = "https://api.openai.com/v1",
     context: Optional[Dict[str, Any]] = None,
     conversation_history: Optional[List[Dict[str, Any]]] = None,
+    provider: str = "openai",
 ) -> AsyncGenerator["StreamEvent", None]:
     """
     Minimal streaming implementation for OpenAI-compatible providers.
@@ -190,7 +191,7 @@ async def stream_with_tools_openai(
     messages.append(LLMMessage(role="user", content=message))
 
     client = LLMClient(
-        provider="openai",
+        provider=provider,
         model=model,
         api_key=api_key,
         api_base=base_url,

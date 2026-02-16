@@ -2458,6 +2458,30 @@ def _is_prod_readiness_execute_message(message: str) -> bool:
     )
 
 
+def _looks_like_prod_readiness_assessment(message: str) -> bool:
+    """Heuristic fallback for prod-readiness assessment phrasing."""
+    if not message:
+        return False
+    lower = message.lower()
+    readiness_signals = (
+        "ready for prod",
+        "ready for production",
+        "production ready",
+        "prod readiness",
+        "production readiness",
+        "go live",
+        "deployment readiness",
+        "production checklist",
+        "security review",
+        "slo",
+        "on-call",
+        "fully implemented",
+        "end-to-end",
+        "end to end",
+    )
+    return any(signal in lower for signal in readiness_signals)
+
+
 def _build_prod_readiness_audit_plan(
     *,
     workspace_root: Optional[str],
@@ -7708,6 +7732,7 @@ async def navi_chat_stream_v2(
                     base_url=base_url,
                     context=enhanced_context,  # Use enhanced context with file info
                     conversation_history=request.conversation_history,  # Pass conversation history for context
+                    provider=provider,  # Pass routed provider for correct model normalization
                 ):
                     yield event.to_dict()
 

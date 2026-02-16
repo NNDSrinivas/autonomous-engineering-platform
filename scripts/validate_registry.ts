@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from "node:fs";
 import path from "node:path";
 import { loadModelRegistry } from "../backend/services/model_registry_loader";
 import type { RegistryEnvironment } from "../backend/services/model_registry_types";
@@ -18,10 +19,18 @@ function getRegistryPath(env: RegistryEnvironment): string {
   const direct = process.env.MODEL_REGISTRY_PATH;
   if (direct && direct.trim().length > 0) return direct;
 
-  // Default mapping per environment
-  if (env === "dev") return "shared/model-registry-dev.json";
-  if (env === "staging") return "shared/model-registry-staging.json";
-  return "shared/model-registry-prod.json";
+  // Prefer env-specific registry, then dev registry, then legacy unified registry.
+  const preferred =
+    env === "dev"
+      ? "shared/model-registry-dev.json"
+      : env === "staging"
+        ? "shared/model-registry-staging.json"
+        : "shared/model-registry-prod.json";
+  const fallbacks = ["shared/model-registry-dev.json", "shared/model-registry.json"];
+  for (const candidate of [preferred, ...fallbacks]) {
+    if (fs.existsSync(resolveRepoPath(candidate))) return candidate;
+  }
+  return preferred;
 }
 
 function main(): void {

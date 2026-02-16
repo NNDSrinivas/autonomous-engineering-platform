@@ -8647,6 +8647,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     let streamedContent = '';
     let messageId = `msg-${Date.now()}`;
     let hasSeenToolCalls = false;
+    let hasSeenBackgroundLifecycleEvent = false;
+    let usedBackgroundJobForRequest = false;
 
     try {
       console.log('🎯 Smart routing (CHAT-ONLY) called with text:', text);
@@ -8803,6 +8805,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const resumeBackgroundJob = this.shouldResumeBackgroundJob(text);
       const reattachBackgroundJob = this.shouldReattachBackgroundJob(text);
       const useBackgroundJob = this.shouldUseBackgroundJob(text, useEnterprise) || reattachBackgroundJob;
+      usedBackgroundJobForRequest = useBackgroundJob;
       let backgroundJobId: string | null = reattachBackgroundJob ? this._activeBackgroundJobId : null;
       let backgroundJobBaseSequence = reattachBackgroundJob ? this._activeBackgroundJobSequence : 0;
 
@@ -8946,6 +8949,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       streamedContent = '';
       messageId = `msg-${Date.now()}`;
       hasSeenToolCalls = false;
+      hasSeenBackgroundLifecycleEvent = false;
       let lastTextChunk = '';
       let lastTextChunkAt = 0;
       const shouldSkipChunk = (chunk: string) => {
@@ -9091,6 +9095,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     this.setActiveBackgroundJob(parsedJobId, Number.isFinite(parsedSequence) ? parsedSequence : 0);
                   }
                   const parsedJobStatus = typeof parsed.job_status === 'string' ? parsed.job_status.toLowerCase() : '';
+                  const parsedType = typeof parsed.type === 'string' ? parsed.type.toLowerCase() : '';
+                  const hasLifecycleSignal =
+                    Boolean(parsed.heartbeat) ||
+                    parsedType === 'heartbeat' ||
+                    parsedType.startsWith('job_') ||
+                    parsedType.startsWith('approval_') ||
+                    parsedType === 'human_gate' ||
+                    ['queued', 'running', 'waiting_approval', 'paused', 'completed', 'failed', 'canceled'].includes(parsedJobStatus);
+                  if (hasLifecycleSignal) {
+                    hasSeenBackgroundLifecycleEvent = true;
+                  }
                   if (parsed.type === 'job_terminal' || ['completed', 'failed', 'canceled'].includes(parsedJobStatus)) {
                     this.clearActiveBackgroundJob();
                   }
@@ -9952,7 +9967,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // Fall back to non-streaming if streaming failed
       // BUT don't fall back if we successfully processed tool calls (even without narrative text)
       // AND NEVER fall back in background-job mode (job stream may legitimately have zero narrative/tool tokens if paused/failed early)
-      const streamingSucceeded = useStreaming && (streamedContent || hasSeenToolCalls);
+      const backgroundJobStreamingAccepted =
+        usedBackgroundJobForRequest && hasSeenBackgroundLifecycleEvent;
+      const streamingSucceeded =
+        useStreaming && (streamedContent || hasSeenToolCalls || backgroundJobStreamingAccepted);
       if (!streamingSucceeded && !useBackgroundJob) {
         const authPreviewHeaders = await this.buildAuthHeadersAsync(
           resolvedOrgId,
@@ -10041,7 +10059,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       // Only throw error if we have no content AND no tool calls were processed
       // Tool-call-only responses are valid (LLM might only use tools without narrative)
-      if (!content && !hasSeenToolCalls) {
+      // Background jobs can also be valid with lifecycle events but no narrative chunks.
+      if (
+        !content &&
+        !hasSeenToolCalls &&
+        !(usedBackgroundJobForRequest && hasSeenBackgroundLifecycleEvent)
+      ) {
         throw new Error('NAVI backend returned an empty reply.');
       }
 
@@ -10123,7 +10146,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       this.postToWebview({ type: 'botThinking', value: false });
       // Send botMessageEnd only when we don't already have streamed content.
       // This avoids overwriting partial streamed output after a disconnect.
-      const shouldSendErrorMessage = !useStreaming || (!streamedContent && !hasSeenToolCalls);
+      const backgroundJobStreamingAccepted =
+        usedBackgroundJobForRequest && hasSeenBackgroundLifecycleEvent;
+      const shouldSendErrorMessage =
+        !backgroundJobStreamingAccepted &&
+        (!useStreaming || (!streamedContent && !hasSeenToolCalls));
       if (shouldSendErrorMessage) {
         this.postToWebview({
           type: 'botMessageEnd',

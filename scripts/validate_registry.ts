@@ -10,7 +10,11 @@ function resolveRepoPath(p: string): string {
 
 function getEnv(): RegistryEnvironment {
   // Use APP_ENV (Python standard) for consistency
-  const env = (process.env.APP_ENV ?? process.env.NAVI_ENV ?? "dev").toLowerCase();
+  const envRaw = (process.env.APP_ENV ?? process.env.NAVI_ENV ?? "dev").toLowerCase();
+
+  // Normalize "production" to "prod"
+  const env = envRaw === "production" ? "prod" : envRaw;
+
   if (env !== "dev" && env !== "staging" && env !== "prod") return "dev";
   return env as RegistryEnvironment;
 }

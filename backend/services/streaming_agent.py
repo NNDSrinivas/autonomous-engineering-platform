@@ -171,6 +171,7 @@ async def stream_with_tools_openai(
     Emits text chunks as StreamEventType.TEXT to keep the V2 endpoint functional.
     """
     from backend.services.llm_client import LLMClient, LLMMessage
+    from backend.services.model_router import get_model_router
 
     if not api_key:
         yield StreamEvent(
@@ -190,13 +191,20 @@ async def stream_with_tools_openai(
             messages.append(LLMMessage(role=role, content=content))
     messages.append(LLMMessage(role="user", content=message))
 
-    llm_provider = "openai" if provider == "self_hosted" else provider
+    # For health tracking, use actual provider
+    # For adapter compatibility, normalize self_hosted to openai
+    health_provider = provider
+    adapter_provider = "openai" if provider == "self_hosted" else provider
+
+    router = get_model_router()
 
     client = LLMClient(
-        provider=llm_provider,
+        provider=adapter_provider,
         model=model,
         api_key=api_key,
         api_base=base_url,
+        health_tracker=router.health_tracker,
+        health_provider_id=health_provider,
     )
 
     async for chunk in client.stream(messages):
@@ -220,6 +228,7 @@ async def stream_with_tools_anthropic(
     Emits text chunks as StreamEventType.TEXT to keep the V2 endpoint functional.
     """
     from backend.services.llm_client import LLMClient, LLMMessage
+    from backend.services.model_router import get_model_router
 
     if not api_key:
         yield StreamEvent(
@@ -239,10 +248,14 @@ async def stream_with_tools_anthropic(
             messages.append(LLMMessage(role=role, content=content))
     messages.append(LLMMessage(role="user", content=message))
 
+    router = get_model_router()
+
     client = LLMClient(
         provider="anthropic",
         model=model,
         api_key=api_key,
+        health_tracker=router.health_tracker,
+        health_provider_id="anthropic",
     )
 
     async for chunk in client.stream(messages):

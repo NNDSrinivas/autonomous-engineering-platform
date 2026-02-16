@@ -123,12 +123,26 @@ API_BASES = {
 }
 
 
+def _map_error_type(status_code: int) -> str:
+    """Map HTTP status code to error type for health tracking"""
+    if status_code == 401 or status_code == 403:
+        return "auth"
+    elif status_code == 429:
+        return "rate_limit"
+    elif status_code >= 500:
+        return "http"
+    else:
+        return "unknown"
+
+
 class BaseLLMAdapter(ABC):
     """Base adapter for LLM providers"""
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig, health_tracker=None, health_provider_id=None):
         self.config = config
         self.client = httpx.AsyncClient(timeout=config.timeout)
+        self.health_tracker = health_tracker
+        self.health_provider_id = health_provider_id
 
     @abstractmethod
     async def complete(
@@ -338,13 +352,40 @@ class OpenAIAdapter(BaseLLMAdapter):
             len(msgs),
             bool(payload.get("tools")),
         )
-        response = await self.client.post(
-            endpoint,
-            headers=headers,
-            json=payload,
-        )
+
+        provider_id = self.health_provider_id or self.config.provider.value
+
+        try:
+            response = await self.client.post(
+                endpoint,
+                headers=headers,
+                json=payload,
+            )
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
+
         if response.status_code >= 400:
             error_body = self._parse_error_body(response)
+            # Only record provider-health failures (not client errors like 400)
+            # 5xx: provider errors, 429: rate limiting, 401/403: auth issues
+            if self.health_tracker and (
+                response.status_code >= 500 or response.status_code in (401, 403, 429)
+            ):
+                self.health_tracker.record_failure(
+                    provider_id,
+                    _map_error_type(response.status_code),
+                )
             if response.status_code == 400:
                 self._log_openai_400_debug(
                     endpoint=endpoint,
@@ -362,20 +403,33 @@ class OpenAIAdapter(BaseLLMAdapter):
             raise RuntimeError(
                 f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
             )
-        data = response.json()
 
-        choice = data["choices"][0]
-        message = choice["message"]
+        try:
+            data = response.json()
+            choice = data["choices"][0]
+            message = choice["message"]
 
-        return LLMResponse(
-            content=message.get("content", ""),
-            model=data.get("model", self.config.model),
-            provider=self.config.provider.value,
-            usage=data.get("usage", {}),
-            tool_calls=message.get("tool_calls"),
-            finish_reason=choice.get("finish_reason"),
-            raw_response=data,
-        )
+            resp = LLMResponse(
+                content=message.get("content", ""),
+                model=data.get("model", self.config.model),
+                provider=self.config.provider.value,
+                usage=data.get("usage", {}),
+                tool_calls=message.get("tool_calls"),
+                finish_reason=choice.get("finish_reason"),
+                raw_response=data,
+            )
+
+            # Success - record after all error paths checked
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
+
+            return resp
+
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            # Malformed response from provider
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise RuntimeError(f"Invalid response format from provider: {e}")
 
     async def stream(self, messages: List[LLMMessage]) -> AsyncGenerator[str, None]:
         api_key = self._get_api_key()
@@ -416,67 +470,96 @@ class OpenAIAdapter(BaseLLMAdapter):
             }
 
         endpoint = f"{api_base}/chat/completions"
-        async with self.client.stream(
-            "POST",
-            endpoint,
-            headers=headers,
-            json=payload,
-        ) as response:
-            logger.info(
-                "[LLMClient] OpenAI request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s",
-                self.config.provider.value,
-                endpoint,
-                normalized_model,
-                True,
-                len(msgs),
-                bool(payload.get("tools")),
-            )
-            if response.status_code >= 400:
-                error_text = (await response.aread()).decode(errors="replace")
-                try:
-                    error_body: Union[Dict[str, Any], str] = json.loads(error_text)
-                except Exception:
-                    error_body = error_text
+        provider_id = self.health_provider_id or self.config.provider.value
 
-                if response.status_code == 400:
-                    self._log_openai_400_debug(
-                        endpoint=endpoint,
-                        model=normalized_model,
-                        stream=True,
-                        payload=payload,
-                        error_body=error_body,
-                    )
-                else:
-                    max_log_length = 4096
-                    if len(error_text) > max_log_length:
-                        error_text = error_text[:max_log_length] + "...[truncated]"
-                    logger.error(
-                        "OpenAI API error: %s - %s",
-                        response.status_code,
-                        error_text,
-                    )
-                # Raise sanitized error to avoid leaking provider error bodies into API responses/events
-                error_code = self._extract_error_code(error_body)
-                if error_code:
-                    raise RuntimeError(
-                        f"OpenAI-compatible API error (status={response.status_code}, code={error_code})"
-                    )
-                raise RuntimeError(
-                    f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
+        try:
+            async with self.client.stream(
+                "POST",
+                endpoint,
+                headers=headers,
+                json=payload,
+            ) as response:
+                logger.info(
+                    "[LLMClient] OpenAI request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s",
+                    self.config.provider.value,
+                    endpoint,
+                    normalized_model,
+                    True,
+                    len(msgs),
+                    bool(payload.get("tools")),
                 )
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
+                if response.status_code >= 400:
+                    # Only record provider-health failures (not client errors)
+                    if self.health_tracker and (
+                        response.status_code >= 500
+                        or response.status_code in (401, 403, 429)
+                    ):
+                        self.health_tracker.record_failure(
+                            provider_id,
+                            _map_error_type(response.status_code),
+                        )
+                    error_text = (await response.aread()).decode(errors="replace")
                     try:
-                        chunk = json.loads(data)
-                        delta = chunk["choices"][0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                    except json.JSONDecodeError:
-                        continue
+                        error_body: Union[Dict[str, Any], str] = json.loads(error_text)
+                    except Exception:
+                        error_body = error_text
+
+                    if response.status_code == 400:
+                        self._log_openai_400_debug(
+                            endpoint=endpoint,
+                            model=normalized_model,
+                            stream=True,
+                            payload=payload,
+                            error_body=error_body,
+                        )
+                    else:
+                        max_log_length = 4096
+                        if len(error_text) > max_log_length:
+                            error_text = error_text[:max_log_length] + "...[truncated]"
+                        logger.error(
+                            "OpenAI API error: %s - %s",
+                            response.status_code,
+                            error_text,
+                        )
+                    # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+                    error_code = self._extract_error_code(error_body)
+                    if error_code:
+                        raise RuntimeError(
+                            f"OpenAI-compatible API error (status={response.status_code}, code={error_code})"
+                        )
+                    raise RuntimeError(
+                        f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
+                    )
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data = line[6:]
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            delta = chunk["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield content
+                        except json.JSONDecodeError:
+                            continue
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
+        else:
+            # Success - only if no exception
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
 
 
 class AnthropicAdapter(BaseLLMAdapter):
@@ -530,44 +613,83 @@ class AnthropicAdapter(BaseLLMAdapter):
             if anthropic_tools:
                 payload["tools"] = anthropic_tools
 
-        response = await self.client.post(
-            f"{api_base}/messages",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
+        provider_id = self.health_provider_id or self.config.provider.value
 
-        # Extract content from Anthropic response
-        content = ""
-        tool_calls = []
-        for block in data.get("content", []):
-            if block["type"] == "text":
-                content += block["text"]
-            elif block["type"] == "tool_use":
-                tool_calls.append(
-                    {
-                        "id": block["id"],
-                        "type": "function",
-                        "function": {
-                            "name": block["name"],
-                            "arguments": json.dumps(block["input"]),
-                        },
-                    }
+        try:
+            response = await self.client.post(
+                f"{api_base}/messages",
+                headers=headers,
+                json=payload,
+            )
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
+
+        if response.status_code >= 400:
+            # Only record provider-health failures (not client errors)
+            if self.health_tracker and (
+                response.status_code >= 500 or response.status_code in (401, 403, 429)
+            ):
+                self.health_tracker.record_failure(
+                    provider_id,
+                    _map_error_type(response.status_code),
                 )
+            response.raise_for_status()
 
-        return LLMResponse(
-            content=content,
-            model=data.get("model", self.config.model),
-            provider=self.config.provider.value,
-            usage={
-                "prompt_tokens": data.get("usage", {}).get("input_tokens", 0),
-                "completion_tokens": data.get("usage", {}).get("output_tokens", 0),
-            },
-            tool_calls=tool_calls if tool_calls else None,
-            finish_reason=data.get("stop_reason"),
-            raw_response=data,
-        )
+        try:
+            data = response.json()
+
+            # Extract content from Anthropic response
+            content = ""
+            tool_calls = []
+            for block in data.get("content", []):
+                if block["type"] == "text":
+                    content += block["text"]
+                elif block["type"] == "tool_use":
+                    tool_calls.append(
+                        {
+                            "id": block["id"],
+                            "type": "function",
+                            "function": {
+                                "name": block["name"],
+                                "arguments": json.dumps(block["input"]),
+                            },
+                        }
+                    )
+
+            resp = LLMResponse(
+                content=content,
+                model=data.get("model", self.config.model),
+                provider=self.config.provider.value,
+                usage={
+                    "prompt_tokens": data.get("usage", {}).get("input_tokens", 0),
+                    "completion_tokens": data.get("usage", {}).get("output_tokens", 0),
+                },
+                tool_calls=tool_calls if tool_calls else None,
+                finish_reason=data.get("stop_reason"),
+                raw_response=data,
+            )
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+            # Malformed response - record as provider failure
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise ValueError(f"Malformed Anthropic response: {e}") from e
+
+        # Success - record after all error paths checked
+        if self.health_tracker:
+            self.health_tracker.record_success(provider_id)
+
+        return resp
 
     async def stream(self, messages: List[LLMMessage]) -> AsyncGenerator[str, None]:
         api_key = self._get_api_key()
@@ -596,23 +718,55 @@ class AnthropicAdapter(BaseLLMAdapter):
         if system:
             payload["system"] = system
 
-        async with self.client.stream(
-            "POST",
-            f"{api_base}/messages",
-            headers=headers,
-            json=payload,
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    try:
-                        data = json.loads(line[6:])
-                        if data.get("type") == "content_block_delta":
-                            delta = data.get("delta", {})
-                            if delta.get("type") == "text_delta":
-                                yield delta.get("text", "")
-                    except json.JSONDecodeError:
-                        continue
+        provider_id = self.health_provider_id or self.config.provider.value
+
+        try:
+            async with self.client.stream(
+                "POST",
+                f"{api_base}/messages",
+                headers=headers,
+                json=payload,
+            ) as response:
+                if response.status_code >= 400:
+                    # Only record provider-health failures (not client errors)
+                    if self.health_tracker and (
+                        response.status_code >= 500
+                        or response.status_code in (401, 403, 429)
+                    ):
+                        self.health_tracker.record_failure(
+                            provider_id,
+                            _map_error_type(response.status_code),
+                        )
+                    response.raise_for_status()
+
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        try:
+                            data = json.loads(line[6:])
+                            if data.get("type") == "content_block_delta":
+                                delta = data.get("delta", {})
+                                if delta.get("type") == "text_delta":
+                                    yield delta.get("text", "")
+                        except json.JSONDecodeError:
+                            continue
+
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
+        else:
+            # Success - stream completed without errors
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
 
 
 class GoogleAdapter(BaseLLMAdapter):
@@ -651,27 +805,65 @@ class GoogleAdapter(BaseLLMAdapter):
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
         url = f"{api_base}/models/{self.config.model}:generateContent?key={api_key}"
+        provider_id = self.health_provider_id or self.config.provider.value
 
-        response = await self.client.post(url, json=payload)
-        response.raise_for_status()
-        data = response.json()
+        try:
+            response = await self.client.post(url, json=payload)
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
 
-        # Extract content from Gemini response
-        content = ""
-        candidates = data.get("candidates", [])
-        if candidates:
-            parts = candidates[0].get("content", {}).get("parts", [])
-            for part in parts:
-                content += part.get("text", "")
+        if response.status_code >= 400:
+            # Only record provider-health failures (not client errors)
+            if self.health_tracker and (
+                response.status_code >= 500 or response.status_code in (401, 403, 429)
+            ):
+                self.health_tracker.record_failure(
+                    provider_id,
+                    _map_error_type(response.status_code),
+                )
+            response.raise_for_status()
 
-        return LLMResponse(
-            content=content,
-            model=self.config.model,
-            provider=self.config.provider.value,
-            usage=data.get("usageMetadata", {}),
-            finish_reason=candidates[0].get("finishReason") if candidates else None,
-            raw_response=data,
-        )
+        try:
+            data = response.json()
+
+            # Extract content from Gemini response
+            content = ""
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                for part in parts:
+                    content += part.get("text", "")
+
+            resp = LLMResponse(
+                content=content,
+                model=self.config.model,
+                provider=self.config.provider.value,
+                usage=data.get("usageMetadata", {}),
+                finish_reason=candidates[0].get("finishReason") if candidates else None,
+                raw_response=data,
+            )
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+            # Malformed response - record as provider failure
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise ValueError(f"Malformed Google response: {e}") from e
+
+        # Success - record after all error paths checked
+        if self.health_tracker:
+            self.health_tracker.record_success(provider_id)
+
+        return resp
 
     async def stream(self, messages: List[LLMMessage]) -> AsyncGenerator[str, None]:
         api_key = self._get_api_key()
@@ -704,22 +896,55 @@ class GoogleAdapter(BaseLLMAdapter):
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
         url = f"{api_base}/models/{self.config.model}:streamGenerateContent?key={api_key}&alt=sse"
+        provider_id = self.health_provider_id or self.config.provider.value
 
-        async with self.client.stream("POST", url, json=payload) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    try:
-                        data = json.loads(line[6:])
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            for part in parts:
-                                text = part.get("text", "")
-                                if text:
-                                    yield text
-                    except json.JSONDecodeError:
-                        continue
+        try:
+            async with self.client.stream("POST", url, json=payload) as response:
+                if response.status_code >= 400:
+                    # Only record provider-health failures (not client errors)
+                    if self.health_tracker and (
+                        response.status_code >= 500
+                        or response.status_code in (401, 403, 429)
+                    ):
+                        self.health_tracker.record_failure(
+                            provider_id,
+                            _map_error_type(response.status_code),
+                        )
+                    response.raise_for_status()
+
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        try:
+                            data = json.loads(line[6:])
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                parts = (
+                                    candidates[0].get("content", {}).get("parts", [])
+                                )
+                                for part in parts:
+                                    text = part.get("text", "")
+                                    if text:
+                                        yield text
+                        except json.JSONDecodeError:
+                            continue
+
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
+        else:
+            # Success - stream completed without errors
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
 
 
 class OllamaAdapter(BaseLLMAdapter):
@@ -744,20 +969,59 @@ class OllamaAdapter(BaseLLMAdapter):
             },
         }
 
-        response = await self.client.post(f"{api_base}/chat", json=payload)
-        response.raise_for_status()
-        data = response.json()
+        provider_id = self.health_provider_id or self.config.provider.value
 
-        return LLMResponse(
-            content=data.get("message", {}).get("content", ""),
-            model=data.get("model", self.config.model),
-            provider=self.config.provider.value,
-            usage={
-                "prompt_tokens": data.get("prompt_eval_count", 0),
-                "completion_tokens": data.get("eval_count", 0),
-            },
-            raw_response=data,
-        )
+        try:
+            response = await self.client.post(f"{api_base}/chat", json=payload)
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
+
+        if response.status_code >= 400:
+            # Only record provider-health failures (not client errors)
+            if self.health_tracker and (
+                response.status_code >= 500 or response.status_code in (401, 403, 429)
+            ):
+                self.health_tracker.record_failure(
+                    provider_id,
+                    _map_error_type(response.status_code),
+                )
+            response.raise_for_status()
+
+        try:
+            data = response.json()
+
+            resp = LLMResponse(
+                content=data.get("message", {}).get("content", ""),
+                model=data.get("model", self.config.model),
+                provider=self.config.provider.value,
+                usage={
+                    "prompt_tokens": data.get("prompt_eval_count", 0),
+                    "completion_tokens": data.get("eval_count", 0),
+                },
+                raw_response=data,
+            )
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            # Malformed response - record as provider failure
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise ValueError(f"Malformed Ollama response: {e}") from e
+
+        # Success - record after all error paths checked
+        if self.health_tracker:
+            self.health_tracker.record_success(provider_id)
+
+        return resp
 
     async def stream(self, messages: List[LLMMessage]) -> AsyncGenerator[str, None]:
         api_base = self._get_api_base()
@@ -774,21 +1038,55 @@ class OllamaAdapter(BaseLLMAdapter):
             "stream": True,
         }
 
-        async with self.client.stream(
-            "POST", f"{api_base}/chat", json=payload
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                try:
-                    data = json.loads(line)
-                    content = data.get("message", {}).get("content", "")
-                    if content:
-                        yield content
-                except json.JSONDecodeError:
-                    continue
+        provider_id = self.health_provider_id or self.config.provider.value
+
+        try:
+            async with self.client.stream(
+                "POST", f"{api_base}/chat", json=payload
+            ) as response:
+                if response.status_code >= 400:
+                    # Only record provider-health failures (not client errors)
+                    if self.health_tracker and (
+                        response.status_code >= 500
+                        or response.status_code in (401, 403, 429)
+                    ):
+                        self.health_tracker.record_failure(
+                            provider_id,
+                            _map_error_type(response.status_code),
+                        )
+                    response.raise_for_status()
+
+                async for line in response.aiter_lines():
+                    try:
+                        data = json.loads(line)
+                        content = data.get("message", {}).get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        continue
+
+        except httpx.TimeoutException:
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider_id)
+            raise
+        except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
+        else:
+            # Success - stream completed without errors
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
 
 
-def get_adapter(config: LLMConfig) -> BaseLLMAdapter:
+def get_adapter(
+    config: LLMConfig, health_tracker=None, health_provider_id=None
+) -> BaseLLMAdapter:
     """Get the appropriate adapter for the provider"""
     adapters = {
         LLMProvider.OPENAI: OpenAIAdapter,
@@ -802,7 +1100,11 @@ def get_adapter(config: LLMConfig) -> BaseLLMAdapter:
     }
 
     adapter_class = adapters.get(config.provider, OpenAIAdapter)
-    return adapter_class(config)
+    return adapter_class(
+        config,
+        health_tracker=health_tracker,
+        health_provider_id=health_provider_id,
+    )
 
 
 class LLMClient:
@@ -837,6 +1139,8 @@ class LLMClient:
         max_tokens: int = 4096,
         system_prompt: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
+        health_tracker=None,
+        health_provider_id: Optional[str] = None,
         **kwargs,
     ):
         if isinstance(provider, str):
@@ -854,7 +1158,13 @@ class LLMClient:
             extra_params=kwargs,
         )
 
-        self.adapter = get_adapter(self.config)
+        self.health_tracker = health_tracker
+        self.health_provider_id = health_provider_id
+        self.adapter = get_adapter(
+            self.config,
+            health_tracker=self.health_tracker,
+            health_provider_id=self.health_provider_id,
+        )
 
     async def complete(
         self,
@@ -881,7 +1191,11 @@ class LLMClient:
             for key, value in kwargs.items():
                 if hasattr(self.config, key):
                     setattr(self.config, key, value)
-            self.adapter = get_adapter(self.config)
+            self.adapter = get_adapter(
+                self.config,
+                health_tracker=self.health_tracker,
+                health_provider_id=self.health_provider_id,
+            )
 
         return await self.adapter.complete(messages)
 
@@ -926,7 +1240,11 @@ class LLMClient:
         """
         self.config.tools = tools
         self.config.tool_choice = tool_choice
-        self.adapter = get_adapter(self.config)
+        self.adapter = get_adapter(
+            self.config,
+            health_tracker=self.health_tracker,
+            health_provider_id=self.health_provider_id,
+        )
 
         if isinstance(prompt, str):
             messages = [LLMMessage(role="user", content=prompt)]

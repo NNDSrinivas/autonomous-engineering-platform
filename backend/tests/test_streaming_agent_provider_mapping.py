@@ -19,6 +19,8 @@ async def test_stream_with_tools_maps_self_hosted_to_openai_provider(
             model: str,
             api_key: str,
             api_base: str,
+            health_tracker=None,
+            health_provider_id=None,
         ) -> None:
             captured["provider"] = provider
             captured["model"] = model

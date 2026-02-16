@@ -5,6 +5,14 @@
 
 ---
 
+## 👨‍💻 New Developer? Start Here!
+
+**📘 Complete Setup Guide:** [DEVELOPER_SETUP.md](./DEVELOPER_SETUP.md)
+
+New to the project? The [Developer Setup Guide](./DEVELOPER_SETUP.md) provides a step-by-step walkthrough from cloning to running tests. Perfect for onboarding!
+
+---
+
 ## 🚀 Vision
 
 Transform how engineering teams work by providing an **autonomous AI assistant** that:

@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.services.provider_health import ProviderHealthTracker
+
+logger = logging.getLogger(__name__)
 
 
 _ENDPOINT_PROVIDER_SUPPORT = {
@@ -231,6 +237,9 @@ class ModelRouter:
                 f"ModelRouter misconfigured: defaultModeId '{default_mode_id}' does not exist in naviModes"
             )
 
+        # Phase 3: Initialize provider health tracker
+        self.health_tracker = self._init_health_tracker()
+
     def _load_registry(self) -> Dict[str, Any]:
         with self.registry_path.open("r", encoding="utf-8") as fh:
             return json.load(fh)
@@ -275,6 +284,41 @@ class ModelRouter:
                 facts[model_id] = model
 
         return facts
+
+    def _init_health_tracker(self) -> Optional[ProviderHealthTracker]:
+        """Initialize provider health tracker with Redis backend."""
+        try:
+            import redis
+            from backend.core.config import settings
+            from backend.services.provider_health import ProviderHealthTracker
+
+            # Get or create Redis client
+            redis_client = redis.from_url(
+                settings.redis_url, encoding="utf-8", decode_responses=True
+            )
+
+            # Validate Redis connectivity before creating tracker
+            try:
+                redis_client.ping()
+            except Exception:
+                logger.warning("Redis unavailable; provider health tracking disabled.")
+                return None
+
+            # Initialize health tracker with circuit breaker config
+            return ProviderHealthTracker(
+                redis_client=redis_client,
+                window_sec=60,  # 60s sliding window for failure tracking
+                failure_threshold=5,  # 5 failures trigger circuit open
+                open_duration_sec=30,  # 30s backoff before half-open probe
+            )
+
+        except Exception as e:
+            # Graceful degradation: router works without health tracking
+            logger.warning(
+                f"Failed to initialize health tracker: {e}. "
+                f"Provider health tracking disabled."
+            )
+            return None
 
     def route(
         self,
@@ -661,6 +705,7 @@ class ModelRouter:
             - "strict_private_saas_blocked"
             - "provider_not_supported"
             - "provider_not_configured"
+            - "circuit_open" (Phase 3: circuit breaker blocking provider)
         """
         model_cfg = self.model_index.get(model_id)
         if not model_cfg:
@@ -683,6 +728,10 @@ class ModelRouter:
 
         if not self._is_provider_configured(provider):
             return False, "provider_not_configured"
+
+        # Phase 3: Check circuit breaker state
+        if self.health_tracker and self.health_tracker.is_circuit_open(provider):
+            return False, "circuit_open"
 
         # TODO(navi-model-router-v2): gate by model capabilities from registry
         # (streaming/tools/json/vision/search). V1 routability is provider-level.

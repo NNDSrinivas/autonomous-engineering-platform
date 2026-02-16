@@ -9951,8 +9951,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       // Fall back to non-streaming if streaming failed
       // BUT don't fall back if we successfully processed tool calls (even without narrative text)
+      // AND NEVER fall back in background-job mode (job stream may legitimately have zero narrative/tool tokens if paused/failed early)
       const streamingSucceeded = useStreaming && (streamedContent || hasSeenToolCalls);
-      if (!streamingSucceeded) {
+      if (!streamingSucceeded && !useBackgroundJob) {
         const authPreviewHeaders = await this.buildAuthHeadersAsync(
           resolvedOrgId,
           resolvedUserId,

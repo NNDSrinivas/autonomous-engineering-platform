@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "day_boundary": "UTC",
+  "units": "tokens",
+  "defaults": {
+    "per_day": 500000000
+  },
+  "orgs": {},
+  "users": {},
+  "providers": {},
+  "models": {}
+}

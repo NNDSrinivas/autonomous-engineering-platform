@@ -197,7 +197,7 @@ class ProviderHealthTracker:
                 # 2. Provider timeout is typically < 5s, so normal failures will record
                 # 3. After TTL expires, another worker can acquire lease and probe again
                 if breaker.try_acquire_probe_lease():
-                    logger.info(
+                    logger.debug(
                         f"Provider {provider_id} in HALF_OPEN: probe lease acquired, allowing probe request"
                     )
                     return False  # Allow this request as the probe

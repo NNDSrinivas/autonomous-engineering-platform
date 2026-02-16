@@ -46,6 +46,18 @@ async def on_startup():
     except Exception as e:
         print(f"⚠️ Extensions initialization skipped: {e}")
 
+    # Initialize budget manager - optional, don't block startup
+    try:
+        from ...services.budget_manager_singleton import get_budget_manager
+
+        budget_mgr = get_budget_manager()
+        if budget_mgr:
+            print(f"✅ Budget manager initialized (mode={budget_mgr.enforcement_mode})")
+        else:
+            print("⚠️  Budget manager unavailable (enforcement disabled or infrastructure missing)")
+    except Exception as e:
+        print(f"⚠️ Budget manager initialization skipped: {e}")
+
     print("🎉 Backend startup complete!")
     # place for warmups (e.g., compile regex, prime caches) if needed
     return
@@ -70,4 +82,15 @@ async def on_shutdown():
             await r.close()
     except Exception:
         # Ignore Redis cleanup errors during shutdown - non-critical
+        pass
+
+    # graceful close of budget manager redis
+    try:
+        from ...services.budget_manager_singleton import get_budget_manager
+
+        budget_mgr = get_budget_manager()
+        if budget_mgr and budget_mgr.redis:
+            budget_mgr.redis.close()
+    except Exception:
+        # Ignore budget manager Redis cleanup errors during shutdown - non-critical
         pass

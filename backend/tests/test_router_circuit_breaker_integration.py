@@ -12,6 +12,7 @@ import pytest
 
 try:
     import fakeredis
+
     FAKEREDIS_AVAILABLE = True
 except ImportError:
     FAKEREDIS_AVAILABLE = False
@@ -55,6 +56,15 @@ def minimal_router_with_health(
     monkeypatch.setenv("OPENAI_API_KEY", "test")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
 
+    # Patch _init_health_tracker to avoid Redis initialization delay
+    def mock_init_health_tracker(self):
+        return mock_health_tracker
+
+    monkeypatch.setattr(
+        "backend.services.model_router.ModelRouter._init_health_tracker",
+        mock_init_health_tracker,
+    )
+
     # Create minimal registry
     legacy_path = tmp_path / "shared" / "model-registry.json"
     _write_json(
@@ -96,7 +106,11 @@ def minimal_router_with_health(
                     "provider": "openai",
                     "enabled": True,
                     "capabilities": ["chat", "streaming"],
-                    "pricing": {"currency": "USD", "inputPer1KTokens": 0.0025, "outputPer1KTokens": 0.01},
+                    "pricing": {
+                        "currency": "USD",
+                        "inputPer1KTokens": 0.0025,
+                        "outputPer1KTokens": 0.01,
+                    },
                     "governance": {"tier": "standard", "allowedEnvironments": ["dev"]},
                     "limits": {"maxInputTokens": 128000, "maxOutputTokens": 16384},
                     "displayName": "GPT-4o",
@@ -107,7 +121,11 @@ def minimal_router_with_health(
                     "provider": "anthropic",
                     "enabled": True,
                     "capabilities": ["chat", "streaming"],
-                    "pricing": {"currency": "USD", "inputPer1KTokens": 0.003, "outputPer1KTokens": 0.015},
+                    "pricing": {
+                        "currency": "USD",
+                        "inputPer1KTokens": 0.003,
+                        "outputPer1KTokens": 0.015,
+                    },
                     "governance": {"tier": "standard", "allowedEnvironments": ["dev"]},
                     "limits": {"maxInputTokens": 200000, "maxOutputTokens": 8192},
                     "displayName": "Claude Sonnet 4",
@@ -119,11 +137,8 @@ def minimal_router_with_health(
 
     monkeypatch.setenv("MODEL_REGISTRY_PATH", str(facts_path))
 
-    # Create router
+    # Create router (health_tracker will be mocked via _init_health_tracker patch)
     router = ModelRouter(registry_path=legacy_path)
-
-    # Inject health tracker (replace the one created in __init__)
-    router.health_tracker = mock_health_tracker
 
     return router, mock_health_tracker
 
@@ -219,8 +234,12 @@ class TestFallbackRouting:
 
         # Routability evaluation should show openai blocked
         openai_eval = next(
-            (e for e in decision.routability_evaluation if e["model_id"] == "openai/gpt-4o"),
-            None
+            (
+                e
+                for e in decision.routability_evaluation
+                if e["model_id"] == "openai/gpt-4o"
+            ),
+            None,
         )
         assert openai_eval is not None
         assert openai_eval["routable"] is False
@@ -241,8 +260,16 @@ class TestHealthTrackerInitialization:
             {
                 "version": "1.0.0",
                 "defaults": {"defaultModeId": "navi/test"},
-                "providers": [{"id": "openai", "type": "saas", "models": [{"id": "openai/gpt-4o"}]}],
-                "naviModes": [{"id": "navi/test", "candidateModelIds": ["openai/gpt-4o"]}],
+                "providers": [
+                    {
+                        "id": "openai",
+                        "type": "saas",
+                        "models": [{"id": "openai/gpt-4o"}],
+                    }
+                ],
+                "naviModes": [
+                    {"id": "navi/test", "candidateModelIds": ["openai/gpt-4o"]}
+                ],
             },
         )
 
@@ -258,8 +285,15 @@ class TestHealthTrackerInitialization:
                         "provider": "openai",
                         "enabled": True,
                         "capabilities": ["chat"],
-                        "pricing": {"currency": "USD", "inputPer1KTokens": 0.0025, "outputPer1KTokens": 0.01},
-                        "governance": {"tier": "standard", "allowedEnvironments": ["dev"]},
+                        "pricing": {
+                            "currency": "USD",
+                            "inputPer1KTokens": 0.0025,
+                            "outputPer1KTokens": 0.01,
+                        },
+                        "governance": {
+                            "tier": "standard",
+                            "allowedEnvironments": ["dev"],
+                        },
                         "limits": {"maxInputTokens": 128000, "maxOutputTokens": 16384},
                         "displayName": "GPT-4o",
                         "productionApproved": True,
@@ -296,8 +330,16 @@ class TestGracefulDegradation:
             {
                 "version": "1.0.0",
                 "defaults": {"defaultModeId": "navi/test"},
-                "providers": [{"id": "openai", "type": "saas", "models": [{"id": "openai/gpt-4o", "streaming": True}]}],
-                "naviModes": [{"id": "navi/test", "candidateModelIds": ["openai/gpt-4o"]}],
+                "providers": [
+                    {
+                        "id": "openai",
+                        "type": "saas",
+                        "models": [{"id": "openai/gpt-4o", "streaming": True}],
+                    }
+                ],
+                "naviModes": [
+                    {"id": "navi/test", "candidateModelIds": ["openai/gpt-4o"]}
+                ],
             },
         )
 
@@ -313,8 +355,15 @@ class TestGracefulDegradation:
                         "provider": "openai",
                         "enabled": True,
                         "capabilities": ["chat", "streaming"],
-                        "pricing": {"currency": "USD", "inputPer1KTokens": 0.0025, "outputPer1KTokens": 0.01},
-                        "governance": {"tier": "standard", "allowedEnvironments": ["dev"]},
+                        "pricing": {
+                            "currency": "USD",
+                            "inputPer1KTokens": 0.0025,
+                            "outputPer1KTokens": 0.01,
+                        },
+                        "governance": {
+                            "tier": "standard",
+                            "allowedEnvironments": ["dev"],
+                        },
                         "limits": {"maxInputTokens": 128000, "maxOutputTokens": 16384},
                         "displayName": "GPT-4o",
                         "productionApproved": True,

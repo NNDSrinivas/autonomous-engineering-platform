@@ -380,8 +380,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             # Only record provider-health failures (not client errors like 400)
             # 5xx: provider errors, 429: rate limiting, 401/403: auth issues
             if self.health_tracker and (
-                response.status_code >= 500
-                or response.status_code in (401, 403, 429)
+                response.status_code >= 500 or response.status_code in (401, 403, 429)
             ):
                 self.health_tracker.record_failure(
                     provider_id,
@@ -490,7 +489,11 @@ class OpenAIAdapter(BaseLLMAdapter):
                     bool(payload.get("tools")),
                 )
                 if response.status_code >= 400:
-                    if self.health_tracker:
+                    # Only record provider-health failures (not client errors)
+                    if self.health_tracker and (
+                        response.status_code >= 500
+                        or response.status_code in (401, 403, 429)
+                    ):
                         self.health_tracker.record_failure(
                             provider_id,
                             _map_error_type(response.status_code),
@@ -1219,7 +1222,11 @@ class LLMClient:
         """
         self.config.tools = tools
         self.config.tool_choice = tool_choice
-        self.adapter = get_adapter(self.config)
+        self.adapter = get_adapter(
+            self.config,
+            health_tracker=self.health_tracker,
+            health_provider_id=self.health_provider_id,
+        )
 
         if isinstance(prompt, str):
             messages = [LLMMessage(role="user", content=prompt)]

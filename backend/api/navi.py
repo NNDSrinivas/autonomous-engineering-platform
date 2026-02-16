@@ -71,9 +71,6 @@ from backend.services.model_router import (
     get_model_router,
 )
 from backend.services.trace_store import get_trace_store
-from backend.services.budget_manager import BudgetExceeded
-from backend.services.budget_manager_singleton import get_budget_manager
-from backend.services.budget_lifecycle import budget_guard, build_budget_scopes
 from backend.services.job_manager import (
     DistributedLockUnavailableError,
     TERMINAL_STATUSES,
@@ -6613,36 +6610,13 @@ async def navi_chat_stream(
         "full-access",
         "full_access",
     )
-
-    # Phase 4: Build budget scopes for advisory routing check
-    budget_mgr = get_budget_manager()
-    initial_scopes = build_budget_scopes(
-        org_id=org_id,
-        user_id=user_id,
-        provider="",  # Determined after routing
-        model_id="",  # Determined after routing
-    ) if budget_mgr else []
-
     try:
         routing_decision = get_model_router().route(
             requested_model_or_mode_id=request.model,
             endpoint="stream",
             requested_provider=request.provider,
-            budget_manager=budget_mgr,
-            budget_scopes=initial_scopes,
-            budget_estimate_tokens=2500,  # Conservative estimate for advisory check
         )
     except ModelRoutingError as exc:
-        # Phase 4: Map BUDGET_EXCEEDED to 429
-        if exc.code == "BUDGET_EXCEEDED":
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "code": "BUDGET_EXCEEDED",
-                    "message": "Budget limit exceeded (router advisory check)",
-                    "requestedModelId": request.model,
-                },
-            ) from exc
         raise HTTPException(
             status_code=400,
             detail={
@@ -7030,116 +7004,39 @@ async def navi_chat_stream(
                     len(conversation_history_for_llm),
                 )
 
-            # Phase 4: Authoritative budget enforcement (reserve/commit/release)
-            # Rebuild scopes with final provider + model from routing decision
-            final_scopes = build_budget_scopes(
-                org_id=org_id,
-                user_id=user_id,
-                provider=routing_decision.provider,
-                model_id=routing_decision.effective_model_id,
-            ) if budget_mgr else []
+            async for event in process_navi_request_streaming(
+                message=request.message,
+                workspace_path=workspace_root,
+                llm_provider=routing_decision.provider,
+                llm_model=routing_decision.model,
+                api_key=None,
+                current_file=current_file,
+                current_file_content=current_file_content,
+                selection=selection,
+                open_files=None,
+                errors=errors,
+                conversation_history=conversation_history_for_llm,
+            ):
+                # Stream activity events
+                if "activity" in event:
+                    activity = event["activity"]
+                    if activity.get("kind") == "file_read":
+                        files_read_live.append(activity.get("detail", ""))
+                    yield f"data: {json.dumps({'activity': activity})}\n\n"
 
-            try:
-                if budget_mgr and final_scopes:
-                    # Execution-layer atomic reserve (authoritative)
-                    async with budget_guard(
-                        budget_manager=budget_mgr,
-                        scopes=final_scopes,
-                        estimated_tokens=2500,  # Conservative default for streaming
-                    ) as budget_ctx:
-                        total_tokens_used = 0
-                        async for event in process_navi_request_streaming(
-                            message=request.message,
-                            workspace_path=workspace_root,
-                            llm_provider=routing_decision.provider,
-                            llm_model=routing_decision.model,
-                            api_key=None,
-                            current_file=current_file,
-                            current_file_content=current_file_content,
-                            selection=selection,
-                            open_files=None,
-                            errors=errors,
-                            conversation_history=conversation_history_for_llm,
-                        ):
-                            # Stream activity events
-                            if "activity" in event:
-                                activity = event["activity"]
-                                if activity.get("kind") == "file_read":
-                                    files_read_live.append(activity.get("detail", ""))
-                                yield f"data: {json.dumps({'activity': activity})}\n\n"
+                # Stream narrative events (conversational explanations like Claude Code)
+                elif "narrative" in event:
+                    narrative_text = event["narrative"]
+                    yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
 
-                            # Stream narrative events (conversational explanations like Claude Code)
-                            elif "narrative" in event:
-                                narrative_text = event["narrative"]
-                                yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
+                # Stream thinking content
+                elif "thinking" in event:
+                    thinking_text = event["thinking"]
+                    yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
 
-                            # Stream thinking content
-                            elif "thinking" in event:
-                                thinking_text = event["thinking"]
-                                yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
-
-                            # Capture final result
-                            elif "result" in event:
-                                navi_result = event["result"]
-
-                            # Track actual tokens from provider response if available
-                            if isinstance(event, dict):
-                                usage = event.get("usage")
-                                if usage and isinstance(usage, dict):
-                                    total_tokens_used = usage.get("total_tokens", total_tokens_used)
-                        # Commit with actual usage (or conservative estimate if not tracked)
-                        budget_ctx["actual_tokens"] = total_tokens_used if total_tokens_used > 0 else 2500
-                else:
-                    # Budget enforcement disabled or unavailable
-                    async for event in process_navi_request_streaming(
-                        message=request.message,
-                        workspace_path=workspace_root,
-                        llm_provider=routing_decision.provider,
-                        llm_model=routing_decision.model,
-                        api_key=None,
-                        current_file=current_file,
-                        current_file_content=current_file_content,
-                        selection=selection,
-                        open_files=None,
-                        errors=errors,
-                        conversation_history=conversation_history_for_llm,
-                        ):
-                        # Stream activity events
-                        if "activity" in event:
-                            activity = event["activity"]
-                            if activity.get("kind") == "file_read":
-                                files_read_live.append(activity.get("detail", ""))
-                            yield f"data: {json.dumps({'activity': activity})}\n\n"
-
-                        # Stream narrative events (conversational explanations like Claude Code)
-                        elif "narrative" in event:
-                            narrative_text = event["narrative"]
-                            yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
-
-                        # Stream thinking content
-                        elif "thinking" in event:
-                            thinking_text = event["thinking"]
-                            yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
-
-                        # Capture final result
-                        elif "result" in event:
-                            navi_result = event["result"]
-
-            except BudgetExceeded as budget_err:
-                # Execution-layer reserve failed (authoritative enforcement)
-                logger.warning(
-                    f"[NAVI-STREAM] Budget exceeded (execution-layer): {budget_err}",
-                    exc_info=False
-                )
-                error_payload = {
-                    "type": "error",
-                    "error": "Budget limit exceeded",
-                    "code": "BUDGET_EXCEEDED",
-                    "details": budget_err.details if hasattr(budget_err, "details") else {},
-                }
-                yield f"data: {json.dumps(error_payload)}\n\n"
-                yield "data: [DONE]\n\n"
-                return
+                # Capture final result
+                elif "result" in event:
+                    navi_result = event["result"]
 
             # Process final result
             if navi_result:
@@ -7562,35 +7459,13 @@ async def navi_chat_stream_v2(
             },
         )
 
-    # Phase 4: Build budget scopes for advisory routing check
-    budget_mgr = get_budget_manager()
-    initial_scopes = build_budget_scopes(
-        org_id=org_id,
-        user_id=user_id,
-        provider="",  # Determined after routing
-        model_id="",  # Determined after routing
-    ) if budget_mgr else []
-
     try:
         routing_decision = get_model_router().route(
             requested_model_or_mode_id=request.model,
             endpoint="stream_v2",
             requested_provider=request.provider,
-            budget_manager=budget_mgr,
-            budget_scopes=initial_scopes,
-            budget_estimate_tokens=2500,  # Conservative estimate for advisory check
         )
     except ModelRoutingError as exc:
-        # Phase 4: Map BUDGET_EXCEEDED to 429
-        if exc.code == "BUDGET_EXCEEDED":
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "code": "BUDGET_EXCEEDED",
-                    "message": "Budget limit exceeded (router advisory check)",
-                    "requestedModelId": request.model,
-                },
-            ) from exc
         raise HTTPException(
             status_code=400,
             detail={
@@ -7934,53 +7809,8 @@ async def navi_chat_stream_v2(
                     except Exception:
                         pass
 
-            # Phase 4: Authoritative budget enforcement (reserve/commit/release)
-            # Rebuild scopes with final provider + model from routing decision
-            final_scopes = build_budget_scopes(
-                org_id=org_id,
-                user_id=user_id,
-                provider=provider,
-                model_id=routing_decision.effective_model_id,
-            ) if budget_mgr else []
-
-            try:
-                if budget_mgr and final_scopes:
-                    # Execution-layer atomic reserve (authoritative)
-                    async with budget_guard(
-                        budget_manager=budget_mgr,
-                        scopes=final_scopes,
-                        estimated_tokens=2500,  # Conservative default for streaming
-                    ) as budget_ctx:
-                        total_tokens_used = 0
-                        async for payload in heartbeat_wrapper(provider_event_generator()):
-                            yield f"data: {json.dumps(payload)}\n\n"
-                            # Track actual tokens from provider response
-                            if isinstance(payload, dict):
-                                usage = payload.get("usage")
-                                if usage and isinstance(usage, dict):
-                                    total_tokens_used = usage.get("total_tokens", total_tokens_used)
-                        # Commit with actual usage (or conservative estimate if not tracked)
-                        budget_ctx["actual_tokens"] = total_tokens_used if total_tokens_used > 0 else 2500
-                else:
-                    # Budget enforcement disabled or unavailable
-                    async for payload in heartbeat_wrapper(provider_event_generator()):
-                        yield f"data: {json.dumps(payload)}\n\n"
-
-            except BudgetExceeded as budget_err:
-                # Execution-layer reserve failed (authoritative enforcement)
-                logger.warning(
-                    f"[NAVI V2] Budget exceeded (execution-layer): {budget_err}",
-                    exc_info=False
-                )
-                error_payload = {
-                    "type": "error",
-                    "error": "Budget limit exceeded",
-                    "code": "BUDGET_EXCEEDED",
-                    "details": budget_err.details if hasattr(budget_err, "details") else {},
-                }
-                yield f"data: {json.dumps(error_payload)}\n\n"
-                yield "data: [DONE]\n\n"
-                return
+            async for payload in heartbeat_wrapper(provider_event_generator()):
+                yield f"data: {json.dumps(payload)}\n\n"
 
             # Mark LLM activity as done
             yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'llm_call', 'label': 'Generating response', 'detail': 'Complete', 'status': 'done'}})}\n\n"

@@ -132,8 +132,6 @@ class RoutingDecision:
     policy_evaluation: list[Dict[str, Any]] = None  # type: ignore
     routability_evaluation: list[Dict[str, Any]] = None  # type: ignore
     cost_estimate: Optional[Dict[str, Any]] = None
-    # Phase 4: Budget decision metadata
-    budget_decision: Optional[Dict[str, Any]] = None
 
     def to_public_dict(self) -> Dict[str, Any]:
         # Keep legacy keys for current webview/extension while adding new metadata keys.
@@ -157,9 +155,6 @@ class RoutingDecision:
             result["routabilityEvaluation"] = self.routability_evaluation
         if self.cost_estimate:
             result["costEstimate"] = self.cost_estimate
-        # Phase 4: Add budget decision metadata if available
-        if self.budget_decision:
-            result["budgetDecision"] = self.budget_decision
         return result
 
 
@@ -297,20 +292,18 @@ class ModelRouter:
             from backend.core.config import settings
             from backend.services.provider_health import ProviderHealthTracker
 
-            # Get or create Redis client with explicit timeouts for graceful degradation
+            # Get or create Redis client
             redis_client = redis.from_url(
-                settings.redis_url,
-                encoding="utf-8",
-                decode_responses=True,
-                socket_connect_timeout=1.0,  # 1s connect timeout
-                socket_timeout=1.0,  # 1s operation timeout
+                settings.redis_url, encoding="utf-8", decode_responses=True
             )
 
             # Validate Redis connectivity before creating tracker
             try:
                 redis_client.ping()
             except Exception:
-                logger.warning("Redis unavailable; provider health tracking disabled.")
+                logger.warning(
+                    "Redis unavailable; provider health tracking disabled."
+                )
                 return None
 
             # Initialize health tracker with circuit breaker config
@@ -334,10 +327,6 @@ class ModelRouter:
         requested_model_or_mode_id: Optional[str],
         endpoint: str,
         requested_provider: Optional[str] = None,
-        *,
-        budget_manager: Optional[Any] = None,
-        budget_scopes: Optional[list[Any]] = None,
-        budget_estimate_tokens: Optional[int] = None,
     ) -> RoutingDecision:
         endpoint_key = self._normalize_endpoint(endpoint)
         support = _ENDPOINT_PROVIDER_SUPPORT.get(
@@ -368,9 +357,6 @@ class ModelRouter:
                 requested_mode_id=requested_mode_id,
                 endpoint_key=endpoint_key,
                 supported_providers=support,
-                budget_manager=budget_manager,
-                budget_scopes=budget_scopes,
-                budget_estimate_tokens=budget_estimate_tokens,
             )
 
         if requested_model_id:
@@ -392,9 +378,6 @@ class ModelRouter:
             requested_mode_id=default_mode,
             endpoint_key=endpoint_key,
             supported_providers=support,
-            budget_manager=budget_manager,
-            budget_scopes=budget_scopes,
-            budget_estimate_tokens=budget_estimate_tokens,
         )
 
     def _route_mode(
@@ -402,10 +385,6 @@ class ModelRouter:
         requested_mode_id: str,
         endpoint_key: str,
         supported_providers: set[str],
-        *,
-        budget_manager: Optional[Any] = None,
-        budget_scopes: Optional[list[Any]] = None,
-        budget_estimate_tokens: Optional[int] = None,
     ) -> RoutingDecision:
         # Preserve original requested mode ID for metadata/observability
         requested_mode_id_original = requested_mode_id
@@ -472,92 +451,24 @@ class ModelRouter:
                     f"All candidate models for mode '{requested_mode_id}' rejected by policy constraints",
                 )
 
-        # Phase 4: Cost-sorted iteration with budget decision (canonical downgrade)
-        candidates_sorted = self._sort_candidates_by_estimated_cost(candidates)
-
-        # Estimate tokens for budget checks (authoritative budgets are token-based)
-        estimated_tokens = int(
-            budget_estimate_tokens or self._estimate_budget_tokens()
+        # Phase 2: Enhanced routability evaluation
+        result = self._pick_first_routable(
+            candidates,
+            endpoint_key=endpoint_key,
+            supported_providers=supported_providers,
+            strict_private=strict_private,
         )
-
-        budget_evaluations: list[Dict[str, Any]] = []
-        routability_eval: list[Dict[str, Any]] = []
-        selected_model_id: Optional[str] = None
-
-        for item in candidates_sorted:
-            model_id = item["model_id"]
-
-            # Budget advisory check (optional, per-candidate)
-            if budget_manager and budget_scopes:
-                b = self._check_budget_sufficient(
-                    estimated_tokens=estimated_tokens,
-                    budget_manager=budget_manager,
-                    budget_scopes=budget_scopes,
-                )
-                budget_evaluations.append(
-                    {
-                        "model_id": model_id,
-                        "estimated_tokens": estimated_tokens,
-                        "estimated_cost_usd": item["estimated_cost_usd"],
-                        "budget_sufficient": b["sufficient"],
-                        "scopes": b["scopes"],
-                    }
-                )
-                if not b["sufficient"]:
-                    continue  # Try next cheaper candidate
-
-            # Routability check (authoritative for config/health/creds)
-            routable, reason = self._is_model_routable_with_reason(
-                model_id,
-                endpoint_key,
-                supported_providers,
-                strict_private=strict_private,
-            )
-            routability_eval.append(
-                {
-                    "model_id": model_id,
-                    "routable": routable,
-                    "reason": reason,
-                }
-            )
-
-            if not routable:
-                continue
-
-            selected_model_id = model_id
-            break
-
-        # Clear error cause if all candidates failed
-        if not selected_model_id:
-            # Prefer clear error cause if budgets enabled
-            if budget_manager and budget_scopes and budget_evaluations:
-                all_budget_failed = all(
-                    not e["budget_sufficient"] for e in budget_evaluations
-                )
-                if all_budget_failed:
-                    raise ModelRoutingError(
-                        "BUDGET_EXCEEDED",
-                        f"No candidate for mode '{requested_mode_id}' fits within budget (router advisory snapshot)",
-                    )
-
-            # Routability failure (no budget or mixed failures)
-            # Continue to existing fallback logic below...
+        selected_model_id = result["selected"]
+        routability_eval = result["routability_evaluation"]
 
         if selected_model_id:
             model_cfg = self.model_index[selected_model_id]
-            # Check if downgrade occurred (selected is not the cheapest candidate)
-            first_sorted_candidate = (
-                candidates_sorted[0]["model_id"] if candidates_sorted else None
-            )
-            is_first_choice = selected_model_id == first_sorted_candidate
+            is_first_choice = selected_model_id == candidates[0]
             was_fallback = not is_first_choice or mode_fallback_reason is not None
             fallback_reason_code = mode_fallback_code
             fallback_reason = mode_fallback_reason
 
-            # Determine budget action
-            budget_action = "allow"
-            if not is_first_choice and first_sorted_candidate:
-                budget_action = "downgrade"
+            if not is_first_choice:
                 # Model candidate fallback within the mode
                 fallback_reason_code = (
                     fallback_reason_code or "MODE_CANDIDATE_UNAVAILABLE"
@@ -568,24 +479,14 @@ class ModelRouter:
                 )
                 reason = first_failure["reason"] if first_failure else None
                 fallback_reason = reason or (
-                    f"Primary mode candidate '{first_sorted_candidate}' unavailable; used '{selected_model_id}'."
+                    f"Primary mode candidate '{candidates[0]}' unavailable; used '{selected_model_id}'."
                 )
                 # If we also had a mode fallback, combine the reasons
                 if mode_fallback_reason:
                     fallback_reason = f"{mode_fallback_reason} {fallback_reason}"
 
-            # Phase 4: Calculate cost estimate for selected model
+            # Phase 2: Calculate cost estimate for selected model
             cost_estimate = self.estimate_cost(selected_model_id, 2000, 500)
-
-            # Phase 4: Build budget decision metadata
-            budget_decision = None
-            if budget_manager and budget_scopes:
-                budget_decision = {
-                    "action": budget_action,
-                    "estimated_tokens": estimated_tokens,
-                    "evaluated_candidates": budget_evaluations,
-                    "note": "Router budget checks are advisory only. Execution-layer reserve() is authoritative.",
-                }
 
             return RoutingDecision(
                 requested_model_id=None,
@@ -600,7 +501,6 @@ class ModelRouter:
                 policy_evaluation=policy_evaluation if policy_constraints else [],
                 routability_evaluation=routability_eval,
                 cost_estimate=cost_estimate,
-                budget_decision=budget_decision,
             )
 
         if strict_private:
@@ -807,7 +707,6 @@ class ModelRouter:
             - "strict_private_saas_blocked"
             - "provider_not_supported"
             - "provider_not_configured"
-            - "circuit_open" (Phase 3: circuit breaker blocking requests)
         """
         model_cfg = self.model_index.get(model_id)
         if not model_cfg:
@@ -928,13 +827,9 @@ class ModelRouter:
         if not pricing:
             return None
 
-        # Phase 4: Pricing is per-1M tokens (matches provider pricing pages)
-        input_cost = (input_tokens / 1_000_000.0) * pricing.get(
-            "inputPer1MTokens", 0
-        )
-        output_cost = (output_tokens / 1_000_000.0) * pricing.get(
-            "outputPer1MTokens", 0
-        )
+        # Pricing is per-1K tokens
+        input_cost = (input_tokens / 1000.0) * pricing.get("inputPer1KTokens", 0)
+        output_cost = (output_tokens / 1000.0) * pricing.get("outputPer1KTokens", 0)
         total_cost = input_cost + output_cost
 
         return {
@@ -1068,110 +963,6 @@ class ModelRouter:
             "reason": None,
             "evaluation": evaluation,
         }
-
-    def _estimate_budget_tokens(
-        self,
-        *,
-        input_tokens: Optional[int] = None,
-        output_tokens: Optional[int] = None,
-    ) -> int:
-        """Conservative estimate used only for router advisory budget checks.
-
-        Phase 4: Token estimation separate from USD (budgets are token-based).
-
-        Execution-layer reserve() is authoritative.
-        """
-        # Conservative defaults (tune later based on actual usage patterns)
-        in_tok = int(input_tokens or 2000)
-        out_tok = int(output_tokens or 500)
-        return max(0, in_tok + out_tok)
-
-    def _check_budget_sufficient(
-        self,
-        *,
-        estimated_tokens: int,
-        budget_manager: Any,
-        budget_scopes: list[Any],
-    ) -> Dict[str, Any]:
-        """ADVISORY ONLY (non-authoritative).
-
-        Phase 4: Snapshot-based budget check for router decision.
-
-        WARNING: snapshot() races under concurrency. Execution-layer reserve() is authoritative.
-        Router decision does NOT guarantee budget still available at execution time.
-
-        Returns:
-            {
-                "sufficient": True/False,
-                "scopes": [
-                    {
-                        "scope": "budget:org:acme:2025-02-16",
-                        "limit": 1000000,
-                        "used": 200000,
-                        "reserved": 10000,
-                        "remaining": 790000,
-                        "sufficient": True
-                    },
-                    ...
-                ]
-            }
-        """
-        snap = budget_manager.snapshot(budget_scopes)
-
-        scopes_eval = []
-        for key, data in snap.items():
-            remaining = int(data.get("remaining", 0))
-            scopes_eval.append(
-                {
-                    "scope": key,
-                    "limit": int(data.get("limit", 0)),
-                    "used": int(data.get("used", 0)),
-                    "reserved": int(data.get("reserved", 0)),
-                    "remaining": remaining,
-                    "sufficient": remaining >= estimated_tokens,
-                }
-            )
-
-        return {
-            "sufficient": all(s["sufficient"] for s in scopes_eval),
-            "scopes": scopes_eval,
-        }
-
-    def _sort_candidates_by_estimated_cost(
-        self, candidates: list[str]
-    ) -> list[Dict[str, Any]]:
-        """Sort candidates by estimated USD cost (cheapest first).
-
-        Phase 4: Deterministic cost-based downgrade (not tier-based).
-
-        Deterministic tie-breakers: (usd_estimate, provider, model_id)
-        Missing pricing goes to end (sentinel 1e18).
-        """
-        enriched = []
-        for model_id in candidates:
-            cost = self.estimate_cost(model_id, 2000, 500)  # USD heuristic, optional
-            usd = None
-            if cost and "estimatedCostUSD" in cost:
-                usd = float(cost["estimatedCostUSD"])
-
-            enriched.append(
-                {
-                    "model_id": model_id,
-                    "estimated_cost_usd": usd,
-                }
-            )
-
-        def sort_key(x: Dict[str, Any]) -> tuple[float, str, str]:
-            # Missing cost goes to end
-            usd = x["estimated_cost_usd"]
-            usd_key = usd if usd is not None else 1e18  # Sentinel for missing pricing
-            # provider/model deterministic tie-breakers
-            cfg = self.model_index.get(x["model_id"], {})
-            provider = cfg.get("provider", "")
-            return (usd_key, provider, x["model_id"])
-
-        enriched.sort(key=sort_key)
-        return enriched
 
     @staticmethod
     def _normalize_runtime_env(raw_env: str) -> str:

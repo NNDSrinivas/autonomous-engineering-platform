@@ -48,7 +48,7 @@
         },
         "provider": {
           "type": "string",
-          "enum": ["openai", "anthropic", "google", "groq", "azure-openai", "custom"]
+          "enum": ["openai", "anthropic", "google", "groq", "azure-openai", "ollama", "self_hosted"]
         },
         "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
         "enabled": { "type": "boolean" },

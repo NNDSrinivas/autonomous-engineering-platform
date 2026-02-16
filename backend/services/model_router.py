@@ -103,10 +103,14 @@ class RoutingDecision:
     was_fallback: bool
     fallback_reason_code: Optional[str]
     fallback_reason: Optional[str]
+    # Phase 2: Policy and cost governance metadata
+    policy_evaluation: list[Dict[str, Any]] = None  # type: ignore
+    routability_evaluation: list[Dict[str, Any]] = None  # type: ignore
+    cost_estimate: Optional[Dict[str, Any]] = None
 
     def to_public_dict(self) -> Dict[str, Any]:
         # Keep legacy keys for current webview/extension while adding new metadata keys.
-        return {
+        result = {
             "requestedModelId": self.requested_model_id,
             "requestedModeId": self.requested_mode_id,
             "effectiveModelId": self.effective_model_id,
@@ -119,6 +123,14 @@ class RoutingDecision:
             "modelId": self.effective_model_id,
             "mode": self.requested_mode_id,
         }
+        # Phase 2: Add policy/routability/cost metadata if available
+        if self.policy_evaluation:
+            result["policyEvaluation"] = self.policy_evaluation
+        if self.routability_evaluation:
+            result["routabilityEvaluation"] = self.routability_evaluation
+        if self.cost_estimate:
+            result["costEstimate"] = self.cost_estimate
+        return result
 
 
 class ModelRouter:
@@ -127,10 +139,17 @@ class ModelRouter:
         self.registry_path = registry_path or (
             repo_root / "shared" / "model-registry.json"
         )
+
+        # Phase 2: Load runtime environment and Phase 1 facts
+        self.runtime_env = os.getenv("APP_ENV", "dev").lower()
+
         self.registry = self._load_registry()
         self.defaults = self.registry.get("defaults", {})
         self.providers = self.registry.get("providers", [])
         self.modes = self.registry.get("naviModes", [])
+
+        # Phase 2: Load Phase 1 registry facts
+        self.model_facts = self._load_model_facts(repo_root)
 
         self.model_index: Dict[str, Dict[str, Any]] = {}
         self.provider_index: Dict[str, Dict[str, Any]] = {}
@@ -144,11 +163,38 @@ class ModelRouter:
             for model in provider.get("models", []):
                 model_id = model.get("id")
                 if isinstance(model_id, str):
-                    self.model_index[model_id] = {
+                    # Start with legacy registry data
+                    merged = {
                         **model,
                         "provider": provider_id,
                         "providerType": provider.get("type", "saas"),
                     }
+
+                    # Phase 2: Merge Phase 1 facts if available
+                    facts = self.model_facts.get(model_id)
+                    if facts:
+                        # SANITY CHECK: Provider must match
+                        facts_provider = facts.get("provider")
+                        if facts_provider and facts_provider != provider_id:
+                            raise ValueError(
+                                f"Provider mismatch for {model_id}: "
+                                f"legacy={provider_id}, facts={facts_provider}"
+                            )
+
+                        # Merge pricing metadata
+                        merged["pricing"] = facts.get("pricing")
+
+                        # Merge governance tier
+                        governance = facts.get("governance", {})
+                        merged["tier"] = governance.get("tier")
+
+                        # Merge capabilities array (Phase 1 format)
+                        merged["capabilities_array"] = facts.get("capabilities", [])
+
+                        # Preserve Phase 1 enabled flag
+                        merged["factsEnabled"] = facts.get("enabled", True)
+
+                    self.model_index[model_id] = merged
 
         for mode in self.modes:
             mode_id = mode.get("id")
@@ -169,6 +215,29 @@ class ModelRouter:
     def _load_registry(self) -> Dict[str, Any]:
         with self.registry_path.open("r", encoding="utf-8") as fh:
             return json.load(fh)
+
+    def _load_model_facts(self, repo_root: Path) -> Dict[str, Dict[str, Any]]:
+        """Load Phase 1 flat registry and return model facts keyed by model ID."""
+        # Determine registry path based on runtime environment
+        env = self.runtime_env  # Set in __init__ from APP_ENV
+        registry_filename = f"model-registry-{env}.json"
+        registry_path = repo_root / "shared" / registry_filename
+
+        if not registry_path.exists():
+            # Fallback to dev registry if env-specific not found
+            registry_path = repo_root / "shared" / "model-registry-dev.json"
+
+        with open(registry_path, "r", encoding="utf-8") as fh:
+            registry_data = json.load(fh)
+
+        # Index models by ID for fast lookup
+        facts: Dict[str, Dict[str, Any]] = {}
+        for model in registry_data.get("models", []):
+            model_id = model.get("id")
+            if model_id:
+                facts[model_id] = model
+
+        return facts
 
     def route(
         self,
@@ -262,15 +331,45 @@ class ModelRouter:
 
         strict_private = bool((mode.get("policy") or {}).get("strictPrivate"))
 
-        selected = self._pick_first_routable(
+        # Phase 2: Policy evaluation (dual-layer filtering)
+        policy = mode.get("policy") or {}
+        policy_constraints = {
+            k: v for k, v in policy.items()
+            if k in {"requiredCapabilities", "allowedTiers", "allowedProviders", "maxCostUSD"}
+        }
+
+        policy_evaluation = []
+        if policy_constraints:
+            filtered_candidates = []
+            for candidate in candidates:
+                eval_result = self.evaluate_policy(candidate, policy_constraints)
+                policy_evaluation.append({
+                    "model_id": candidate,
+                    "allowed": eval_result["allowed"],
+                    "reason": eval_result["reason"],
+                })
+                if eval_result["allowed"]:
+                    filtered_candidates.append(candidate)
+
+            candidates = filtered_candidates
+
+            if not candidates:
+                raise ModelRoutingError(
+                    "POLICY_REJECTED_ALL_CANDIDATES",
+                    f"All candidate models for mode '{requested_mode_id}' rejected by policy constraints"
+                )
+
+        # Phase 2: Enhanced routability evaluation
+        result = self._pick_first_routable(
             candidates,
             endpoint_key=endpoint_key,
             supported_providers=supported_providers,
             strict_private=strict_private,
         )
+        selected_model_id = result["selected"]
+        routability_eval = result["routability_evaluation"]
 
-        if selected:
-            selected_model_id, reason = selected
+        if selected_model_id:
             model_cfg = self.model_index[selected_model_id]
             is_first_choice = selected_model_id == candidates[0]
             was_fallback = not is_first_choice or mode_fallback_reason is not None
@@ -280,12 +379,21 @@ class ModelRouter:
             if not is_first_choice:
                 # Model candidate fallback within the mode
                 fallback_reason_code = fallback_reason_code or "MODE_CANDIDATE_UNAVAILABLE"
+                # Get first failure reason from evaluation
+                first_failure = next(
+                    (e for e in routability_eval if not e["routable"]),
+                    None
+                )
+                reason = first_failure["reason"] if first_failure else None
                 fallback_reason = reason or (
                     f"Primary mode candidate '{candidates[0]}' unavailable; used '{selected_model_id}'."
                 )
                 # If we also had a mode fallback, combine the reasons
                 if mode_fallback_reason:
                     fallback_reason = f"{mode_fallback_reason} {fallback_reason}"
+
+            # Phase 2: Calculate cost estimate for selected model
+            cost_estimate = self.estimate_cost(selected_model_id, 2000, 500)
 
             return RoutingDecision(
                 requested_model_id=None,
@@ -297,6 +405,9 @@ class ModelRouter:
                 was_fallback=was_fallback,
                 fallback_reason_code=fallback_reason_code,
                 fallback_reason=fallback_reason,
+                policy_evaluation=policy_evaluation if policy_constraints else [],
+                routability_evaluation=routability_eval,
+                cost_estimate=cost_estimate,
             )
 
         if strict_private:
@@ -316,6 +427,9 @@ class ModelRouter:
                 combined_reason += " "
             combined_reason += f"No configured models for mode '{requested_mode_id}'. Falling back to default model '{default_model}'."
 
+            # Phase 2: Calculate cost for fallback model
+            fallback_cost_estimate = self.estimate_cost(default_model, 2000, 500)
+
             return RoutingDecision(
                 requested_model_id=None,
                 requested_mode_id=requested_mode_id_original,  # Use original, not effective
@@ -325,6 +439,9 @@ class ModelRouter:
                 was_fallback=True,
                 fallback_reason_code=mode_fallback_code or "MODE_NO_AVAILABLE_MODELS",
                 fallback_reason=combined_reason,
+                policy_evaluation=[],
+                routability_evaluation=[],
+                cost_estimate=fallback_cost_estimate,
             )
 
         raise ModelRoutingError(
@@ -343,6 +460,9 @@ class ModelRouter:
         if model_cfg and self._is_model_routable(
             requested_model_id, endpoint_key, supported_providers, strict_private=False
         ):
+            # Phase 2: Calculate cost for direct model routing
+            direct_cost_estimate = self.estimate_cost(requested_model_id, 2000, 500)
+
             return RoutingDecision(
                 requested_model_id=requested_model_id,
                 requested_mode_id=None,
@@ -353,6 +473,9 @@ class ModelRouter:
                 was_fallback=False,
                 fallback_reason_code=None,
                 fallback_reason=None,
+                policy_evaluation=[],
+                routability_evaluation=[],
+                cost_estimate=direct_cost_estimate,
             )
 
         reason_code = "MODEL_UNAVAILABLE"
@@ -379,6 +502,9 @@ class ModelRouter:
             fallback_cfg = self.model_index[fallback_default]
             reason = f"{reason} Using '{fallback_default}'."
 
+            # Phase 2: Calculate cost for fallback default model
+            fallback_default_cost_estimate = self.estimate_cost(fallback_default, 2000, 500)
+
             return RoutingDecision(
                 requested_model_id=requested_model_id,
                 requested_mode_id=None,
@@ -389,6 +515,9 @@ class ModelRouter:
                 was_fallback=True,
                 fallback_reason_code=reason_code,
                 fallback_reason=reason,
+                policy_evaluation=[],
+                routability_evaluation=[],
+                cost_estimate=fallback_default_cost_estimate,
             )
 
         if reason_code == "ENDPOINT_PROVIDER_UNSUPPORTED":
@@ -405,19 +534,45 @@ class ModelRouter:
         endpoint_key: str,
         supported_providers: set[str],
         strict_private: bool,
-    ) -> Optional[tuple[str, Optional[str]]]:
-        first_failure_reason: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Pick first routable model with detailed evaluation.
+
+        Phase 2: Returns evaluation dict with per-candidate reason codes.
+
+        Returns:
+            {
+                "selected": "openai/gpt-4o" | None,
+                "routability_evaluation": [
+                    {"model_id": "openai/o3", "routable": False, "reason": "provider_not_configured"},
+                    {"model_id": "openai/gpt-4o", "routable": True, "reason": None},
+                ]
+            }
+        """
+        evaluation = []
+        selected = None
+
         for candidate in candidates:
-            if self._is_model_routable(
+            routable, reason = self._is_model_routable_with_reason(
                 candidate,
                 endpoint_key,
                 supported_providers,
                 strict_private=strict_private,
-            ):
-                return candidate, first_failure_reason
-            if first_failure_reason is None:
-                first_failure_reason = f"Candidate '{candidate}' unavailable, unsupported, or not configured."
-        return None
+            )
+
+            evaluation.append({
+                "model_id": candidate,
+                "routable": routable,
+                "reason": reason,
+            })
+
+            # Pick first routable (preserve existing "first wins" logic)
+            if selected is None and routable:
+                selected = candidate
+
+        return {
+            "selected": selected,
+            "routability_evaluation": evaluation,
+        }
 
     def _is_model_routable(
         self,
@@ -426,26 +581,61 @@ class ModelRouter:
         supported_providers: set[str],
         strict_private: bool,
     ) -> bool:
+        """Check if model is routable (backwards compat wrapper).
+
+        Phase 2: Delegates to _is_model_routable_with_reason for evaluation.
+        """
+        routable, _ = self._is_model_routable_with_reason(
+            model_id, endpoint_key, supported_providers, strict_private
+        )
+        return routable
+
+    def _is_model_routable_with_reason(
+        self,
+        model_id: str,
+        endpoint_key: str,
+        supported_providers: set[str],
+        strict_private: bool,
+    ) -> tuple[bool, Optional[str]]:
+        """Check if model is routable and return reason if not.
+
+        Phase 2: Enhanced routability check with explicit reason codes.
+
+        Returns:
+            (routable: bool, reason: str | None)
+
+        Reason codes:
+            - "model_not_found"
+            - "facts_disabled"
+            - "strict_private_saas_blocked"
+            - "provider_not_supported"
+            - "provider_not_configured"
+        """
         model_cfg = self.model_index.get(model_id)
         if not model_cfg:
-            return False
+            return False, "model_not_found"
+
+        # Phase 2: Check Phase 1 enabled flag
+        if model_cfg.get("factsEnabled") is False:
+            return False, "facts_disabled"
 
         provider = model_cfg["provider"]
         provider_cfg = self.provider_index.get(provider, {})
         provider_type = provider_cfg.get("type", "saas")
 
         if strict_private and provider_type not in {"local", "self_hosted"}:
-            return False
+            return False, "strict_private_saas_blocked"
 
         if provider not in supported_providers:
-            return False
+            # Endpoint not supported for this provider
+            return False, "provider_not_supported"
 
         if not self._is_provider_configured(provider):
-            return False
+            return False, "provider_not_configured"
 
         # TODO(navi-model-router-v2): gate by model capabilities from registry
         # (streaming/tools/json/vision/search). V1 routability is provider-level.
-        return True
+        return True, None
 
     def _is_provider_configured(self, provider_id: str) -> bool:
         keys = _PROVIDER_CREDENTIAL_KEYS.get(provider_id, ())
@@ -473,6 +663,203 @@ class ModelRouter:
         if normalized in {"/chat/autonomous", "autonomous"}:
             return "autonomous"
         return normalized
+
+    @staticmethod
+    def _map_capabilities(model_cfg: Dict[str, Any]) -> list[str]:
+        """Convert legacy boolean capability flags to enum array.
+
+        Phase 2: Maps legacy registry capabilities to Phase 1 capability enum.
+        """
+        # Prefer Phase 1 capabilities array if available
+        capabilities_array = model_cfg.get("capabilities_array")
+        if capabilities_array:
+            return capabilities_array
+
+        # Fallback: map legacy boolean flags to enum values
+        legacy = model_cfg.get("capabilities", {})
+        mapped = []
+
+        # Always include chat (all models support it)
+        mapped.append("chat")
+
+        # Map boolean flags to enum values
+        if legacy.get("tools"):
+            mapped.append("tool-use")
+        if legacy.get("json"):
+            mapped.append("json")
+        if legacy.get("vision"):
+            mapped.append("vision")
+        if legacy.get("streaming"):
+            mapped.append("streaming")
+        # Note: legacy "search" capability not mapped - Phase 1 schema only has "long-context"
+
+        return mapped
+
+    def estimate_cost(
+        self,
+        model_id: str,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Estimate cost for a request in USD.
+
+        Phase 2: Calculate cost from Phase 1 pricing metadata.
+
+        Returns:
+            {
+                "estimatedCostUSD": 0.0125,
+                "tier": "standard",
+                "breakdown": {
+                    "inputCostUSD": 0.005,
+                    "outputCostUSD": 0.0075
+                }
+            }
+            or None if pricing unavailable
+        """
+        model_cfg = self.model_index.get(model_id)
+        if not model_cfg:
+            return None
+
+        pricing = model_cfg.get("pricing")
+        if not pricing:
+            return None
+
+        # Pricing is per-1K tokens
+        input_cost = (input_tokens / 1000.0) * pricing.get("inputPer1KTokens", 0)
+        output_cost = (output_tokens / 1000.0) * pricing.get("outputPer1KTokens", 0)
+        total_cost = input_cost + output_cost
+
+        return {
+            "estimatedCostUSD": round(total_cost, 6),
+            "tier": model_cfg.get("tier"),
+            "breakdown": {
+                "inputCostUSD": round(input_cost, 6),
+                "outputCostUSD": round(output_cost, 6),
+            },
+        }
+
+    def evaluate_policy(
+        self,
+        model_id: str,
+        constraints: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Evaluate model against policy constraints.
+
+        Phase 2: Policy-based filtering with capability/tier/cost checks.
+
+        Args:
+            model_id: Model to evaluate
+            constraints: {
+                "requiredCapabilities": ["tool-use", "json"],
+                "allowedTiers": ["premium", "standard"],
+                "allowedProviders": ["openai", "anthropic"],
+                "maxCostUSD": 0.05
+            }
+
+        Returns:
+            {
+                "allowed": True/False,
+                "reason": "missing_capability:vision" | "tier_blocked" | "cost_exceeded" | None,
+                "evaluation": {...}
+            }
+        """
+        constraints = constraints or {}
+        model_cfg = self.model_index.get(model_id)
+
+        if not model_cfg:
+            return {
+                "allowed": False,
+                "reason": "model_not_found",
+                "evaluation": {},
+            }
+
+        evaluation: Dict[str, Any] = {}
+
+        # 1. Capability check
+        required_caps = constraints.get("requiredCapabilities", [])
+        if required_caps:
+            actual_caps = self._map_capabilities(model_cfg)
+            missing = [c for c in required_caps if c not in actual_caps]
+
+            evaluation["capabilities"] = {
+                "required": required_caps,
+                "actual": actual_caps,
+                "missing": missing,
+            }
+
+            if missing:
+                return {
+                    "allowed": False,
+                    "reason": f"missing_capability:{missing[0]}",
+                    "evaluation": evaluation,
+                }
+
+        # 2. Tier check
+        allowed_tiers = constraints.get("allowedTiers")
+        if allowed_tiers:
+            actual_tier = model_cfg.get("tier")
+            blocked = actual_tier and actual_tier not in allowed_tiers
+
+            evaluation["tier"] = {
+                "allowed": allowed_tiers,
+                "actual": actual_tier,
+                "blocked": blocked,
+            }
+
+            if blocked:
+                return {
+                    "allowed": False,
+                    "reason": "tier_blocked",
+                    "evaluation": evaluation,
+                }
+
+        # 3. Provider check
+        allowed_providers = constraints.get("allowedProviders")
+        if allowed_providers:
+            actual_provider = model_cfg.get("provider")
+            blocked = actual_provider and actual_provider not in allowed_providers
+
+            evaluation["provider"] = {
+                "allowed": allowed_providers,
+                "actual": actual_provider,
+                "blocked": blocked,
+            }
+
+            if blocked:
+                return {
+                    "allowed": False,
+                    "reason": "provider_blocked",
+                    "evaluation": evaluation,
+                }
+
+        # 4. Cost check (if maxCostUSD specified)
+        max_cost = constraints.get("maxCostUSD")
+        if max_cost is not None:
+            # Use default token estimate for policy evaluation
+            cost_data = self.estimate_cost(model_id, 2000, 500)
+            if cost_data:
+                estimated = cost_data["estimatedCostUSD"]
+                exceeded = estimated > max_cost
+
+                evaluation["cost"] = {
+                    "max": max_cost,
+                    "estimated": estimated,
+                    "exceeded": exceeded,
+                }
+
+                if exceeded:
+                    return {
+                        "allowed": False,
+                        "reason": "cost_exceeded",
+                        "evaluation": evaluation,
+                    }
+
+        # All checks passed
+        return {
+            "allowed": True,
+            "reason": None,
+            "evaluation": evaluation,
+        }
 
     @staticmethod
     def _normalize_vendor_id(raw: str) -> str:

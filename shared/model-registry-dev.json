@@ -410,7 +410,7 @@
     },
     {
       "id": "ollama/llama3.2",
-      "provider": "custom",
+      "provider": "ollama",
       "displayName": "Llama 3.2 (Local)",
       "enabled": true,
       "productionApproved": true,
@@ -432,7 +432,7 @@
     },
     {
       "id": "self_hosted/qwen2.5-coder",
-      "provider": "custom",
+      "provider": "self_hosted",
       "displayName": "Qwen 2.5 Coder (Self-Hosted)",
       "enabled": true,
       "productionApproved": true,

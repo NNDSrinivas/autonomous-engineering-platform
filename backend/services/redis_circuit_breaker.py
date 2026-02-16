@@ -179,7 +179,7 @@ class RedisCircuitBreaker:
                 f"Error getting circuit state for {self.provider_id}: {e}",
                 exc_info=True,
             )
-            # Fail-closed: assume CLOSED on error
+            # Fail-safe: assume CLOSED (allow traffic) on error
             return CircuitState.CLOSED
 
     def _record_call(self, result: str) -> CircuitState:
@@ -222,7 +222,7 @@ class RedisCircuitBreaker:
             logger.error(
                 f"Error recording call for {self.provider_id}: {e}", exc_info=True
             )
-            # Fail-closed: assume CLOSED on error
+            # Fail-safe: assume CLOSED (allow traffic) on error
             return CircuitState.CLOSED
 
     def _record_call_fallback(self, result: str) -> CircuitState:

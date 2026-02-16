@@ -707,10 +707,6 @@ class AnthropicAdapter(BaseLLMAdapter):
                         except json.JSONDecodeError:
                             continue
 
-            # Success - stream completed without errors
-            if self.health_tracker:
-                self.health_tracker.record_success(provider_id)
-
         except httpx.TimeoutException:
             if self.health_tracker:
                 self.health_tracker.record_timeout(provider_id)
@@ -719,6 +715,10 @@ class AnthropicAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
+        else:
+            # Success - stream completed without errors
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
 
 
 class GoogleAdapter(BaseLLMAdapter):
@@ -862,10 +862,6 @@ class GoogleAdapter(BaseLLMAdapter):
                         except json.JSONDecodeError:
                             continue
 
-            # Success - stream completed without errors
-            if self.health_tracker:
-                self.health_tracker.record_success(provider_id)
-
         except httpx.TimeoutException:
             if self.health_tracker:
                 self.health_tracker.record_timeout(provider_id)
@@ -874,6 +870,10 @@ class GoogleAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
+        else:
+            # Success - stream completed without errors
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
 
 
 class OllamaAdapter(BaseLLMAdapter):
@@ -976,10 +976,6 @@ class OllamaAdapter(BaseLLMAdapter):
                     except json.JSONDecodeError:
                         continue
 
-            # Success - stream completed without errors
-            if self.health_tracker:
-                self.health_tracker.record_success(provider_id)
-
         except httpx.TimeoutException:
             if self.health_tracker:
                 self.health_tracker.record_timeout(provider_id)
@@ -988,6 +984,10 @@ class OllamaAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
+        else:
+            # Success - stream completed without errors
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
 
 
 def get_adapter(

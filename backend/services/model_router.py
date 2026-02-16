@@ -709,6 +709,7 @@ class ModelRouter:
             - "strict_private_saas_blocked"
             - "provider_not_supported"
             - "provider_not_configured"
+            - "circuit_open" (Phase 3: circuit breaker blocking requests)
         """
         model_cfg = self.model_index.get(model_id)
         if not model_cfg:

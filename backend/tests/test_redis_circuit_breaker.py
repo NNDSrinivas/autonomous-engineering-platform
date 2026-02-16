@@ -52,9 +52,10 @@ class TestCircuitBreakerInitialState:
 
     def test_initial_redis_keys_not_exist(self, redis_client):
         """Redis keys don't exist before any operations."""
-        assert not redis_client.exists("circuit:test_provider:state")
-        assert not redis_client.exists("circuit:test_provider:window")
-        assert not redis_client.exists("circuit:test_provider:open_at")
+        # Keys use hash tag format for Redis Cluster compatibility
+        assert not redis_client.exists("circuit:{test_provider}:state")
+        assert not redis_client.exists("circuit:{test_provider}:window")
+        assert not redis_client.exists("circuit:{test_provider}:open_at")
 
 
 class TestFailureThreshold:
@@ -83,8 +84,8 @@ class TestFailureThreshold:
         # Verify state persists
         assert breaker.get_state() == CircuitState.OPEN
 
-    def test_success_resets_failure_count(self, breaker):
-        """Successes don't count toward failure threshold."""
+    def test_success_does_not_count_toward_threshold(self, breaker):
+        """Successes don't count toward failure threshold (failures persist in window)."""
         # Record 4 failures
         for _ in range(4):
             breaker.record_failure()

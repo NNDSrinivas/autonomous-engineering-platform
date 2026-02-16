@@ -8,7 +8,7 @@ pytest-timeout>=2.2.0
 
 # Fake Redis for circuit breaker tests (requires lupa for Lua script support)
 fakeredis==2.21.1
-lupa==2.0
+lupa>=2.2  # Use recent version for security and compatibility
 
 # Code quality
 ruff>=0.1.0

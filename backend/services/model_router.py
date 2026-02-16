@@ -371,8 +371,15 @@ class ModelRouter:
         # Phase 2: Policy evaluation (dual-layer filtering)
         policy = mode.get("policy") or {}
         policy_constraints = {
-            k: v for k, v in policy.items()
-            if k in {"requiredCapabilities", "allowedTiers", "allowedProviders", "maxCostUSD"}
+            k: v
+            for k, v in policy.items()
+            if k
+            in {
+                "requiredCapabilities",
+                "allowedTiers",
+                "allowedProviders",
+                "maxCostUSD",
+            }
         }
 
         policy_evaluation = []
@@ -380,11 +387,13 @@ class ModelRouter:
             filtered_candidates = []
             for candidate in candidates:
                 eval_result = self.evaluate_policy(candidate, policy_constraints)
-                policy_evaluation.append({
-                    "model_id": candidate,
-                    "allowed": eval_result["allowed"],
-                    "reason": eval_result["reason"],
-                })
+                policy_evaluation.append(
+                    {
+                        "model_id": candidate,
+                        "allowed": eval_result["allowed"],
+                        "reason": eval_result["reason"],
+                    }
+                )
                 if eval_result["allowed"]:
                     filtered_candidates.append(candidate)
 
@@ -393,7 +402,7 @@ class ModelRouter:
             if not candidates:
                 raise ModelRoutingError(
                     "POLICY_REJECTED_ALL_CANDIDATES",
-                    f"All candidate models for mode '{requested_mode_id}' rejected by policy constraints"
+                    f"All candidate models for mode '{requested_mode_id}' rejected by policy constraints",
                 )
 
         # Phase 2: Enhanced routability evaluation
@@ -415,11 +424,12 @@ class ModelRouter:
 
             if not is_first_choice:
                 # Model candidate fallback within the mode
-                fallback_reason_code = fallback_reason_code or "MODE_CANDIDATE_UNAVAILABLE"
+                fallback_reason_code = (
+                    fallback_reason_code or "MODE_CANDIDATE_UNAVAILABLE"
+                )
                 # Get first failure reason from evaluation
                 first_failure = next(
-                    (e for e in routability_eval if not e["routable"]),
-                    None
+                    (e for e in routability_eval if not e["routable"]), None
                 )
                 reason = first_failure["reason"] if first_failure else None
                 fallback_reason = reason or (
@@ -540,7 +550,9 @@ class ModelRouter:
             reason = f"{reason} Using '{fallback_default}'."
 
             # Phase 2: Calculate cost for fallback default model
-            fallback_default_cost_estimate = self.estimate_cost(fallback_default, 2000, 500)
+            fallback_default_cost_estimate = self.estimate_cost(
+                fallback_default, 2000, 500
+            )
 
             return RoutingDecision(
                 requested_model_id=requested_model_id,
@@ -596,11 +608,13 @@ class ModelRouter:
                 strict_private=strict_private,
             )
 
-            evaluation.append({
-                "model_id": candidate,
-                "routable": routable,
-                "reason": reason,
-            })
+            evaluation.append(
+                {
+                    "model_id": candidate,
+                    "routable": routable,
+                    "reason": reason,
+                }
+            )
 
             # Pick first routable (preserve existing "first wins" logic)
             if selected is None and routable:
@@ -923,7 +937,9 @@ class ModelRouter:
         lowered = raw.lower()
         # Match GPT models and OpenAI o-series models whose IDs start with
         # "o" followed by a digit (for example, "o1", "o3", "o4").
-        if lowered.startswith("gpt") or (lowered.startswith("o") and len(lowered) > 1 and lowered[1].isdigit()):
+        if lowered.startswith("gpt") or (
+            lowered.startswith("o") and len(lowered) > 1 and lowered[1].isdigit()
+        ):
             return f"openai/{raw}"
         if lowered.startswith("claude"):
             return f"anthropic/{raw}"

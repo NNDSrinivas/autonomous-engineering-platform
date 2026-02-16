@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 import pytest
 
-from backend.services.model_router import ModelRouter, ModelRoutingError
+from backend.services.model_router import ModelRouter
 
 
 class TestPhase2FactsLoading:
@@ -41,7 +41,9 @@ class TestPhase2FactsLoading:
         assert model["capabilities_array"] == ["chat", "tool-use", "json", "streaming"]
         assert model["factsEnabled"] is True
 
-    def test_provider_mismatch_sanity_check(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_provider_mismatch_sanity_check(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test provider mismatch between facts and legacy triggers error."""
         shared_dir = tmp_path / "shared"
         shared_dir.mkdir()
@@ -98,7 +100,9 @@ class TestPhase2FactsLoading:
         legacy_path.write_text(json.dumps(legacy_registry))
 
         monkeypatch.setenv("APP_ENV", "dev")
-        monkeypatch.setenv("MODEL_REGISTRY_PATH", str(shared_dir / "model-registry-dev.json"))
+        monkeypatch.setenv(
+            "MODEL_REGISTRY_PATH", str(shared_dir / "model-registry-dev.json")
+        )
 
         # Should raise ValueError on provider mismatch
         with pytest.raises(ValueError, match="Provider mismatch"):

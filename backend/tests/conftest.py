@@ -6,6 +6,7 @@ Provides:
 - test_db: Database session for direct queries
 """
 
+import json
 import pytest
 import subprocess
 import sys
@@ -18,6 +19,7 @@ from sqlalchemy.orm import sessionmaker, Session
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from backend.core.config import settings  # noqa: E402
 from backend.database.models.memory_graph import MemoryNode, MemoryEdge  # noqa: E402
+from backend.services.model_router import ModelRouter  # noqa: E402
 
 # Test configuration
 TEST_ORG_ID = "default"
@@ -168,9 +170,6 @@ def get_edges_for_node(session: Session, foreign_id: str, org_id: str = TEST_ORG
 # Phase 2 Model Router Test Fixtures
 # ============================================================================
 
-import json
-from backend.services.model_router import ModelRouter
-
 
 def _write_json(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -194,58 +193,144 @@ def _minimal_legacy_registry() -> dict:
                 "id": "openai",
                 "type": "saas",
                 "models": [
-                    {"id": "openai/gpt-4o", "providerModel": "gpt-4o", "streaming": True, "tools": True, "json": True, "vision": True},
-                    {"id": "openai/gpt-4o-mini", "providerModel": "gpt-4o-mini", "streaming": True, "tools": True, "json": True},
-                    {"id": "openai/gpt-5.2", "providerModel": "gpt-5.2", "streaming": True, "tools": True, "json": True, "vision": True},
-                    {"id": "openai/gpt-5-mini", "providerModel": "gpt-5-mini", "streaming": True, "tools": True, "json": True},
-                    {"id": "openai/o3", "providerModel": "o3", "streaming": True, "tools": True, "json": True},
+                    {
+                        "id": "openai/gpt-4o",
+                        "providerModel": "gpt-4o",
+                        "streaming": True,
+                        "tools": True,
+                        "json": True,
+                        "vision": True,
+                    },
+                    {
+                        "id": "openai/gpt-4o-mini",
+                        "providerModel": "gpt-4o-mini",
+                        "streaming": True,
+                        "tools": True,
+                        "json": True,
+                    },
+                    {
+                        "id": "openai/gpt-5.2",
+                        "providerModel": "gpt-5.2",
+                        "streaming": True,
+                        "tools": True,
+                        "json": True,
+                        "vision": True,
+                    },
+                    {
+                        "id": "openai/gpt-5-mini",
+                        "providerModel": "gpt-5-mini",
+                        "streaming": True,
+                        "tools": True,
+                        "json": True,
+                    },
+                    {
+                        "id": "openai/o3",
+                        "providerModel": "o3",
+                        "streaming": True,
+                        "tools": True,
+                        "json": True,
+                    },
                 ],
             },
             {
                 "id": "anthropic",
                 "type": "saas",
                 "models": [
-                    {"id": "anthropic/claude-sonnet-4", "providerModel": "claude-sonnet-4", "streaming": True, "tools": True, "json": True},
-                    {"id": "anthropic/claude-opus-4", "providerModel": "claude-opus-4", "streaming": True, "tools": True, "json": True},
+                    {
+                        "id": "anthropic/claude-sonnet-4",
+                        "providerModel": "claude-sonnet-4",
+                        "streaming": True,
+                        "tools": True,
+                        "json": True,
+                    },
+                    {
+                        "id": "anthropic/claude-opus-4",
+                        "providerModel": "claude-opus-4",
+                        "streaming": True,
+                        "tools": True,
+                        "json": True,
+                    },
                 ],
             },
             {
                 "id": "google",
                 "type": "saas",
                 "models": [
-                    {"id": "google/gemini-2.5-pro", "providerModel": "gemini-2.5-pro", "streaming": True, "json": True},
+                    {
+                        "id": "google/gemini-2.5-pro",
+                        "providerModel": "gemini-2.5-pro",
+                        "streaming": True,
+                        "json": True,
+                    },
                 ],
             },
             {
                 "id": "groq",
                 "type": "saas",
                 "models": [
-                    {"id": "groq/llama-3.3-70b-versatile", "providerModel": "llama-3.3-70b-versatile", "streaming": True},
+                    {
+                        "id": "groq/llama-3.3-70b-versatile",
+                        "providerModel": "llama-3.3-70b-versatile",
+                        "streaming": True,
+                    },
                 ],
             },
             {
                 "id": "ollama",
                 "type": "local",
                 "models": [
-                    {"id": "ollama/llama3.2", "providerModel": "llama3.2", "streaming": True},
+                    {
+                        "id": "ollama/llama3.2",
+                        "providerModel": "llama3.2",
+                        "streaming": True,
+                    },
                 ],
             },
             {
                 "id": "self_hosted",
                 "type": "self_hosted",
                 "models": [
-                    {"id": "self_hosted/qwen2.5-coder", "providerModel": "qwen2.5-coder", "streaming": True, "tools": True},
+                    {
+                        "id": "self_hosted/qwen2.5-coder",
+                        "providerModel": "qwen2.5-coder",
+                        "streaming": True,
+                        "tools": True,
+                    },
                 ],
             },
             {
                 "id": "test",
                 "type": "saas",
                 "models": [
-                    {"id": "test/model-1", "providerModel": "test-model-1", "streaming": True, "tools": True, "json": True},
-                    {"id": "test/expensive-model", "providerModel": "test-expensive", "streaming": True, "tools": True},
-                    {"id": "test/vision-model", "providerModel": "test-vision", "streaming": True, "vision": True},
-                    {"id": "test/premium-model", "providerModel": "test-premium", "streaming": True},
-                    {"id": "test/disabled-model", "providerModel": "test-disabled", "streaming": True},
+                    {
+                        "id": "test/model-1",
+                        "providerModel": "test-model-1",
+                        "streaming": True,
+                        "tools": True,
+                        "json": True,
+                    },
+                    {
+                        "id": "test/expensive-model",
+                        "providerModel": "test-expensive",
+                        "streaming": True,
+                        "tools": True,
+                    },
+                    {
+                        "id": "test/vision-model",
+                        "providerModel": "test-vision",
+                        "streaming": True,
+                        "vision": True,
+                    },
+                    {
+                        "id": "test/premium-model",
+                        "providerModel": "test-premium",
+                        "streaming": True,
+                    },
+                    {
+                        "id": "test/disabled-model",
+                        "providerModel": "test-disabled",
+                        "streaming": True,
+                    },
                 ],
             },
         ],
@@ -253,19 +338,31 @@ def _minimal_legacy_registry() -> dict:
             {
                 "id": "navi/intelligence",
                 "label": "NAVI Intelligence",
-                "candidateModelIds": ["openai/gpt-5.2", "anthropic/claude-sonnet-4", "openai/gpt-4o"],
+                "candidateModelIds": [
+                    "openai/gpt-5.2",
+                    "anthropic/claude-sonnet-4",
+                    "openai/gpt-4o",
+                ],
                 "policy": {"strictPrivate": False},
             },
             {
                 "id": "navi/fast",
                 "label": "NAVI Fast",
-                "candidateModelIds": ["openai/gpt-5-mini", "openai/gpt-4o-mini", "groq/llama-3.3-70b-versatile"],
+                "candidateModelIds": [
+                    "openai/gpt-5-mini",
+                    "openai/gpt-4o-mini",
+                    "groq/llama-3.3-70b-versatile",
+                ],
                 "policy": {"strictPrivate": False},
             },
             {
                 "id": "navi/deep",
                 "label": "NAVI Deep",
-                "candidateModelIds": ["anthropic/claude-opus-4", "openai/o3", "google/gemini-2.5-pro"],
+                "candidateModelIds": [
+                    "anthropic/claude-opus-4",
+                    "openai/o3",
+                    "google/gemini-2.5-pro",
+                ],
                 "policy": {"strictPrivate": False},
             },
             {
@@ -281,7 +378,7 @@ def _minimal_legacy_registry() -> dict:
                 "policy": {
                     "requiredCapabilities": ["tool-use"],
                     "maxCostUSD": 0.01,
-                    "strictPrivate": False
+                    "strictPrivate": False,
                 },
             },
         ],
@@ -315,6 +412,7 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     # Monkeypatch "test" provider into credential keys (test-only, not in production)
     from backend.services import model_router
+
     original_keys = model_router._PROVIDER_CREDENTIAL_KEYS.copy()
     model_router._PROVIDER_CREDENTIAL_KEYS["test"] = ("TEST_API_KEY",)
 
@@ -322,6 +420,7 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     def restore_keys():
         model_router._PROVIDER_CREDENTIAL_KEYS.clear()
         model_router._PROVIDER_CREDENTIAL_KEYS.update(original_keys)
+
     monkeypatch.undo = restore_keys
 
     # Write legacy registry to temp
@@ -341,8 +440,15 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "provider": "openai",
                 "enabled": True,
                 "capabilities": ["chat", "tool-use", "json", "vision", "streaming"],
-                "pricing": {"currency": "USD", "inputPer1KTokens": 0.0025, "outputPer1KTokens": 0.01},
-                "governance": {"tier": "standard", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "pricing": {
+                    "currency": "USD",
+                    "inputPer1KTokens": 0.0025,
+                    "outputPer1KTokens": 0.01,
+                },
+                "governance": {
+                    "tier": "standard",
+                    "allowedEnvironments": ["dev", "staging", "prod"],
+                },
                 "limits": {"maxInputTokens": 128000, "maxOutputTokens": 16384},
                 "displayName": "GPT-4o",
                 "productionApproved": True,
@@ -351,9 +457,23 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "id": "openai/gpt-5.2",
                 "provider": "openai",
                 "enabled": True,
-                "capabilities": ["chat", "tool-use", "json", "vision", "streaming", "long-context"],
-                "pricing": {"currency": "USD", "inputPer1KTokens": 0.00175, "outputPer1KTokens": 0.014},
-                "governance": {"tier": "premium", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "capabilities": [
+                    "chat",
+                    "tool-use",
+                    "json",
+                    "vision",
+                    "streaming",
+                    "long-context",
+                ],
+                "pricing": {
+                    "currency": "USD",
+                    "inputPer1KTokens": 0.00175,
+                    "outputPer1KTokens": 0.014,
+                },
+                "governance": {
+                    "tier": "premium",
+                    "allowedEnvironments": ["dev", "staging", "prod"],
+                },
                 "limits": {"maxInputTokens": 128000, "maxOutputTokens": 16384},
                 "displayName": "GPT-5.2",
                 "productionApproved": True,
@@ -363,8 +483,15 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "provider": "ollama",
                 "enabled": True,
                 "capabilities": ["chat", "streaming"],
-                "pricing": {"currency": "USD", "inputPer1KTokens": 0.0, "outputPer1KTokens": 0.0},
-                "governance": {"tier": "budget", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "pricing": {
+                    "currency": "USD",
+                    "inputPer1KTokens": 0.0,
+                    "outputPer1KTokens": 0.0,
+                },
+                "governance": {
+                    "tier": "budget",
+                    "allowedEnvironments": ["dev", "staging", "prod"],
+                },
                 "limits": {"maxInputTokens": 8192, "maxOutputTokens": 2048},
                 "displayName": "Llama 3.2 (Ollama)",
                 "productionApproved": True,
@@ -374,8 +501,15 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "provider": "self_hosted",
                 "enabled": True,
                 "capabilities": ["chat", "tool-use", "streaming"],
-                "pricing": {"currency": "USD", "inputPer1KTokens": 0.0, "outputPer1KTokens": 0.0},
-                "governance": {"tier": "standard", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "pricing": {
+                    "currency": "USD",
+                    "inputPer1KTokens": 0.0,
+                    "outputPer1KTokens": 0.0,
+                },
+                "governance": {
+                    "tier": "standard",
+                    "allowedEnvironments": ["dev", "staging", "prod"],
+                },
                 "limits": {"maxInputTokens": 8192, "maxOutputTokens": 2048},
                 "displayName": "Qwen 2.5 Coder (Self-hosted)",
                 "productionApproved": True,
@@ -386,8 +520,15 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "provider": "test",
                 "enabled": True,
                 "capabilities": ["chat", "tool-use", "json", "streaming"],
-                "pricing": {"currency": "USD", "inputPer1KTokens": 0.001, "outputPer1KTokens": 0.002},
-                "governance": {"tier": "budget", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "pricing": {
+                    "currency": "USD",
+                    "inputPer1KTokens": 0.001,
+                    "outputPer1KTokens": 0.002,
+                },
+                "governance": {
+                    "tier": "budget",
+                    "allowedEnvironments": ["dev", "staging", "prod"],
+                },
                 "limits": {"maxInputTokens": 8192, "maxOutputTokens": 2048},
                 "displayName": "Test Model 1",
                 "productionApproved": True,
@@ -397,8 +538,15 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "provider": "test",
                 "enabled": True,
                 "capabilities": ["chat", "tool-use", "streaming"],
-                "pricing": {"currency": "USD", "inputPer1KTokens": 0.05, "outputPer1KTokens": 0.1},
-                "governance": {"tier": "premium", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "pricing": {
+                    "currency": "USD",
+                    "inputPer1KTokens": 0.05,
+                    "outputPer1KTokens": 0.1,
+                },
+                "governance": {
+                    "tier": "premium",
+                    "allowedEnvironments": ["dev", "staging", "prod"],
+                },
                 "limits": {"maxInputTokens": 32768, "maxOutputTokens": 8192},
                 "displayName": "Expensive Test Model",
                 "productionApproved": True,
@@ -408,8 +556,15 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "provider": "test",
                 "enabled": True,
                 "capabilities": ["chat", "vision", "streaming"],
-                "pricing": {"currency": "USD", "inputPer1KTokens": 0.003, "outputPer1KTokens": 0.012},
-                "governance": {"tier": "standard", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "pricing": {
+                    "currency": "USD",
+                    "inputPer1KTokens": 0.003,
+                    "outputPer1KTokens": 0.012,
+                },
+                "governance": {
+                    "tier": "standard",
+                    "allowedEnvironments": ["dev", "staging", "prod"],
+                },
                 "limits": {"maxInputTokens": 16384, "maxOutputTokens": 4096},
                 "displayName": "Vision Test Model",
                 "productionApproved": True,
@@ -419,8 +574,15 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "provider": "test",
                 "enabled": True,
                 "capabilities": ["chat", "tool-use", "json", "streaming"],
-                "pricing": {"currency": "USD", "inputPer1KTokens": 0.01, "outputPer1KTokens": 0.03},
-                "governance": {"tier": "premium", "allowedEnvironments": ["dev", "staging", "prod"]},
+                "pricing": {
+                    "currency": "USD",
+                    "inputPer1KTokens": 0.01,
+                    "outputPer1KTokens": 0.03,
+                },
+                "governance": {
+                    "tier": "premium",
+                    "allowedEnvironments": ["dev", "staging", "prod"],
+                },
                 "limits": {"maxInputTokens": 32768, "maxOutputTokens": 8192},
                 "displayName": "Premium Test Model",
                 "productionApproved": True,
@@ -430,7 +592,11 @@ def router_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "provider": "test",
                 "enabled": False,  # Explicitly disabled for testing factsEnabled
                 "capabilities": ["chat"],
-                "pricing": {"currency": "USD", "inputPer1KTokens": 0.001, "outputPer1KTokens": 0.002},
+                "pricing": {
+                    "currency": "USD",
+                    "inputPer1KTokens": 0.001,
+                    "outputPer1KTokens": 0.002,
+                },
                 "governance": {"tier": "budget", "allowedEnvironments": ["dev"]},
                 "limits": {"maxInputTokens": 4096, "maxOutputTokens": 1024},
                 "displayName": "Disabled Test Model",

@@ -47,6 +47,24 @@ jobs:
             fi
           fi
 
+  typescript-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: TypeScript tests
+        run: npm test
+      - name: Validate model registries
+        run: |
+          npm run validate:registry
+          APP_ENV=staging MODEL_REGISTRY_PATH=shared/model-registry-staging.json npm run validate:registry
+          APP_ENV=prod MODEL_REGISTRY_PATH=shared/model-registry-prod.json npm run validate:registry
+
   unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -280,7 +298,7 @@ jobs:
           kill $MAIN_PID 2>/dev/null || true
 
   e2e-smoke:
-    needs: [lint, unit-tests, distributed-lock-tests, integration-tests]
+    needs: [lint, typescript-tests, unit-tests, distributed-lock-tests, integration-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -351,7 +369,7 @@ jobs:
 
   e2e-gate:
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
-    needs: [lint, unit-tests, integration-tests]
+    needs: [lint, typescript-tests, unit-tests, integration-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 90
     services:

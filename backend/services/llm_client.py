@@ -205,6 +205,42 @@ class OpenAIAdapter(BaseLLMAdapter):
         except Exception:
             return response.text
 
+    @staticmethod
+    def _summarize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Summarize request payload without exposing sensitive content."""
+        if not isinstance(payload, dict):
+            return {"payload_type": type(payload).__name__}
+
+        messages = payload.get("messages", [])
+        message_count = len(messages) if isinstance(messages, list) else 0
+
+        summary = {
+            "payload_keys": sorted(payload.keys()),
+            "model": payload.get("model"),
+            "message_count": message_count,
+            "stream": payload.get("stream"),
+        }
+        if "max_tokens" in payload:
+            summary["max_tokens"] = payload["max_tokens"]
+        if "temperature" in payload:
+            summary["temperature"] = payload["temperature"]
+        return summary
+
+    @staticmethod
+    def _summarize_error(error_body: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+        """Summarize error response without exposing sensitive details."""
+        if isinstance(error_body, dict):
+            # Extract only high-level error info, not detailed messages that may contain user data
+            error_data = error_body.get("error", {})
+            if isinstance(error_data, dict):
+                return {
+                    "error_type": error_data.get("type"),
+                    "error_code": error_data.get("code"),
+                }
+            return {"error_keys": sorted(error_body.keys())}
+        # For string errors, only log type and length
+        return {"error_type": "string", "length": len(str(error_body))}
+
     def _log_openai_400_debug(
         self,
         *,
@@ -215,13 +251,13 @@ class OpenAIAdapter(BaseLLMAdapter):
         error_body: Union[Dict[str, Any], str],
     ) -> None:
         logger.error(
-            "[LLMClient] OpenAI-compatible 400 debug | provider=%s model=%s endpoint=%s stream=%s payload=%s error.body=%s",
+            "[LLMClient] OpenAI-compatible 400 debug | provider=%s model=%s endpoint=%s stream=%s payload_summary=%s error_summary=%s",
             self.config.provider.value,
             model,
             endpoint,
             stream,
-            payload,
-            error_body,
+            self._summarize_payload(payload),
+            self._summarize_error(error_body),
         )
 
     async def complete(self, messages: List[LLMMessage]) -> LLMResponse:

@@ -23,14 +23,14 @@ function getRegistryPath(env: RegistryEnvironment): string {
   const direct = process.env.MODEL_REGISTRY_PATH;
   if (direct && direct.trim().length > 0) return direct;
 
-  // Prefer env-specific registry, then dev registry, then legacy unified registry.
+  // Prefer env-specific registry, then fallback to dev registry.
   const preferred =
     env === "dev"
       ? "shared/model-registry-dev.json"
       : env === "staging"
         ? "shared/model-registry-staging.json"
         : "shared/model-registry-prod.json";
-  const fallbacks = ["shared/model-registry-dev.json", "shared/model-registry.json"];
+  const fallbacks = ["shared/model-registry-dev.json"];
   for (const candidate of [preferred, ...fallbacks]) {
     if (fs.existsSync(resolveRepoPath(candidate))) return candidate;
   }

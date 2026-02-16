@@ -53,7 +53,8 @@ async def init_budget_manager() -> Optional[BudgetManager]:
         _BUDGET_MANAGER = None
         return None
 
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    # Budget can use separate Redis instance for testing/isolation
+    redis_url = os.getenv("BUDGET_REDIS_URL") or os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     try:
         r = redis.from_url(redis_url, decode_responses=False)

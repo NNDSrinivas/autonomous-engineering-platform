@@ -174,6 +174,17 @@ def _detect_provider(text: str) -> Optional[Provider]:
     ):
         return Provider.BITBUCKET
 
+    # -------------------------------------------------------------------------
+    # CI/CD & Deployment
+    # -------------------------------------------------------------------------
+
+    # GitHub Actions keywords (check before general GitHub)
+    if _contains_any(
+        text,
+        ("github action", "github actions", "workflow run", "action run", "gh action"),
+    ):
+        return Provider.GITHUB_ACTIONS
+
     # GitHub keywords
     if _contains_any(
         text,
@@ -188,17 +199,6 @@ def _detect_provider(text: str) -> Optional[Provider]:
         ),
     ):
         return Provider.GITHUB
-
-    # -------------------------------------------------------------------------
-    # CI/CD & Deployment
-    # -------------------------------------------------------------------------
-
-    # GitHub Actions keywords (check before general GitHub)
-    if _contains_any(
-        text,
-        ("github action", "github actions", "workflow run", "action run", "gh action"),
-    ):
-        return Provider.GITHUB_ACTIONS
 
     # CircleCI keywords
     if _contains_any(

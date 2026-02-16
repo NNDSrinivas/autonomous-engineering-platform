@@ -49,6 +49,7 @@ _PROVIDER_CREDENTIAL_KEYS: Dict[str, tuple[str, ...]] = {
         "SELF_HOSTED_LLM_URL",
         "VLLM_BASE_URL",
     ),
+    "test": ("TEST_API_KEY",),  # For testing
 }
 
 _ALIAS_TO_MODEL_ID = {
@@ -83,6 +84,17 @@ _PROVIDER_HINT_TO_ID = {
     "self_hosted": "self_hosted",
     "self-hosted": "self_hosted",
     "selfhosted": "self_hosted",
+}
+
+_RUNTIME_ENV_ALIASES = {
+    "prod": "prod",
+    "production": "prod",
+    "staging": "staging",
+    "stage": "staging",
+    "dev": "dev",
+    "development": "dev",
+    "test": "dev",
+    "testing": "dev",
 }
 
 
@@ -141,7 +153,7 @@ class ModelRouter:
         )
 
         # Phase 2: Load runtime environment and Phase 1 facts
-        self.runtime_env = os.getenv("APP_ENV", "dev").lower()
+        self.runtime_env = self._normalize_runtime_env(os.getenv("APP_ENV", "dev"))
 
         self.registry = self._load_registry()
         self.defaults = self.registry.get("defaults", {})
@@ -218,14 +230,28 @@ class ModelRouter:
 
     def _load_model_facts(self, repo_root: Path) -> Dict[str, Dict[str, Any]]:
         """Load Phase 1 flat registry and return model facts keyed by model ID."""
-        # Determine registry path based on runtime environment
-        env = self.runtime_env  # Set in __init__ from APP_ENV
-        registry_filename = f"model-registry-{env}.json"
-        registry_path = repo_root / "shared" / registry_filename
+        env = self.runtime_env
+        direct_registry_path = (os.getenv("MODEL_REGISTRY_PATH") or "").strip()
+        if direct_registry_path:
+            registry_path = Path(direct_registry_path)
+            if not registry_path.is_absolute():
+                registry_path = repo_root / registry_path
+            if not registry_path.exists():
+                raise ValueError(
+                    f"ModelRouter misconfigured: MODEL_REGISTRY_PATH does not exist: {registry_path}"
+                )
+        else:
+            # Determine registry path based on runtime environment.
+            registry_filename = f"model-registry-{env}.json"
+            registry_path = repo_root / "shared" / registry_filename
 
-        if not registry_path.exists():
-            # Fallback to dev registry if env-specific not found
-            registry_path = repo_root / "shared" / "model-registry-dev.json"
+            if not registry_path.exists():
+                # Fallback to dev registry only for dev-like environments.
+                if env != "dev":
+                    raise ValueError(
+                        f"ModelRouter misconfigured: missing facts registry '{registry_filename}' for APP_ENV={env}"
+                    )
+                registry_path = repo_root / "shared" / "model-registry-dev.json"
 
         with open(registry_path, "r", encoding="utf-8") as fh:
             registry_data = json.load(fh)
@@ -860,6 +886,13 @@ class ModelRouter:
             "reason": None,
             "evaluation": evaluation,
         }
+
+    @staticmethod
+    def _normalize_runtime_env(raw_env: str) -> str:
+        normalized = (raw_env or "").strip().lower()
+        if not normalized:
+            return "dev"
+        return _RUNTIME_ENV_ALIASES.get(normalized, "dev")
 
     @staticmethod
     def _normalize_vendor_id(raw: str) -> str:

@@ -7,7 +7,7 @@ Basic validation that the classifier works correctly.
 
 import pytest
 from backend.agent.intent_classifier import IntentClassifier
-from backend.agent.intent_schema import NaviIntent, IntentFamily, IntentKind
+from backend.agent.intent_schema import NaviIntent, IntentFamily, IntentKind, Provider
 
 
 class TestIntentClassifier:
@@ -93,6 +93,12 @@ class TestIntentClassifier:
         intent = self.classifier.classify(message)
         assert intent.family == IntentFamily.ENGINEERING
         assert intent.kind == IntentKind.PROD_READINESS_AUDIT
+
+    def test_github_actions_provider_detected_before_generic_github(self):
+        """Workflow requests should route to github_actions provider, not generic github."""
+        message = "Please rerun this GitHub Actions workflow and post the result."
+        intent = self.classifier.classify(message)
+        assert intent.slots.get("provider") == Provider.GITHUB_ACTIONS.value
 
     def test_metadata_influence(self):
         """Test that metadata influences classification."""

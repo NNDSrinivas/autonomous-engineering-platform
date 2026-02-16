@@ -151,3 +151,8 @@ def test_openrouter_model_routes_with_openrouter_provider(
     assert decision.provider == "openrouter"
     assert decision.model == "anthropic/claude-3.5-sonnet"
     assert decision.was_fallback is False
+
+
+def test_runtime_env_alias_maps_production_to_prod() -> None:
+    assert ModelRouter._normalize_runtime_env("production") == "prod"
+    assert ModelRouter._normalize_runtime_env("PROD") == "prod"

@@ -48,6 +48,15 @@ async def on_startup():
 
     print("🎉 Backend startup complete!")
     # place for warmups (e.g., compile regex, prime caches) if needed
+
+    # Budget manager init (non-blocking)
+    try:
+        from ...services.budget_manager_singleton import init_budget_manager
+        await init_budget_manager()
+        print("✅ Budget manager init attempted")
+    except Exception as e:
+        print(f"⚠️ Budget manager init skipped: {e}")
+
     return
 
 
@@ -70,4 +79,11 @@ async def on_shutdown():
             await r.close()
     except Exception:
         # Ignore Redis cleanup errors during shutdown - non-critical
+        pass
+
+    # Budget manager cleanup
+    try:
+        from ...services.budget_manager_singleton import close_budget_manager
+        await close_budget_manager()
+    except Exception:
         pass

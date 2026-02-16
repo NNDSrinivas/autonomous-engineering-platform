@@ -20,6 +20,14 @@ from backend.telemetry.metrics import (
 
 logger = logging.getLogger(__name__)
 
+# Allowlist for error_type to prevent unbounded Prometheus label cardinality
+_ALLOWED_ERROR_TYPES = {"http", "timeout", "network", "rate_limit", "auth", "unknown"}
+
+
+def _normalize_error_type(error_type: str) -> str:
+    """Normalize error type to allowlist to prevent metric cardinality explosion."""
+    return error_type if error_type in _ALLOWED_ERROR_TYPES else "unknown"
+
 
 class ProviderHealthTracker:
     """
@@ -96,17 +104,29 @@ class ProviderHealthTracker:
         """
         try:
             breaker = self._get_breaker(provider_id)
+            # Get previous state to detect transitions
+            prev_state = breaker.get_state()
             new_state = breaker.record_failure()
+
+            # Normalize error_type to prevent unbounded label cardinality
+            normalized_error = _normalize_error_type(error_type)
 
             # Update Prometheus metrics
             PROVIDER_CALLS.labels(provider=provider_id, status="error").inc()
-            PROVIDER_ERRORS.labels(provider=provider_id, error_type=error_type).inc()
+            PROVIDER_ERRORS.labels(provider=provider_id, error_type=normalized_error).inc()
             self._update_circuit_state_metric(provider_id, new_state)
 
-            logger.warning(
-                f"Provider {provider_id} failure (type={error_type}), "
-                f"circuit={new_state.name}"
-            )
+            # Log only on state transitions to reduce noise
+            if prev_state != new_state:
+                logger.warning(
+                    f"Provider {provider_id} circuit transition: "
+                    f"{prev_state.name} → {new_state.name} (error_type={normalized_error})"
+                )
+            else:
+                logger.debug(
+                    f"Provider {provider_id} failure (type={normalized_error}), "
+                    f"circuit={new_state.name}"
+                )
 
         except Exception as e:
             logger.error(
@@ -117,6 +137,8 @@ class ProviderHealthTracker:
         """Record provider timeout (treated as failure)"""
         try:
             breaker = self._get_breaker(provider_id)
+            # Get previous state to detect transitions
+            prev_state = breaker.get_state()
             new_state = breaker.record_timeout()
 
             # Update Prometheus metrics
@@ -124,9 +146,16 @@ class ProviderHealthTracker:
             PROVIDER_ERRORS.labels(provider=provider_id, error_type="timeout").inc()
             self._update_circuit_state_metric(provider_id, new_state)
 
-            logger.warning(
-                f"Provider {provider_id} timeout, circuit={new_state.name}"
-            )
+            # Log only on state transitions to reduce noise
+            if prev_state != new_state:
+                logger.warning(
+                    f"Provider {provider_id} circuit transition: "
+                    f"{prev_state.name} → {new_state.name} (timeout)"
+                )
+            else:
+                logger.debug(
+                    f"Provider {provider_id} timeout, circuit={new_state.name}"
+                )
 
         except Exception as e:
             logger.error(
@@ -143,6 +172,9 @@ class ProviderHealthTracker:
         try:
             breaker = self._get_breaker(provider_id)
             state = breaker.get_state()
+
+            # Update gauge to reflect time-based transitions (OPEN → HALF_OPEN)
+            self._update_circuit_state_metric(provider_id, state)
 
             # HALF_OPEN allows single probe request, so return False
             return state == CircuitState.OPEN

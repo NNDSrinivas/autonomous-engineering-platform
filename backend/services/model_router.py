@@ -292,9 +292,13 @@ class ModelRouter:
             from backend.core.config import settings
             from backend.services.provider_health import ProviderHealthTracker
 
-            # Get or create Redis client
+            # Get or create Redis client with explicit timeouts for graceful degradation
             redis_client = redis.from_url(
-                settings.redis_url, encoding="utf-8", decode_responses=True
+                settings.redis_url,
+                encoding="utf-8",
+                decode_responses=True,
+                socket_connect_timeout=1.0,  # 1s connect timeout
+                socket_timeout=1.0,  # 1s operation timeout
             )
 
             # Validate Redis connectivity before creating tracker

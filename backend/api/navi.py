@@ -6222,11 +6222,11 @@ To get started, I need to analyze your codebase and create a detailed implementa
         logger.debug("Continuing to agent loop")
 
         # Unified model routing for non-streaming /chat fallback path.
-        # This keeps behavior aligned with /stream, /stream/v2 and /autonomous.
+        # Use endpoint="chat" to only route to providers in llm_providers.yaml (openai, anthropic).
         try:
             routing_decision = get_model_router().route(
                 requested_model_or_mode_id=request.model,
-                endpoint="stream",
+                endpoint="chat",
                 requested_provider=request.provider,
             )
         except ModelRoutingError as exc:

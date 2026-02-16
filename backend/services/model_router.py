@@ -35,6 +35,11 @@ _ENDPOINT_PROVIDER_SUPPORT = {
         "ollama",
         "self_hosted",
     },
+    # Non-streaming /chat endpoint - only routes to providers in llm_providers.yaml
+    "chat": {
+        "openai",
+        "anthropic",
+    },
 }
 
 _PROVIDER_CREDENTIAL_KEYS: Dict[str, tuple[str, ...]] = {
@@ -48,6 +53,7 @@ _PROVIDER_CREDENTIAL_KEYS: Dict[str, tuple[str, ...]] = {
         "SELF_HOSTED_API_BASE_URL",
         "SELF_HOSTED_LLM_URL",
         "VLLM_BASE_URL",
+        "SELF_HOSTED_API_KEY",  # Supports default localhost + API key
     ),
     # Test-only provider used in unit fixtures.
     "test": ("TEST_API_KEY",),

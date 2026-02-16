@@ -18,10 +18,10 @@ The memory graph enables NAVI to understand connections across:
 import os
 import logging
 from typing import List, Dict, Any, Optional, Tuple
-import tiktoken
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from backend.core.tokenizer import get_tokenizer
 from backend.models.memory_graph import MemoryNode, MemoryChunk, MemoryEdge
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class MemoryGraphService:
         self.org_id = org_id
         self.user_id = user_id
         self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.encoder = tiktoken.get_encoding("cl100k_base")
+        self.encoder = get_tokenizer()
 
         # Configuration
         self.chunk_size = 200  # tokens per chunk

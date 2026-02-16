@@ -17,6 +17,173 @@ NAVI has strong technical foundations and is **production-ready for pilot deploy
 - ✅ **VSCode Extension Build Automation**: Automated webview build integrated into compile process (Feb 13, 2026)
 - ⚠️ **Technical debt identified**: Provider code path duplication (Feb 10, 2026) - Documented for future refactoring (P2)
 
+## Go-Live Checklist (Pilot vs Enterprise)
+
+### Scope
+- Pilot = first 10 paying orgs under controlled rollout.
+- Enterprise = broad production rollout across orgs/workspaces.
+
+### Security + Auth
+- Exit criteria (Pilot):
+  - JWT auth enforced in production (`JWT_ENABLED=true`).
+  - VS Code extension attaches `Authorization` header for chat/stream/jobs/events.
+  - 401/403 surfaces explicit Sign-in CTA in webview (no silent timeout loops).
+  - Connector/provider tokens encrypted at rest (Fernet/KMS-backed path).
+- Exit criteria (Enterprise):
+  - Key rotation policy + documented break-glass procedure.
+  - Security review sign-off for auth, token storage, and approval gates.
+
+### Reliability + Runtime
+- Exit criteria (Pilot):
+  - Background jobs enabled for long tasks; resume/reattach/cancel verified.
+  - Distributed lock enforcement fail-closed (Redis outage => safe 503).
+  - Duplicate-runner tests passing (single-process + 2-worker uvicorn harness).
+- Exit criteria (Enterprise):
+  - Staging soak test 24h+ with no P0/P1 incidents.
+  - Chaos/rollback drill completed and documented.
+
+### Observability + Operations
+- Exit criteria (Pilot):
+  - Correlated run/job logging in backend events.
+  - Error/timeout/auth-failure alerts connected to on-call channel.
+  - Runbook for stream failures, job resume, Redis lock outage, auth outage.
+- Exit criteria (Enterprise):
+  - SLO dashboards (availability, latency, job completion rate, error budget).
+  - Pager/on-call rotation active with escalation matrix.
+
+### Cost + Quotas
+- Exit criteria (Pilot):
+  - Org-level rate limiting enabled for API and autonomous runs.
+  - LLM cost metrics visible per org/project.
+- Exit criteria (Enterprise):
+  - Hard quota ceilings + alert thresholds + auto-throttle policy.
+  - Monthly cost review + anomaly alerts.
+
+### Deployment + Rollback
+- Exit criteria (Pilot):
+  - Staging deployment pass: chat, stream, jobs, approvals.
+  - One-click rollback validated in staging.
+- Exit criteria (Enterprise):
+  - Blue/green or canary strategy with documented rollback ownership.
+  - Post-deploy verification checklist automated in CI/CD.
+
+### Final Go/No-Go Rules
+- Pilot Go-Live:
+  - All security/reliability pilot criteria green.
+  - No open P0/P1 issues.
+  - On-call + rollback owner assigned for launch week.
+- Enterprise Go-Live:
+  - Pilot stable for at least 2 weeks with acceptable error budget.
+  - Enterprise criteria green across security, reliability, observability, and quotas.
+
+## Background Job + Runtime Hardening (Feb 15, 2026)
+
+## PROD_READINESS_AUDIT Workflow (Feb 15, 2026)
+
+### Routing behavior
+- Prod-readiness assessment prompts (for example: "ready for prod?", "go live checklist", "deployment readiness") now default to deterministic audit-plan mode.
+- Explicit execution prompts (for example: "run these checks now") route to autonomous/background-job execution path.
+
+### Plan output contract
+- NAVI returns a one-page audit plan grouped by:
+  - build/test
+  - runtime smoke
+  - env/config completeness
+  - security/secrets
+  - observability/ops
+  - deployment/rollback
+- Each section includes:
+  - concrete commands
+  - pass criteria
+  - expected evidence location
+- Response always includes a clear approval prompt to execute checks.
+
+### Execution contract
+- Multi-step audit execution uses the background-job system with stream replay and approvals.
+- Human-gate + command consent flows remain enforced.
+- Cancel requests terminate subprocess trees (process-group TERM/KILL path).
+
+### Implemented
+- ✅ Added long-running job API surface for autonomous tasks:
+  - `POST /api/jobs`
+  - `POST /api/jobs/{job_id}/start`
+  - `POST /api/jobs/{job_id}/resume`
+  - `GET /api/jobs/{job_id}`
+  - `GET /api/jobs/{job_id}/events` (SSE with replay cursor)
+  - `POST /api/jobs/{job_id}/cancel`
+  - `POST /api/jobs/{job_id}/approve`
+- ✅ Added ownership/auth enforcement for job operations (`user_id` required at creation; owned-job checks on read/start/resume/events/cancel/approve).
+- ✅ Added explicit job state transition enforcement for queued/running/paused/completed/failed/canceled flows.
+- ✅ Added replayable event model with sequence cursor + event/payload truncation bounds to avoid unbounded growth.
+- ✅ Added Redis-backed durability for job record/events (with in-process execution control).
+
+### Locking + Duplicate Runner Prevention
+- ✅ Implemented Redis runner lock with atomic Lua scripts:
+  - Compare-and-renew (`PEXPIRE`) only if token matches.
+  - Compare-and-release (`DEL`) only if token matches.
+- ✅ Added runner lock heartbeat loop during execution.
+- ✅ Added lock-loss handling (`lock_renew_failed`, `runner_lock_lost`) with cancel request to prevent split-brain execution.
+- ✅ Added deterministic start contract (`started: true|false` + reason semantics) and event-level verification (`job_started` emitted once per run).
+
+### Cancellation Reliability
+- ✅ Implemented real command cancellation in autonomous tool execution:
+  - subprocess launched with `start_new_session=True` (POSIX),
+  - terminate via process-group `SIGTERM`, escalate to `SIGKILL`,
+  - concurrent stdout/stderr draining to avoid pipe deadlocks.
+- ✅ Job loop cancellation now emits terminal cancellation state/event.
+
+### Redis Failure Policy (Safety Fix)
+- ✅ Updated runtime behavior to **fail closed by default** when distributed lock backend is configured but unavailable.
+- ✅ `start`/`resume` now surface `503` for distributed lock unavailability (instead of silently degrading in production-like mode).
+- ✅ Optional explicit degrade flag supported for controlled environments only:
+  - `AEP_ALLOW_DISTRIBUTED_DEGRADE=true`
+- ✅ Local/dev behavior remains supported when Redis is not configured at startup.
+
+### Test Coverage Added
+- ✅ `backend/tests/test_job_manager_locking.py`
+  - lock ownership semantics (unit)
+  - job creation ownership requirement
+- ✅ `backend/tests/test_job_manager_locking_redis.py`
+  - real Redis integration: acquire/renew/release/token mismatch/expiry behavior
+  - CI guard: fail if Redis is required but unavailable
+- ✅ `backend/tests/test_autonomous_cancel.py`
+  - verifies process-group termination (including child-process tree)
+  - verifies command cancel path returns cancel exit semantics
+- ✅ `backend/tests/test_job_duplicate_runner.py`
+  - concurrent `start` race: exactly one `started=true`
+  - third `start` while running returns `started=false`
+  - exactly one `job_started` event
+- ✅ `backend/tests/test_job_uvicorn_two_workers.py`
+  - true process-boundary race using `uvicorn --workers 2`
+  - validates exactly one `started=true` across concurrent `/start`
+  - validates exactly one `job_started` persisted in Redis event log
+  - requires Redis; skipped locally if unavailable, fails in CI when Redis is required
+
+### Current Validation Snapshot
+- ✅ Targeted hardening suite: `5 passed, 2 skipped` (Redis-dependent tests skip locally when Redis is unavailable).
+
+### PR #67 Follow-Up Fixes (Feb 15, 2026)
+- ✅ VS Code extension auth bootstrap now rehydrates live token/user from secret storage and attaches `Authorization` headers to chat/stream/jobs/events/memory endpoints.
+- ✅ 401/403 handling now emits explicit `auth.required` events in the extension and shows a Sign-in CTA in webview instead of hanging on long stream timeouts.
+- ✅ Human-gate pause payload now persists a top-level `gate_id` (in addition to `gate`) for deterministic approval matching.
+- ✅ Approval matching now supports nested gate IDs from legacy payloads (`pending_approval.gate.id` / `pending_approval.summary.id`) to avoid false `409` responses.
+- ✅ `/api/jobs/{job_id}/approve` now propagates resume failures consistently:
+  - returns `503` when distributed lock backend is unavailable,
+  - emits `job_resume_failed`,
+  - returns explicit `started: true|false` in approval responses.
+- ✅ Added approval regression tests in `backend/tests/test_job_approve_gate.py`:
+  - nested human-gate ID acceptance,
+  - distributed-lock resume failure surfacing.
+- ✅ Fixed VS Code webview runtime crash (`makeLinksClickable is not defined`) by promoting linkification helper to shared component scope in `extensions/vscode-aep/webview/src/components/navi/NaviChatPanel.tsx`.
+- ✅ Extension build revalidated: `npm run compile --prefix extensions/vscode-aep`.
+
+### CI Enforcement
+- ✅ GitHub Actions now includes a dedicated `distributed-lock-tests` job with Redis service.
+- ✅ This job runs:
+  - `backend/tests/test_job_manager_locking_redis.py`
+  - `backend/tests/test_job_uvicorn_two_workers.py`
+- ✅ CI sets `CI=true` and Redis URLs, so Redis-dependent lock tests fail if Redis is unavailable (no silent pass-through).
+
 ## Readiness Rating
 - **Pilot production (friendly teams)**: ✅ **READY NOW** (E2E validated, all critical security fixes complete)
 - **Enterprise production**: ⚠️ **2-3 weeks (target Feb 26, 2026)** (needs monitoring dashboards, SLOs, incident runbooks)
@@ -3137,5 +3304,50 @@ Current: ✅ Script creates frames
 
 ---
 
-**Last Updated:** February 9, 2026
+## Unified NAVI Model Registry + ModelRouter (V1) — Implementation Notes
+
+### Scope implemented
+- Added single shared registry at `shared/model-registry.json`.
+- Added validator at `scripts/validate_model_registry.py`.
+- Added backend router at `backend/services/model_router.py`.
+- Unified routing now used by:
+  - `/api/navi/chat/stream`
+  - `/api/navi/chat/stream/v2`
+  - `/api/navi/chat/autonomous`
+- Added consistent `router_info` metadata to SSE events:
+  - `requestedModelId`
+  - `effectiveModelId`
+  - `wasFallback`
+  - `fallbackReason`
+  - `provider`
+  - `model`
+  - `requestedModeId`
+- Added strict private mode enforcement (`navi/private`):
+  - only `local` / `self_hosted` providers are eligible
+  - no SaaS fallback
+  - explicit routing error when no private model is configured
+- Added trace logging foundation:
+  - `backend/services/trace_store.py` (append-only JSONL)
+  - `scripts/export_navi_traces.py` (filter/export traces)
+  - emits `routing_decision` and `run_outcome` events
+- Webview now reads model definitions from shared registry via:
+  - `extensions/vscode-aep/webview/src/config/modelRegistry.ts`
+
+### UX changes shipped
+- Default model changed to `navi/intelligence`.
+- Model selector now supports NAVI-first behavior with Advanced vendor access.
+- Added non-blocking fallback warning toast when backend reports fallback.
+- Added Advanced note: `This bypasses NAVI optimization`.
+
+### Tests added
+- `backend/tests/test_model_registry_json.py`
+- `backend/tests/test_model_router.py`
+- `backend/tests/test_navi_model_routing_integration.py`
+
+### Follow-up items (next pass)
+- Extend routing metadata to non-stream `/api/navi/chat` response body for complete parity.
+- Expand endpoint-level integration tests to execute live SSE flows in CI harness.
+- Add provider capability gating from registry capabilities matrix (streaming/tools/vision) beyond provider-level checks.
+
+**Last Updated:** February 13, 2026
 **Next Review:** March 1, 2026 (after first month of customer pilots)

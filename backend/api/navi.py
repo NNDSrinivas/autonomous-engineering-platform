@@ -38,11 +38,12 @@ import time
 from asyncio.subprocess import STDOUT
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal, Tuple, no_type_check
+from uuid import uuid4
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -64,6 +65,18 @@ from backend.agent.intent_schema import (
     NaviIntent,
 )
 from backend.services.git_service import GitService
+from backend.services.model_router import (
+    ModelRoutingError,
+    RoutingDecision,
+    get_model_router,
+)
+from backend.services.trace_store import get_trace_store
+from backend.services.job_manager import (
+    DistributedLockUnavailableError,
+    TERMINAL_STATUSES,
+    get_job_manager,
+)
+from backend.database.session import db_session
 
 # Conversation memory for cross-session persistence
 from backend.services.memory.conversation_memory import ConversationMemoryService
@@ -220,8 +233,26 @@ def _resolve_model(model: Optional[str]) -> str:
     return model  # Return as-is if not an alias
 
 
+def _build_router_info(
+    decision: RoutingDecision,
+    *,
+    mode: Optional[str] = None,
+    task_type: Optional[str] = None,
+    auto_execute: Optional[bool] = None,
+) -> Dict[str, Any]:
+    router_info = decision.to_public_dict()
+    if mode is not None:
+        router_info["mode"] = mode
+    if task_type is not None:
+        router_info["task_type"] = task_type
+    if auto_execute is not None:
+        router_info["auto_execute"] = auto_execute
+    return router_info
+
+
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
 agent_router = APIRouter(prefix="/api/agent", tags=["agent-classify"])
+jobs_router = APIRouter(prefix="/api/jobs", tags=["navi-jobs"])
 
 # Redis client for distributed consent state
 _redis_client: Optional[redis.Redis] = None
@@ -232,10 +263,9 @@ def get_redis_client() -> redis.Redis:
     global _redis_client
     if _redis_client is None:
         from backend.core.config import settings as config_settings
+
         _redis_client = redis.from_url(
-            config_settings.redis_url,
-            encoding="utf-8",
-            decode_responses=True
+            config_settings.redis_url, encoding="utf-8", decode_responses=True
         )
     return _redis_client
 
@@ -268,7 +298,11 @@ def _resolve_user_org_ids_for_memory(
 
     if org_id_int is None and org_id:
         try:
-            org = db.query(Organization).filter(Organization.org_key == str(org_id)).one_or_none()
+            org = (
+                db.query(Organization)
+                .filter(Organization.org_key == str(org_id))
+                .one_or_none()
+            )
             if org:
                 org_id_int = int(org.id)
         except Exception as exc:
@@ -291,7 +325,9 @@ def _resolve_user_org_ids_for_memory(
             query = query.filter(DBUser.org_id == org_id_int)
         db_user = query.one_or_none()
         if db_user:
-            return int(db_user.id), org_id_int if org_id_int is not None else int(db_user.org_id)
+            return int(db_user.id), (
+                org_id_int if org_id_int is not None else int(db_user.org_id)
+            )
     except Exception as exc:
         logger.debug(
             "[NAVI] Unable to resolve user sub '%s' to numeric ID: %s",
@@ -1602,109 +1638,28 @@ async def handle_consent_response(
     Requires authentication to prevent unauthorized consent manipulation.
     """
     try:
-        redis_client = get_redis_client()
         body = await request.json()
-        choice = body.get("choice", "deny")  # 'allow_once', 'allow_always_exact', 'allow_always_type', 'deny', 'alternative'
+        choice = body.get(
+            "choice", "deny"
+        )  # 'allow_once', 'allow_always_exact', 'allow_always_type', 'deny', 'alternative'
         alternative_command = body.get("alternative_command")
 
-        logger.info(
-            f"[NAVI API] 🔐 Consent {consent_id}: decision={choice}"
+        logger.info(f"[NAVI API] 🔐 Consent {consent_id}: decision={choice}")
+
+        current_user_id = str(
+            getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+        )
+        current_org_id = str(
+            getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
         )
 
-        # Validate consent exists in Redis
-        consent_data = await redis_client.get(f"consent:{consent_id}")
-        if not consent_data:
-            logger.warning(
-                f"[NAVI API] Consent {consent_id} not found in Redis (expired or already processed)"
-            )
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "success": False,
-                    "consent_id": consent_id,
-                    "error": "Consent not found or has expired",
-                },
-            )
-
-        consent_record = json.loads(consent_data)
-
-        # Validate user/org ownership to prevent consent hijacking
-        consent_user_id = consent_record.get("user_id")
-        consent_org_id = consent_record.get("org_id")
-
-        # Derive current user/org IDs
-        current_user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None))
-        user_org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None))
-
-        if consent_user_id and consent_user_id != current_user_id:
-            logger.warning(
-                f"[NAVI API] ⚠️ Security: User {current_user_id} attempted to approve consent {consent_id} owned by {consent_user_id}"
-            )
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "success": False,
-                    "consent_id": consent_id,
-                    "error": "Unauthorized: You do not have permission to approve this consent",
-                },
-            )
-
-        if consent_org_id and user_org_id and consent_org_id != user_org_id:
-            logger.warning(
-                f"[NAVI API] ⚠️ Security: Org {user_org_id} attempted to approve consent {consent_id} owned by org {consent_org_id}"
-            )
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "success": False,
-                    "consent_id": consent_id,
-                    "error": "Unauthorized: This consent belongs to a different organization",
-                },
-            )
-
-        # Update consent decision in Redis while preserving ownership metadata.
-        decision = dict(consent_record)
-        decision.update(
-            {
-                "choice": choice,
-                "alternative_command": alternative_command,
-                "pending": False,
-                "responded_at": datetime.now().isoformat(),
-            }
+        return await _apply_consent_decision(
+            consent_id=consent_id,
+            choice=choice,
+            alternative_command=alternative_command,
+            current_user_id=current_user_id,
+            current_org_id=current_org_id,
         )
-
-        await redis_client.setex(
-            f"consent:{consent_id}",
-            60,  # Keep for 1 minute for agent to read
-            json.dumps(decision)
-        )
-
-        logger.info(f"[NAVI API] ✅ Consent {consent_id} decision stored in Redis")
-
-        # Also update in-process consent approvals for AutonomousAgent pre-checks
-        try:
-            from backend.services import autonomous_agent as aa
-            approved = choice in ("allow_once", "allow_always_exact", "allow_always_type", "alternative")
-            with aa._consent_lock:
-                aa._consent_approvals[consent_id] = {
-                    "approved": approved,
-                    "pending": False,
-                    "choice": choice,
-                    "alternative_command": alternative_command,
-                    "updated_at": datetime.now().isoformat(),
-                    "user_id": consent_user_id,
-                    "org_id": consent_org_id,
-                }
-            logger.info(f"[NAVI API] ✅ Consent {consent_id} cached in-process (approved={approved})")
-        except Exception as e:
-            logger.warning(f"[NAVI API] Failed to cache consent {consent_id} in-process: {e}")
-
-        return {
-            "success": True,
-            "consent_id": consent_id,
-            "choice": choice,
-            "message": f"Consent decision '{choice}' recorded",
-        }
 
     except HTTPException:
         # Re-raise HTTPException to preserve correct HTTP status codes (403/404)
@@ -1737,11 +1692,7 @@ async def get_consent_preferences(
         consent_service = get_consent_service(db)
         preferences = consent_service.get_user_preferences(user_id, org_id)
 
-        return {
-            "success": True,
-            "preferences": preferences,
-            "count": len(preferences)
-        }
+        return {"success": True, "preferences": preferences, "count": len(preferences)}
 
     except Exception as e:
         logger.error(f"[NAVI API] Error getting consent preferences: {e}")
@@ -1776,14 +1727,11 @@ async def delete_consent_preference(
                 status_code=404,
                 detail={
                     "success": False,
-                    "error": "Preference not found or you don't have permission to delete it"
-                }
+                    "error": "Preference not found or you don't have permission to delete it",
+                },
             )
 
-        return {
-            "success": True,
-            "message": "Preference deleted successfully"
-        }
+        return {"success": True, "message": "Preference deleted successfully"}
 
     except HTTPException:
         raise
@@ -1814,13 +1762,11 @@ async def get_consent_audit(
 
         # Get audit log from consent service
         consent_service = get_consent_service(db)
-        audit_log = consent_service.get_audit_log(user_id, org_id, limit=min(limit, 100))
+        audit_log = consent_service.get_audit_log(
+            user_id, org_id, limit=min(limit, 100)
+        )
 
-        return {
-            "success": True,
-            "audit_log": audit_log,
-            "count": len(audit_log)
-        }
+        return {"success": True, "audit_log": audit_log, "count": len(audit_log)}
 
     except Exception as e:
         logger.error(f"[NAVI API] Error getting consent audit log: {e}")
@@ -1864,7 +1810,9 @@ async def handle_prompt_response(
         # Derive user org consistently
         user_org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
         current_user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
-        current_user_id_str = str(current_user_id) if current_user_id is not None else None
+        current_user_id_str = (
+            str(current_user_id) if current_user_id is not None else None
+        )
         user_org_id_str = str(user_org_id) if user_org_id is not None else None
 
         # Validate prompt exists, is pending, and belongs to the authenticated user/org.
@@ -2491,6 +2439,105 @@ def _infer_git_command_from_text(message: str) -> Optional[Dict[str, Any]]:
         }
 
     return None
+
+
+def _is_prod_readiness_execute_message(message: str) -> bool:
+    """Detect explicit user approval to execute prod-readiness checks."""
+    if not message:
+        return False
+    lower = message.lower()
+    return bool(
+        re.search(
+            r"\b(run|execute|start|launch|proceed with)\s+(the\s+)?(prod(uction)?\s+)?(readiness\s+)?(audit|checks?|commands?|verification)\b",
+            lower,
+        )
+        or "run these checks now" in lower
+        or "yes run the audit" in lower
+    )
+
+
+def _looks_like_prod_readiness_assessment(message: str) -> bool:
+    """Heuristic fallback for prod-readiness assessment phrasing."""
+    if not message:
+        return False
+    lower = message.lower()
+    readiness_signals = (
+        "ready for prod",
+        "ready for production",
+        "production ready",
+        "prod readiness",
+        "production readiness",
+        "go live",
+        "deployment readiness",
+        "production checklist",
+        "security review",
+        "slo",
+        "on-call",
+        "fully implemented",
+        "end-to-end",
+        "end to end",
+    )
+    return any(signal in lower for signal in readiness_signals)
+
+
+def _build_prod_readiness_audit_plan(
+    *,
+    workspace_root: Optional[str],
+    execution_supported: bool,
+) -> str:
+    """
+    Deterministic one-page prod-readiness audit plan.
+
+    This is returned for assessment-style prompts so users get a stable,
+    actionable checklist without entering decomposition/autonomous execution
+    by default.
+    """
+    workspace_hint = (
+        f"- Workspace: `{workspace_root}`\n"
+        if workspace_root
+        else "- Workspace: *(not provided)*\n"
+    )
+    run_now_hint = (
+        'Reply **"run these checks now"** and I will execute the audit as a background job with approvals.'
+        if execution_supported
+        else 'Reply **"run these checks now"** once a workspace is available to execute the audit with approvals.'
+    )
+
+    return (
+        "## PROD_READINESS_AUDIT (Deterministic Plan)\n\n"
+        "### Scope\n"
+        f"{workspace_hint}"
+        "- Goal: verify deployment readiness with evidence, not assumptions.\n\n"
+        "### 1) Build + Tests\n"
+        "- Commands: `npm ci`, `npm run lint`, `npm run typecheck` *(if defined)*, `npm test` *(if defined)*, `npm run build`\n"
+        "- Pass criteria: all commands exit `0`, no fatal errors.\n"
+        "- Evidence: local terminal output + CI run artifacts.\n\n"
+        "### 2) Runtime Smoke\n"
+        "- Commands: `npm run start` (or `next start`) + HTTP smoke (`curl -f http://127.0.0.1:<port>/`)\n"
+        "- Pass criteria: app boots and core routes return `2xx/3xx`.\n"
+        "- Evidence: startup logs + smoke command output.\n\n"
+        "### 3) Env + Config Completeness\n"
+        "- Commands: compare required env keys against runtime (`.env.example`, deployment env config).\n"
+        "- Pass criteria: required keys present, no placeholder secrets.\n"
+        "- Evidence: env validation output + deploy config snapshot.\n\n"
+        "### 4) Security + Secrets\n"
+        "- Commands: secret scan + dependency audit (`npm audit --production` or org-standard scanner).\n"
+        "- Pass criteria: no critical exposed secrets, critical vulns triaged/blocked.\n"
+        "- Evidence: scanner report + remediation notes.\n\n"
+        "### 5) Observability + Ops\n"
+        "- Commands: verify health endpoint, error tracking, alert routes, and rollback playbook.\n"
+        "- Pass criteria: dashboards/alerts active, on-call + rollback tested.\n"
+        "- Evidence: dashboard links, alert test logs, rollback drill output.\n\n"
+        "### 6) Deployment + Rollback\n"
+        "- Commands: deploy to staging, run smoke suite, execute rollback dry-run.\n"
+        "- Pass criteria: staging stable under load window, rollback succeeds.\n"
+        "- Evidence: deploy logs, soak metrics, rollback confirmation.\n\n"
+        "## Exit Criteria\n"
+        "- Pilot (first 10 paid orgs): all critical checks pass, no open P0/P1 blockers, rollback proven.\n"
+        "- Enterprise rollout: pilot criteria + quota controls, SLO alerts, and incident runbooks validated.\n\n"
+        "## Next Action\n"
+        f"{run_now_hint}"
+    )
 
 
 def _is_safe_git_command(command: str) -> Tuple[bool, str]:
@@ -5036,6 +5083,45 @@ async def navi_chat(
         request.message[:50],
         request.workspace,
     )
+    # Dedicated prod-readiness assessment path should remain available even when
+    # provider keys are missing (deterministic plan mode does not require LLM calls).
+    is_prod_readiness_intent = _looks_like_prod_readiness_assessment(request.message)
+    if not is_prod_readiness_intent:
+        try:
+            from backend.agent.intent_classifier import classify_intent
+            from backend.agent.intent_schema import IntentKind
+
+            classified_intent = classify_intent(request.message)
+            is_prod_readiness_intent = (
+                classified_intent.kind == IntentKind.PROD_READINESS_AUDIT
+            )
+        except Exception:
+            logger.exception("[NAVI-CHAT] Prod-readiness intent pre-check failed")
+
+    if is_prod_readiness_intent and not _is_prod_readiness_execute_message(
+        request.message
+    ):
+        workspace_root = request.workspace_root or (request.workspace or {}).get(
+            "workspace_root"
+        )
+        plan_text = _build_prod_readiness_audit_plan(
+            workspace_root=workspace_root,
+            execution_supported=bool(workspace_root),
+        )
+        return ChatResponse(
+            content=plan_text,
+            actions=[],
+            agentRun=None,
+            reply=plan_text,
+            should_stream=False,
+            state={
+                "intent": "prod_readiness_audit",
+                "mode": "plan_only",
+                "execution_available": bool(workspace_root),
+            },
+            duration_ms=0,
+        )
+
     if not OPENAI_ENABLED:
         # Still return a `content` field so the extension stays happy
         msg = (
@@ -5110,8 +5196,12 @@ async def navi_chat(
     )
 
     try:
-        user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
-        org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+        user_id = str(
+            getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+        ).strip()
+        org_id = str(
+            getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+        ).strip()
         if not user_id:
             raise HTTPException(
                 status_code=401,
@@ -6129,6 +6219,24 @@ To get started, I need to analyze your codebase and create a detailed implementa
 
         logger.debug("Continuing to agent loop")
 
+        # Unified model routing for non-streaming /chat fallback path.
+        # Use endpoint="chat" to only route to providers in llm_providers.yaml (openai, anthropic).
+        try:
+            routing_decision = get_model_router().route(
+                requested_model_or_mode_id=request.model,
+                endpoint="chat",
+                requested_provider=request.provider,
+            )
+        except ModelRoutingError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": exc.code,
+                    "message": exc.message,
+                    "requestedModelId": request.model,
+                },
+            ) from exc
+
         # =================================================================
         # IMAGE PROCESSING: Check for image attachments and analyze them
         # This allows NAVI to "see" screenshots and images in the regular
@@ -6168,7 +6276,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
                             # Use vision AI to analyze the image
                             # Use the same provider as the user's selected model
                             vision_provider = _get_vision_provider_for_model(
-                                request.model
+                                routing_decision.effective_model_id
                             )
                             analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
@@ -6200,7 +6308,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
         agent_result = await run_agent_loop(
             user_id=user_id,
             message=augmented_message,  # Use augmented message with image context
-            model=_resolve_model(request.model),
+            model=routing_decision.effective_model_id,
             mode=mode,
             db=db,
             attachments=[a.dict() for a in (request.attachments or [])],
@@ -6213,6 +6321,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
         # Core reply text (may be overridden below)
         reply = str(agent_result.get("reply") or "").strip()
         state: Dict[str, Any] = agent_result.get("state") or {}
+        state.setdefault("routing", _build_router_info(routing_decision, mode=mode))
 
         # ------------------------------------------------------------------
         # Repo fast-path enhancement:
@@ -6482,8 +6591,12 @@ async def navi_chat_stream(
         request.message[:50] if request.message else "",
     )
 
-    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
-    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+    user_id = str(
+        getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+    ).strip()
+    org_id = str(
+        getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+    ).strip()
     mode = (request.mode or "chat-only").strip() or "chat-only"
     workspace_root = request.workspace_root or (request.workspace or {}).get(
         "workspace_root"
@@ -6491,12 +6604,48 @@ async def navi_chat_stream(
     memory_user_id_int, memory_org_id_int = _resolve_user_org_ids_for_memory(
         db, user_id, org_id
     )
+    auto_execute_mode = mode in (
+        "agent-full-access",
+        "agent_full_access",
+        "full-access",
+        "full_access",
+    )
+    try:
+        routing_decision = get_model_router().route(
+            requested_model_or_mode_id=request.model,
+            endpoint="stream",
+            requested_provider=request.provider,
+        )
+    except ModelRoutingError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "requestedModelId": request.model,
+            },
+        ) from exc
+    trace_store = get_trace_store()
+    trace_task_id = request.conversation_id or f"stream-{uuid4()}"
+    trace_store.append(
+        "routing_decision",
+        {
+            "taskId": trace_task_id,
+            "conversationId": request.conversation_id,
+            "endpoint": "stream",
+            "mode": request.mode,
+            **routing_decision.to_public_dict(),
+        },
+    )
 
     async def generate_stream():
         """Generator for SSE events."""
         stream_session = StreamingSession()
 
         try:
+            # Emit routing metadata first for transparent model selection/fallback behavior.
+            yield f"data: {json.dumps({'router_info': _build_router_info(routing_decision, mode=mode, auto_execute=auto_execute_mode)})}\n\n"
+
             # Emit initial activity
             yield f"data: {json.dumps({'activity': {'kind': 'context', 'label': 'Starting', 'detail': 'Processing your request...', 'status': 'running'}})}\n\n"
 
@@ -6534,7 +6683,7 @@ async def navi_chat_stream(
                                 # Use vision AI to analyze the image
                                 # Use the same provider as the user's selected model
                                 vision_provider = _get_vision_provider_for_model(
-                                    request.model
+                                    routing_decision.effective_model_id
                                 )
                                 analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
@@ -6567,7 +6716,7 @@ async def navi_chat_stream(
                 agent_result = await run_agent_loop(
                     user_id=user_id,
                     message=augmented_message,
-                    model=_resolve_model(request.model),
+                    model=routing_decision.effective_model_id,
                     mode=mode,
                     db=db,
                     attachments=[a.dict() for a in (request.attachments or [])],
@@ -6592,7 +6741,6 @@ async def navi_chat_stream(
                 if actions:
                     yield f"data: {json.dumps({'actions': actions})}\n\n"
 
-                yield f"data: {json.dumps({'router_info': {'mode': mode, 'model': request.model}})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
 
@@ -6606,12 +6754,8 @@ async def navi_chat_stream(
                 )
                 from backend.services.unified_agent import UnifiedAgent, AgentEventType
 
-                # For unified agent, prefer OpenAI as it has more reliable tool-use
-                # Fall back to DEFAULT_LLM_PROVIDER if OpenAI key not available
-                provider = request.provider or "openai"
-                # Let unified agent select the appropriate model for the provider
-                # Don't use _resolve_model as it may return a model incompatible with provider
-                model_name = None  # UnifiedAgent will use its default for the provider
+                provider = routing_decision.provider
+                model_name = routing_decision.model
 
                 # Build project context
                 project_context = None
@@ -6636,8 +6780,6 @@ async def navi_chat_stream(
                         if msg.get("content")
                     ]
 
-                # Emit unified agent start event
-                yield f"data: {json.dumps({'router_info': {'provider': provider, 'model': model_name or 'auto', 'mode': 'unified_agent', 'task_type': 'action'}})}\n\n"
                 yield f"data: {json.dumps({'activity': {'kind': 'agent_start', 'label': 'Agent', 'detail': 'Starting unified agent with native tool-use...', 'status': 'running'}})}\n\n"
 
                 try:
@@ -6837,14 +6979,6 @@ async def navi_chat_stream(
                             current_file_content = att_content
                         break
 
-            # Determine auto-execute mode
-            auto_execute = mode in (
-                "agent-full-access",
-                "agent_full_access",
-                "full-access",
-                "full_access",
-            )
-
             # Show current file context if available
             if current_file:
                 yield f"data: {json.dumps({'activity': {'kind': 'context', 'label': 'Active file', 'detail': current_file, 'status': 'done'}})}\n\n"
@@ -6873,8 +7007,8 @@ async def navi_chat_stream(
             async for event in process_navi_request_streaming(
                 message=request.message,
                 workspace_path=workspace_root,
-                llm_provider=request.provider or "openai",
-                llm_model=_resolve_model(request.model),
+                llm_provider=routing_decision.provider,
+                llm_model=routing_decision.model,
                 api_key=None,
                 current_file=current_file,
                 current_file_content=current_file_content,
@@ -7026,7 +7160,9 @@ async def navi_chat_stream(
                                 },
                             )
                             memory_service.db.commit()
-                            logger.info("[NAVI-STREAM] Created conversation %s", conv_uuid)
+                            logger.info(
+                                "[NAVI-STREAM] Created conversation %s", conv_uuid
+                            )
                             owned_conv = memory_service.get_conversation(conv_uuid)
                             can_persist = bool(
                                 owned_conv and owned_conv.user_id == memory_user_id_int
@@ -7071,17 +7207,38 @@ async def navi_chat_stream(
                         mem_error,
                     )
 
-            # Include router info
-            yield f"data: {json.dumps({'router_info': {'provider': request.provider or 'openai', 'model': request.model, 'mode': mode, 'auto_execute': auto_execute}})}\n\n"
-
             # Include streaming metrics
             metrics = stream_session.get_metrics()
             yield f"data: {json.dumps(metrics)}\n\n"
+
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "stream",
+                    "outcome": "success",
+                    "messageLength": len(request.message or ""),
+                    "streamMetrics": metrics,
+                    **routing_decision.to_public_dict(),
+                },
+            )
 
             yield "data: [DONE]\n\n"
 
         except Exception as e:
             logger.error("[NAVI-STREAM] Streaming error: %s", e, exc_info=True)
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "stream",
+                    "outcome": "error",
+                    "error": str(e),
+                    **routing_decision.to_public_dict(),
+                },
+            )
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
             metrics = stream_session.get_metrics()
             yield f"data: {json.dumps(metrics)}\n\n"
@@ -7169,34 +7326,6 @@ class ToolStreamRequest(BaseModel):
     last_action_error: Optional[Dict[str, Any]] = None
 
 
-def _parse_model_string(model_str: Optional[str]) -> Tuple[str, str]:
-    """
-    Parse model string like 'openai/gpt-4o' into (provider, model).
-    Returns ('openai', 'gpt-4o') for default.
-    """
-    if not model_str:
-        return "openai", "gpt-4o"
-
-    if "/" in model_str:
-        parts = model_str.split("/", 1)
-        provider = parts[0].lower()
-        model = parts[1]
-        # Normalize provider names
-        if provider in ("openai", "gpt"):
-            return "openai", model
-        elif provider in ("anthropic", "claude"):
-            return "anthropic", model
-        elif provider in ("groq",):
-            return "groq", model
-        elif provider in ("openrouter",):
-            return "openrouter", model
-        else:
-            return provider, model
-    else:
-        # Just a model name, assume OpenAI
-        return "openai", model_str
-
-
 @router.post("/chat/stream/v2")
 async def navi_chat_stream_v2(
     request: ToolStreamRequest,
@@ -7222,8 +7351,13 @@ async def navi_chat_stream_v2(
         stream_with_tools_anthropic,
         stream_with_tools_openai,
     )
-    user_id = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "").strip()
-    org_id = str(getattr(user, "org_id", None) or getattr(user, "org_key", None) or "").strip()
+
+    user_id = str(
+        getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+    ).strip()
+    org_id = str(
+        getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+    ).strip()
     if not user_id:
         raise HTTPException(
             status_code=401,
@@ -7248,12 +7382,101 @@ async def navi_chat_stream_v2(
     if request.project_type:
         context["project_type"] = request.project_type
 
-    # Parse the model string (handles "openai/gpt-4o" format from extension)
-    provider, model_name = _parse_model_string(request.model)
+    # Deterministic prod-readiness plan should not require model routing or provider keys.
+    preclassified_intent = None
+    is_prod_readiness_stream_request = _looks_like_prod_readiness_assessment(
+        request.message
+    )
+    if not is_prod_readiness_stream_request:
+        try:
+            from backend.agent.intent_classifier import classify_intent
+            from backend.agent.intent_schema import IntentKind
 
-    # Override with explicit provider if given
-    if request.provider:
-        provider = request.provider
+            preclassified_intent = classify_intent(request.message)
+            is_prod_readiness_stream_request = (
+                preclassified_intent.kind == IntentKind.PROD_READINESS_AUDIT
+            )
+        except Exception:
+            logger.exception("[NAVI V2] Failed to classify intent before routing")
+    if is_prod_readiness_stream_request and not _is_prod_readiness_execute_message(
+        request.message
+    ):
+
+        async def prod_readiness_stream_generator():
+            try:
+                intent_kind = (
+                    preclassified_intent.kind.value
+                    if preclassified_intent is not None
+                    else "prod_readiness_audit"
+                )
+                intent_family = (
+                    preclassified_intent.family.value
+                    if preclassified_intent is not None
+                    else "engineering"
+                )
+                intent_confidence = (
+                    float(preclassified_intent.confidence)
+                    if preclassified_intent is not None
+                    else 0.9
+                )
+                intent_activity = {
+                    "type": "activity",
+                    "activity": {
+                        "kind": "intent",
+                        "label": "Understanding request",
+                        "detail": f"Detected: {intent_kind} ({int(intent_confidence * 100)}%)",
+                        "status": "done",
+                    },
+                }
+                yield f"data: {json.dumps(intent_activity)}\n\n"
+                intent_event = {
+                    "type": "intent",
+                    "intent": {
+                        "family": intent_family,
+                        "kind": intent_kind,
+                        "confidence": intent_confidence,
+                    },
+                }
+                yield f"data: {json.dumps(intent_event)}\n\n"
+                plan_text = _build_prod_readiness_audit_plan(
+                    workspace_root=workspace_path,
+                    execution_supported=bool(workspace_path),
+                )
+                yield f"data: {json.dumps({'type': 'text', 'text': plan_text, 'timestamp': int(time.time() * 1000)})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            except Exception as e:
+                logger.exception(f"[NAVI V2] Prod-readiness short-circuit error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            prod_readiness_stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    try:
+        routing_decision = get_model_router().route(
+            requested_model_or_mode_id=request.model,
+            endpoint="stream_v2",
+            requested_provider=request.provider,
+        )
+    except ModelRoutingError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "requestedModelId": request.model,
+            },
+        ) from exc
+
+    provider = routing_decision.provider
+    model_name = routing_decision.model
 
     logger.info(
         "[NAVI V2] Parsed model: provider=%s, model=%s, user=%s, org=%s",
@@ -7261,6 +7484,18 @@ async def navi_chat_stream_v2(
         model_name,
         user_id,
         org_id or "<none>",
+    )
+    trace_store = get_trace_store()
+    trace_task_id = request.conversation_id or f"stream-v2-{uuid4()}"
+    trace_store.append(
+        "routing_decision",
+        {
+            "taskId": trace_task_id,
+            "conversationId": request.conversation_id,
+            "endpoint": "stream_v2",
+            "mode": request.mode,
+            **routing_decision.to_public_dict(),
+        },
     )
 
     async def stream_generator():
@@ -7272,6 +7507,8 @@ async def navi_chat_stream_v2(
         from backend.agent.intent_schema import IntentKind
 
         try:
+            yield f"data: {json.dumps({'router_info': _build_router_info(routing_decision, mode=request.mode or 'agent')})}\n\n"
+
             # PHASE 0: Intent Classification (determines what analysis to do)
             # This is key to being DYNAMIC - we don't do heavy analysis for simple greetings
             intent = classify_intent(request.message)
@@ -7303,6 +7540,32 @@ async def navi_chat_stream_v2(
             }
             yield f"data: {json.dumps(intent_event)}\n\n"
 
+            if (
+                intent.kind == IntentKind.PROD_READINESS_AUDIT
+                and not _is_prod_readiness_execute_message(request.message)
+            ):
+                plan_text = _build_prod_readiness_audit_plan(
+                    workspace_root=workspace_path,
+                    execution_supported=bool(workspace_path),
+                )
+                yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'intent', 'label': 'Prepared audit plan', 'detail': 'Returning deterministic prod-readiness plan', 'status': 'done'}})}\n\n"
+                yield f"data: {json.dumps({'type': 'text', 'text': plan_text, 'timestamp': int(time.time() * 1000)})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                trace_store.append(
+                    "run_outcome",
+                    {
+                        "taskId": trace_task_id,
+                        "conversationId": request.conversation_id,
+                        "endpoint": "stream_v2",
+                        "outcome": "success",
+                        "messageLength": len(request.message or ""),
+                        "shortCircuit": "prod_readiness_plan",
+                        **routing_decision.to_public_dict(),
+                    },
+                )
+                yield "data: [DONE]\n\n"
+                return
+
             # Determine if we need project analysis based on intent
             # Skip heavy analysis for simple greetings and unknown intents
             intents_needing_analysis = {
@@ -7319,6 +7582,8 @@ async def navi_chat_stream_v2(
                 IntentKind.GENERATE_TESTS,
                 IntentKind.RUN_LINT,
                 IntentKind.RUN_BUILD,
+                IntentKind.DEPLOY,
+                IntentKind.PROD_READINESS_AUDIT,
                 IntentKind.EXPLAIN_CODE,
                 IntentKind.EXPLAIN_ERROR,
                 IntentKind.ARCHITECTURE_OVERVIEW,
@@ -7430,26 +7695,28 @@ async def navi_chat_stream_v2(
             # PHASE 3: Stream LLM response with tools
             yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'llm_call', 'label': 'Generating response', 'detail': 'Thinking...', 'status': 'running'}})}\n\n"
 
-            if provider == "anthropic":
-                api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-                # Use a valid Claude model
-                if not model_name or "gpt" in model_name.lower():
-                    model_name_use = "claude-sonnet-4-20250514"
-                else:
-                    model_name_use = model_name
+            async def provider_event_generator():
+                if provider == "anthropic":
+                    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+                    # Use a valid Claude model
+                    if not model_name or "gpt" in model_name.lower():
+                        model_name_use = "claude-sonnet-4-20250514"
+                    else:
+                        model_name_use = model_name
 
-                async for event in stream_with_tools_anthropic(
-                    message=request.message,
-                    workspace_path=workspace_path,
-                    api_key=api_key,
-                    model=model_name_use,
-                    context=enhanced_context,  # Use enhanced context with file info
-                    conversation_history=request.conversation_history,  # Pass conversation history for context
-                    conversation_id=request.conversation_id,  # Pass session ID for memory tracking
-                ):
-                    yield f"data: {json.dumps(event.to_dict())}\n\n"
+                    async for event in stream_with_tools_anthropic(
+                        message=request.message,
+                        workspace_path=workspace_path,
+                        api_key=api_key,
+                        model=model_name_use,
+                        context=enhanced_context,  # Use enhanced context with file info
+                        conversation_history=request.conversation_history,  # Pass conversation history for context
+                        conversation_id=request.conversation_id,  # Pass session ID for memory tracking
+                    ):
+                        yield event.to_dict()
+                    return
 
-            else:  # OpenAI or compatible
+                # OpenAI or compatible
                 api_key = os.environ.get("OPENAI_API_KEY", "")
                 model_name_use = model_name or "gpt-4o"
 
@@ -7461,6 +7728,23 @@ async def navi_chat_stream_v2(
                 elif provider == "groq":
                     api_key = os.environ.get("GROQ_API_KEY", "")
                     base_url = "https://api.groq.com/openai/v1"
+                elif provider == "ollama":
+                    api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
+                    base_url = _ensure_openai_compatible_base_url(
+                        os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+                    )
+                elif provider == "self_hosted":
+                    api_key = (
+                        os.environ.get("SELF_HOSTED_API_KEY")
+                        or os.environ.get("OPENAI_API_KEY")
+                        or "self-hosted"
+                    )
+                    base_url = _ensure_openai_compatible_base_url(
+                        os.environ.get("SELF_HOSTED_API_BASE_URL")
+                        or os.environ.get("SELF_HOSTED_LLM_URL")
+                        or os.environ.get("VLLM_BASE_URL")
+                        or "http://localhost:8000"
+                    )
 
                 async for event in stream_with_tools_openai(
                     message=request.message,
@@ -7470,15 +7754,93 @@ async def navi_chat_stream_v2(
                     base_url=base_url,
                     context=enhanced_context,  # Use enhanced context with file info
                     conversation_history=request.conversation_history,  # Pass conversation history for context
+                    provider=provider,  # Pass routed provider for correct model normalization
                 ):
-                    yield f"data: {json.dumps(event.to_dict())}\n\n"
+                    yield event.to_dict()
+
+            async def heartbeat_wrapper(event_generator):
+                last_event_time = time.time()
+                start_time = time.time()
+                heartbeat_interval = 10
+                heartbeat_count = 0
+                pending_task = None
+
+                try:
+                    pending_task = asyncio.create_task(event_generator.__anext__())
+                    while True:
+                        done, _ = await asyncio.wait(
+                            {pending_task}, timeout=heartbeat_interval
+                        )
+
+                        if done:
+                            try:
+                                payload = await pending_task
+                            except StopAsyncIteration:
+                                break
+                            last_event_time = time.time()
+                            yield payload
+                            pending_task = asyncio.create_task(
+                                event_generator.__anext__()
+                            )
+                            continue
+
+                        now = time.time()
+                        if now - last_event_time >= heartbeat_interval:
+                            heartbeat_count += 1
+                            yield {
+                                "type": "heartbeat",
+                                "heartbeat": True,
+                                "timestamp": int(now * 1000),
+                                "message": "Still working...",
+                                "elapsed_seconds": int(now - start_time),
+                                "heartbeat_count": heartbeat_count,
+                            }
+                            last_event_time = now
+                finally:
+                    if pending_task is not None and not pending_task.done():
+                        pending_task.cancel()
+                        try:
+                            await pending_task
+                        except asyncio.CancelledError:
+                            pass
+
+                    try:
+                        await event_generator.aclose()
+                    except Exception:
+                        pass
+
+            async for payload in heartbeat_wrapper(provider_event_generator()):
+                yield f"data: {json.dumps(payload)}\n\n"
 
             # Mark LLM activity as done
             yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'llm_call', 'label': 'Generating response', 'detail': 'Complete', 'status': 'done'}})}\n\n"
 
         except Exception as e:
             logger.exception(f"[NAVI V2] Stream error: {e}")
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "stream_v2",
+                    "outcome": "error",
+                    "error": str(e),
+                    **routing_decision.to_public_dict(),
+                },
+            )
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+        else:
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "stream_v2",
+                    "outcome": "success",
+                    "messageLength": len(request.message or ""),
+                    **routing_decision.to_public_dict(),
+                },
+            )
 
         yield "data: [DONE]\n\n"
 
@@ -7527,73 +7889,24 @@ class AutonomousTaskRequest(BaseModel):
     last_action_error: Optional[dict] = None
 
 
-def _map_model_to_provider(model: Optional[str]) -> tuple[str, str]:
-    """
-    Map a model ID to the correct provider and model name.
+class JobCreateRequest(AutonomousTaskRequest):
+    """Create a background autonomous job."""
 
-    Handles formats like:
-    - "gpt-4o" -> ("openai", "gpt-4o")
-    - "openai/gpt-4o" -> ("openai", "gpt-4o")
-    - "anthropic/claude-3-sonnet" -> ("anthropic", "claude-sonnet-4-20250514")
-    - "gpt-5.1" -> ("openai", "gpt-4o")  # unknown models default to gpt-4o
+    auto_start: bool = True
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
-    Returns (provider, model_id) tuple.
-    """
-    if not model:
-        return "openai", "gpt-4o"
 
-    # Handle provider/model format (e.g., "openai/gpt-4o")
-    if "/" in model:
-        parts = model.split("/", 1)
-        provider_hint = parts[0].lower()
-        model_name = parts[1]
-    else:
-        provider_hint = ""
-        model_name = model
+class JobApprovalRequest(BaseModel):
+    """Approval payload for a paused job gate (consent/human checkpoint)."""
 
-    model_lower = model_name.lower()
-
-    # OpenAI models
-    if provider_hint == "openai" or any(
-        x in model_lower for x in ["gpt-4", "gpt-3", "o1-", "o3-", "davinci", "curie"]
-    ):
-        # Validate model name - only return known OpenAI models
-        valid_openai = [
-            "gpt-4o",
-            "gpt-4o-mini",
-            "gpt-4-turbo",
-            "gpt-4",
-            "gpt-3.5-turbo",
-            "o1-preview",
-            "o1-mini",
-            "o3-mini",
-        ]
-        if model_name in valid_openai:
-            return "openai", model_name
-        # Default to gpt-4o for unknown OpenAI models
-        return "openai", "gpt-4o"
-
-    # Anthropic models
-    if provider_hint == "anthropic" or any(x in model_lower for x in ["claude"]):
-        # Normalize claude model names to current versions
-        if "sonnet" in model_lower:
-            return "anthropic", "claude-sonnet-4-20250514"
-        elif "opus" in model_lower:
-            return "anthropic", "claude-opus-4-20250514"
-        elif "haiku" in model_lower:
-            return "anthropic", "claude-3-5-haiku-20241022"
-        return "anthropic", "claude-sonnet-4-20250514"  # Default to sonnet
-
-    # Groq models
-    if provider_hint == "groq" or any(x in model_lower for x in ["llama", "mixtral"]):
-        return "groq", model_name
-
-    # Google models
-    if provider_hint == "google" or any(x in model_lower for x in ["gemini", "palm"]):
-        return "google", model_name
-
-    # Default to OpenAI with gpt-4o for unknown models
-    return "openai", "gpt-4o"
+    # Consent-style approval (wired to existing consent flow)
+    consent_id: Optional[str] = None
+    choice: Optional[str] = None
+    alternative_command: Optional[str] = None
+    # Generic gate acknowledgement metadata
+    gate_id: Optional[str] = None
+    decision: Optional[str] = None
+    comment: Optional[str] = None
 
 
 def _get_vision_provider_for_model(model: Optional[str]):
@@ -7611,7 +7924,55 @@ def _get_vision_provider_for_model(model: Optional[str]):
     if not model:
         return VisionProvider.ANTHROPIC  # Default to Claude
 
-    provider, _ = _map_model_to_provider(model)
+    provider = "anthropic"
+    raw = ""
+    if isinstance(model, str):
+        raw = model.strip().lower()
+        if "/" in raw:
+            provider = raw.split("/", 1)[0].strip()
+        elif (
+            raw.startswith("gpt")
+            or raw.startswith("o1")
+            or raw.startswith("o3")
+            or raw.startswith("o4")
+        ):
+            provider = "openai"
+        elif raw.startswith("claude"):
+            provider = "anthropic"
+        elif raw.startswith("gemini"):
+            provider = "google"
+        elif raw.startswith("navi/"):
+            # Map NAVI modes to their default preferred providers for vision selection.
+            mode_map = {
+                "navi/intelligence": "openai",
+                "navi/fast": "openai",
+                "navi/deep": "google",
+                "navi/private": "anthropic",
+            }
+            provider = mode_map.get(raw, "anthropic")
+
+    # Block private/local models that currently have no local vision implementation.
+    if provider in ("ollama", "self_hosted"):
+        raise ValueError(
+            f"Vision/image attachments are not supported with {provider} provider. "
+            "Private mode requires a local vision model, which is not yet implemented. "
+            "Please use a SaaS provider (OpenAI, Anthropic, Google) for image analysis."
+        )
+
+    # For OpenRouter/Groq text models, preserve legacy behavior by using a
+    # supported SaaS vision backend instead of dropping image context entirely.
+    if provider == "openrouter":
+        inferred = raw.split("/", 1)[1] if isinstance(model, str) and "/" in raw else ""
+        if inferred.startswith("gpt") or (
+            inferred.startswith("o") and len(inferred) > 1 and inferred[1].isdigit()
+        ):
+            provider = "openai"
+        elif inferred.startswith("gemini"):
+            provider = "google"
+        else:
+            provider = "anthropic"
+    elif provider == "groq":
+        provider = "anthropic"
 
     if provider == "openai":
         return VisionProvider.OPENAI
@@ -7620,8 +7981,1190 @@ def _get_vision_provider_for_model(model: Optional[str]):
     elif provider == "google":
         return VisionProvider.GOOGLE
     else:
-        # Groq and other providers don't have vision - fall back to Claude
+        # Unknown provider - fall back to Claude for backward compatibility
         return VisionProvider.ANTHROPIC
+
+
+def _ensure_openai_compatible_base_url(base_url: str) -> str:
+    normalized = (base_url or "").strip().rstrip("/")
+    if not normalized:
+        return "https://api.openai.com/v1"
+    if normalized.endswith("/v1"):
+        return normalized
+    return f"{normalized}/v1"
+
+
+def _resolve_authenticated_context(user: User) -> tuple[Optional[str], Optional[str]]:
+    """Resolve user/org identifiers for request ownership checks."""
+    if settings.is_development() or settings.is_test():
+        user_id = (
+            os.environ.get("DEV_USER_ID")
+            or getattr(user, "user_id", None)
+            or getattr(user, "id", None)
+        )
+        org_id = (
+            os.environ.get("DEV_ORG_ID")
+            or getattr(user, "org_id", None)
+            or getattr(user, "org_key", None)
+        )
+    else:
+        user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+        org_id = getattr(user, "org_id", None) or getattr(user, "org_key", None)
+        if not user_id or not org_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Authenticated user and organization context are required",
+            )
+    return (
+        str(user_id) if user_id is not None else None,
+        str(org_id) if org_id is not None else None,
+    )
+
+
+def _resolve_provider_credentials(
+    provider: str,
+) -> tuple[str, Optional[str]]:
+    """Resolve API key/base URL for provider execution."""
+    model_base_url: Optional[str] = None
+    if provider == "anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    elif provider == "openrouter":
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    elif provider == "groq":
+        api_key = os.environ.get("GROQ_API_KEY", "")
+    elif provider == "google":
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+    elif provider == "ollama":
+        api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        )
+    elif provider == "self_hosted":
+        api_key = (
+            os.environ.get("SELF_HOSTED_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "self-hosted"
+        )
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("SELF_HOSTED_API_BASE_URL")
+            or os.environ.get("SELF_HOSTED_LLM_URL")
+            or os.environ.get("VLLM_BASE_URL")
+            or "http://localhost:8000"
+        )
+    else:
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+    return api_key, model_base_url
+
+
+def _is_terminal_job_status(status: Optional[str]) -> bool:
+    return (status or "").lower() in TERMINAL_STATUSES
+
+
+_JOB_ALLOWED_TRANSITIONS: Dict[str, set[str]] = {
+    "queued": {"running", "canceled", "failed"},
+    "running": {"paused_for_approval", "completed", "failed", "canceled"},
+    "paused_for_approval": {"queued", "running", "failed", "canceled"},
+    "completed": set(),
+    "failed": set(),
+    "canceled": set(),
+}
+
+
+async def _transition_job_status(
+    job_id: str,
+    *,
+    to_status: str,
+    phase: Optional[str] = None,
+    error: Optional[str] = None,
+    pending_approval: Any = None,
+    allow_same: bool = True,
+) -> None:
+    """Enforce job state-machine transitions."""
+    job_manager = get_job_manager()
+    job = await job_manager.require_job(job_id)
+    current = (job.status or "").lower()
+    target = (to_status or "").lower()
+    if not target:
+        raise HTTPException(status_code=400, detail="Invalid target status")
+
+    if current == target:
+        if not allow_same:
+            raise HTTPException(
+                status_code=409, detail=f"Job already in status '{current}'"
+            )
+    else:
+        allowed = _JOB_ALLOWED_TRANSITIONS.get(current, set())
+        if target not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Invalid job transition: {current} -> {target}",
+            )
+
+    await job_manager.set_status(
+        job_id,
+        status=target,
+        phase=phase,
+        error=error,
+        pending_approval=pending_approval,
+    )
+
+
+async def _apply_consent_decision(
+    *,
+    consent_id: str,
+    choice: str,
+    alternative_command: Optional[str],
+    current_user_id: Optional[str],
+    current_org_id: Optional[str],
+) -> Dict[str, Any]:
+    """Persist consent decision in Redis and in-process cache."""
+    redis_client = get_redis_client()
+    consent_data = await redis_client.get(f"consent:{consent_id}")
+    if not consent_data:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Consent not found or has expired",
+            },
+        )
+
+    consent_record = json.loads(consent_data)
+    consent_user_id = consent_record.get("user_id")
+    consent_org_id = consent_record.get("org_id")
+
+    if (
+        consent_user_id
+        and current_user_id
+        and str(consent_user_id) != str(current_user_id)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Unauthorized: You do not have permission to approve this consent",
+            },
+        )
+    if consent_org_id and current_org_id and str(consent_org_id) != str(current_org_id):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "consent_id": consent_id,
+                "error": "Unauthorized: This consent belongs to a different organization",
+            },
+        )
+
+    decision = dict(consent_record)
+    decision.update(
+        {
+            "choice": choice,
+            "alternative_command": alternative_command,
+            "pending": False,
+            "responded_at": datetime.now().isoformat(),
+        }
+    )
+    await redis_client.setex(
+        f"consent:{consent_id}",
+        60,
+        json.dumps(decision),
+    )
+
+    # Keep in-process cache aligned for fast consent checks
+    try:
+        from backend.services import autonomous_agent as aa
+
+        approved = choice in (
+            "allow_once",
+            "allow_always_exact",
+            "allow_always_type",
+            "alternative",
+        )
+        with aa._consent_lock:
+            aa._consent_approvals[consent_id] = {
+                "approved": approved,
+                "pending": False,
+                "choice": choice,
+                "alternative_command": alternative_command,
+                "updated_at": datetime.now().isoformat(),
+                "user_id": consent_user_id,
+                "org_id": consent_org_id,
+            }
+    except Exception as exc:
+        logger.warning("[NAVI API] Failed to update in-process consent cache: %s", exc)
+
+    return {
+        "success": True,
+        "consent_id": consent_id,
+        "choice": choice,
+        "message": f"Consent decision '{choice}' recorded",
+    }
+
+
+_CONSENT_CHOICE_SYNONYMS = {
+    "allow_once": "allow_once",
+    "allow-once": "allow_once",
+    "allow_once_exact": "allow_always_exact",
+    "allow_always_exact": "allow_always_exact",
+    "allow-always-exact": "allow_always_exact",
+    "allow_exact": "allow_always_exact",
+    "allow_always_type": "allow_always_type",
+    "allow-always-type": "allow_always_type",
+    "allow_type": "allow_always_type",
+    "deny": "deny",
+    "denied": "deny",
+    "reject": "deny",
+    "rejected": "deny",
+    "stop": "deny",
+    "cancel": "deny",
+    "alternative": "alternative",
+    "alternate": "alternative",
+    "allow_alternative": "alternative",
+    "allow-alternative": "alternative",
+}
+
+
+def _resolve_consent_choice(request: JobApprovalRequest) -> str:
+    """Resolve consent choice from explicit choice or decision fields."""
+
+    def _normalize(value: Optional[str]) -> str:
+        return str(value or "").strip().lower()
+
+    choice_value = _normalize(request.choice)
+    if choice_value:
+        return _CONSENT_CHOICE_SYNONYMS.get(choice_value, choice_value)
+
+    decision_value = _normalize(request.decision)
+    if decision_value:
+        if decision_value in _CONSENT_CHOICE_SYNONYMS:
+            return _CONSENT_CHOICE_SYNONYMS[decision_value]
+        if decision_value.startswith("allow"):
+            return "allow_once"
+        if decision_value in {"approve", "approved", "accept", "accepted", "continue"}:
+            return "allow_once"
+
+    return "allow_once"
+
+
+async def _run_autonomous_job(job_id: str) -> None:
+    """Background runner that executes AutonomousAgent and appends replayable events."""
+    from backend.services.autonomous_agent import AutonomousAgent
+
+    job_manager = get_job_manager()
+    job = await job_manager.require_job(job_id)
+    payload = dict(job.payload or {})
+    job_metadata = dict(job.metadata or {})
+    runner_token = f"{os.getpid()}:{uuid4()}"
+    lock_heartbeat_task: Optional[asyncio.Task] = None
+    lock_lost = asyncio.Event()
+
+    acquired = await job_manager.acquire_runner_lock(job_id, runner_token)
+    if not acquired:
+        logger.info("[NAVI Jobs] Skipping duplicate runner start for %s", job_id)
+        await job_manager.append_event(
+            job_id,
+            {
+                "type": "runner_already_active",
+                "message": "Runner already active for this job; duplicate start ignored.",
+            },
+        )
+        return
+
+    async def _lock_heartbeat() -> None:
+        consecutive_failures = 0
+        while True:
+            await asyncio.sleep(20)
+            try:
+                renewed = await job_manager.renew_runner_lock(job_id, runner_token)
+            except DistributedLockUnavailableError as exc:
+                # Treat distributed lock unavailability as renewal failure
+                logger.warning(
+                    "[NAVI Jobs] Distributed lock unavailable during renewal for %s: %s",
+                    job_id,
+                    exc,
+                )
+                renewed = False
+
+            if renewed:
+                consecutive_failures = 0
+                continue
+
+            consecutive_failures += 1
+            if consecutive_failures == 1:
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "lock_renew_failed",
+                        "message": "Runner lock renew failed; retrying",
+                        "attempt": consecutive_failures,
+                    },
+                )
+            if consecutive_failures >= 3:
+                logger.warning(
+                    "[NAVI Jobs] Lost runner lock heartbeat for %s; stopping runner",
+                    job_id,
+                )
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "runner_lock_lost",
+                        "message": "Runner lock could not be renewed; canceling job to avoid duplicate execution",
+                    },
+                )
+                await job_manager.request_cancel(
+                    job_id, requested_by="system:runner_lock_lost"
+                )
+                lock_lost.set()
+                return
+
+    lock_heartbeat_task = asyncio.create_task(_lock_heartbeat())
+
+    try:
+        await _transition_job_status(
+            job_id,
+            to_status="running",
+            phase="planning",
+            pending_approval=None,
+            allow_same=True,
+        )
+    except HTTPException:
+        # Another worker might have moved terminal/canceled state before this runner started.
+        # Release runner resources before returning.
+        if lock_heartbeat_task and not lock_heartbeat_task.done():
+            lock_heartbeat_task.cancel()
+            try:
+                await lock_heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        await job_manager.release_runner_lock(job_id, runner_token)
+        return
+
+    await job_manager.clear_cancel_request(job_id)
+    await job_manager.append_event(
+        job_id,
+        {"type": "job_started", "message": "Background execution started"},
+    )
+
+    try:
+        request_model = AutonomousTaskRequest(**payload)
+        workspace_path = request_model.workspace_path or request_model.workspace_root
+        if not workspace_path:
+            workspace_path = os.environ.get("AEP_WORKSPACE_PATH", os.getcwd())
+
+        routing_decision = get_model_router().route(
+            requested_model_or_mode_id=request_model.model,
+            endpoint="autonomous",
+            requested_provider=request_model.provider,
+        )
+        provider = routing_decision.provider
+        model = routing_decision.model
+        api_key, model_base_url = _resolve_provider_credentials(provider)
+
+        await job_manager.append_event(
+            job_id,
+            {
+                "type": "router_info",
+                "router_info": _build_router_info(
+                    routing_decision,
+                    mode=request_model.mode or "agent-full-access",
+                    task_type="autonomous_job",
+                ),
+            },
+        )
+
+        with db_session() as run_db:
+
+            async def _job_cancel_requested() -> bool:
+                try:
+                    latest = await job_manager.require_job(job_id)
+                except KeyError:
+                    return True
+                if latest.status == "canceled":
+                    return True
+                return await job_manager.is_cancel_requested(job_id)
+
+            agent = AutonomousAgent(
+                workspace_path=workspace_path,
+                api_key=api_key,
+                provider=provider,
+                model=model,
+                base_url=model_base_url,
+                db_session=run_db,
+                user_id=job.user_id,
+                org_id=job.org_id,
+                cancel_check=_job_cancel_requested,
+            )
+
+            continuation_count = int(job_metadata.get("continuation_count", 0) or 0)
+            resume_context = str(job_metadata.get("resume_context", "") or "").strip()
+            effective_request = request_model.message
+            if continuation_count > 0 and resume_context:
+                effective_request = (
+                    f"{request_model.message}\n\n"
+                    f"[RESUME CONTEXT]\n"
+                    f"This run is a continuation after human approval.\n"
+                    f"{resume_context}\n"
+                )
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "job_resumed",
+                        "continuation_count": continuation_count,
+                        "message": "Resuming job after approval",
+                    },
+                )
+
+            saw_complete = False
+            saw_pending_gate = False
+            async for event in agent.execute_task(
+                request=effective_request,
+                run_verification=request_model.run_verification,
+                conversation_history=request_model.conversation_history or [],
+            ):
+                # Real cancel path: stop run when cancellation requested.
+                current_job_state = await job_manager.require_job(job_id)
+                if (
+                    lock_lost.is_set()
+                    or current_job_state.status == "canceled"
+                    or await job_manager.is_cancel_requested(job_id)
+                ):
+                    await job_manager.append_event(
+                        job_id,
+                        {
+                            "type": "cancel_requested",
+                            "message": "Cancellation requested. Stopping execution.",
+                        },
+                    )
+                    raise asyncio.CancelledError()
+
+                event_type = str(event.get("type", "")).strip()
+                if event_type == "status":
+                    status_value = str(event.get("status", "")).lower()
+                    if status_value:
+                        await job_manager.set_status(job_id, phase=status_value)
+
+                if event_type == "command.consent_required":
+                    await _transition_job_status(
+                        job_id,
+                        to_status="paused_for_approval",
+                        phase="awaiting_consent",
+                        pending_approval={
+                            "type": "consent",
+                            "consent_id": event.get("data", {}).get("consent_id"),
+                            "command": event.get("data", {}).get("command"),
+                        },
+                        allow_same=True,
+                    )
+                    await job_manager.update_metadata(
+                        job_id,
+                        {
+                            "checkpoint": {
+                                "phase": "awaiting_consent",
+                                "event_type": "command.consent_required",
+                                "captured_at": time.time(),
+                            }
+                        },
+                    )
+                elif event_type == "human_gate":
+                    gate_data = event.get("data", {}) if isinstance(event, dict) else {}
+                    gate_id = str(
+                        gate_data.get("gate_id") or gate_data.get("id") or ""
+                    ).strip()
+                    await _transition_job_status(
+                        job_id,
+                        to_status="paused_for_approval",
+                        phase="awaiting_human_gate",
+                        pending_approval={
+                            "type": "human_gate",
+                            "gate_id": gate_id or None,
+                            "gate": gate_data,
+                        },
+                        allow_same=True,
+                    )
+                    await job_manager.update_metadata(
+                        job_id,
+                        {
+                            "checkpoint": {
+                                "phase": "awaiting_human_gate",
+                                "event_type": "human_gate",
+                                "iteration": gate_data.get("iteration"),
+                                "gate_type": gate_data.get("gate_type"),
+                                "captured_at": time.time(),
+                            }
+                        },
+                    )
+                    saw_pending_gate = True
+                elif event_type and event_type not in {"heartbeat"}:
+                    current = await job_manager.require_job(job_id)
+                    if current.status == "paused_for_approval":
+                        await _transition_job_status(
+                            job_id,
+                            to_status="running",
+                            phase="executing",
+                            pending_approval=None,
+                            allow_same=True,
+                        )
+
+                if event_type == "complete":
+                    saw_complete = True
+                    summary = (
+                        event.get("summary", {}) if isinstance(event, dict) else {}
+                    )
+                    success = bool(summary.get("success", True))
+                    stopped_reason = str(summary.get("stopped_reason", ""))
+                    if stopped_reason == "human_gate_pending":
+                        saw_pending_gate = True
+                        pending_gate = (
+                            summary.get("pending_gate", {})
+                            if isinstance(summary, dict)
+                            else {}
+                        )
+                        pending_gate_id = str(
+                            pending_gate.get("gate_id") or pending_gate.get("id") or ""
+                        ).strip()
+                        await _transition_job_status(
+                            job_id,
+                            to_status="paused_for_approval",
+                            phase="awaiting_human_gate",
+                            pending_approval={
+                                "type": "human_gate",
+                                "gate_id": pending_gate_id or None,
+                                "gate": pending_gate,
+                                "summary": pending_gate,
+                            },
+                            allow_same=True,
+                        )
+                        await job_manager.update_metadata(
+                            job_id,
+                            {
+                                "checkpoint": {
+                                    "phase": "awaiting_human_gate",
+                                    "event_type": "complete.human_gate_pending",
+                                    "pending_gate": summary.get("pending_gate", {}),
+                                    "captured_at": time.time(),
+                                }
+                            },
+                        )
+                    else:
+                        await _transition_job_status(
+                            job_id,
+                            to_status="completed" if success else "failed",
+                            phase="completed" if success else "failed",
+                            error=summary.get("error") if not success else None,
+                            pending_approval=None,
+                            allow_same=True,
+                        )
+                        await job_manager.update_metadata(
+                            job_id,
+                            {
+                                "checkpoint": {
+                                    "phase": "completed",
+                                    "captured_at": time.time(),
+                                }
+                            },
+                        )
+
+                await job_manager.append_event(job_id, event)
+
+            if not saw_complete:
+                # Ensure terminal state when upstream exits without explicit "complete"
+                current = await job_manager.require_job(job_id)
+                if not _is_terminal_job_status(current.status):
+                    await _transition_job_status(
+                        job_id,
+                        to_status="completed",
+                        phase="completed",
+                        pending_approval=None,
+                        allow_same=True,
+                    )
+            elif saw_pending_gate:
+                # Keep paused status terminal for this run segment.
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "job_paused",
+                        "message": "Job paused awaiting human decision",
+                    },
+                )
+                return
+
+        current = await job_manager.require_job(job_id)
+        if current.status == "completed":
+            await job_manager.append_event(
+                job_id,
+                {"type": "job_completed", "message": "Background job completed"},
+            )
+        elif current.status == "failed":
+            await job_manager.append_event(
+                job_id,
+                {
+                    "type": "job_failed",
+                    "message": current.error or "Background job failed",
+                },
+            )
+    except asyncio.CancelledError:
+        try:
+            await _transition_job_status(
+                job_id,
+                to_status="canceled",
+                phase="canceled",
+                pending_approval=None,
+                allow_same=True,
+            )
+        except HTTPException:
+            pass
+        await job_manager.append_event(
+            job_id,
+            {"type": "job_canceled", "message": "Background job canceled"},
+        )
+        raise
+    except Exception as exc:
+        logger.exception("[NAVI Jobs] Background execution failed for %s", job_id)
+        try:
+            await _transition_job_status(
+                job_id,
+                to_status="failed",
+                phase="failed",
+                error=str(exc),
+                pending_approval=None,
+                allow_same=True,
+            )
+        except HTTPException:
+            pass
+        await job_manager.append_event(
+            job_id,
+            {"type": "error", "error": str(exc)},
+        )
+        await job_manager.append_event(
+            job_id,
+            {"type": "job_failed", "message": str(exc)},
+        )
+    finally:
+        if lock_heartbeat_task and not lock_heartbeat_task.done():
+            lock_heartbeat_task.cancel()
+            try:
+                await lock_heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        await job_manager.release_runner_lock(job_id, runner_token)
+
+
+async def _require_owned_job(job_id: str, user: User):
+    """Fetch job and enforce user/org ownership."""
+    job_manager = get_job_manager()
+    job = await job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    current_user_id, current_org_id = _resolve_authenticated_context(user)
+    if not current_user_id:
+        raise HTTPException(
+            status_code=401, detail="Missing authenticated user context"
+        )
+    if job.user_id and str(job.user_id) != str(current_user_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if job.org_id and not current_org_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if job.org_id and str(job.org_id) != str(current_org_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return job
+
+
+async def _start_job_runner(job_id: str) -> Dict[str, Any]:
+    """Start a background runner if not already running in this process."""
+    job_manager = get_job_manager()
+    job = await job_manager.require_job(job_id)
+    if _is_terminal_job_status(job.status):
+        return {"started": False, "reason": f"job_{job.status}"}
+    try:
+        if await job_manager.has_active_runner(job_id):
+            return {"started": False, "reason": "already_running"}
+    except DistributedLockUnavailableError:
+        return {"started": False, "reason": "distributed_lock_unavailable"}
+    task = asyncio.create_task(_run_autonomous_job(job_id))
+    task_registered = await job_manager.set_task_if_idle(job_id, task)
+    if not task_registered:
+        task.cancel()
+        return {"started": False, "reason": "already_running"}
+    return {"started": True}
+
+
+@router.post("/jobs")
+@jobs_router.post("")
+async def create_background_job(
+    request: JobCreateRequest,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Create a long-running autonomous job and optionally start it immediately."""
+    user_id, org_id = _resolve_authenticated_context(user)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Missing authenticated user")
+
+    job_manager = get_job_manager()
+    record = await job_manager.create_job(
+        payload=request.model_dump(),
+        user_id=user_id,
+        org_id=org_id,
+        metadata=request.metadata or {},
+    )
+
+    start_result: Dict[str, Any] = {"started": False, "reason": "not_requested"}
+    if request.auto_start:
+        start_result = await _start_job_runner(record.job_id)
+        if start_result.get("reason") == "distributed_lock_unavailable":
+            # Job was created but couldn't be started - include job_id to prevent orphaning
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": (
+                        "Distributed runner lock unavailable (Redis). "
+                        "Background start is temporarily unavailable."
+                    ),
+                    "job_id": record.job_id,
+                    "job": record.to_public(),
+                    "events_url": f"/api/jobs/{record.job_id}/events",
+                },
+            )
+
+    return {
+        "success": True,
+        "job": record.to_public(),
+        "events_url": f"/api/jobs/{record.job_id}/events",
+        "started": bool(start_result.get("started")),
+        "start_reason": start_result.get("reason"),
+    }
+
+
+@router.post("/jobs/{job_id}/start")
+@jobs_router.post("/{job_id}/start")
+async def start_background_job(
+    job_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Start a queued background job."""
+    job = await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+
+    if job.status == "running":
+        return {
+            "success": True,
+            "started": False,
+            "job": job.to_public(),
+            "message": "Job already running",
+        }
+    if _is_terminal_job_status(job.status):
+        raise HTTPException(status_code=409, detail=f"Job already {job.status}")
+    if job.status != "queued":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job must be queued before start (current: {job.status})",
+        )
+
+    start_result = await _start_job_runner(job_id)
+    if not start_result.get("started"):
+        if start_result.get("reason") == "distributed_lock_unavailable":
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Distributed runner lock unavailable (Redis). "
+                    "Cannot start job safely."
+                ),
+            )
+        return {
+            "success": True,
+            "started": False,
+            "job": (await job_manager.require_job(job_id)).to_public(),
+            "message": "Job already running",
+        }
+    return {
+        "success": True,
+        "started": True,
+        "job": (await job_manager.require_job(job_id)).to_public(),
+    }
+
+
+@router.post("/jobs/{job_id}/resume")
+@jobs_router.post("/{job_id}/resume")
+async def resume_background_job(
+    job_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Resume a job that is queued or paused for approval."""
+    job = await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+    if _is_terminal_job_status(job.status):
+        raise HTTPException(status_code=409, detail=f"Job already {job.status}")
+    if job.status == "running":
+        return {
+            "success": True,
+            "started": False,
+            "job": job.to_public(),
+            "message": "Job already running",
+        }
+    if job.status not in {"queued", "paused_for_approval"}:
+        raise HTTPException(
+            status_code=409, detail=f"Cannot resume job in status {job.status}"
+        )
+    if job.status == "paused_for_approval" and job.pending_approval:
+        raise HTTPException(
+            status_code=409,
+            detail="Job is waiting for approval. Submit /approve before resuming.",
+        )
+
+    start_result = await _start_job_runner(job_id)
+    if not start_result.get("started"):
+        if start_result.get("reason") == "distributed_lock_unavailable":
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Distributed runner lock unavailable (Redis). "
+                    "Cannot resume job safely."
+                ),
+            )
+        return {
+            "success": True,
+            "started": False,
+            "job": (await job_manager.require_job(job_id)).to_public(),
+            "message": "Job already running",
+        }
+    return {
+        "success": True,
+        "started": True,
+        "job": (await job_manager.require_job(job_id)).to_public(),
+    }
+
+
+@router.get("/jobs/{job_id}")
+@jobs_router.get("/{job_id}")
+async def get_background_job(
+    job_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Get current background job status."""
+    job = await _require_owned_job(job_id, user)
+    return {"success": True, "job": job.to_public()}
+
+
+@router.get("/jobs/{job_id}/events")
+@jobs_router.get("/{job_id}/events")
+async def stream_background_job_events(
+    job_id: str,
+    after_sequence: int = Query(0, ge=0),
+    user: User = Depends(require_role(Role.VIEWER)),
+):
+    """SSE stream for job events with replay via sequence cursor."""
+    await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+
+    async def event_stream():
+        cursor = after_sequence
+
+        # Initial replay for reattach.
+        replay = await job_manager.get_events_after(job_id, cursor)
+        for event in replay:
+            cursor = max(cursor, int(event.get("sequence", cursor)))
+            yield f"data: {json.dumps(event)}\n\n"
+
+        while True:
+            current = await job_manager.require_job(job_id)
+            if _is_terminal_job_status(current.status):
+                # Drain any pending terminal events (e.g., completion/error metadata)
+                # before closing the SSE stream.
+                final_events = await job_manager.wait_for_events(
+                    job_id,
+                    after_sequence=cursor,
+                    timeout_seconds=1.0,
+                )
+                if final_events:
+                    for event in final_events:
+                        cursor = max(cursor, int(event.get("sequence", cursor)))
+                        yield f"data: {json.dumps(event)}\n\n"
+                    continue
+
+                should_emit_terminal_event = cursor > after_sequence or (
+                    cursor == 0 and after_sequence == 0
+                )
+                if should_emit_terminal_event:
+                    done_event = {
+                        "type": "job_terminal",
+                        "job_id": job_id,
+                        "job_status": current.status,
+                        # Keep synthetic terminal cursor stable across reconnects.
+                        "sequence": max(cursor, 1),
+                        "timestamp": int(time.time() * 1000),
+                    }
+                    yield f"data: {json.dumps(done_event)}\n\n"
+                yield "data: [DONE]\n\n"
+                break
+
+            new_events = await job_manager.wait_for_events(
+                job_id,
+                after_sequence=cursor,
+                timeout_seconds=15.0,
+            )
+            if new_events:
+                for event in new_events:
+                    cursor = max(cursor, int(event.get("sequence", cursor)))
+                    yield f"data: {json.dumps(event)}\n\n"
+                continue
+
+            heartbeat = {
+                "type": "heartbeat",
+                "job_id": job_id,
+                "job_status": current.status,
+                "sequence": cursor,
+                "timestamp": int(time.time() * 1000),
+                "message": "Job still running",
+            }
+            yield f"data: {json.dumps(heartbeat)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/jobs/{job_id}/cancel")
+@jobs_router.post("/{job_id}/cancel")
+async def cancel_background_job(
+    job_id: str,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Cancel a running/queued background job."""
+    job = await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+    if _is_terminal_job_status(job.status):
+        return {
+            "success": True,
+            "job": job.to_public(),
+            "message": f"Job already {job.status}",
+        }
+    if job.status not in {"queued", "running", "paused_for_approval"}:
+        raise HTTPException(
+            status_code=409, detail=f"Cannot cancel job in status {job.status}"
+        )
+
+    requester = str(getattr(user, "user_id", None) or getattr(user, "id", None) or "")
+    await job_manager.request_cancel(job_id, requested_by=requester or None)
+    record = await job_manager.cancel_job(job_id)
+    return {"success": True, "job": record.to_public()}
+
+
+@router.post("/jobs/{job_id}/approve")
+@jobs_router.post("/{job_id}/approve")
+async def approve_background_job_gate(
+    job_id: str,
+    request: JobApprovalRequest,
+    user: User = Depends(require_role(Role.VIEWER)),
+) -> Dict[str, Any]:
+    """Approve a paused job checkpoint (consent or generic gate acknowledgement)."""
+    job = await _require_owned_job(job_id, user)
+    job_manager = get_job_manager()
+    if job.status != "paused_for_approval":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not awaiting approval (current status: {job.status})",
+        )
+    if not job.pending_approval:
+        raise HTTPException(
+            status_code=409,
+            detail="Job has no pending approval payload",
+        )
+
+    current_user_id = str(
+        getattr(user, "user_id", None) or getattr(user, "id", None) or ""
+    )
+    current_org_id = str(
+        getattr(user, "org_id", None) or getattr(user, "org_key", None) or ""
+    )
+
+    approval_result: Dict[str, Any] = {
+        "decision": request.decision or request.choice or "approved",
+        "gate_id": request.gate_id,
+        "comment": request.comment,
+    }
+    pending_approval = dict(job.pending_approval or {})
+    approval_type = str(pending_approval.get("type") or "").strip().lower()
+    if not approval_type:
+        raise HTTPException(
+            status_code=409, detail="Malformed pending approval payload"
+        )
+
+    requested_gate_id = str(request.gate_id or "").strip()
+    pending_gate = pending_approval.get("gate")
+    pending_summary = pending_approval.get("summary")
+    if not isinstance(pending_gate, dict):
+        pending_gate = {}
+    if not isinstance(pending_summary, dict):
+        pending_summary = {}
+    pending_gate_id = str(
+        pending_approval.get("gate_id")
+        or pending_approval.get("consent_id")
+        or pending_gate.get("gate_id")
+        or pending_gate.get("id")
+        or pending_summary.get("gate_id")
+        or pending_summary.get("id")
+        or pending_approval.get("type")
+        or ""
+    ).strip()
+    if requested_gate_id and pending_gate_id and requested_gate_id != pending_gate_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Provided gate_id does not match pending approval",
+        )
+
+    decision_value = str(approval_result.get("decision") or "").strip().lower()
+    deny_decision = decision_value in {
+        "deny",
+        "denied",
+        "reject",
+        "rejected",
+        "cancel",
+        "stop",
+    } or decision_value.startswith("deny")
+    resume_required = False
+    resume_context_parts: List[str] = []
+    if approval_result.get("decision"):
+        resume_context_parts.append(f"Decision: {approval_result['decision']}")
+    if request.comment:
+        resume_context_parts.append(f"Comment: {request.comment}")
+
+    # Wire into existing consent pipeline when consent_id is provided.
+    consent_id = request.consent_id or pending_approval.get("consent_id")
+    if approval_type == "consent" and not consent_id:
+        raise HTTPException(
+            status_code=400, detail="consent_id is required for consent approvals"
+        )
+
+    if consent_id:
+        choice = _resolve_consent_choice(request)
+        approval_result["consent"] = await _apply_consent_decision(
+            consent_id=str(consent_id),
+            choice=choice,
+            alternative_command=request.alternative_command,
+            current_user_id=current_user_id,
+            current_org_id=current_org_id,
+        )
+        resume_context_parts.append(f"Consent choice: {choice}")
+        # If task stopped while waiting for consent, restart the run.
+        if not deny_decision and not (job.task and not job.task.done()):
+            resume_required = True
+    elif approval_type == "human_gate":
+        resume_required = not deny_decision
+
+    continuation_count = int((job.metadata or {}).get("continuation_count", 0) or 0)
+    if deny_decision:
+        await job_manager.request_cancel(job_id, requested_by=current_user_id or None)
+        if job.task and not job.task.done():
+            job.task.cancel()
+        await _transition_job_status(
+            job_id,
+            to_status="canceled",
+            phase="canceled",
+            pending_approval=None,
+            allow_same=True,
+        )
+        await job_manager.update_metadata(
+            job_id,
+            {
+                "last_approval": approval_result,
+                "resume_context": "; ".join(resume_context_parts) or "Approval denied",
+            },
+        )
+        await job_manager.append_event(
+            job_id,
+            {
+                "type": "approval_denied",
+                "approval": approval_result,
+                "message": "Approval denied by user; job canceled",
+            },
+        )
+    elif resume_required:
+        await job_manager.update_metadata(
+            job_id,
+            {
+                "continuation_count": continuation_count + 1,
+                "resume_context": "; ".join(resume_context_parts) or "Approval granted",
+                "last_approval": approval_result,
+            },
+        )
+        await _transition_job_status(
+            job_id,
+            to_status="queued",
+            phase="resuming",
+            pending_approval=None,
+            allow_same=True,
+        )
+    else:
+        await _transition_job_status(
+            job_id,
+            to_status="running",
+            phase="executing",
+            pending_approval=None,
+            allow_same=True,
+        )
+    await job_manager.append_event(
+        job_id,
+        {
+            "type": "approval_recorded",
+            "approval": approval_result,
+        },
+    )
+    if resume_required:
+        await job_manager.append_event(
+            job_id,
+            {
+                "type": "job_resuming",
+                "message": "Approval recorded. Restarting job from checkpoint context.",
+            },
+        )
+        start_result = await _start_job_runner(job_id)
+        if not start_result.get("started"):
+            if start_result.get("reason") == "distributed_lock_unavailable":
+                await job_manager.append_event(
+                    job_id,
+                    {
+                        "type": "job_resume_failed",
+                        "reason": "distributed_lock_unavailable",
+                        "message": (
+                            "Distributed runner lock unavailable. "
+                            "Job remains queued until resume is retried."
+                        ),
+                    },
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Distributed runner lock unavailable (Redis). "
+                        "Cannot resume job safely."
+                    ),
+                )
+            return {
+                "success": True,
+                "started": False,
+                "job": (await job_manager.require_job(job_id)).to_public(),
+                "approval": approval_result,
+                "message": "Job already running",
+            }
+        return {
+            "success": True,
+            "started": True,
+            "job": (await job_manager.require_job(job_id)).to_public(),
+            "approval": approval_result,
+        }
+    return {
+        "success": True,
+        "started": False,
+        "job": (await job_manager.require_job(job_id)).to_public(),
+        "approval": approval_result,
+    }
 
 
 @router.post("/chat/autonomous")
@@ -7697,18 +9240,44 @@ async def navi_autonomous_task(
     if not workspace_path:
         workspace_path = os.environ.get("AEP_WORKSPACE_PATH", os.getcwd())
 
-    # Map model to provider
-    if request.provider:
-        provider = request.provider
-        model = request.model
-    else:
-        provider, model = _map_model_to_provider(request.model)
+    try:
+        routing_decision = get_model_router().route(
+            requested_model_or_mode_id=request.model,
+            endpoint="autonomous",
+            requested_provider=request.provider,
+        )
+    except ModelRoutingError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "requestedModelId": request.model,
+            },
+        ) from exc
+
+    provider = routing_decision.provider
+    model = routing_decision.model
 
     logger.info(
         f"[NAVI Autonomous] Provider: {provider}, Model: {model}, Workspace: {workspace_path}"
     )
+    trace_store = get_trace_store()
+    trace_task_id = request.conversation_id or f"autonomous-{uuid4()}"
+    trace_store.append(
+        "routing_decision",
+        {
+            "taskId": trace_task_id,
+            "conversationId": request.conversation_id,
+            "endpoint": "autonomous",
+            "mode": request.mode,
+            **routing_decision.to_public_dict(),
+        },
+    )
 
     # Get API key based on provider
+    model_base_url: Optional[str] = None
+
     if provider == "anthropic":
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     elif provider == "openrouter":
@@ -7717,6 +9286,23 @@ async def navi_autonomous_task(
         api_key = os.environ.get("GROQ_API_KEY", "")
     elif provider == "google":
         api_key = os.environ.get("GOOGLE_API_KEY", "")
+    elif provider == "ollama":
+        api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        )
+    elif provider == "self_hosted":
+        api_key = (
+            os.environ.get("SELF_HOSTED_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "self-hosted"
+        )
+        model_base_url = _ensure_openai_compatible_base_url(
+            os.environ.get("SELF_HOSTED_API_BASE_URL")
+            or os.environ.get("SELF_HOSTED_LLM_URL")
+            or os.environ.get("VLLM_BASE_URL")
+            or "http://localhost:8000"
+        )
     else:
         api_key = os.environ.get("OPENAI_API_KEY", "")
 
@@ -7762,7 +9348,9 @@ async def navi_autonomous_task(
 
                         # Use vision AI to analyze the image
                         # Use the same provider as the user's selected model
-                        vision_provider = _get_vision_provider_for_model(request.model)
+                        vision_provider = _get_vision_provider_for_model(
+                            routing_decision.effective_model_id
+                        )
                         analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
 
                         vision_response = await VisionClient.analyze_image(
@@ -7820,16 +9408,19 @@ async def navi_autonomous_task(
                         )
                         raise HTTPException(
                             status_code=403,
-                            detail="Access denied: You don't have permission to access this conversation"
+                            detail="Access denied: You don't have permission to access this conversation",
                         )
 
                     # Load conversation history from database
                     logger.info(
                         f"[NAVI Autonomous] Loading conversation {conv_uuid} from database"
                     )
-                    db_messages = memory_service.get_recent_messages(conv_uuid, limit=100)
+                    db_messages = memory_service.get_recent_messages(
+                        conv_uuid, limit=100
+                    )
                     conversation_history_from_db = [
-                        {"role": msg.role, "content": msg.content} for msg in db_messages
+                        {"role": msg.role, "content": msg.content}
+                        for msg in db_messages
                     ]
                     logger.info(
                         f"[NAVI Autonomous] Loaded {len(conversation_history_from_db)} messages from database"
@@ -7951,6 +9542,8 @@ async def navi_autonomous_task(
         """Generate SSE events from the autonomous agent with heartbeat to prevent timeout."""
         import asyncio
 
+        yield f"data: {json.dumps({'router_info': _build_router_info(routing_decision, mode=request.mode or 'agent-full-access', task_type='autonomous')})}\n\n"
+
         async def heartbeat_wrapper(agent_generator):
             """Wrap agent generator with periodic heartbeat events to keep SSE connection alive."""
             last_event_time = time.time()
@@ -8018,6 +9611,7 @@ async def navi_autonomous_task(
                 api_key=api_key,
                 provider=provider,
                 model=model,
+                base_url=model_base_url,
                 db_session=db,
                 user_id=user_id,
                 org_id=org_id,
@@ -8037,9 +9631,31 @@ async def navi_autonomous_task(
                     if text_chunk:
                         assistant_response_parts.append(text_chunk)
                 yield f"data: {json.dumps(event)}\n\n"
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "autonomous",
+                    "outcome": "success",
+                    "responseLength": len("\n".join(assistant_response_parts)),
+                    **routing_decision.to_public_dict(),
+                },
+            )
 
         except Exception as e:
             logger.exception(f"[NAVI Autonomous] Error: {e}")
+            trace_store.append(
+                "run_outcome",
+                {
+                    "taskId": trace_task_id,
+                    "conversationId": request.conversation_id,
+                    "endpoint": "autonomous",
+                    "outcome": "error",
+                    "error": str(e),
+                    **routing_decision.to_public_dict(),
+                },
+            )
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
 
         # =========================================================================

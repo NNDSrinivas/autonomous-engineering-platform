@@ -15,17 +15,26 @@
     "dev": "echo 'run package-level dev scripts: e.g., npm run dev --prefix frontend'",
     "lint": "echo 'root lint: add package-level lint when ready'",
     "typecheck": "echo 'root typecheck: add package-level checks when ready'",
+    "validate:registry": "tsx scripts/validate_registry.ts",
+    "validate:registry:ci": "APP_ENV=dev PROD_READINESS_AUDIT=1 MODEL_REGISTRY_PATH=shared/model-registry-dev.json tsx scripts/validate_registry.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.0"
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^25.2.3",
+    "tsx": "^4.21.0",
+    "vitest": "^4.0.18"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@radix-ui/react-scroll-area": "^1.2.10"
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1"
   }
 }

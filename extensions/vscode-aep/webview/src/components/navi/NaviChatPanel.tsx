@@ -129,6 +129,14 @@ import { ExecutionPlanStepper, ExecutionPlanStep } from "./ExecutionPlanStepper"
 import { FileChangeSummary } from "./FileChangeSummary";
 import { FileDiffView, type DiffLine, type FileDiff } from "./FileDiffView";
 import { useActivityPanelPreferences } from "../../hooks/useActivityPanelPreferences";
+import {
+  ADVANCED_PROVIDER_GROUPS,
+  LEGACY_MODEL_PROVIDER_GROUPS,
+  MODEL_REGISTRY,
+  NAVI_MODELS,
+  getRegistryModel,
+  getRegistryModelLabel,
+} from "../../config/modelRegistry";
 import "./NaviChatPanel.css";
 import Prism from 'prismjs';
 import type { ActivityEvent as ActivityEventPayload } from "../../types/activity";
@@ -248,6 +256,7 @@ const CHAT_MODE_LABELS: Record<ChatMode, string> = {
 };
 
 const AUTO_MODEL_ID = "auto/recommended";
+const DEFAULT_NAVI_MODE_ID = MODEL_REGISTRY.defaults.defaultModeId;
 
 // Slash commands configuration
 interface SlashCommand {
@@ -345,85 +354,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
 ];
 
-const LLM_PROVIDERS: LLMProvider[] = [
-  {
-    id: "auto",
-    name: "Auto",
-    models: [
-      {
-        id: AUTO_MODEL_ID,
-        name: "Auto (Recommended)",
-        description: "Automatically selects the best model",
-      },
-    ],
-  },
-  {
-    id: "openai",
-    name: "OpenAI",
-    models: [
-      // GPT-5 Series (Latest)
-      { id: "openai/gpt-5.2", name: "GPT-5.2", description: "Latest flagship model" },
-      { id: "openai/gpt-5.2-pro", name: "GPT-5.2 Pro", description: "Enhanced reasoning" },
-      { id: "openai/gpt-5.1", name: "GPT-5.1", description: "Previous 5.x version" },
-      { id: "openai/gpt-5", name: "GPT-5", description: "Fifth generation flagship" },
-      { id: "openai/gpt-5-mini", name: "GPT-5 Mini", description: "Fast & efficient" },
-      { id: "openai/gpt-5-nano", name: "GPT-5 Nano", description: "Ultra-fast for simple tasks" },
-      // GPT-4.1 Series
-      { id: "openai/gpt-4.1", name: "GPT-4.1", description: "Enhanced GPT-4" },
-      { id: "openai/gpt-4.1-mini", name: "GPT-4.1 Mini", description: "Fast GPT-4.1" },
-      { id: "openai/gpt-4.1-nano", name: "GPT-4.1 Nano", description: "Lightweight GPT-4.1" },
-      // GPT-4o Series
-      { id: "openai/gpt-4o", name: "GPT-4o", description: "Optimized multimodal" },
-      { id: "openai/chatgpt-4o-latest", name: "ChatGPT-4o Latest", description: "ChatGPT optimized" },
-      { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", description: "Fast 4o variant" },
-      { id: "openai/gpt-4o-search-preview", name: "GPT-4o Search", description: "Web search enabled" },
-      // Reasoning Models (o-series)
-      { id: "openai/o1", name: "o1", description: "Advanced reasoning" },
-      { id: "openai/o1-pro", name: "o1 Pro", description: "Enhanced reasoning" },
-      { id: "openai/o3", name: "o3", description: "Latest reasoning model" },
-      { id: "openai/o3-mini", name: "o3 Mini", description: "Fast reasoning" },
-      { id: "openai/o4-mini", name: "o4 Mini", description: "Compact reasoning" },
-      { id: "openai/o4-mini-deep-research", name: "o4 Mini Deep Research", description: "Research optimized" },
-      // Code Models
-      { id: "openai/gpt-5.2-codex", name: "GPT-5.2 Codex", description: "Latest code model" },
-      { id: "openai/gpt-5.1-codex", name: "GPT-5.1 Codex", description: "Code generation" },
-      { id: "openai/gpt-5-codex", name: "GPT-5 Codex", description: "Code specialist" },
-      { id: "openai/codex-mini-latest", name: "Codex Mini", description: "Fast code model" },
-      // Legacy
-      { id: "openai/gpt-4-turbo", name: "GPT-4 Turbo", description: "Legacy turbo model" },
-      { id: "openai/gpt-3.5-turbo", name: "GPT-3.5 Turbo", description: "Fast legacy model" },
-    ],
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic",
-    models: [
-      { id: "anthropic/claude-sonnet-4", name: "Claude Sonnet 4", description: "Balanced performance" },
-      { id: "anthropic/claude-opus-4", name: "Claude Opus 4", description: "Most capable Claude" },
-      { id: "anthropic/claude-3.5-haiku", name: "Claude 3.5 Haiku", description: "Fast & efficient" },
-      { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet", description: "Previous generation" },
-    ],
-  },
-  {
-    id: "google",
-    name: "Google",
-    models: [
-      { id: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro", description: "Top-tier multimodal" },
-      { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash", description: "Fast & balanced" },
-      { id: "google/gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", description: "Fastest option" },
-      { id: "google/gemini-3-pro-preview", name: "Gemini 3 Pro", description: "Next-gen preview" },
-    ],
-  },
-  {
-    id: "groq",
-    name: "Groq (Ultra-Fast)",
-    models: [
-      { id: "groq/llama-3.3-70b-versatile", name: "Llama 3.3 70B", description: "Most capable" },
-      { id: "groq/llama3-70b-8192", name: "Llama 3 70B", description: "Previous generation" },
-      { id: "groq/mixtral-8x7b-32768", name: "Mixtral 8x7B", description: "Fast mixture model" },
-    ],
-  },
-];
+const LLM_PROVIDERS: LLMProvider[] = LEGACY_MODEL_PROVIDER_GROUPS;
 
 interface NaviAction {
   id?: string;
@@ -494,15 +425,21 @@ interface NaviChatResponse {
 type DetectedTask = {
   taskType?: string;
   modelId?: string;
+  effectiveModelId?: string;
   modelName?: string;
   reason?: string;
+  fallbackReason?: string;
+  fallbackReasonCode?: string;
   provider?: string;
   source?: "auto" | "manual";
   requestedModel?: string;
+  requestedModelId?: string;
   requestedMode?: string;
+  requestedModeId?: string;
   resolvedModel?: string;
   mode?: string; // chat | agent | agent-full-access
   autoExecute?: boolean;
+  wasFallback?: boolean;
 };
 
 type TerminalEntry = {
@@ -935,6 +872,76 @@ const countLines = (text?: string): number => {
   return text.split("\n").length;
 };
 
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const sanitizeHttpUrl = (rawUrl: string): string | null => {
+  const compact = rawUrl.replace(/\s+/g, "");
+  try {
+    const parsed = new URL(compact);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+};
+
+const makeLinksClickableSafe = (html: string): string => {
+  let result = html;
+  const markdownLinkPattern = /\[([^\]]+)\]\((https?\s*:\s*\/\s*\/\s*[^)]+)\)/g;
+  result = result.replace(markdownLinkPattern, (_match, text, url) => {
+    const cleanUrl = sanitizeHttpUrl(url);
+    if (!cleanUrl) return text;
+    const cleanTextForCompare = String(text || "").replace(/\s+/g, "");
+    const displayText =
+      cleanTextForCompare === cleanUrl ? cleanUrl : String(text || "").trim();
+    return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+  });
+
+  const urlPattern = /(https?\s*:\s*\/\s*\/\s*[^\s<>"'\[\]]+)/g;
+  result = result.replace(urlPattern, (url: string, _p1: string, position: number) => {
+    const before = result.substring(Math.max(0, position - 15), position);
+    if (/href="$/.test(before) || /">$/.test(before)) {
+      return url;
+    }
+    const trailingMatch = url.match(/[.,;:!?]+$/);
+    const trailingPunctuation = trailingMatch ? trailingMatch[0] : "";
+    const rawUrl = trailingPunctuation ? url.slice(0, -trailingPunctuation.length) : url;
+    const cleanUrl = sanitizeHttpUrl(rawUrl);
+    if (!cleanUrl) {
+      return url;
+    }
+    return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
+  });
+
+  const commonDirs =
+    "src|lib|components|pages|app|backend|frontend|extensions|webview|utils|services|api|hooks|types|tests|test|__tests__|spec|config|configs|scripts|bin|dist|build|public|static|assets|styles|css|templates|views|models|controllers|routes|middleware|helpers|core|common|shared|modules|features|domains";
+  const filePathPattern = new RegExp(
+    `(?:^|[\\s(])((\\/[\\w\\-.]+)+\\.\\w+|(\\.\\.\\/[\\w\\-./]+\\.\\w+)|((?:${commonDirs})\\/[\\w\\-./]+\\.\\w+)|([\\w\\-]+\\.(?:tsx?|jsx?|py|go|rs|rb|java|cs|cpp|c|h|css|scss|less|html|json|ya?ml|toml|md|sql)))(?::(\\d+))?(?=[\\s),.:;!?]|$)`,
+    "g",
+  );
+  result = result.replace(
+    filePathPattern,
+    (match: string, _fullPath: string, _p1: string, _p2: string, _p3: string, _p4: string, lineNum?: string) => {
+      const leadingMatch = match.match(/^[\s(]/) || [""];
+      const leading = leadingMatch[0];
+      const pathPart = match.slice(leading.length);
+      const pathWithoutLine = pathPart.replace(/:(\d+)$/, "");
+      const dataLine = lineNum ? ` data-line="${lineNum}"` : "";
+      const safePathAttr = escapeHtml(pathWithoutLine);
+      return `${leading}<a href="#" class="navi-link navi-link--file" data-file-path="${safePathAttr}"${dataLine}>${safePathAttr}</a>`;
+    },
+  );
+  return result;
+};
+
 const countUnifiedDiffStats = (diff?: string): { additions: number; deletions: number } | null => {
   if (!diff) return null;
   let additions = 0;
@@ -1013,6 +1020,7 @@ const normalizeRoutingInfo = (routing: any): DetectedTask | null => {
     routing.intent ||
     undefined;
   const modelId =
+    routing.effectiveModelId ||
     routing.resolved_model_id ||
     routing.model_id ||
     routing.modelId ||
@@ -1031,20 +1039,34 @@ const normalizeRoutingInfo = (routing: any): DetectedTask | null => {
     routing.providerId ||
     undefined;
   const reason = routing.reason || routing.rationale || routing.explanation || undefined;
+  const fallbackReason =
+    routing.fallbackReason || routing.fallback_reason || routing.fallback_reason_text || undefined;
+  const fallbackReasonCode =
+    routing.fallbackReasonCode || routing.fallback_reason_code || undefined;
   const source = routing.source || undefined;
-  const requestedModel = routing.requested_model || routing.requestedModel || undefined;
-  const requestedMode = routing.mode || routing.requested_mode || routing.requestedMode || undefined;
+  const requestedModel =
+    routing.requestedModelId || routing.requested_model || routing.requestedModel || undefined;
+  const requestedMode =
+    routing.requestedModeId || routing.requested_mode || routing.requestedMode || undefined;
   const resolvedModel = routing.resolved_model || routing.resolvedModel || undefined;
+  const wasFallback = Boolean(routing.wasFallback || routing.was_fallback);
+  const effectiveModelId = routing.effectiveModelId || routing.effective_model_id || modelId;
   return {
     taskType,
     modelId,
+    effectiveModelId,
     modelName,
     provider,
     reason,
+    fallbackReason,
+    fallbackReasonCode,
     source,
     requestedModel,
+    requestedModelId: requestedModel,
     requestedMode,
+    requestedModeId: requestedMode,
     resolvedModel,
+    wasFallback,
   };
 };
 
@@ -1076,20 +1098,37 @@ const flattenModels = () =>
   );
 
 const getModelOption = (modelId: string) => {
+  const registryModel = getRegistryModel(modelId);
+  if (registryModel) {
+    return {
+      id: registryModel.id,
+      name: registryModel.name,
+      description: registryModel.description || "",
+      providerId: registryModel.id.split("/")[0],
+      providerName: registryModel.id.split("/")[0],
+    };
+  }
   const all = flattenModels();
   return all.find((model) => model.id === modelId) || null;
 };
 
 const getModelLabel = (modelId: string, fallbackLabel?: string) => {
+  const registryLabel = getRegistryModelLabel(modelId);
+  if (registryLabel && registryLabel !== modelId) return registryLabel;
   const model = getModelOption(modelId);
   if (model) return model.name;
   return fallbackLabel || modelId;
 };
 
 const getDefaultManualModelId = () => {
-  const preferred = LLM_PROVIDERS.find((provider) => provider.id !== "auto");
-  return preferred?.models[0]?.id ?? "openai/gpt-5";
+  const preferred = ADVANCED_PROVIDER_GROUPS[0];
+  return preferred?.models[0]?.id ?? MODEL_REGISTRY.defaults.defaultModelId;
 };
+
+const isLegacyAutoModel = (modelId: string) =>
+  modelId === AUTO_MODEL_ID || modelId === "auto";
+
+const isNaviModeModel = (modelId: string) => modelId.startsWith("navi/");
 
 const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   { id: "tell_more", label: "Tell me more", prompt: "tell me more" },
@@ -1618,11 +1657,18 @@ export default function NaviChatPanel({
   const [scope, setScope] = useState<ScopeMode>("this_repo");
   const [provider, setProvider] = useState<ProviderId>("openai_navra");
   const [chatMode, setChatMode] = useState<ChatMode>("agent");
-  const [selectedModelId, setSelectedModelId] = useState(AUTO_MODEL_ID);
+  const [selectedModelId, setSelectedModelId] = useState(DEFAULT_NAVI_MODE_ID);
   const [modelLabelOverride, setModelLabelOverride] = useState<string | null>(null);
-  const [useAutoModel, setUseAutoModel] = useState(true);
+  const [useAutoModel, setUseAutoModel] = useState(false);
+  const [showAdvancedModels, setShowAdvancedModels] = useState(false);
   const [lastManualModelId, setLastManualModelId] = useState(getDefaultManualModelId());
   const [lastRouterInfo, setLastRouterInfo] = useState<DetectedTask | null>(null);
+
+  useEffect(() => {
+    if (!isNaviModeModel(selectedModelId) && !isLegacyAutoModel(selectedModelId)) {
+      setShowAdvancedModels(true);
+    }
+  }, [selectedModelId]);
 
   // Task Complete panel state
   type TaskSummary = {
@@ -1825,7 +1871,7 @@ export default function NaviChatPanel({
   const sendTimeoutRef = useRef<number | null>(null);
   const lastSentRef = useRef<string>("");
   const lastAttachmentsRef = useRef<AttachmentChipData[]>([]);
-  const lastModelIdRef = useRef<string>(AUTO_MODEL_ID);
+  const lastModelIdRef = useRef<string>(DEFAULT_NAVI_MODE_ID);
   const lastModeIdRef = useRef<ChatMode>("agent");
   const sentViaExtensionRef = useRef(false);
   const pendingResetRef = useRef(false);
@@ -1870,6 +1916,7 @@ export default function NaviChatPanel({
   const actionSummaryRef = useRef<ActionSummaryEntry[]>([]);
   const actionSummaryTimerRef = useRef<number | null>(null);
   const activeRunIdRef = useRef<string | null>(null);
+  const endpointFallbackToastShownRef = useRef<Set<string>>(new Set());
 
   // SELF-HEALING: Track retry attempts to prevent infinite loops
   const selfHealingRetryCountRef = useRef(0);
@@ -2204,6 +2251,37 @@ export default function NaviChatPanel({
       next.set(messageId, messageMap);
       return next;
     });
+  };
+
+  const appendNarrativeChunk = (
+    existing: Array<{ id: string; text: string; timestamp: string }>,
+    text: string,
+    timestamp: string
+  ): Array<{ id: string; text: string; timestamp: string }> => {
+    if (!text) return existing;
+    if (existing.length === 0) {
+      return [{ id: makeActivityId(), text, timestamp }];
+    }
+    const last = existing[existing.length - 1];
+    const lastMs = Date.parse(last.timestamp || "");
+    const incomingMs = Date.parse(timestamp || "");
+    const mergeWindowMs = 1200;
+    const canMerge =
+      Number.isFinite(lastMs) &&
+      Number.isFinite(incomingMs) &&
+      incomingMs - lastMs <= mergeWindowMs;
+
+    if (!canMerge) {
+      return [...existing, { id: makeActivityId(), text, timestamp }];
+    }
+
+    const merged = [...existing];
+    merged[merged.length - 1] = {
+      ...last,
+      text: `${last.text}${text}`,
+      timestamp,
+    };
+    return merged;
   };
 
   const rekeyPerActionActivities = (fromId: string, toId: string) => {
@@ -3171,7 +3249,8 @@ export default function NaviChatPanel({
       const activityPanel = activityPanelRef.current;
 
       if (msg.type === "hydrateState") {
-        const nextModelId = typeof msg.modelId === "string" ? msg.modelId : AUTO_MODEL_ID;
+        const nextModelId =
+          typeof msg.modelId === "string" ? msg.modelId : DEFAULT_NAVI_MODE_ID;
         const nextModelLabel = typeof msg.modelLabel === "string" ? msg.modelLabel : null;
         const nextModeId = typeof msg.modeId === "string" ? msg.modeId : "agent";
 
@@ -3179,9 +3258,9 @@ export default function NaviChatPanel({
         setSelectedModelId(nextModelId);
         setModelLabelOverride(knownModel ? null : nextModelLabel);
 
-        const isAuto = nextModelId === AUTO_MODEL_ID || nextModelId === "auto";
+        const isAuto = isLegacyAutoModel(nextModelId);
         setUseAutoModel(isAuto);
-        if (!isAuto) {
+        if (!isAuto && !isNaviModeModel(nextModelId)) {
           setLastManualModelId(nextModelId);
         }
 
@@ -3227,6 +3306,20 @@ export default function NaviChatPanel({
             authToken: undefined,
           };
         }
+        return;
+      }
+
+      if (msg.type === "auth.required") {
+        const detail = String(
+          msg.message || msg.detail || "Your session is missing a valid token."
+        );
+        setAuthRequired(true);
+        setAuthRequiredDetail(detail);
+        pendingAuthRetryRef.current = true;
+        setSending(false);
+        setIsAnalyzing(false);
+        clearSendTimeout();
+        showToast("Sign in required to continue.", "warning");
         return;
       }
 
@@ -3303,6 +3396,9 @@ export default function NaviChatPanel({
       if (msg.type === "RUN_STARTED" && msg.runId) {
         console.log('[NaviChatPanel] 🏃 RUN_STARTED received:', msg.runId);
         activeRunIdRef.current = msg.runId;
+        if (endpointFallbackToastShownRef.current.size > 200) {
+          endpointFallbackToastShownRef.current.clear();
+        }
         const unresolvedSummary = stickyChangeSummaryRef.current || inlineChangeSummaryRef.current;
         if (unresolvedSummary?.files?.length) {
           carryoverSummaryFilesRef.current = mergeInlineSummaryFiles(
@@ -3569,6 +3665,85 @@ export default function NaviChatPanel({
           }
           clearSendTimeout();
         }
+        return;
+      }
+
+      // Extension-side context/memory messages that are informational for now.
+      // Handle as no-op to avoid "Unhandled message type" log spam.
+      if (msg.type === "workspaceContext") {
+        return;
+      }
+
+      if (msg.type === "memory.update") {
+        return;
+      }
+
+      if (msg.type === "navi.plan") {
+        return;
+      }
+
+      if (msg.type === "navi.stream.error") {
+        const errorText = String(
+          msg.error || msg.message || "Streaming was interrupted. Please retry."
+        ).trim();
+        const normalizedError = errorText.toLowerCase();
+        if (
+          msg.authRequired ||
+          normalizedError.includes("http 401") ||
+          normalizedError.includes("http 403") ||
+          normalizedError.includes("unauthorized") ||
+          normalizedError.includes("forbidden")
+        ) {
+          setAuthRequired(true);
+          setAuthRequiredDetail(errorText);
+          pendingAuthRetryRef.current = true;
+        }
+        setSending(false);
+        setIsAnalyzing(false);
+        clearSendTimeout();
+        lastLiveProgressRef.current = "";
+        pushActivityEvent({
+          id: makeActivityId(),
+          kind: "error",
+          label: "Stream Error",
+          detail: errorText,
+          status: "error",
+          timestamp: msg.timestamp || nowIso(),
+        });
+        setMessages((prev) => {
+          const streamingIdx = [...prev]
+            .reverse()
+            .findIndex((m) => m.role === "assistant" && m.isStreaming);
+          if (streamingIdx >= 0) {
+            const actualIdx = prev.length - 1 - streamingIdx;
+            return prev.map((m, idx) =>
+              idx === actualIdx
+                ? {
+                    ...m,
+                    isStreaming: false,
+                    content: m.content
+                      ? `${m.content}\n\n---\n⚠️ ${errorText}`
+                      : `⚠️ ${errorText}`,
+                  }
+                : m
+            );
+          }
+          return [
+            ...prev,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: `⚠️ ${errorText}`,
+              createdAt: nowIso(),
+              isStreaming: false,
+            },
+          ];
+        });
+        showToast(
+          msg.authRequired ? "Sign in required to continue." : errorText,
+          msg.authRequired ? "warning" : "error"
+        );
+        return;
       }
 
       // Handle streaming message start - update existing placeholder or create new
@@ -3725,18 +3900,55 @@ export default function NaviChatPanel({
 
       // Handle router info from streaming endpoint (mode, model, task type)
       if (msg.type === "navi.router.info") {
-        const { provider, model, mode, task_type, auto_execute } = msg;
-        const autoExecuteEnabled = auto_execute || false;
+        const normalized = normalizeRoutingInfo(msg);
+        const autoExecuteEnabled = Boolean(msg.auto_execute || msg.autoExecute);
 
         setLastRouterInfo({
           source: "auto",
-          provider: provider || "openai",
-          modelId: model ? `${provider}/${model}` : undefined,
-          modelName: model || "auto",
-          taskType: task_type || "code_generation",
-          mode: mode || "agent",
+          provider: normalized?.provider || "openai",
+          modelId: normalized?.effectiveModelId || normalized?.modelId || undefined,
+          effectiveModelId: normalized?.effectiveModelId || normalized?.modelId || undefined,
+          modelName: normalized?.modelName || normalized?.effectiveModelId || normalized?.modelId || "auto",
+          taskType: normalized?.taskType || "code_generation",
+          mode: normalized?.requestedModeId || normalized?.mode || "agent",
           autoExecute: autoExecuteEnabled,
+          requestedModel: normalized?.requestedModelId || normalized?.requestedModel,
+          requestedModelId: normalized?.requestedModelId || normalized?.requestedModel,
+          requestedMode: normalized?.requestedModeId || normalized?.requestedMode,
+          requestedModeId: normalized?.requestedModeId || normalized?.requestedMode,
+          wasFallback: normalized?.wasFallback || false,
+          fallbackReason: normalized?.fallbackReason || undefined,
+          fallbackReasonCode: normalized?.fallbackReasonCode || undefined,
+          reason: normalized?.reason,
         });
+
+        if (normalized?.wasFallback) {
+          const effectiveModel = normalized.effectiveModelId || normalized.modelId || "unknown";
+          const reason =
+            normalized.fallbackReason ||
+            normalized.reason ||
+            `Requested model unavailable. Using '${effectiveModel}'.`;
+          const fallbackCode = normalized.fallbackReasonCode;
+          if (fallbackCode === "ENDPOINT_PROVIDER_UNSUPPORTED") {
+            const requestKey =
+              (typeof msg.runId === "string" && msg.runId.trim()) ||
+              activeRunIdRef.current ||
+              `fallback:${fallbackCode}:${normalized.requestedModelId || "unknown"}:${normalized.effectiveModelId || "unknown"}`;
+            if (!endpointFallbackToastShownRef.current.has(requestKey)) {
+              endpointFallbackToastShownRef.current.add(requestKey);
+              const endpointTip =
+                typeof reason === "string" && reason.includes("/stream/v2")
+                  ? "Tip: Switch to /stream or use NAVI Intelligence mode to auto-select a compatible model."
+                  : "Tip: Try a different provider or use NAVI Intelligence mode to auto-select a compatible model.";
+              showToast(
+                `${reason}\n${endpointTip}`,
+                "warning"
+              );
+            }
+          } else {
+            showToast(reason, "warning");
+          }
+        }
 
         // Store auto-execute state for action processing
         autoExecuteModeRef.current = autoExecuteEnabled;
@@ -4137,32 +4349,22 @@ export default function NaviChatPanel({
       if (msg.type === "navi.narrative" || msg.type === "action.narrative") {
         const narrativeText = msg.text || msg.narrative || "";
         const actionIndex = typeof msg.actionIndex === 'number' ? msg.actionIndex : currentActionIndexRef.current;
+        const narrativeTimestamp = msg.timestamp || nowIso();
         console.log('[NaviChatPanel] 💬 Narrative received:', narrativeText.substring(0, 100), 'for action:', actionIndex);
 
         // Add to the live narrative stream (Claude Code-like display)
         if (narrativeText) {
-          setNarrativeLines((prev) => [
-            ...prev,
-            {
-              id: makeActivityId(),
-              text: narrativeText,
-              // Use backend timestamp if available for accurate chronological ordering
-              timestamp: msg.timestamp || nowIso(),
-            },
-          ]);
+          setNarrativeLines((prev) =>
+            appendNarrativeChunk(prev, narrativeText, narrativeTimestamp)
+          );
         }
 
         // Also add to per-action narratives if we have an action context
         if (narrativeText && actionIndex !== null) {
-          updatePerActionNarratives(actionIndex, (existing) => ([
-            ...existing,
-            {
-              id: makeActivityId(),
-              text: narrativeText,
-              // Use backend timestamp if available for accurate chronological ordering
-              timestamp: msg.timestamp || nowIso(),
-            },
-          ]));
+          updatePerActionNarratives(
+            actionIndex,
+            (existing) => appendNarrativeChunk(existing, narrativeText, narrativeTimestamp)
+          );
         }
         return;
       }
@@ -5287,7 +5489,9 @@ export default function NaviChatPanel({
           const normalizedMessage = String(message).toLowerCase();
           if (
             normalizedMessage.includes("http 401") ||
+            normalizedMessage.includes("http 403") ||
             normalizedMessage.includes("unauthorized") ||
+            normalizedMessage.includes("forbidden") ||
             normalizedMessage.includes("authorization header") ||
             normalizedMessage.includes("missing or invalid authorization")
           ) {
@@ -6453,12 +6657,12 @@ export default function NaviChatPanel({
 
   const applyModelSelection = (nextModelId: string) => {
     const resolvedLabel = getModelLabel(nextModelId);
-    const isAuto = nextModelId === AUTO_MODEL_ID || nextModelId === "auto";
+    const isAuto = isLegacyAutoModel(nextModelId);
     setLastRouterInfo(null);
     setSelectedModelId(nextModelId);
     setModelLabelOverride(null);
     setUseAutoModel(isAuto);
-    if (!isAuto) {
+    if (!isAuto && !isNaviModeModel(nextModelId)) {
       setLastManualModelId(nextModelId);
     }
     vscodeApi.postMessage({
@@ -6479,7 +6683,7 @@ export default function NaviChatPanel({
   };
 
   const resolveModelForMessage = (text: string) => {
-    if (selectedModelId === AUTO_MODEL_ID && useAutoModel) {
+    if (isLegacyAutoModel(selectedModelId) && useAutoModel) {
       // Use intelligent LLM router to detect task type and recommend best model
       const recommendation = getRecommendedModel(text);
       console.log(`[NAVI Router] Detected task: ${recommendation.taskType}, using: ${recommendation.modelName} (${recommendation.reason})`);
@@ -6770,6 +6974,7 @@ export default function NaviChatPanel({
     }, LONG_TASK_TIMEOUT_MS);
 
     const hasVsCodeHost = vscodeApi.hasVsCodeHost();
+    const { effectiveRoot } = getEffectiveWorkspace();
 
     if (hasVsCodeHost) {
       try {
@@ -6794,6 +6999,7 @@ export default function NaviChatPanel({
           type: "sendMessage",
           text,
           attachments,
+          workspaceRoot: effectiveRoot,
           modelId: modelIdToSend,
           modeId: chatMode,
           orgId: ORG,
@@ -7845,8 +8051,16 @@ export default function NaviChatPanel({
     return normalized;
   };
 
+  const normalizeProseArtifacts = (value: string): string =>
+    value
+      .replace(/([A-Za-z0-9])\s+([’'])\s+([A-Za-z0-9])/g, "$1$2$3")
+      .replace(/([A-Za-z0-9])\s*-\s*([A-Za-z0-9])/g, "$1-$2")
+      .replace(/\s+([,.;:!?])/g, "$1")
+      .replace(/([([{])\s+/g, "$1")
+      .replace(/\s+([)\]}])/g, "$1");
+
   const renderCodeBlock = (code: string, language: string, key: string) => {
-    let highlightedCode = code;
+    let highlightedCode = escapeHtml(code);
     const prismLang = language === 'js' ? 'javascript'
       : language === 'ts' ? 'typescript'
         : language === 'py' ? 'python'
@@ -8082,82 +8296,18 @@ export default function NaviChatPanel({
       return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     };
 
-    // Make URLs and file paths clickable
-    const makeLinksClickable = (html: string): string => {
-      let result = html;
-
-      // First, handle markdown links: [text](url) - convert to anchor tags
-      // This prevents the URL from being matched again by the raw URL pattern
-      // Handle URLs with accidental spaces ANYWHERE (LLM tokenization artifact)
-      // Pattern allows spaces in: "http ://", "http: //", "http :/ /", etc.
-      const markdownLinkPattern = /\[([^\]]+)\]\((https?\s*:\s*\/\s*\/\s*[^)]+)\)/g;
-      result = result.replace(markdownLinkPattern, (_match, text, url) => {
-        // Clean up URL: remove ALL spaces from the URL
-        const cleanUrl = url.replace(/\s+/g, '');
-        const cleanTextForCompare = text.replace(/\s+/g, '');
-        const displayText = cleanTextForCompare === cleanUrl ? cleanUrl : text.trim();
-        return `<a href="${cleanUrl}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
-      });
-
-      // URL pattern - matches http/https links with potential spaces (LLM tokenization)
-      // Pattern allows: "http://", "http ://", "http: //", "http :/ /" etc.
-      // Skip URLs that are already converted (inside href="" or between > and <)
-      const urlPattern = /(https?\s*:\s*\/\s*\/\s*[^\s<>"'\[\]]+)/g;
-      result = result.replace(urlPattern, (url: string, _p1: string, position: number) => {
-        // Check if this URL is already inside an anchor tag by looking at context
-        const before = result.substring(Math.max(0, position - 15), position);
-        // Skip if preceded by href=" or "> (already in anchor tag)
-        if (/href="$/.test(before) || /">$/.test(before)) {
-          return url; // Don't modify - already in anchor
-        }
-        // Clean up URL: remove all internal spaces
-        let cleanUrl = url.replace(/\s+/g, '');
-        // Only strip trailing period/comma if it's at the very end (likely punctuation, not part of URL)
-        if (/[.,;:!?]$/.test(cleanUrl) && !/:\d+[.,;:!?]?$/.test(cleanUrl)) {
-          cleanUrl = cleanUrl.replace(/[.,;:!?]+$/, '');
-        }
-        return `<a href="${cleanUrl}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
-      });
-
-      // File path pattern - matches common code file paths
-      // Only match paths that:
-      // 1. Start with / (absolute path like /Users/foo/bar.txt)
-      // 2. Start with ./ or ../ (relative path like ./src/file.ts)
-      // 3. Have directory structure with common code directories
-      // 4. Match filenames with extensions when wrapped in backticks
-      // Do NOT match: Next.js, server.The, fresh.I've, Node.js, etc.
-      const commonDirs = 'src|lib|components|pages|app|backend|frontend|extensions|webview|utils|services|api|hooks|types|tests|test|__tests__|spec|config|configs|scripts|bin|dist|build|public|static|assets|styles|css|templates|views|models|controllers|routes|middleware|helpers|core|common|shared|modules|features|domains';
-      const filePathPattern = new RegExp(
-        `(?:^|[\\s(])((\\/[\\w\\-.]+)+\\.\\w+|(\\.\\.\\/[\\w\\-./]+\\.\\w+)|((?:${commonDirs})\\/[\\w\\-./]+\\.\\w+)|([\\w\\-]+\\.(?:tsx?|jsx?|py|go|rs|rb|java|cs|cpp|c|h|css|scss|less|html|json|ya?ml|toml|md|sql)))(?::(\\d+))?(?=[\\s),.:;!?]|$)`,
-        'g'
-      );
-      result = result.replace(filePathPattern, (match, fullPath, _p1, _p2, _p3, _p4, lineNum) => {
-        // Preserve leading whitespace/punctuation
-        const leadingMatch = match.match(/^[\s(]/) || [''];
-        const leading = leadingMatch[0];
-        const pathPart = match.slice(leading.length);
-        const pathWithoutLine = pathPart.replace(/:(\d+)$/, '');
-        const iconColor = getFileIconColor(pathWithoutLine);
-        const dataLine = lineNum ? ` data-line="${lineNum}"` : '';
-        // Use file-type specific SVG icon
-        const svgIcon = getFileIconSvg(pathWithoutLine, iconColor);
-        // Wrap in span with SVG icon
-        return `${leading}<span class="navi-file-link">${svgIcon}<a href="#" class="navi-link navi-link--file" data-file-path="${pathWithoutLine}"${dataLine}>${pathWithoutLine}</a></span>`;
-      });
-
-      return result;
-    };
-
     // Render a text block with markdown-like formatting
     const renderTextBlock = (text: string, keyPrefix: string, isStreaming = false) => {
+      const normalizedText = normalizeProseArtifacts(text);
+
       // During streaming, render as flowing text to avoid fragmentation
       // Only apply paragraph formatting after streaming completes
       if (isStreaming) {
         // Simple inline rendering during streaming
-        let formatted = text
+        let formatted = escapeHtml(normalizedText)
           .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
           .replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
-        formatted = makeLinksClickable(formatted);
+        formatted = makeLinksClickableSafe(formatted);
         // Convert newlines to spaces for flowing text during streaming
         formatted = formatted.replace(/\n/g, ' ');
         return <span key={keyPrefix} dangerouslySetInnerHTML={{ __html: formatted }} />;
@@ -8170,7 +8320,7 @@ export default function NaviChatPanel({
       // - Preserve newlines before markdown elements (headers, lists)
 
       // Split by double newlines to get true paragraphs
-      const paragraphs = text.split(/\n\n+/);
+      const paragraphs = normalizedText.split(/\n\n+/);
 
       return paragraphs.map((paragraph, pIdx) => {
         // Check if this paragraph contains markdown elements that need line-by-line processing
@@ -8187,10 +8337,10 @@ export default function NaviChatPanel({
         if (hasMarkdownElements) {
           // Helper to format inline markdown (bold, code, links)
           const formatInline = (content: string): string => {
-            let result = content
+            let result = escapeHtml(content)
               .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
               .replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
-            return makeLinksClickable(result);
+            return makeLinksClickableSafe(result);
           };
 
           const elements: React.ReactNode[] = [];
@@ -8287,11 +8437,11 @@ export default function NaviChatPanel({
         }
 
         // Handle bold text
-        const formattedLine = flowingText.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        const formattedLine = escapeHtml(flowingText).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         // Handle inline code
         const withCode = formattedLine.replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
         // Make URLs and file paths clickable
-        const withLinks = makeLinksClickable(withCode);
+        const withLinks = makeLinksClickableSafe(withCode);
         return <p key={`${keyPrefix}-${pIdx}`} dangerouslySetInnerHTML={{ __html: withLinks }} />;
       });
     };
@@ -8615,6 +8765,12 @@ export default function NaviChatPanel({
   const scopeIsChangedFiles = scopeDecision === "changed-files";
   const scopeIsWorkspace = scopeDecision === "workspace";
   const selectedModelName = getModelLabel(selectedModelId, modelLabelOverride || undefined);
+  const isAdvancedSelection =
+    !isNaviModeModel(selectedModelId) && !isLegacyAutoModel(selectedModelId);
+  const modelProviderGroups: LLMProvider[] =
+    showAdvancedModels || isAdvancedSelection
+      ? LLM_PROVIDERS
+      : [{ id: "navi", name: "NAVI", models: NAVI_MODELS }];
   const autoBadgeLabel = "Auto -> server routing";
   const resolvedRouterName =
     lastRouterInfo?.modelName ||
@@ -8627,7 +8783,7 @@ export default function NaviChatPanel({
   );
   const routerBadgeLabel = lastRouterInfo
     ? `${routerTaskLabel} -> ${resolvedRouterName || selectedModelName}`
-    : useAutoModel && selectedModelId === AUTO_MODEL_ID
+    : useAutoModel && isLegacyAutoModel(selectedModelId)
       ? autoBadgeLabel
       : `Manual -> ${selectedModelName}`;
   const lastAssistantCompleted = useMemo(() => {
@@ -10251,10 +10407,9 @@ export default function NaviChatPanel({
                         if (item.itemType === 'narrative') {
                           const lastItem = mergedItems[mergedItems.length - 1];
                           if (lastItem && lastItem.itemType === 'narrative') {
-                            // Combine with previous narrative - no space if last ends with opening bracket/paren
-                            const lastChar = lastItem.text.slice(-1);
-                            const separator = ['[', '(', '\n'].includes(lastChar) ? '' : ' ';
-                            lastItem.text += separator + item.text;
+                            // Preserve exact stream text order; avoid injecting artificial spaces
+                            // that split words like "Pr isma" or "part ially".
+                            lastItem.text += item.text;
                           } else {
                             mergedItems.push({ ...item });
                           }
@@ -10603,20 +10758,22 @@ export default function NaviChatPanel({
                       // Render narrative text block helper with markdown formatting
                       // Handles: **bold**, `code`, URLs, markdown links, lists, line breaks, fenced code blocks
                       const renderNarrativeItem = (text: string, id: string) => {
+                        const normalizedText = normalizeProseArtifacts(text);
                         // First, check for fenced code blocks (```...```)
                         const codeBlockRegex = /```\s*([\w+-]*)\s*\n?([\s\S]*?)```/g;
-                        const hasCodeBlocks = codeBlockRegex.test(text);
+                        const hasCodeBlocks = codeBlockRegex.test(normalizedText);
 
                         if (hasCodeBlocks) {
                           // Need formatMarkdown defined early for code block text parts
                           const formatMd = (input: string): string => {
-                            let result = input;
+                            let result = escapeHtml(input);
                             result = result.replace(/^###\s+(.+)$/gm, '<h3 class="navi-heading-3">$1</h3>');
                             result = result.replace(/^##\s+(.+)$/gm, '<h2 class="navi-heading-2">$1</h2>');
                             result = result.replace(/^#\s+(.+)$/gm, '<h1 class="navi-heading-1">$1</h1>');
                             result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
                             result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
                             result = result.replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
+                            result = makeLinksClickableSafe(result);
                             return result;
                           };
 
@@ -10627,10 +10784,10 @@ export default function NaviChatPanel({
                           const regex = /```\s*([\w+-]*)\s*\n?([\s\S]*?)```/g;
                           let match;
 
-                          while ((match = regex.exec(text)) !== null) {
+                          while ((match = regex.exec(normalizedText)) !== null) {
                             // Add text before code block (with markdown formatting)
                             if (match.index > lastIndex) {
-                              const beforeText = text.slice(lastIndex, match.index).trim();
+                              const beforeText = normalizedText.slice(lastIndex, match.index).trim();
                               if (beforeText) {
                                 parts.push(
                                   <div
@@ -10651,8 +10808,8 @@ export default function NaviChatPanel({
                           }
 
                           // Add remaining text after last code block (with markdown formatting)
-                          if (lastIndex < text.length) {
-                            const afterText = text.slice(lastIndex).trim();
+                          if (lastIndex < normalizedText.length) {
+                            const afterText = normalizedText.slice(lastIndex).trim();
                             if (afterText) {
                               parts.push(
                                 <div
@@ -10673,7 +10830,7 @@ export default function NaviChatPanel({
 
                         // Format text with markdown-like syntax (for non-code-block content)
                         const formatMarkdown = (input: string): string => {
-                          let result = input;
+                          let result = escapeHtml(input);
                           // Handle markdown headers (### Header)
                           result = result.replace(/^###\s+(.+)$/gm, '<h3 class="navi-heading-3">$1</h3>');
                           result = result.replace(/^##\s+(.+)$/gm, '<h2 class="navi-heading-2">$1</h2>');
@@ -10684,40 +10841,21 @@ export default function NaviChatPanel({
                           result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
                           // Handle inline code `code`
                           result = result.replace(/`([^`]+)`/g, (_match, code) => `<code class="navi-inline-code">${normalizeInlineCode(code)}</code>`);
-                          // Handle markdown links [text](url) - process these FIRST
-                          // Also handle URLs with accidental spaces (LLM tokenization artifact)
-                          result = result.replace(
-                            /\[([^\]]+)\]\((https?:\/\/\s*[^)]+)\)/g,
-                            (_match, linkText, url) => {
-                              // Clean up URL: remove spaces that might have been introduced by LLM tokenization
-                              const cleanUrl = url.replace(/\s+/g, '');
-                              const cleanTextForCompare = linkText.replace(/\s+/g, '');
-                              const displayText = cleanTextForCompare === cleanUrl ? cleanUrl : linkText.trim();
-                              return `<a href="${cleanUrl}" class="navi-inline-link" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
-                            }
-                          );
-                          // Handle plain URLs (skip if preceded by [ or ]( which indicates markdown link syntax)
-                          result = result.replace(
-                            /(?<!\]\()(https?\s*:\s*\/\s*\/\s*[^\s<>)\]]+)/g,
-                            (url) => {
-                              const cleanUrl = url.replace(/\s+/g, '');
-                              return `<a href="${cleanUrl}" class="navi-inline-link" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
-                            }
-                          );
+                          result = makeLinksClickableSafe(result);
                           return result;
                         };
 
                         // Check if text has markdown structure (lists, multiple paragraphs)
-                        const hasStructure = text.includes('\n') && (
-                          text.includes('- ') ||
-                          text.includes('* ') ||
-                          /\d+\.\s/.test(text) ||
-                          text.includes('\n\n')
+                        const hasStructure = normalizedText.includes('\n') && (
+                          normalizedText.includes('- ') ||
+                          normalizedText.includes('* ') ||
+                          /\d+\.\s/.test(normalizedText) ||
+                          normalizedText.includes('\n\n')
                         );
 
                         if (hasStructure) {
                           // Render with proper structure
-                          const lines = text.split('\n');
+                          const lines = normalizedText.split('\n');
                           const elements: React.ReactNode[] = [];
                           let currentList: React.ReactNode[] = [];
                           let listType: 'ul' | 'ol' | null = null;
@@ -10810,7 +10948,7 @@ export default function NaviChatPanel({
                           <span
                             key={id}
                             className="navi-narrative-chunk"
-                            dangerouslySetInnerHTML={{ __html: formatMarkdown(text) }}
+                            dangerouslySetInnerHTML={{ __html: formatMarkdown(normalizedText) }}
                           />
                         );
                       };
@@ -12449,7 +12587,7 @@ export default function NaviChatPanel({
         {/* Hide QuickActionsBar when we have specific next steps from the response */}
         {/* QuickActionsBar removed: only show backend-provided next steps */}
 
-        {selectedModelId === AUTO_MODEL_ID && useAutoModel && lastRouterInfo?.source === "auto" && sending && (
+        {isLegacyAutoModel(selectedModelId) && useAutoModel && lastRouterInfo?.source === "auto" && sending && (
           <div className="navi-chat-model-banner">
             <div className="navi-chat-model-banner-info">
               <Cpu className="navi-icon-3d" />
@@ -12481,7 +12619,7 @@ export default function NaviChatPanel({
           </div>
         )}
 
-        {selectedModelId !== AUTO_MODEL_ID && (
+        {!isLegacyAutoModel(selectedModelId) && !isNaviModeModel(selectedModelId) && (
           <div className="navi-chat-model-banner navi-chat-model-banner--manual">
             <div className="navi-chat-model-banner-info">
               <Cpu className="navi-icon-3d" />
@@ -12495,9 +12633,9 @@ export default function NaviChatPanel({
             <button
               type="button"
               className="navi-chat-model-banner-action"
-              onClick={() => applyModelSelection(AUTO_MODEL_ID)}
+              onClick={() => applyModelSelection(DEFAULT_NAVI_MODE_ID)}
             >
-              Use Auto
+              Use NAVI
             </button>
           </div>
         )}
@@ -12751,7 +12889,7 @@ export default function NaviChatPanel({
             value={selectedModelId}
             onChange={(e) => applyModelSelection(e.target.value)}
           >
-            {LLM_PROVIDERS.map((provider) => (
+            {modelProviderGroups.map((provider) => (
               <optgroup key={provider.id} label={provider.name}>
                 {provider.models.map((model) => (
                   <option key={model.id} value={model.id}>
@@ -12761,6 +12899,21 @@ export default function NaviChatPanel({
               </optgroup>
             ))}
           </select>
+
+          <button
+            type="button"
+            className={`navi-chat-mode-pill navi-chat-mode-pill--action navi-chat-advanced-toggle ${showAdvancedModels ? "is-active" : ""}`}
+            onClick={() => setShowAdvancedModels((prev) => !prev)}
+            title="Show or hide exact vendor model selection"
+          >
+            Advanced
+          </button>
+
+          {isAdvancedSelection && (
+            <span className="navi-chat-advanced-note">
+              This bypasses NAVI optimization
+            </span>
+          )}
 
           <div className="navi-branch-dropdown-container">
             <button

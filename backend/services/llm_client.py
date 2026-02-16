@@ -175,9 +175,110 @@ class BaseLLMAdapter(ABC):
 class OpenAIAdapter(BaseLLMAdapter):
     """Adapter for OpenAI and OpenAI-compatible APIs (Groq, Together, OpenRouter)"""
 
+    def _normalize_openai_model_name(self, model: str) -> str:
+        """Normalize internal provider-qualified model IDs for OpenAI-compatible APIs."""
+        normalized = (model or "").strip()
+        if "/" not in normalized:
+            return normalized
+
+        prefix, remainder = normalized.split("/", 1)
+        provider_prefixes = {provider.value for provider in LLMProvider}
+        preserve_namespaced = {LLMProvider.OPENROUTER, LLMProvider.TOGETHER}
+
+        # OpenRouter/Together model IDs are frequently namespaced (for example,
+        # anthropic/claude-3.5-sonnet and meta-llama/Llama-3.3-70B-...).
+        if self.config.provider in preserve_namespaced:
+            if prefix == self.config.provider.value:
+                return remainder
+            return normalized
+
+        # Strip only internal provider-qualified IDs (openai/gpt-4o, groq/llama-...).
+        if prefix in provider_prefixes:
+            return remainder
+        return normalized
+
+    @staticmethod
+    def _parse_error_body(response: httpx.Response) -> Union[Dict[str, Any], str]:
+        """Best-effort parse of provider error body for actionable diagnostics."""
+        try:
+            return response.json()
+        except Exception:
+            return response.text
+
+    @staticmethod
+    def _summarize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Summarize request payload without exposing sensitive content."""
+        if not isinstance(payload, dict):
+            return {"payload_type": type(payload).__name__}
+
+        messages = payload.get("messages", [])
+        message_count = len(messages) if isinstance(messages, list) else 0
+
+        summary = {
+            "payload_keys": sorted(payload.keys()),
+            "model": payload.get("model"),
+            "message_count": message_count,
+            "stream": payload.get("stream"),
+        }
+        if "max_tokens" in payload:
+            summary["max_tokens"] = payload["max_tokens"]
+        if "temperature" in payload:
+            summary["temperature"] = payload["temperature"]
+        return summary
+
+    @staticmethod
+    def _summarize_error(error_body: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+        """Summarize error response without exposing sensitive details."""
+        if isinstance(error_body, dict):
+            # Extract only high-level error info, not detailed messages that may contain user data
+            error_data = error_body.get("error", {})
+            if isinstance(error_data, dict):
+                return {
+                    "error_type": error_data.get("type"),
+                    "error_code": error_data.get("code"),
+                }
+            return {"error_keys": sorted(error_body.keys())}
+        # For string errors, only log type and length
+        return {"error_type": "string", "length": len(str(error_body))}
+
+    @staticmethod
+    def _extract_error_code(error_body: Union[Dict[str, Any], str]) -> str | None:
+        """Extract non-sensitive error code/type for exception messages."""
+        if isinstance(error_body, dict):
+            error_data = error_body.get("error", {})
+            if isinstance(error_data, dict):
+                # Try common error code/type fields
+                return (
+                    error_data.get("code")
+                    or error_data.get("type")
+                    or error_body.get("code")
+                    or error_body.get("type")
+                )
+        return None
+
+    def _log_openai_400_debug(
+        self,
+        *,
+        endpoint: str,
+        model: str,
+        stream: bool,
+        payload: Dict[str, Any],
+        error_body: Union[Dict[str, Any], str],
+    ) -> None:
+        logger.error(
+            "[LLMClient] OpenAI-compatible 400 debug | provider=%s model=%s endpoint=%s stream=%s payload_summary=%s error_summary=%s",
+            self.config.provider.value,
+            model,
+            endpoint,
+            stream,
+            self._summarize_payload(payload),
+            self._summarize_error(error_body),
+        )
+
     async def complete(self, messages: List[LLMMessage]) -> LLMResponse:
         api_key = self._get_api_key()
         api_base = self._get_api_base()
+        normalized_model = self._normalize_openai_model_name(self.config.model)
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -204,25 +305,63 @@ class OpenAIAdapter(BaseLLMAdapter):
             msgs.append(msg)
 
         payload = {
-            "model": self.config.model,
+            "model": normalized_model,
             "messages": msgs,
             "temperature": self.config.temperature,
-            "max_tokens": self.config.max_tokens,
             "top_p": self.config.top_p,
             **self.config.extra_params,
         }
+
+        # OpenAI GPT-4o/GPT-4.1/GPT-4.2/GPT-5/o-series expect max_completion_tokens
+        # on /chat/completions; max_tokens can trigger 400 invalid_request_error.
+        model_name = normalized_model.lower()
+        if self.config.provider == LLMProvider.OPENAI and any(
+            x in model_name
+            for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]
+        ):
+            payload["max_completion_tokens"] = self.config.max_tokens
+        else:
+            payload["max_tokens"] = self.config.max_tokens
 
         if self.config.tools:
             payload["tools"] = self.config.tools
         if self.config.tool_choice:
             payload["tool_choice"] = self.config.tool_choice
 
+        endpoint = f"{api_base}/chat/completions"
+        logger.info(
+            "[LLMClient] OpenAI request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s",
+            self.config.provider.value,
+            endpoint,
+            normalized_model,
+            False,
+            len(msgs),
+            bool(payload.get("tools")),
+        )
         response = await self.client.post(
-            f"{api_base}/chat/completions",
+            endpoint,
             headers=headers,
             json=payload,
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            error_body = self._parse_error_body(response)
+            if response.status_code == 400:
+                self._log_openai_400_debug(
+                    endpoint=endpoint,
+                    model=normalized_model,
+                    stream=False,
+                    payload=payload,
+                    error_body=error_body,
+                )
+            # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+            error_code = self._extract_error_code(error_body)
+            if error_code:
+                raise RuntimeError(
+                    f"OpenAI-compatible API error (status={response.status_code}, code={error_code})"
+                )
+            raise RuntimeError(
+                f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
+            )
         data = response.json()
 
         choice = data["choices"][0]
@@ -241,6 +380,7 @@ class OpenAIAdapter(BaseLLMAdapter):
     async def stream(self, messages: List[LLMMessage]) -> AsyncGenerator[str, None]:
         api_key = self._get_api_key()
         api_base = self._get_api_base()
+        normalized_model = self._normalize_openai_model_name(self.config.model)
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -254,10 +394,13 @@ class OpenAIAdapter(BaseLLMAdapter):
             msgs.append({"role": m.role, "content": m.content})
 
         # Use max_completion_tokens for newer OpenAI models (GPT-4o, GPT-5.x, o1/o3/o4)
-        model_name = self.config.model.lower()
-        if any(x in model_name for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]):
+        model_name = normalized_model.lower()
+        if any(
+            x in model_name
+            for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]
+        ):
             payload = {
-                "model": self.config.model,
+                "model": normalized_model,
                 "messages": msgs,
                 "temperature": self.config.temperature,
                 "max_completion_tokens": self.config.max_tokens,
@@ -265,27 +408,62 @@ class OpenAIAdapter(BaseLLMAdapter):
             }
         else:
             payload = {
-                "model": self.config.model,
+                "model": normalized_model,
                 "messages": msgs,
                 "temperature": self.config.temperature,
                 "max_tokens": self.config.max_tokens,
                 "stream": True,
             }
 
+        endpoint = f"{api_base}/chat/completions"
         async with self.client.stream(
             "POST",
-            f"{api_base}/chat/completions",
+            endpoint,
             headers=headers,
             json=payload,
         ) as response:
+            logger.info(
+                "[LLMClient] OpenAI request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s",
+                self.config.provider.value,
+                endpoint,
+                normalized_model,
+                True,
+                len(msgs),
+                bool(payload.get("tools")),
+            )
             if response.status_code >= 400:
-                error_body = await response.aread()
-                error_text = error_body.decode(errors="replace")
-                max_log_length = 4096
-                if len(error_text) > max_log_length:
-                    error_text = error_text[:max_log_length] + "...[truncated]"
-                logger.error(f"OpenAI API error: {response.status_code} - {error_text}")
-            response.raise_for_status()
+                error_text = (await response.aread()).decode(errors="replace")
+                try:
+                    error_body: Union[Dict[str, Any], str] = json.loads(error_text)
+                except Exception:
+                    error_body = error_text
+
+                if response.status_code == 400:
+                    self._log_openai_400_debug(
+                        endpoint=endpoint,
+                        model=normalized_model,
+                        stream=True,
+                        payload=payload,
+                        error_body=error_body,
+                    )
+                else:
+                    max_log_length = 4096
+                    if len(error_text) > max_log_length:
+                        error_text = error_text[:max_log_length] + "...[truncated]"
+                    logger.error(
+                        "OpenAI API error: %s - %s",
+                        response.status_code,
+                        error_text,
+                    )
+                # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+                error_code = self._extract_error_code(error_body)
+                if error_code:
+                    raise RuntimeError(
+                        f"OpenAI-compatible API error (status={response.status_code}, code={error_code})"
+                    )
+                raise RuntimeError(
+                    f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
+                )
             async for line in response.aiter_lines():
                 if line.startswith("data: "):
                     data = line[6:]

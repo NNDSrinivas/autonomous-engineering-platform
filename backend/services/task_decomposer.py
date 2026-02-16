@@ -236,25 +236,69 @@ Include realistic task IDs (t001, t002, etc.) and proper dependencies between ta
     def _parse_decomposition_response(self, response: str) -> DecompositionResult:
         """Parse the LLM response into a DecompositionResult"""
 
-        # Extract JSON from response (may be wrapped in markdown)
-        json_match = re.search(r"```json\s*(.*?)\s*```", response, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(1)
-        else:
-            # Try to find raw JSON
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                json_str = response[json_start:json_end]
-            else:
-                raise ValueError("Could not find JSON in LLM response")
+        def extract_outer_json_block(text: str) -> Optional[str]:
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                return text[start:end]
+            return None
 
-        try:
-            data = json.loads(json_str)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON: {e}")
+        # Build candidate JSON strings in priority order.
+        candidates: List[str] = []
+
+        # 1) Prefer fenced ```json blocks.
+        for m in re.finditer(
+            r"```json\s*(.*?)\s*```", response, re.DOTALL | re.IGNORECASE
+        ):
+            block = m.group(1).strip()
+            if block:
+                candidates.append(block)
+                outer = extract_outer_json_block(block)
+                if outer and outer != block:
+                    candidates.append(outer)
+
+        # 2) Try any fenced code block (some models omit `json` language tag).
+        for m in re.finditer(
+            r"```(?:[a-zA-Z0-9_-]+)?\s*(.*?)\s*```", response, re.DOTALL
+        ):
+            block = m.group(1).strip()
+            if block:
+                candidates.append(block)
+                outer = extract_outer_json_block(block)
+                if outer and outer != block:
+                    candidates.append(outer)
+
+        # 3) Fallback: raw text from first `{` to last `}`.
+        outer_response = extract_outer_json_block(response)
+        if outer_response:
+            candidates.append(outer_response)
+
+        # Deduplicate while preserving order.
+        seen = set()
+        unique_candidates: List[str] = []
+        for c in candidates:
+            key = c.strip()
+            if key and key not in seen:
+                seen.add(key)
+                unique_candidates.append(key)
+
+        if not unique_candidates:
+            raise ValueError("Could not find JSON in LLM response")
+
+        data = None
+        last_error: Optional[json.JSONDecodeError] = None
+        for json_str in unique_candidates:
+            try:
+                data = json.loads(json_str)
+                break
+            except json.JSONDecodeError as e:
+                last_error = e
+                continue
+
+        if data is None:
+            logger.error(f"Failed to parse JSON: {last_error}")
             logger.error(f"Response: {response[:500]}...")
-            raise ValueError(f"Invalid JSON in LLM response: {e}")
+            raise ValueError(f"Invalid JSON in LLM response: {last_error}")
 
         # Convert to DecomposedTask objects
         tasks = []

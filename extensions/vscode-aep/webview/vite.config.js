@@ -7,16 +7,36 @@ exports.default = (0, vite_1.defineConfig)({
     plugins: [(0, plugin_react_1.default)()],
     root: ".",
     base: "",
+    server: {
+        fs: {
+            allow: [(0, path_1.resolve)(__dirname, "../../../shared")]
+        }
+    },
+    resolve: {
+        alias: {
+            "@": (0, path_1.resolve)(__dirname, "src"),
+            "@shared": (0, path_1.resolve)(__dirname, "../../../shared")
+        }
+    },
+    optimizeDeps: {
+        include: ["lucide-react"]
+    },
     build: {
         outDir: "../dist/webview",
         emptyOutDir: true,
         sourcemap: true,
+        commonjsOptions: {
+            include: [/lucide-react/, /node_modules/]
+        },
         rollupOptions: {
             input: (0, path_1.resolve)(__dirname, "index.html"),
             output: {
                 entryFileNames: "panel.js",
                 chunkFileNames: "chunks/[name].js",
-                assetFileNames: "assets/[name][extname]"
+                assetFileNames: "assets/[name][extname]",
+                manualChunks: {
+                    'lucide': ['lucide-react']
+                }
             }
         }
     }

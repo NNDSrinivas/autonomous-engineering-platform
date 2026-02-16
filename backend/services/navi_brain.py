@@ -1738,9 +1738,9 @@ class ProjectAnalyzer:
                 )
 
             if "all" in types or "circular_deps" in types:
-                results["circular_deps"] = (
-                    await CodeDebugger.detect_circular_dependencies(workspace_path)
-                )
+                results[
+                    "circular_deps"
+                ] = await CodeDebugger.detect_circular_dependencies(workspace_path)
 
             if "all" in types or "code_smells" in types:
                 results["code_smells"] = await CodeDebugger.detect_code_smells(
@@ -5695,9 +5695,9 @@ class SelfHealingEngine:
 
         if diagnosis.auto_fixable and retry_count < 3:
             result["recovery_plan"] = diagnosis.recovery_actions
-            result["message"] = (
-                f"Attempting automatic recovery: {diagnosis.likely_cause}"
-            )
+            result[
+                "message"
+            ] = f"Attempting automatic recovery: {diagnosis.likely_cause}"
         else:
             result["message"] = (
                 f"Manual intervention needed: {diagnosis.likely_cause}\n\nSuggested fixes:\n"
@@ -6718,8 +6718,14 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             "groq": "GROQ_API_KEY",
             "mistral": "MISTRAL_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "self_hosted": "SELF_HOSTED_API_KEY",
         }
-        return os.getenv(env_vars.get(self.provider, ""), "")
+        api_key = os.getenv(env_vars.get(self.provider, ""), "")
+        if self.provider == "self_hosted" and not api_key:
+            logger.warning(
+                "[NAVI] SELF_HOSTED_API_KEY is not set; self_hosted provider may require explicit auth."
+            )
+        return api_key
 
     def _get_default_model(self) -> str:
         """Get default model for provider"""
@@ -6731,6 +6737,7 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             "mistral": "mistral-large-latest",
             "openrouter": "anthropic/claude-3-5-sonnet-20241022",
             "ollama": "llama3",
+            "self_hosted": "qwen2.5-coder",
         }
         return defaults.get(self.provider, "claude-3-5-sonnet-20241022")
 
@@ -6744,6 +6751,31 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             return alias_map.get(model, model)
         return model
 
+    def _normalize_openai_model_name(self, model: str) -> str:
+        """
+        Normalize OpenAI-compatible model IDs before calling /chat/completions.
+
+        Router metadata may keep provider-qualified IDs (e.g. openai/gpt-5.2),
+        but provider-specific behavior varies:
+        - OpenRouter/Together: preserve vendor namespaces (anthropic/claude-3.5-sonnet)
+        - OpenAI/others: strip routing prefixes (openai/gpt-4o -> gpt-4o)
+        """
+        normalized = (model or "").strip()
+        if not normalized:
+            return normalized
+
+        # OpenRouter expects fully qualified vendor/model IDs
+        if self.provider == "openrouter":
+            # Strip internal "openrouter/" prefix if present, but preserve vendor namespace
+            if normalized.startswith("openrouter/"):
+                return normalized.split("/", 1)[1]
+            return normalized
+
+        # For other OpenAI-compatible providers, strip any routing prefix
+        if "/" in normalized:
+            return normalized.split("/", 1)[1]
+        return normalized
+
     def _fallback_model_on_error(self, model: str, error_text: str) -> Optional[str]:
         """Return a fallback model if the provider reports an invalid model."""
         if self.provider != "anthropic":
@@ -6756,6 +6788,196 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             return "claude-3-5-sonnet-20241022"
         return None
 
+    @staticmethod
+    async def _read_error_body(response: aiohttp.ClientResponse) -> Any:
+        text = await response.text()
+        try:
+            return json.loads(text)
+        except Exception:
+            return text
+
+    @staticmethod
+    def _extract_error_code(error_body: Any) -> str | None:
+        """Extract non-sensitive error code/type for exception messages."""
+        if isinstance(error_body, dict):
+            error_data = error_body.get("error", {})
+            if isinstance(error_data, dict):
+                # Try common error code/type fields
+                return (
+                    error_data.get("code")
+                    or error_data.get("type")
+                    or error_body.get("code")
+                    or error_body.get("type")
+                )
+        return None
+
+    @staticmethod
+    def _is_llm_payload_debug_enabled() -> bool:
+        value = str(os.getenv("NAVI_DEBUG_LLM_PAYLOADS", "")).strip().lower()
+        return value in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _summarize_openai_payload(
+        payload: Dict[str, Any], *, include_debug_details: bool = False
+    ) -> Dict[str, Any]:
+        if not isinstance(payload, dict):
+            return {"payload_type": type(payload).__name__}
+
+        messages = payload.get("messages")
+        message_count = 0
+        total_message_chars = 0
+        message_roles: Dict[str, int] = {}
+        message_shapes: List[Dict[str, Any]] = []
+        if isinstance(messages, list):
+            message_count = len(messages)
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                role = str(msg.get("role", "unknown"))
+                message_roles[role] = message_roles.get(role, 0) + 1
+                content = msg.get("content")
+                content_chars = 0
+                content_type = type(content).__name__
+                if isinstance(content, str):
+                    content_chars = len(content)
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict):
+                            part_text = part.get("text")
+                            if isinstance(part_text, str):
+                                content_chars += len(part_text)
+                total_message_chars += content_chars
+                if include_debug_details:
+                    message_shapes.append(
+                        {
+                            "role": role,
+                            "content_type": content_type,
+                            "content_chars": content_chars,
+                            "has_tool_calls": bool(msg.get("tool_calls")),
+                        }
+                    )
+
+        tools = payload.get("tools")
+        tool_count = 0
+        tool_names: List[str] = []
+        if isinstance(tools, list):
+            tool_count = len(tools)
+            for tool in tools[:20]:
+                if not isinstance(tool, dict):
+                    continue
+                name = None
+                function = tool.get("function")
+                if isinstance(function, dict):
+                    fn_name = function.get("name")
+                    if isinstance(fn_name, str):
+                        name = fn_name
+                if name is None:
+                    raw_name = tool.get("name")
+                    if isinstance(raw_name, str):
+                        name = raw_name
+                if name:
+                    tool_names.append(name)
+
+        summary: Dict[str, Any] = {
+            "payload_keys": sorted(payload.keys()),
+            "model": payload.get("model"),
+            "message_count": message_count,
+            "message_roles": message_roles,
+            "total_message_chars": total_message_chars,
+            "tool_count": tool_count,
+            "tool_names": tool_names,
+            "has_response_format": "response_format" in payload,
+        }
+        if "max_tokens" in payload:
+            summary["max_tokens"] = payload.get("max_tokens")
+        if "max_completion_tokens" in payload:
+            summary["max_completion_tokens"] = payload.get("max_completion_tokens")
+        if "temperature" in payload:
+            summary["temperature"] = payload.get("temperature")
+        if include_debug_details:
+            summary["message_shapes"] = message_shapes
+        return summary
+
+    @classmethod
+    def _summarize_openai_error_body(
+        cls, error_body: Any, *, include_debug_details: bool = False
+    ) -> Dict[str, Any]:
+        if isinstance(error_body, dict):
+            detail = error_body.get("error", error_body)
+            if isinstance(detail, dict):
+                summary = {
+                    "error_type": detail.get("type"),
+                    "error_code": detail.get("code"),
+                    "error_param": detail.get("param"),
+                    "has_message": bool(detail.get("message")),
+                    "message_chars": len(str(detail.get("message", ""))),
+                }
+                if include_debug_details:
+                    summary["error_keys"] = sorted(detail.keys())
+                return summary
+            return {"error_type": "dict", "error_keys": sorted(error_body.keys())}
+
+        text = str(error_body or "")
+        summary = {
+            "error_type": type(error_body).__name__,
+            "message_chars": len(text),
+        }
+        if include_debug_details and text:
+            summary["message_snippet"] = text[:240]
+        return summary
+
+    def _log_openai_400_debug(
+        self,
+        *,
+        model: str,
+        endpoint: str,
+        stream: bool,
+        payload: Dict[str, Any],
+        error_body: Any,
+    ) -> None:
+        include_debug_details = self._is_llm_payload_debug_enabled()
+        payload_summary = self._summarize_openai_payload(
+            payload,
+            include_debug_details=include_debug_details,
+        )
+        error_summary = self._summarize_openai_error_body(
+            error_body,
+            include_debug_details=include_debug_details,
+        )
+        logger.error(
+            "[NAVI] OpenAI-compatible 400 debug | provider=%s model=%s endpoint=%s stream=%s payload_summary=%s error_summary=%s",
+            self.provider,
+            model,
+            endpoint,
+            stream,
+            payload_summary,
+            error_summary,
+        )
+
+    def _log_openai_request_debug(
+        self,
+        *,
+        model: str,
+        endpoint: str,
+        stream: bool,
+        payload: Dict[str, Any],
+    ) -> None:
+        include_debug_details = self._is_llm_payload_debug_enabled()
+        payload_summary = self._summarize_openai_payload(
+            payload,
+            include_debug_details=include_debug_details,
+        )
+        logger.info(
+            "[NAVI] OpenAI-compatible request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s payload_meta=%s",
+            self.provider,
+            endpoint,
+            model,
+            stream,
+            len(payload.get("messages", [])) if isinstance(payload, dict) else 0,
+            bool(payload.get("tools")) if isinstance(payload, dict) else False,
+            payload_summary,
+        )
+
     def _get_base_url(self) -> str:
         """Get base URL for provider"""
         urls = {
@@ -6766,8 +6988,17 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             "mistral": "https://api.mistral.ai/v1",
             "openrouter": "https://openrouter.ai/api/v1",
             "ollama": "http://localhost:11434",
+            "self_hosted": (
+                os.getenv("SELF_HOSTED_API_BASE_URL")
+                or os.getenv("SELF_HOSTED_LLM_URL")
+                or os.getenv("VLLM_BASE_URL")
+                or "http://localhost:8000/v1"
+            ),
         }
-        return urls.get(self.provider, urls["anthropic"])
+        url = urls.get(self.provider, urls["anthropic"])
+        if self.provider == "self_hosted" and not url.rstrip("/").endswith("/v1"):
+            return f"{url.rstrip('/')}/v1"
+        return url
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session"""
@@ -7993,6 +8224,7 @@ Respond with JSON only."""
                     self.provider == "openai"
                     or self.provider == "groq"
                     or self.provider == "openrouter"
+                    or self.provider == "self_hosted"
                 ):
                     result = await self._call_openai_compatible(
                         prompt, conversation_history, context
@@ -8237,8 +8469,11 @@ Respond with JSON only."""
         if self.provider == "openai" and self._requires_max_completion_tokens():
             tokens_key = "max_completion_tokens"
 
+        model = self._normalize_model(self.model)
+        if self.provider in {"openai", "openrouter", "groq", "self_hosted"}:
+            model = self._normalize_openai_model_name(model)
         payload = {
-            "model": self.model,
+            "model": model,
             tokens_key: 8192,
             "temperature": 0.7,
             "messages": messages,
@@ -8253,16 +8488,46 @@ Respond with JSON only."""
         if self.provider == "openrouter":
             headers["HTTP-Referer"] = "https://navi.dev"
             headers["X-Title"] = "NAVI"
+        elif self.provider == "self_hosted" and not self.api_key:
+            headers.pop("Authorization", None)
 
+        endpoint = f"{self.base_url}/chat/completions"
+        self._log_openai_request_debug(
+            model=model,
+            endpoint=endpoint,
+            stream=False,
+            payload=payload,
+        )
         async with session.post(
-            f"{self.base_url}/chat/completions",
+            endpoint,
             headers=headers,
             json=payload,
             timeout=aiohttp.ClientTimeout(total=120),
         ) as response:
             if response.status != 200:
-                error = await response.text()
-                raise Exception(f"API error: {error}")
+                error_body = await self._read_error_body(response)
+                if response.status == 400:
+                    self._log_openai_400_debug(
+                        model=model,
+                        endpoint=endpoint,
+                        stream=False,
+                        payload=payload,
+                        error_body=error_body,
+                    )
+                # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+                request_id = response.headers.get("x-request-id") or response.headers.get(
+                    "X-Request-ID"
+                )
+                error_code = self._extract_error_code(error_body)
+                if request_id and error_code:
+                    raise Exception(
+                        f"API error: status={response.status}, code={error_code}, request_id={request_id}"
+                    )
+                if request_id:
+                    raise Exception(f"API error: status={response.status}, request_id={request_id}")
+                if error_code:
+                    raise Exception(f"API error: status={response.status}, code={error_code}")
+                raise Exception(f"API error: status={response.status}")
 
             data = await response.json()
             # Safe extraction with fallback
@@ -8358,7 +8623,7 @@ Respond with JSON only."""
                 prompt, conversation_history
             ):
                 yield chunk
-        elif self.provider in ("openai", "groq", "openrouter"):
+        elif self.provider in ("openai", "groq", "openrouter", "self_hosted"):
             async for chunk in self._call_openai_streaming(
                 prompt, conversation_history
             ):
@@ -8502,8 +8767,11 @@ Respond with JSON only."""
         if self.provider == "openai" and self._requires_max_completion_tokens():
             tokens_key = "max_completion_tokens"
 
+        model = self._normalize_model(self.model)
+        if self.provider in {"openai", "openrouter", "groq", "self_hosted"}:
+            model = self._normalize_openai_model_name(model)
         payload = {
-            "model": self.model,
+            "model": model,
             tokens_key: 8192,
             "temperature": 0.7,
             "messages": messages,
@@ -8518,19 +8786,49 @@ Respond with JSON only."""
         if self.provider == "openrouter":
             headers["HTTP-Referer"] = "https://navi.dev"
             headers["X-Title"] = "NAVI"
+        elif self.provider == "self_hosted" and not self.api_key:
+            headers.pop("Authorization", None)
 
         full_response = ""
         thinking_buffer = ""
 
+        endpoint = f"{self.base_url}/chat/completions"
+        self._log_openai_request_debug(
+            model=model,
+            endpoint=endpoint,
+            stream=True,
+            payload=payload,
+        )
         async with session.post(
-            f"{self.base_url}/chat/completions",
+            endpoint,
             headers=headers,
             json=payload,
             timeout=aiohttp.ClientTimeout(total=120),
         ) as response:
             if response.status != 200:
-                error = await response.text()
-                raise Exception(f"API error: {error}")
+                error_body = await self._read_error_body(response)
+                if response.status == 400:
+                    self._log_openai_400_debug(
+                        model=model,
+                        endpoint=endpoint,
+                        stream=True,
+                        payload=payload,
+                        error_body=error_body,
+                    )
+                # Raise sanitized error to avoid leaking provider error bodies into API responses/events
+                request_id = response.headers.get("x-request-id") or response.headers.get(
+                    "X-Request-ID"
+                )
+                error_code = self._extract_error_code(error_body)
+                if request_id and error_code:
+                    raise Exception(
+                        f"API error: status={response.status}, code={error_code}, request_id={request_id}"
+                    )
+                if request_id:
+                    raise Exception(f"API error: status={response.status}, request_id={request_id}")
+                if error_code:
+                    raise Exception(f"API error: status={response.status}, code={error_code}")
+                raise Exception(f"API error: status={response.status}")
 
             async for line in response.content:
                 line = line.decode("utf-8").strip()
@@ -8565,6 +8863,7 @@ Respond with JSON only."""
 
             # Yield complete response
             yield {"complete": full_response}
+            return
 
     def _parse_response(self, llm_response: str) -> NaviResponse:
         """Parse LLM response into NaviResponse"""

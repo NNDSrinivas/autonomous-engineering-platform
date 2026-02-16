@@ -80,6 +80,7 @@ from .routers.autonomous_coding import (
 # TEMPORARILY DISABLED FOR DEBUGGING - THESE IMPORTS ARE HANGING
 from .navi import router as navi_router  # PR-5B/PR-6: NAVI extension endpoint
 from .navi import agent_router as navi_agent_router  # Agent classification endpoint
+from .navi import jobs_router as navi_jobs_router  # Long-running background jobs
 from .routers.navi import (
     router as navi_engine_router,
 )  # Aggressive NAVI engine with code generation
@@ -511,6 +512,7 @@ app.include_router(
 app.include_router(
     navi_router  # PR-5B/PR-6: NAVI VS Code extension (already has /api/navi prefix)
 )
+app.include_router(navi_jobs_router)  # /api/jobs background execution endpoints
 app.include_router(navi_planner_router)  # NAVI planner endpoints (/api/navi/plan/*)
 app.include_router(
     navi_engine_router

@@ -15,6 +15,7 @@ debug issues, and refactor code autonomously.
 import json
 import logging
 import os
+import signal
 import subprocess
 import asyncio
 import uuid
@@ -22,7 +23,17 @@ import re
 import glob
 import threading
 import time
-from typing import AsyncGenerator, AsyncIterator, Dict, Any, List, Optional, Tuple
+from typing import (
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    Any,
+    List,
+    Optional,
+    Tuple,
+)
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -85,6 +96,9 @@ from backend.services.consent_service import get_consent_service
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# Keep autonomous sessions bounded. Longer work should move to background jobs.
+DEFAULT_AUTONOMOUS_MAX_RUNTIME_SECONDS = 1800  # 30 minutes
 
 # ========== CONSENT STORAGE ==========
 # Module-level storage for command consent approvals
@@ -273,19 +287,19 @@ class TaskContext:
         default_factory=dict
     )  # Track which step updates have been emitted
     # Enterprise mode fields
-    enterprise_project_id: Optional[str] = (
-        None  # Link to EnterpriseProject if running in enterprise mode
-    )
-    enterprise_controller: Optional[EnhancedIterationController] = (
-        None  # Enterprise iteration controller
-    )
+    enterprise_project_id: Optional[
+        str
+    ] = None  # Link to EnterpriseProject if running in enterprise mode
+    enterprise_controller: Optional[
+        EnhancedIterationController
+    ] = None  # Enterprise iteration controller
     checkpoint_interval: int = (
         10  # Create checkpoint every N iterations in enterprise mode
     )
     last_checkpoint_iteration: int = 0  # Track when last checkpoint was created
-    gate_detector: Optional[CheckpointGateDetector] = (
-        None  # Human checkpoint gate detector
-    )
+    gate_detector: Optional[
+        CheckpointGateDetector
+    ] = None  # Human checkpoint gate detector
     pending_gate: Optional[GateTrigger] = None  # Gate waiting for human decision
     pending_prompt: Optional[PromptRequest] = None  # Prompt waiting for user input
     last_verification_failed: bool = False  # Track if last verification attempt failed
@@ -1626,18 +1640,22 @@ class AutonomousAgent:
         api_key: str,
         provider: str = "openai",
         model: Optional[str] = None,
+        base_url: Optional[str] = None,
         db_session=None,  # Database session for checkpoint persistence and generation logging
         user_id: Optional[str] = None,  # User ID for generation logging
         org_id: Optional[str] = None,  # Organization ID for generation logging
+        cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
     ):
         self.workspace_path = workspace_path
         self.api_key = api_key
         self.provider = provider
+        self.base_url = base_url
         self.db_session = (
             db_session  # For checkpoint persistence and generation logging
         )
         self.user_id = user_id  # For generation logging
         self.org_id = org_id  # For generation logging
+        self._cancel_check = cancel_check
         # Always prefer Claude for autonomous tasks - it's significantly better at agentic work
         # Claude excels at: tool use, following complex instructions, multi-step reasoning
         if model:
@@ -1669,19 +1687,99 @@ class AutonomousAgent:
 
         # Initialize Redis client for distributed consent state
         from backend.core.config import settings
+
         self.redis_client: Optional[redis.Redis] = None
         try:
             self.redis_client = redis.from_url(
-                settings.redis_url,
-                encoding="utf-8",
-                decode_responses=True
+                settings.redis_url, encoding="utf-8", decode_responses=True
             )
-            logger.info(f"[AutonomousAgent] Redis client initialized: {settings.redis_url}")
+            logger.info(
+                f"[AutonomousAgent] Redis client initialized: {settings.redis_url}"
+            )
         except Exception as e:
-            logger.warning(f"[AutonomousAgent] Failed to initialize Redis (consent will fail): {e}")
+            logger.warning(
+                f"[AutonomousAgent] Failed to initialize Redis (consent will fail): {e}"
+            )
 
         # Initialize consent service for preferences and audit logging
         self.consent_service = get_consent_service(db=self.db_session)
+
+    async def _is_cancel_requested(self) -> bool:
+        if not self._cancel_check:
+            return False
+        try:
+            return bool(await self._cancel_check())
+        except Exception as exc:
+            logger.warning("[AutonomousAgent] Cancel-check callback failed: %s", exc)
+            return False
+
+    def _normalize_openai_compatible_model_name(self, model: Any) -> Any:
+        if not isinstance(model, str):
+            return model
+
+        normalized = model.strip()
+        if "/" not in normalized:
+            return normalized
+
+        prefix, remainder = normalized.split("/", 1)
+        # OpenRouter model IDs are often namespaced (anthropic/..., meta-llama/...).
+        # Preserve those, while still stripping explicit internal prefixes like
+        # openrouter/<model> and openai/<model>.
+        if self.provider == "openrouter":
+            if prefix == "openrouter":
+                return remainder
+            return normalized
+
+        if prefix in {"openai", "groq", "ollama", "self_hosted", "self-hosted"}:
+            return remainder
+        return normalized
+
+    async def _terminate_process_tree(
+        self, process: asyncio.subprocess.Process, *, reason: str
+    ) -> None:
+        if process.returncode is not None:
+            return
+        try:
+            # Try to kill process group if available
+            pgid = None
+            if process.pid and hasattr(os, "killpg") and hasattr(os, "getpgid"):
+                try:
+                    pgid = os.getpgid(process.pid)
+                except ProcessLookupError:
+                    # Process already gone
+                    return
+                except Exception:
+                    # Could not determine process group; fall back to per-process signals
+                    pgid = None
+
+            if pgid is not None:
+                # Terminate the process group
+                try:
+                    os.killpg(pgid, signal.SIGTERM)
+                except ProcessLookupError:
+                    return
+                except Exception:
+                    process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=3)
+                    return
+                except asyncio.TimeoutError:
+                    try:
+                        os.killpg(pgid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        return
+                    except Exception:
+                        process.kill()
+            else:
+                # No valid process group; fall back to terminating just this process
+                process.terminate()
+            await process.wait()
+        except Exception as exc:
+            logger.warning(
+                "[AutonomousAgent] Failed to terminate subprocess (%s): %s",
+                reason,
+                exc,
+            )
 
     async def _check_prompt_response(
         self, prompt_id: str, timeout_seconds: Optional[int] = 300
@@ -1704,7 +1802,9 @@ class AutonomousAgent:
         while time.time() - start_time < timeout:
             response_data = consume_prompt_response(
                 prompt_id,
-                expected_user_id=str(self.user_id) if self.user_id is not None else None,
+                expected_user_id=(
+                    str(self.user_id) if self.user_id is not None else None
+                ),
                 expected_org_id=str(self.org_id) if self.org_id is not None else None,
             )
             if response_data:
@@ -1881,6 +1981,14 @@ class AutonomousAgent:
         """
         request_lower = request.lower()
 
+        # Assessment/status questions should not be decomposed.
+        # These are typically read-only checks (readiness, health, explanation).
+        if self._is_assessment_only_request(request):
+            logger.info(
+                "[AutonomousAgent] 📖 Assessment-only request detected - skipping decomposition"
+            )
+            return False
+
         # Always decompose enterprise-complexity tasks
         if complexity == TaskComplexity.ENTERPRISE:
             return True
@@ -1929,6 +2037,152 @@ class AutonomousAgent:
 
         return False
 
+    def _is_assessment_only_request(self, request: str) -> bool:
+        """
+        Detect read-only assessment questions that should not trigger decomposition.
+        """
+        lower = request.lower().strip()
+
+        has_question_shape = "?" in lower or bool(
+            re.match(r"^(is|are|can|should|what|why|how)\b", lower)
+        )
+        if not has_question_shape:
+            return False
+
+        has_action_verb = bool(
+            re.search(r"\b(implement|fix|refactor|add|build|write|test|run)\b", lower)
+        )
+        if has_action_verb:
+            return False
+
+        has_file_or_debug_context = bool(
+            re.search(
+                r"((?:^|[\s(])[./~]?[a-z0-9_@-]+(?:\/[a-z0-9_@.\-]+)+(?:\.[a-z0-9]+)?(?:$|[\s)])|\b[a-z0-9_.-]+\.(js|ts|tsx|jsx|py|go|rs|java|json|ya?ml|md|css|html|sql)\b|\b(diff|patch|stack\s*trace|traceback|exception|error:\s|at\s+\S+:\d+:\d+)\b)",
+                lower,
+            )
+        )
+        if has_file_or_debug_context:
+            return False
+
+        return True
+
+    def _is_prod_readiness_request(self, request: str) -> bool:
+        """Detect requests asking whether the project is production-ready."""
+        lower = (request or "").lower()
+        if not lower:
+            return False
+
+        readiness_signals = [
+            "prod ready",
+            "production ready",
+            "ready for prod",
+            "ready for production",
+            "prod readiness",
+            "production readiness",
+            "go live",
+            "fully implemented",
+            "end-to-end",
+            "end to end",
+            "prod deployment",
+            "production deployment",
+        ]
+        if not any(signal in lower for signal in readiness_signals):
+            return False
+
+        verification_words = ["check", "verify", "working", "stable", "audit", "?"]
+        return any(word in lower for word in verification_words)
+
+    def _build_prod_readiness_audit_note(self) -> str:
+        """
+        Build deterministic guidance for production-readiness audits so the model
+        executes concrete checks instead of returning checklist-only prose.
+        """
+        project_type, _, commands = ProjectAnalyzer.detect_project_type(
+            self.workspace_path
+        )
+        package_manager = self._detect_package_manager()
+
+        install_cmd = {
+            "npm": "npm ci",
+            "pnpm": "pnpm install --frozen-lockfile",
+            "yarn": "yarn install --frozen-lockfile",
+            "bun": "bun install --frozen-lockfile",
+        }.get(package_manager, "npm ci")
+
+        node_modules_exists = os.path.isdir(
+            os.path.join(self.workspace_path, "node_modules")
+        )
+        audit_steps = []
+        if node_modules_exists:
+            audit_steps.append(
+                "- Dependencies appear installed (`node_modules` exists). Skip reinstall initially."
+            )
+            audit_steps.append(
+                f"- If commands fail due to missing packages, run `{install_cmd}` once and retry."
+            )
+        else:
+            audit_steps.append(f"- {install_cmd}")
+
+        lint_cmd = commands.get("lint")
+        typecheck_cmd = commands.get("typecheck")
+        test_cmd = commands.get("test")
+        build_cmd = commands.get("build")
+
+        # Run quick signal checks before expensive install/rebuild loops.
+        if lint_cmd:
+            audit_steps.append(f"- {lint_cmd}")
+        if typecheck_cmd:
+            audit_steps.append(f"- {typecheck_cmd}")
+        if test_cmd:
+            audit_steps.append(f"- {test_cmd}")
+        if build_cmd:
+            audit_steps.append(f"- {build_cmd}")
+
+        if project_type == "nodejs":
+            start_candidates = [
+                "npm run start",
+                "pnpm run start",
+                "yarn start",
+                "bun run start",
+                "next start",
+            ]
+            start_cmd = next(
+                (
+                    cmd
+                    for cmd in start_candidates
+                    if cmd.startswith(package_manager) or cmd == "next start"
+                ),
+                "npm run start",
+            )
+            audit_steps.append(f"- {start_cmd}")
+            audit_steps.append(
+                "- Verify app health with curl to localhost (or configured port)"
+            )
+
+        checks = [
+            "Build",
+            "Lint",
+            "Tests",
+            "Env completeness",
+            "External integrations reachable",
+            "Security/Secrets",
+            "Deploy target compatibility",
+        ]
+
+        checklist = "\n".join(f"- [ ] {item}" for item in checks)
+        commands_block = "\n".join(audit_steps)
+
+        return (
+            "PROD READINESS AUDIT MODE:\n"
+            "Run concrete verification commands using tools. Do NOT answer with a generic checklist without execution.\n"
+            "Use available tool names only (prefer `run_command`; never invent tool names).\n"
+            "Preferred command order (skip missing scripts, but state skipped checks explicitly):\n"
+            f"{commands_block}\n\n"
+            "Final response MUST include this checklist with statuses backed by evidence from command output:\n"
+            f"{checklist}\n"
+            "Use ✅ pass, ❌ fail, ⚠️ skipped (with reason)."
+        )
+
     async def _execute_with_decomposition_generator(
         self,
         request: str,
@@ -1963,16 +2217,36 @@ class AutonomousAgent:
             )
 
             # Decompose the task
-            decomposition = await decomposer.decompose_goal(
-                goal=request,
-                context={
-                    "workspace_path": self.workspace_path,
-                    "project_type": self.project_type,
-                    "framework": self.framework,
-                },
-                min_tasks=10,
-                max_tasks=50,  # Start with reasonable subtask count
-            )
+            try:
+                decomposition = await decomposer.decompose_goal(
+                    goal=request,
+                    context={
+                        "workspace_path": self.workspace_path,
+                        "project_type": self.project_type,
+                        "framework": self.framework,
+                    },
+                    min_tasks=10,
+                    max_tasks=50,  # Start with reasonable subtask count
+                )
+            except Exception as e:
+                err = str(e)
+                is_json_parse_issue = isinstance(e, json.JSONDecodeError) or (
+                    "Could not find JSON in LLM response" in err
+                    or "Invalid JSON in LLM response" in err
+                )
+                if is_json_parse_issue:
+                    logger.warning(
+                        "[AutonomousAgent] ⚠️ Decomposition parse failed, falling back to normal autonomous loop: %s",
+                        err,
+                    )
+                    yield {
+                        "type": "decomposition_failed_fallback",
+                        "reason": err,
+                        "message": "Decomposition output was not valid JSON. Continuing without decomposition.",
+                        "timestamp": time.time(),
+                    }
+                    return
+                raise
 
             logger.info(
                 f"[AutonomousAgent] ✅ Decomposed into {len(decomposition.tasks)} subtasks "
@@ -2337,6 +2611,12 @@ class AutonomousAgent:
             "need to",
             "want to",
             "trying to",
+            "prod ready",
+            "production ready",
+            "ready for prod",
+            "ready for production",
+            "prod readiness",
+            "production readiness",
         ]
 
         # Patterns that indicate just a question (not needing action)
@@ -2487,7 +2767,9 @@ class AutonomousAgent:
 
         return False
 
-    def _is_delete_request(self, request: str, context: Optional[TaskContext] = None) -> bool:
+    def _is_delete_request(
+        self, request: str, context: Optional[TaskContext] = None
+    ) -> bool:
         request_lower = (request or "").lower()
         if not request_lower:
             return False
@@ -2522,14 +2804,21 @@ class AutonomousAgent:
             return True
 
         # Handle "do the same" using conversation context
-        if "do the same" in request_lower or "same for" in request_lower or "same thing" in request_lower:
+        if (
+            "do the same" in request_lower
+            or "same for" in request_lower
+            or "same thing" in request_lower
+        ):
             history_text = ""
             if context and context.conversation_history:
                 history_text = " ".join(
-                    str(m.get("content", "")) for m in context.conversation_history[-12:]
+                    str(m.get("content", ""))
+                    for m in context.conversation_history[-12:]
                     if m.get("role") in ("user", "assistant")
                 ).lower()
-            if history_text and any(marker in history_text for marker in delete_markers):
+            if history_text and any(
+                marker in history_text for marker in delete_markers
+            ):
                 return True
 
         return False
@@ -2618,10 +2907,15 @@ class AutonomousAgent:
         ):
             return "dev"
 
-        if re.search(r"\b(run|rerun|execute)?\s*(tests?|test suite|pytest|jest|vitest)\b", request_lower):
+        if re.search(
+            r"\b(run|rerun|execute)?\s*(tests?|test suite|pytest|jest|vitest)\b",
+            request_lower,
+        ):
             return "test"
 
-        if re.search(r"\b(run|execute)\s+(build|compile|bundle)\b", request_lower) or re.search(
+        if re.search(
+            r"\b(run|execute)\s+(build|compile|bundle)\b", request_lower
+        ) or re.search(
             r"\bbuild\b.*\b(project|app|site|frontend|backend|server)\b", request_lower
         ):
             return "build"
@@ -2736,7 +3030,8 @@ class AutonomousAgent:
         # Fallback to conversation history for "do the same"
         if context and context.conversation_history:
             history_text = " ".join(
-                str(m.get("content", "")) for m in context.conversation_history[-12:]
+                str(m.get("content", ""))
+                for m in context.conversation_history[-12:]
                 if m.get("role") in ("user", "assistant")
             )
             for pattern in (r"`([^`]+)`", r'"([^"]+)"', r"'([^']+)'"):
@@ -2811,7 +3106,9 @@ class AutonomousAgent:
             if not base:
                 continue
             pattern = f"**/{base}" if "." in base else f"**/{base}.*"
-            matches = glob.glob(os.path.join(self.workspace_path, pattern), recursive=True)
+            matches = glob.glob(
+                os.path.join(self.workspace_path, pattern), recursive=True
+            )
             matches = [
                 os.path.relpath(m, self.workspace_path)
                 for m in matches
@@ -3052,7 +3349,7 @@ Use this context to understand existing patterns, dependencies, and architecture
             logger.warning(f"[AutonomousAgent] Failed to log generation: {e}")
             return None
 
-    async def _diagnose_environment(self) -> str:
+    async def _diagnose_environment(self, quick: bool = False) -> str:
         """
         Diagnose the development environment ONCE at the start.
         This prevents the agent from blindly guessing what tools are available.
@@ -3079,68 +3376,108 @@ Use this context to understand existing patterns, dependencies, and architecture
         # Combined Node.js environment setup (tries all managers)
         node_env_setup = f"{nvm_activate} || {volta_activate} || {fnm_activate}"
 
-        checks = [
-            # Node.js ecosystem - WITH proper environment activation
-            (
-                "Node.js",
-                f"({node_env_setup}) && node --version 2>/dev/null || "
-                f"/opt/homebrew/bin/node --version 2>/dev/null || "
-                f"/usr/local/bin/node --version 2>/dev/null || "
-                f"echo 'not found'",
-            ),
-            (
-                "npm",
-                f"({node_env_setup}) && npm --version 2>/dev/null || "
-                f"/opt/homebrew/bin/npm --version 2>/dev/null || "
-                f"/usr/local/bin/npm --version 2>/dev/null || "
-                f"echo 'not found'",
-            ),
-            (
-                "npx",
-                f"({node_env_setup}) && npx --version 2>/dev/null || "
-                f"/opt/homebrew/bin/npx --version 2>/dev/null || "
-                f"echo 'not found'",
-            ),
-            (
-                "nvm",
-                f'{nvm_activate} && nvm --version 2>/dev/null || echo "not found"',
-            ),
-            (
-                "volta",
-                'command -v volta >/dev/null 2>&1 && volta --version 2>/dev/null || echo "not found"',
-            ),
-            (
-                "fnm",
-                'command -v fnm >/dev/null 2>&1 && fnm --version 2>/dev/null || echo "not found"',
-            ),
-            (
-                "Available Node versions",
-                f"ls {home}/.nvm/versions/node/ 2>/dev/null | tr '\\n' ' ' || echo 'none'",
-            ),
-            # Python ecosystem
-            (
-                "Python",
-                "python3 --version 2>/dev/null || python --version 2>/dev/null || echo 'not found'",
-            ),
-            (
-                "pip",
-                "pip3 --version 2>/dev/null || pip --version 2>/dev/null || echo 'not found'",
-            ),
-            # Docker
-            ("Docker", "docker --version 2>/dev/null || echo 'not found'"),
-            ("Docker running", "docker ps >/dev/null 2>&1 && echo 'yes' || echo 'no'"),
-            # Package managers
-            ("Homebrew", "brew --version 2>/dev/null | head -1 || echo 'not found'"),
-            # OS info
-            ("OS", "uname -s 2>/dev/null"),
-            # Current directory info
-            ("Working dir", f"echo '{self.workspace_path}'"),
-            # Check if node_modules exists
-            (
-                "node_modules",
-                f"[ -d '{self.workspace_path}/node_modules' ] && echo 'exists' || echo 'missing (run npm install)'",
-            ),
-        ]
+        if quick:
+            checks = [
+                (
+                    "Node.js",
+                    f"({node_env_setup}) && node --version 2>/dev/null || "
+                    f"/opt/homebrew/bin/node --version 2>/dev/null || "
+                    f"/usr/local/bin/node --version 2>/dev/null || "
+                    f"echo 'not found'",
+                ),
+                (
+                    "npm",
+                    f"({node_env_setup}) && npm --version 2>/dev/null || "
+                    f"/opt/homebrew/bin/npm --version 2>/dev/null || "
+                    f"/usr/local/bin/npm --version 2>/dev/null || "
+                    f"echo 'not found'",
+                ),
+                (
+                    "Package manager lockfile",
+                    (
+                        f"[ -f '{self.workspace_path}/pnpm-lock.yaml' ] && echo 'pnpm' || "
+                        f"[ -f '{self.workspace_path}/yarn.lock' ] && echo 'yarn' || "
+                        f"[ -f '{self.workspace_path}/bun.lockb' ] && echo 'bun' || "
+                        "echo 'npm'"
+                    ),
+                ),
+                ("Working dir", f"echo '{self.workspace_path}'"),
+                (
+                    "node_modules",
+                    f"[ -d '{self.workspace_path}/node_modules' ] && echo 'exists' || echo 'missing'",
+                ),
+            ]
+            per_check_timeout = 4
+        else:
+            checks = [
+                # Node.js ecosystem - WITH proper environment activation
+                (
+                    "Node.js",
+                    f"({node_env_setup}) && node --version 2>/dev/null || "
+                    f"/opt/homebrew/bin/node --version 2>/dev/null || "
+                    f"/usr/local/bin/node --version 2>/dev/null || "
+                    f"echo 'not found'",
+                ),
+                (
+                    "npm",
+                    f"({node_env_setup}) && npm --version 2>/dev/null || "
+                    f"/opt/homebrew/bin/npm --version 2>/dev/null || "
+                    f"/usr/local/bin/npm --version 2>/dev/null || "
+                    f"echo 'not found'",
+                ),
+                (
+                    "npx",
+                    f"({node_env_setup}) && npx --version 2>/dev/null || "
+                    f"/opt/homebrew/bin/npx --version 2>/dev/null || "
+                    f"echo 'not found'",
+                ),
+                (
+                    "nvm",
+                    f'{nvm_activate} && nvm --version 2>/dev/null || echo "not found"',
+                ),
+                (
+                    "volta",
+                    'command -v volta >/dev/null 2>&1 && volta --version 2>/dev/null || echo "not found"',
+                ),
+                (
+                    "fnm",
+                    'command -v fnm >/dev/null 2>&1 && fnm --version 2>/dev/null || echo "not found"',
+                ),
+                (
+                    "Available Node versions",
+                    f"ls {home}/.nvm/versions/node/ 2>/dev/null | tr '\\n' ' ' || echo 'none'",
+                ),
+                # Python ecosystem
+                (
+                    "Python",
+                    "python3 --version 2>/dev/null || python --version 2>/dev/null || echo 'not found'",
+                ),
+                (
+                    "pip",
+                    "pip3 --version 2>/dev/null || pip --version 2>/dev/null || echo 'not found'",
+                ),
+                # Docker
+                ("Docker", "docker --version 2>/dev/null || echo 'not found'"),
+                (
+                    "Docker running",
+                    "docker ps >/dev/null 2>&1 && echo 'yes' || echo 'no'",
+                ),
+                # Package managers
+                (
+                    "Homebrew",
+                    "brew --version 2>/dev/null | head -1 || echo 'not found'",
+                ),
+                # OS info
+                ("OS", "uname -s 2>/dev/null"),
+                # Current directory info
+                ("Working dir", f"echo '{self.workspace_path}'"),
+                # Check if node_modules exists
+                (
+                    "node_modules",
+                    f"[ -d '{self.workspace_path}/node_modules' ] && echo 'exists' || echo 'missing (run npm install)'",
+                ),
+            ]
+            per_check_timeout = 10
 
         for name, cmd in checks:
             try:
@@ -3150,7 +3487,7 @@ Use this context to understand existing patterns, dependencies, and architecture
                     executable="/bin/bash",
                     capture_output=True,
                     text=True,
-                    timeout=10,
+                    timeout=per_check_timeout,
                     cwd=self.workspace_path,
                 )
                 value = result.stdout.strip() or result.stderr.strip() or "unknown"
@@ -3161,12 +3498,61 @@ Use this context to understand existing patterns, dependencies, and architecture
         return "\n".join(diagnostics)
 
     async def _generate_plan(
-        self, request: str, env_info: str, context: TaskContext
+        self,
+        request: str,
+        env_info: str,
+        context: TaskContext,
+        fast_mode: bool = False,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Generate a high-level plan for complex tasks before execution.
         This helps users understand what the agent will do.
         """
+        if fast_mode and self._is_prod_readiness_request(request):
+            fast_steps = [
+                {
+                    "id": 1,
+                    "label": "Inspect project scripts",
+                    "description": "Detect available lint/test/build/typecheck scripts",
+                    "status": "pending",
+                },
+                {
+                    "id": 2,
+                    "label": "Run readiness checks",
+                    "description": "Execute verification commands and capture evidence",
+                    "status": "pending",
+                },
+                {
+                    "id": 3,
+                    "label": "Summarize readiness",
+                    "description": "Report pass/fail/skipped status with reasons",
+                    "status": "pending",
+                },
+            ]
+            plan_id = f"plan-{uuid.uuid4().hex[:8]}"
+            context.plan_id = plan_id
+            yield {
+                "type": "plan_start",
+                "data": {
+                    "plan_id": plan_id,
+                    "steps": [
+                        {
+                            "index": s["id"],
+                            "title": s["label"],
+                            "detail": s["description"],
+                        }
+                        for s in fast_steps
+                    ],
+                },
+            }
+            yield {
+                "type": "plan",
+                "steps": fast_steps,
+                "estimated_files": ["package.json"],
+                "is_complex": False,
+            }
+            return
+
         # Determine if this is a trivial task that doesn't need LLM planning
         # Most tasks should use LLM planning to generate specific, file-based steps
         # Only skip LLM planning for truly trivial cases
@@ -3259,7 +3645,9 @@ Use this context to understand existing patterns, dependencies, and architecture
                 pm = (
                     "npm"
                     if "npm" in request_lower
-                    else "yarn" if "yarn" in request_lower else "pnpm"
+                    else "yarn"
+                    if "yarn" in request_lower
+                    else "pnpm"
                 )
                 label = f"Install dependencies with {pm}"
                 desc = f"Running {pm} install to install project dependencies"
@@ -3290,8 +3678,14 @@ Use this context to understand existing patterns, dependencies, and architecture
 
                 # Try to infer the action from the request
                 request_lower = request.lower()
-                if any(word in request_lower for word in ["see", "show", "view", "look", "check"]):
-                    if any(word in request_lower for word in ["animation", "video", "result", "output"]):
+                if any(
+                    word in request_lower
+                    for word in ["see", "show", "view", "look", "check"]
+                ):
+                    if any(
+                        word in request_lower
+                        for word in ["animation", "video", "result", "output"]
+                    ):
                         label = "Run and display animation"
                         desc = "Execute the animation script and show the visual output"
                     elif any(word in request_lower for word in ["file", "code"]):
@@ -3764,7 +4158,7 @@ Return ONLY the JSON, no markdown or explanations."""
         decision: Dict[str, Any],
         requested_at: datetime,
         danger_level: Optional[str] = None,
-        cwd: Optional[str] = None
+        cwd: Optional[str] = None,
     ) -> Optional[str]:
         """
         Handle user's consent decision by saving preferences and logging to audit.
@@ -3781,7 +4175,9 @@ Return ONLY the JSON, no markdown or explanations."""
             Command to execute (original or alternative), or None if denied
         """
         if not self.user_id or not self.org_id:
-            logger.warning("[AutonomousAgent] Cannot handle consent decision without user/org ID")
+            logger.warning(
+                "[AutonomousAgent] Cannot handle consent decision without user/org ID"
+            )
             return None
 
         choice = decision.get("choice", "deny")
@@ -3795,14 +4191,14 @@ Return ONLY the JSON, no markdown or explanations."""
                     user_id=str(self.user_id),
                     org_id=str(self.org_id),
                     preference_type="exact_command",
-                    command=command
+                    command=command,
                 )
             elif choice == "allow_always_type":
                 self.consent_service.save_preference(
                     user_id=str(self.user_id),
                     org_id=str(self.org_id),
                     preference_type="command_type",
-                    command=command
+                    command=command,
                 )
 
             # Log decision to audit trail
@@ -3817,14 +4213,16 @@ Return ONLY the JSON, no markdown or explanations."""
                 shell="bash",
                 cwd=cwd,
                 danger_level=danger_level,
-                alternative_command=alternative_cmd
+                alternative_command=alternative_cmd,
             )
 
             # Determine which command to execute
             if choice == "deny":
                 return None
             elif choice == "alternative" and alternative_cmd:
-                logger.info(f"[AutonomousAgent] Using alternative command: {alternative_cmd}")
+                logger.info(
+                    f"[AutonomousAgent] Using alternative command: {alternative_cmd}"
+                )
                 return alternative_cmd
             else:
                 # allow_once, allow_always_exact, or allow_always_type
@@ -3834,7 +4232,11 @@ Return ONLY the JSON, no markdown or explanations."""
             logger.error(f"[AutonomousAgent] Failed to handle consent decision: {e}")
             # Still return the command if user approved, even if logging failed
             if choice != "deny":
-                return alternative_cmd if choice == "alternative" and alternative_cmd else command
+                return (
+                    alternative_cmd
+                    if choice == "alternative" and alternative_cmd
+                    else command
+                )
             return None
 
     async def _check_auto_allow(self, command: str) -> bool:
@@ -3853,9 +4255,7 @@ Return ONLY the JSON, no markdown or explanations."""
 
         try:
             pref_type = self.consent_service.check_auto_allow(
-                user_id=str(self.user_id),
-                org_id=str(self.org_id),
-                command=command
+                user_id=str(self.user_id), org_id=str(self.org_id), command=command
             )
 
             if pref_type:
@@ -3890,7 +4290,9 @@ Return ONLY the JSON, no markdown or explanations."""
             Returns {"choice": "deny"} if timeout or error
         """
         if not self.redis_client:
-            logger.error(f"[AutonomousAgent] Redis not available, denying consent {consent_id}")
+            logger.error(
+                f"[AutonomousAgent] Redis not available, denying consent {consent_id}"
+            )
             return {"choice": "deny"}
 
         start_time = time.time()
@@ -3994,6 +4396,19 @@ Return ONLY the JSON, no markdown or explanations."""
         logger.info(f"[AutonomousAgent] Iteration: {context.iteration}")
         logger.info("-" * 40)
 
+        # Normalize common alias tool names returned by some models.
+        tool_aliases = {
+            "run_interactive_command": "run_command",
+            "execute_command": "run_command",
+            "run_shell_command": "run_command",
+        }
+        canonical_tool_name = tool_aliases.get(tool_name, tool_name)
+        if canonical_tool_name != tool_name:
+            logger.info(
+                f"[AutonomousAgent] ↪️ Normalizing tool '{tool_name}' to '{canonical_tool_name}'"
+            )
+            tool_name = canonical_tool_name
+
         try:
             if tool_name == "read_file":
                 path = os.path.join(self.workspace_path, arguments["path"])
@@ -4033,7 +4448,9 @@ Return ONLY the JSON, no markdown or explanations."""
                 path = os.path.join(self.workspace_path, file_path)
 
                 # If the user requested deletion, do not "clear" the file - delete it
-                if content == "" and self._is_delete_request(context.original_request, context):
+                if content == "" and self._is_delete_request(
+                    context.original_request, context
+                ):
                     if not os.path.exists(path):
                         return {
                             "success": False,
@@ -4044,6 +4461,7 @@ Return ONLY the JSON, no markdown or explanations."""
                     )
                     import shlex
                     from backend.agent.tools.run_command import run_command as run_cmd
+
                     return await run_cmd(
                         user_id=str(self.user_id or "anonymous"),
                         command=f"rm {shlex.quote(file_path)}",
@@ -4455,6 +4873,7 @@ Return ONLY the JSON, no markdown or explanations."""
                     cwd=cwd,
                     env=env,
                     executable="/bin/bash",
+                    start_new_session=True,
                 )
 
                 stdout_lines = []
@@ -4470,18 +4889,57 @@ Return ONLY the JSON, no markdown or explanations."""
                         line_text = line.decode("utf-8", errors="replace").rstrip()
                         output_list.append(line_text)
 
-                # Read stdout and stderr concurrently
+                # Read stdout and stderr concurrently while polling for cancellation.
+                stdout_task = asyncio.create_task(
+                    read_stream(process.stdout, stdout_lines, "stdout")
+                )
+                stderr_task = asyncio.create_task(
+                    read_stream(process.stderr, stderr_lines, "stderr")
+                )
+                deadline = time.time() + cmd_timeout
+                timed_out = False
+                canceled = False
                 try:
-                    await asyncio.wait_for(
-                        asyncio.gather(
-                            read_stream(process.stdout, stdout_lines, "stdout"),
-                            read_stream(process.stderr, stderr_lines, "stderr"),
-                        ),
-                        timeout=cmd_timeout,
+                    while process.returncode is None:
+                        if await self._is_cancel_requested():
+                            canceled = True
+                            break
+                        remaining = deadline - time.time()
+                        if remaining <= 0:
+                            timed_out = True
+                            break
+                        try:
+                            await asyncio.wait_for(
+                                process.wait(), timeout=min(0.5, remaining)
+                            )
+                        except asyncio.TimeoutError:
+                            continue
+                except asyncio.CancelledError:
+                    canceled = True
+                    raise
+                finally:
+                    if canceled:
+                        await self._terminate_process_tree(
+                            process, reason="job_cancel_requested"
+                        )
+                    elif timed_out:
+                        await self._terminate_process_tree(
+                            process, reason="command_timeout"
+                        )
+                    await asyncio.gather(
+                        stdout_task, stderr_task, return_exceptions=True
                     )
-                except asyncio.TimeoutError:
-                    process.kill()
-                    await process.wait()
+
+                if canceled:
+                    return {
+                        "success": False,
+                        "exit_code": -2,
+                        "stdout": "\n".join(stdout_lines),
+                        "stderr": "Command canceled by user request",
+                        "error": "Command interrupted because the job was canceled",
+                    }
+
+                if timed_out:
                     return {
                         "success": False,
                         "exit_code": -1,
@@ -4591,15 +5049,37 @@ Return ONLY the JSON, no markdown or explanations."""
                         "message"
                     ] += f" | Server responding at {response.get('server_url')}"
 
-                # Post-process visual outputs (animations, videos)
-                if response.get("success"):
+                # Post-process visual outputs (animations, videos) only for likely visual commands.
+                visual_command_patterns = [
+                    r"\bffmpeg\b",
+                    r"\bmanim\b",
+                    r"\bblender\b",
+                    r"\bmoviepy\b",
+                    r"\bopencv\b",
+                    r"\bmatplotlib\b",
+                    r"\bplotly\b",
+                    r"\banimation\b",
+                    r"\brender\b",
+                    r"\bgif\b",
+                    r"\bvideo\b",
+                    r"\.py\b.*(animation|render|video|gif)",
+                ]
+                should_process_visual = any(
+                    re.search(pattern, command_raw.lower())
+                    for pattern in visual_command_patterns
+                )
+
+                if response.get("success") and should_process_visual:
                     try:
-                        from backend.services.visual_output_handler import VisualOutputHandler
+                        from backend.services.visual_output_handler import (
+                            VisualOutputHandler,
+                        )
 
                         visual_handler = VisualOutputHandler(self.workspace_path)
                         visual_result = await visual_handler.process_visual_output(
                             output=stdout_text + "\n" + stderr_text,
-                            created_files=context.files_created + context.files_modified
+                            created_files=context.files_created
+                            + context.files_modified,
                         )
 
                         if visual_result and visual_result.get("compiled"):
@@ -4611,7 +5091,9 @@ Return ONLY the JSON, no markdown or explanations."""
                                 f"[AutonomousAgent] ✅ Processed visual output: {visual_result.get('output_file')}"
                             )
                     except Exception as visual_err:
-                        logger.warning(f"Visual output processing failed (non-critical): {visual_err}")
+                        logger.warning(
+                            f"Visual output processing failed (non-critical): {visual_err}"
+                        )
 
                 return response
 
@@ -4663,7 +5145,6 @@ Return ONLY the JSON, no markdown or explanations."""
                 return {"success": True, "entries": entries}
 
             elif tool_name == "start_server":
-                import time
                 import urllib.request
                 import urllib.error
 
@@ -5098,9 +5579,28 @@ Return ONLY the JSON, no markdown or explanations."""
                             phase="autonomous", model=self.model
                         ).observe(call_duration_ms)
 
-                        error = await response.text()
-                        logger.error(f"[AutonomousAgent] ❌ API Error: {error[:500]}")
-                        yield {"type": "error", "error": error}
+                        error_text = await response.text()
+                        try:
+                            error_body = json.loads(error_text)
+                        except Exception:
+                            error_body = error_text
+
+                        if response.status == 400:
+                            logger.error(
+                                "[AutonomousAgent] Anthropic 400 debug | model=%s endpoint=%s stream=%s payload=%s error.body=%s",
+                                self.model,
+                                "https://api.anthropic.com/v1/messages",
+                                True,
+                                payload,
+                                error_body,
+                            )
+
+                        logger.error(
+                            "[AutonomousAgent] ❌ API Error status=%s body=%s",
+                            response.status,
+                            str(error_body)[:2000],
+                        )
+                        yield {"type": "error", "error": error_body}
                         return
 
                     text_buffer = ""
@@ -5252,11 +5752,15 @@ Return ONLY the JSON, no markdown or explanations."""
                                         consent_id = result.get("consent_id")
 
                                         # Check if command is auto-allowed by user preferences
-                                        auto_allowed = await self._check_auto_allow(command)
+                                        auto_allowed = await self._check_auto_allow(
+                                            command
+                                        )
 
                                         if auto_allowed:
                                             # Execute directly without user consent
-                                            logger.info("[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
+                                            logger.info(
+                                                "[AutonomousAgent] 🚀 Auto-allowed, executing without consent"
+                                            )
                                             args["consent_id"] = consent_id
                                             result = await self._execute_tool(
                                                 current_tool["name"], args, context
@@ -5269,31 +5773,55 @@ Return ONLY the JSON, no markdown or explanations."""
                                                     await self.redis_client.setex(
                                                         f"consent:{consent_id}",
                                                         300,  # 5 minute TTL
-                                                        json.dumps({
-                                                            "pending": True,
-                                                            "command": command,
-                                                            "requested_at": requested_at.isoformat(),
-                                                            "user_id": str(self.user_id) if self.user_id else None,
-                                                            "org_id": str(self.org_id) if self.org_id else None
-                                                        })
+                                                        json.dumps(
+                                                            {
+                                                                "pending": True,
+                                                                "command": command,
+                                                                "requested_at": requested_at.isoformat(),
+                                                                "user_id": (
+                                                                    str(self.user_id)
+                                                                    if self.user_id
+                                                                    else None
+                                                                ),
+                                                                "org_id": (
+                                                                    str(self.org_id)
+                                                                    if self.org_id
+                                                                    else None
+                                                                ),
+                                                            }
+                                                        ),
                                                     )
                                                 except Exception as e:
-                                                    logger.error(f"[AutonomousAgent] Failed to store consent in Redis: {e}")
+                                                    logger.error(
+                                                        f"[AutonomousAgent] Failed to store consent in Redis: {e}"
+                                                    )
 
                                             # Emit consent event to frontend
                                             yield consent_event
 
                                             # Wait for user to approve/deny consent
-                                            decision = await self._wait_for_consent(consent_id)
+                                            decision = await self._wait_for_consent(
+                                                consent_id
+                                            )
 
                                             # Handle the decision (save preferences, log audit)
-                                            command_to_execute = await self._handle_consent_decision(
-                                                consent_id=consent_id,
-                                                command=command,
-                                                decision=decision,
-                                                requested_at=requested_at if 'requested_at' in locals() else datetime.now(),
-                                                danger_level=result.get("danger_level"),
-                                                cwd=args.get("cwd", self.workspace_path)
+                                            command_to_execute = (
+                                                await self._handle_consent_decision(
+                                                    consent_id=consent_id,
+                                                    command=command,
+                                                    decision=decision,
+                                                    requested_at=(
+                                                        requested_at
+                                                        if "requested_at" in locals()
+                                                        else datetime.now()
+                                                    ),
+                                                    danger_level=result.get(
+                                                        "danger_level"
+                                                    ),
+                                                    cwd=args.get(
+                                                        "cwd", self.workspace_path
+                                                    ),
+                                                )
                                             )
 
                                             if command_to_execute:
@@ -5303,7 +5831,10 @@ Return ONLY the JSON, no markdown or explanations."""
                                                 )
                                                 args["consent_id"] = consent_id
                                                 # If alternative command, update the args
-                                                if decision.get("choice") == "alternative":
+                                                if (
+                                                    decision.get("choice")
+                                                    == "alternative"
+                                                ):
                                                     args["command"] = command_to_execute
                                                 result = await self._execute_tool(
                                                     current_tool["name"], args, context
@@ -5312,7 +5843,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                                 # Consent denied or timeout
                                                 result = {
                                                     "success": False,
-                                                    "error": "User denied consent or consent timed out"
+                                                    "error": "User denied consent or consent timed out",
                                                 }
 
                                     # Log result (unified method - warns if failed)
@@ -5480,7 +6011,7 @@ Return ONLY the JSON, no markdown or explanations."""
         async with aiohttp.ClientSession() as session:
             while True:
                 payload = {
-                    "model": self.model,
+                    "model": self._normalize_openai_compatible_model_name(self.model),
                     "messages": full_messages,
                     "tools": NAVI_FUNCTIONS_OPENAI,
                     "stream": True,
@@ -5494,19 +6025,42 @@ Return ONLY the JSON, no markdown or explanations."""
                     "Content-Type": "application/json",
                 }
 
-                base_url = "https://api.openai.com/v1"
+                base_url = self.base_url or "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
-                    )
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
                 elif self.provider == "groq":
                     base_url = "https://api.groq.com/openai/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                elif self.provider == "ollama":
+                    base_url = os.environ.get("OLLAMA_BASE_URL", base_url)
+                    if not base_url.rstrip("/").endswith("/v1"):
+                        base_url = f"{base_url.rstrip('/')}/v1"
+                    headers.pop("Authorization", None)
+                elif self.provider == "self_hosted":
+                    base_url = (
+                        os.environ.get("SELF_HOSTED_API_BASE_URL")
+                        or os.environ.get("SELF_HOSTED_LLM_URL")
+                        or os.environ.get("VLLM_BASE_URL")
+                        or base_url
                     )
+                    if not base_url.rstrip("/").endswith("/v1"):
+                        base_url = f"{base_url.rstrip('/')}/v1"
+                    if not self.api_key:
+                        headers.pop("Authorization", None)
 
-                logger.info(f"[AutonomousAgent] 📡 Sending request to {base_url}...")
+                logger.info(
+                    "[AutonomousAgent] 📡 OpenAI request | endpoint=%s model=%s stream=%s messages=%s has_tools=%s",
+                    f"{base_url}/chat/completions",
+                    payload.get("model"),
+                    bool(payload.get("stream")),
+                    len(payload.get("messages", [])),
+                    bool(payload.get("tools")),
+                )
 
                 # === METRICS: Start LLM call timer ===
                 call_start_time = time.time()
@@ -5623,10 +6177,10 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if tc.get("function", {}).get("name"):
                                         # Convert OpenAI-sanitized name back to original NAVI name
                                         openai_name = tc["function"]["name"]
-                                        tool_calls[idx]["name"] = (
-                                            OPENAI_TO_NAVI_TOOL_NAME.get(
-                                                openai_name, openai_name
-                                            )
+                                        tool_calls[idx][
+                                            "name"
+                                        ] = OPENAI_TO_NAVI_TOOL_NAME.get(
+                                            openai_name, openai_name
                                         )
                                     if tc.get("function", {}).get("arguments"):
                                         tool_calls[idx]["arguments"] += tc["function"][
@@ -5741,10 +6295,16 @@ Return ONLY the JSON, no markdown or explanations."""
 
                                     if auto_allowed:
                                         # Execute directly without user consent
-                                        logger.info("[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
-                                        tool_info["arguments"]["consent_id"] = consent_id
+                                        logger.info(
+                                            "[AutonomousAgent] 🚀 Auto-allowed, executing without consent"
+                                        )
+                                        tool_info["arguments"][
+                                            "consent_id"
+                                        ] = consent_id
                                         result = await self._execute_tool(
-                                            tool_info["name"], tool_info["arguments"], context
+                                            tool_info["name"],
+                                            tool_info["arguments"],
+                                            context,
                                         )
                                     else:
                                         # Store consent request in Redis
@@ -5754,31 +6314,53 @@ Return ONLY the JSON, no markdown or explanations."""
                                                 await self.redis_client.setex(
                                                     f"consent:{consent_id}",
                                                     300,  # 5 minute TTL
-                                                    json.dumps({
-                                                        "pending": True,
-                                                        "command": command,
-                                                        "requested_at": requested_at.isoformat(),
-                                                        "user_id": str(self.user_id) if self.user_id else None,
-                                                        "org_id": str(self.org_id) if self.org_id else None
-                                                    })
+                                                    json.dumps(
+                                                        {
+                                                            "pending": True,
+                                                            "command": command,
+                                                            "requested_at": requested_at.isoformat(),
+                                                            "user_id": (
+                                                                str(self.user_id)
+                                                                if self.user_id
+                                                                else None
+                                                            ),
+                                                            "org_id": (
+                                                                str(self.org_id)
+                                                                if self.org_id
+                                                                else None
+                                                            ),
+                                                        }
+                                                    ),
                                                 )
                                             except Exception as e:
-                                                logger.error(f"[AutonomousAgent] Failed to store consent in Redis: {e}")
+                                                logger.error(
+                                                    f"[AutonomousAgent] Failed to store consent in Redis: {e}"
+                                                )
 
                                         # Emit consent event to frontend
                                         yield consent_event
 
                                         # Wait for user to approve/deny consent
-                                        decision = await self._wait_for_consent(consent_id)
+                                        decision = await self._wait_for_consent(
+                                            consent_id
+                                        )
 
                                         # Handle the decision (save preferences, log audit)
-                                        command_to_execute = await self._handle_consent_decision(
-                                            consent_id=consent_id,
-                                            command=command,
-                                            decision=decision,
-                                            requested_at=requested_at if 'requested_at' in locals() else datetime.now(),
-                                            danger_level=result.get("danger_level"),
-                                            cwd=tool_info["arguments"].get("cwd", self.workspace_path)
+                                        command_to_execute = (
+                                            await self._handle_consent_decision(
+                                                consent_id=consent_id,
+                                                command=command,
+                                                decision=decision,
+                                                requested_at=(
+                                                    requested_at
+                                                    if "requested_at" in locals()
+                                                    else datetime.now()
+                                                ),
+                                                danger_level=result.get("danger_level"),
+                                                cwd=tool_info["arguments"].get(
+                                                    "cwd", self.workspace_path
+                                                ),
+                                            )
                                         )
 
                                         if command_to_execute:
@@ -5786,18 +6368,24 @@ Return ONLY the JSON, no markdown or explanations."""
                                             logger.info(
                                                 "[AutonomousAgent] 🔄 Retrying tool with consent approval"
                                             )
-                                            tool_info["arguments"]["consent_id"] = consent_id
+                                            tool_info["arguments"][
+                                                "consent_id"
+                                            ] = consent_id
                                             # If alternative command, update the args
                                             if decision.get("choice") == "alternative":
-                                                tool_info["arguments"]["command"] = command_to_execute
+                                                tool_info["arguments"][
+                                                    "command"
+                                                ] = command_to_execute
                                             result = await self._execute_tool(
-                                                tool_info["name"], tool_info["arguments"], context
+                                                tool_info["name"],
+                                                tool_info["arguments"],
+                                                context,
                                             )
                                         else:
                                             # Consent denied or timeout
                                             result = {
                                                 "success": False,
-                                                "error": "User denied consent or consent timed out"
+                                                "error": "User denied consent or consent timed out",
                                             }
 
                                 # Log result (unified method - warns if failed)
@@ -5851,7 +6439,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
                                 if auto_allowed:
                                     # Execute directly without user consent
-                                    logger.info("[AutonomousAgent] 🚀 Auto-allowed, executing without consent")
+                                    logger.info(
+                                        "[AutonomousAgent] 🚀 Auto-allowed, executing without consent"
+                                    )
                                     tc["arguments"]["consent_id"] = consent_id
                                     result = await self._execute_tool(
                                         tc["name"], tc["arguments"], context
@@ -5864,16 +6454,28 @@ Return ONLY the JSON, no markdown or explanations."""
                                             await self.redis_client.setex(
                                                 f"consent:{consent_id}",
                                                 300,  # 5 minute TTL
-                                                json.dumps({
-                                                    "pending": True,
-                                                    "command": command,
-                                                    "requested_at": requested_at.isoformat(),
-                                                    "user_id": str(self.user_id) if self.user_id else None,
-                                                    "org_id": str(self.org_id) if self.org_id else None
-                                                })
+                                                json.dumps(
+                                                    {
+                                                        "pending": True,
+                                                        "command": command,
+                                                        "requested_at": requested_at.isoformat(),
+                                                        "user_id": (
+                                                            str(self.user_id)
+                                                            if self.user_id
+                                                            else None
+                                                        ),
+                                                        "org_id": (
+                                                            str(self.org_id)
+                                                            if self.org_id
+                                                            else None
+                                                        ),
+                                                    }
+                                                ),
                                             )
                                         except Exception as e:
-                                            logger.error(f"[AutonomousAgent] Failed to store consent in Redis: {e}")
+                                            logger.error(
+                                                f"[AutonomousAgent] Failed to store consent in Redis: {e}"
+                                            )
 
                                     # Emit consent event to frontend
                                     yield consent_event
@@ -5882,13 +6484,21 @@ Return ONLY the JSON, no markdown or explanations."""
                                     decision = await self._wait_for_consent(consent_id)
 
                                     # Handle the decision (save preferences, log audit)
-                                    command_to_execute = await self._handle_consent_decision(
-                                        consent_id=consent_id,
-                                        command=command,
-                                        decision=decision,
-                                        requested_at=requested_at if 'requested_at' in locals() else datetime.now(),
-                                        danger_level=result.get("danger_level"),
-                                        cwd=tc["arguments"].get("cwd", self.workspace_path)
+                                    command_to_execute = (
+                                        await self._handle_consent_decision(
+                                            consent_id=consent_id,
+                                            command=command,
+                                            decision=decision,
+                                            requested_at=(
+                                                requested_at
+                                                if "requested_at" in locals()
+                                                else datetime.now()
+                                            ),
+                                            danger_level=result.get("danger_level"),
+                                            cwd=tc["arguments"].get(
+                                                "cwd", self.workspace_path
+                                            ),
+                                        )
                                     )
 
                                     if command_to_execute:
@@ -5899,7 +6509,9 @@ Return ONLY the JSON, no markdown or explanations."""
                                         tc["arguments"]["consent_id"] = consent_id
                                         # If alternative command, update the args
                                         if decision.get("choice") == "alternative":
-                                            tc["arguments"]["command"] = command_to_execute
+                                            tc["arguments"][
+                                                "command"
+                                            ] = command_to_execute
                                         result = await self._execute_tool(
                                             tc["name"], tc["arguments"], context
                                         )
@@ -5907,7 +6519,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                         # Consent denied or timeout
                                         result = {
                                             "success": False,
-                                            "error": "User denied consent or consent timed out"
+                                            "error": "User denied consent or consent timed out",
                                         }
 
                             # Log result (unified method - warns if failed)
@@ -6018,6 +6630,7 @@ Return ONLY the JSON, no markdown or explanations."""
         # Assess task complexity for adaptive optimization
         complexity = self._assess_task_complexity(request)
         logger.info(f"[AutonomousAgent] 📊 Task complexity: {complexity.value}")
+        is_prod_readiness_request = self._is_prod_readiness_request(request)
 
         # Create context with adaptive iteration limits
         context = TaskContext.with_adaptive_limits(
@@ -6044,6 +6657,19 @@ Return ONLY the JSON, no markdown or explanations."""
             else "unlimited (checkpointed)"
         )
         logger.info(f"[AutonomousAgent] 🔄 Max iterations set to: {max_display}")
+        task_start_time = time.time()
+        try:
+            max_runtime_seconds = int(
+                os.getenv(
+                    "AEP_AUTONOMOUS_MAX_RUNTIME_SECONDS",
+                    str(DEFAULT_AUTONOMOUS_MAX_RUNTIME_SECONDS),
+                )
+            )
+        except (TypeError, ValueError):
+            max_runtime_seconds = DEFAULT_AUTONOMOUS_MAX_RUNTIME_SECONDS
+        if max_runtime_seconds <= 0:
+            max_runtime_seconds = DEFAULT_AUTONOMOUS_MAX_RUNTIME_SECONDS
+        logger.info(f"[AutonomousAgent] ⏱️ Runtime cap: {max_runtime_seconds}s")
 
         yield {"type": "status", "status": "planning", "task_id": context.task_id}
 
@@ -6060,55 +6686,69 @@ Return ONLY the JSON, no markdown or explanations."""
             "message": "Checking project configuration...",
             "timestamp": int(__import__("time").time()) * 1000,
         }
-        env_info = await self._diagnose_environment()
+        env_info = await self._diagnose_environment(quick=is_prod_readiness_request)
 
         # Retrieve relevant codebase context via RAG
-        yield {
-            "type": "thinking_progress",
-            "message": "Searching codebase for relevant context...",
-            "timestamp": int(__import__("time").time()) * 1000,
-        }
         rag_context = None
-        try:
-            # === METRICS: Start RAG retrieval timer ===
-            rag_start_time = time.time()
-
-            # Add timeout to prevent RAG from blocking for minutes
-            # RAG now triggers background indexing on first request, so timeout is less critical
+        if is_prod_readiness_request:
+            logger.info(
+                "[AutonomousAgent] ⚡ Fast prod-readiness mode: skipping deep RAG lookup"
+            )
+            yield {
+                "type": "thinking_progress",
+                "message": "Using fast startup mode for readiness audit...",
+                "timestamp": int(__import__("time").time()) * 1000,
+            }
+        else:
+            yield {
+                "type": "thinking_progress",
+                "message": "Searching codebase for relevant context...",
+                "timestamp": int(__import__("time").time()) * 1000,
+            }
             try:
-                rag_context = await asyncio.wait_for(
-                    get_context_for_task(
-                        workspace_path=self.workspace_path,
-                        task_description=request,
-                        max_context_tokens=4000,  # Limit context size
-                    ),
-                    timeout=10.0,  # 10 second timeout for RAG (allows background indexing to start)
+                # === METRICS: Start RAG retrieval timer ===
+                rag_start_time = time.time()
+
+                # Add timeout to prevent RAG from blocking for minutes
+                # RAG now triggers background indexing on first request, so timeout is less critical
+                try:
+                    rag_context = await asyncio.wait_for(
+                        get_context_for_task(
+                            workspace_path=self.workspace_path,
+                            task_description=request,
+                            max_context_tokens=4000,  # Limit context size
+                        ),
+                        timeout=10.0,  # 10 second timeout for RAG (allows background indexing to start)
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "[AutonomousAgent] RAG context retrieval timed out after 10s - "
+                        "continuing without RAG context (background indexing may be in progress)"
+                    )
+                    rag_context = None
+
+                # === METRICS: Record RAG retrieval latency ===
+                rag_duration_ms = (time.time() - rag_start_time) * 1000
+                RAG_RETRIEVAL_LATENCY.labels(phase="autonomous").observe(
+                    rag_duration_ms
                 )
-            except asyncio.TimeoutError:
-                logger.warning(
-                    "[AutonomousAgent] RAG context retrieval timed out after 10s - "
-                    "continuing without RAG context (background indexing may be in progress)"
-                )
+
+                if rag_context and rag_context.strip():
+                    # Estimate number of chunks (typical chunk is ~500 chars)
+                    estimated_chunks = max(1, len(rag_context) // 500)
+                    RAG_CHUNKS_RETRIEVED.labels(phase="autonomous").inc(
+                        estimated_chunks
+                    )
+
+                    logger.info(
+                        f"[AutonomousAgent] 🔍 Retrieved RAG context: {len(rag_context)} chars "
+                        f"(~{estimated_chunks} chunks) in {rag_duration_ms:.0f}ms"
+                    )
+                else:
+                    logger.info("[AutonomousAgent] No relevant RAG context found")
+            except Exception as e:
+                logger.warning(f"[AutonomousAgent] RAG retrieval failed: {e}")
                 rag_context = None
-
-            # === METRICS: Record RAG retrieval latency ===
-            rag_duration_ms = (time.time() - rag_start_time) * 1000
-            RAG_RETRIEVAL_LATENCY.labels(phase="autonomous").observe(rag_duration_ms)
-
-            if rag_context and rag_context.strip():
-                # Estimate number of chunks (typical chunk is ~500 chars)
-                estimated_chunks = max(1, len(rag_context) // 500)
-                RAG_CHUNKS_RETRIEVED.labels(phase="autonomous").inc(estimated_chunks)
-
-                logger.info(
-                    f"[AutonomousAgent] 🔍 Retrieved RAG context: {len(rag_context)} chars "
-                    f"(~{estimated_chunks} chunks) in {rag_duration_ms:.0f}ms"
-                )
-            else:
-                logger.info("[AutonomousAgent] No relevant RAG context found")
-        except Exception as e:
-            logger.warning(f"[AutonomousAgent] RAG retrieval failed: {e}")
-            rag_context = None
 
         # Generate and emit execution plan for complex tasks
         yield {
@@ -6117,7 +6757,12 @@ Return ONLY the JSON, no markdown or explanations."""
             "timestamp": int(__import__("time").time()) * 1000,
         }
         plan_steps = []
-        async for plan_event in self._generate_plan(request, env_info, context):
+        async for plan_event in self._generate_plan(
+            request,
+            env_info,
+            context,
+            fast_mode=is_prod_readiness_request,
+        ):
             yield plan_event
             if plan_event.get("type") == "plan":
                 plan_steps = plan_event.get("steps", [])
@@ -6127,9 +6772,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
         # Update first step to in_progress (running)
         if plan_steps and context.plan_id:
-            context.step_progress_emitted[0] = (
-                "running"  # Track that we've emitted step 0 as running
-            )
+            context.step_progress_emitted[
+                0
+            ] = "running"  # Track that we've emitted step 0 as running
             yield {
                 "type": "step_update",
                 "data": {
@@ -6175,13 +6820,14 @@ Return ONLY the JSON, no markdown or explanations."""
                             f"Multiple matches found for {candidate}. "
                             "Which file should I use?"
                         ),
-                        options=[
-                            {"value": m, "label": m} for m in matches[:10]
-                        ],
+                        options=[{"value": m, "label": m} for m in matches[:10]],
                     )
             elif status == "not_found":
                 candidate = preflight.get("candidate", "") or ""
-                if intent in ("delete", "move", "edit") and context.pending_prompt is None:
+                if (
+                    intent in ("delete", "move", "edit")
+                    and context.pending_prompt is None
+                ):
                     context.pending_prompt = create_user_prompt(
                         prompt_type="text",
                         title="File path",
@@ -6223,7 +6869,13 @@ Return ONLY the JSON, no markdown or explanations."""
             preflight_blocks.append(
                 f"--- COMMAND PREFLIGHT ---\n{command_preflight_note}\n--- END COMMAND PREFLIGHT ---"
             )
-        preflight_block = f"\n\n{chr(10).join(preflight_blocks)}" if preflight_blocks else ""
+        if self._is_prod_readiness_request(request):
+            preflight_blocks.append(
+                f"--- PROD READINESS AUDIT ---\n{self._build_prod_readiness_audit_note()}\n--- END PROD READINESS AUDIT ---"
+            )
+        preflight_block = (
+            f"\n\n{chr(10).join(preflight_blocks)}" if preflight_blocks else ""
+        )
         enhanced_request = f"""{request}{preflight_block}
 
 --- ENVIRONMENT INFO (gathered automatically) ---
@@ -6239,22 +6891,30 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
             )
 
             # Execute with decomposition and stream progress directly
+            decomposition_fallback = False
             async for event in self._execute_with_decomposition_generator(
                 request=request,
                 context=context,
             ):
+                if event.get("type") == "decomposition_failed_fallback":
+                    decomposition_fallback = True
                 yield event
 
-            # After decomposition completes, return
-            yield {
-                "type": "complete",
-                "summary": {
-                    "success": True,
-                    "message": "Enterprise task completed via decomposition",
-                    "total_iterations": context.iteration,
-                },
-            }
-            return
+            if not decomposition_fallback:
+                # After decomposition completes, return
+                yield {
+                    "type": "complete",
+                    "summary": {
+                        "success": True,
+                        "message": "Enterprise task completed via decomposition",
+                        "total_iterations": context.iteration,
+                    },
+                }
+                return
+
+            logger.info(
+                "[AutonomousAgent] Continuing with standard autonomous loop after decomposition fallback"
+            )
 
         # Build messages list with conversation history for context
         messages = []
@@ -6280,6 +6940,37 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
         messages.append({"role": "user", "content": enhanced_request})
 
         while context.iteration < context.max_iterations:
+            elapsed_runtime = time.time() - task_start_time
+            if elapsed_runtime >= max_runtime_seconds:
+                logger.warning(
+                    "[AutonomousAgent] ⏱️ Runtime cap reached (%ss); stopping task",
+                    max_runtime_seconds,
+                )
+                context.status = TaskStatus.FAILED
+                yield {
+                    "type": "status",
+                    "status": "failed",
+                    "reason": "runtime_cap_reached",
+                }
+                yield {
+                    "type": "complete",
+                    "summary": {
+                        "task_id": context.task_id,
+                        "success": False,
+                        "message": (
+                            f"Stopped after reaching runtime cap ({max_runtime_seconds}s). "
+                            "For longer tasks, run via background job orchestration."
+                        ),
+                        "files_read": context.files_read,
+                        "files_modified": context.files_modified,
+                        "files_created": context.files_created,
+                        "iterations": context.iteration,
+                        "elapsed_seconds": int(elapsed_runtime),
+                        "runtime_capped": True,
+                    },
+                }
+                return
+
             context.iteration += 1
             context.status = TaskStatus.EXECUTING
 
@@ -6287,9 +6978,7 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
             # Check if there's a pending prompt that needs user input
             if context.pending_prompt:
                 prompt = context.pending_prompt
-                logger.info(
-                    f"[AutonomousAgent] 💬 User prompt pending: {prompt.title}"
-                )
+                logger.info(f"[AutonomousAgent] 💬 User prompt pending: {prompt.title}")
                 from backend.api.navi import register_prompt_request
 
                 register_prompt_request(

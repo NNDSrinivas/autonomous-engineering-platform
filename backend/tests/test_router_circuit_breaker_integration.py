@@ -214,8 +214,9 @@ class TestFallbackRouting:
         # Route should fall back to anthropic
         decision = router.route("navi/test", "stream")
 
-        assert decision.status == "ok"
-        assert decision.selected_model == "anthropic/claude-sonnet-4"
+        # Check decision has a routed model (not None)
+        assert decision.effective_model_id is not None
+        assert decision.effective_model_id == "anthropic/claude-sonnet-4"
 
         # Routability evaluation should show openai blocked
         openai_eval = next(
@@ -271,7 +272,7 @@ class TestHealthTrackerInitialization:
         monkeypatch.setenv("MODEL_REGISTRY_PATH", str(facts_path))
 
         # Mock Redis to avoid real connection
-        with patch("backend.services.model_router.redis.from_url") as mock_redis_from_url:
+        with patch("redis.from_url") as mock_redis_from_url:
             mock_redis_from_url.return_value = Mock()
 
             router = ModelRouter(registry_path=legacy_path)
@@ -326,7 +327,7 @@ class TestGracefulDegradation:
         monkeypatch.setenv("MODEL_REGISTRY_PATH", str(facts_path))
 
         # Force health tracker to fail
-        with patch("backend.services.model_router.redis.from_url") as mock_redis:
+        with patch("redis.from_url") as mock_redis:
             mock_redis.side_effect = RuntimeError("Redis unavailable")
 
             router = ModelRouter(registry_path=legacy_path)

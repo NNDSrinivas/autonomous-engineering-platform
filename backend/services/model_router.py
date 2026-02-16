@@ -448,6 +448,11 @@ class ModelRouter:
         return True
 
     def _is_provider_configured(self, provider_id: str) -> bool:
+        # Ollama defaults to localhost:11434, so it's always available
+        # even without OLLAMA_BASE_URL being set.
+        if provider_id == "ollama":
+            return True
+
         keys = _PROVIDER_CREDENTIAL_KEYS.get(provider_id, ())
         if not keys:
             # Unknown providers are treated as unavailable.

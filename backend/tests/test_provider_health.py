@@ -198,18 +198,16 @@ class TestGracefulDegradation:
 
         broken_redis = BrokenRedis()
 
-        # Should not crash during initialization
-        try:
-            tracker = ProviderHealthTracker(broken_redis)
-            # Should degrade gracefully (no health tracking)
-            tracker.record_success("openai")
-            tracker.record_failure("openai", "http")
-            # Should return False (fail-open)
-            assert tracker.is_circuit_open("openai") is False
-        except Exception:
-            # Expected behavior: initialization might fail
-            # but should not crash the router
-            pass
+        # Initialization should not crash
+        tracker = ProviderHealthTracker(broken_redis)
+
+        # Should degrade gracefully (no health tracking)
+        # These methods should not raise exceptions
+        tracker.record_success("openai")
+        tracker.record_failure("openai", "http")
+
+        # Should return False (fail-open on error)
+        assert tracker.is_circuit_open("openai") is False
 
 
 class TestLazyBreakerInitialization:

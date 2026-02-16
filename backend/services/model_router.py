@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.services.provider_health import ProviderHealthTracker
+
+logger = logging.getLogger(__name__)
 
 
 _ENDPOINT_PROVIDER_SUPPORT = {
@@ -279,7 +285,7 @@ class ModelRouter:
 
         return facts
 
-    def _init_health_tracker(self) -> Optional[Any]:
+    def _init_health_tracker(self) -> Optional[ProviderHealthTracker]:
         """Initialize provider health tracker with Redis backend."""
         try:
             import redis
@@ -291,6 +297,15 @@ class ModelRouter:
                 settings.redis_url, encoding="utf-8", decode_responses=True
             )
 
+            # Validate Redis connectivity before creating tracker
+            try:
+                redis_client.ping()
+            except Exception:
+                logger.warning(
+                    "Redis unavailable; provider health tracking disabled."
+                )
+                return None
+
             # Initialize health tracker with circuit breaker config
             return ProviderHealthTracker(
                 redis_client=redis_client,
@@ -301,8 +316,7 @@ class ModelRouter:
 
         except Exception as e:
             # Graceful degradation: router works without health tracking
-            import logging
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 f"Failed to initialize health tracker: {e}. "
                 f"Provider health tracking disabled."
             )

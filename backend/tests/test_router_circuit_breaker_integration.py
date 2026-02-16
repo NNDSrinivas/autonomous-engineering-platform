@@ -18,7 +18,6 @@ except ImportError:
 
 from backend.services.model_router import ModelRouter
 from backend.services.provider_health import ProviderHealthTracker
-from backend.services.redis_circuit_breaker import CircuitState
 
 
 @pytest.fixture

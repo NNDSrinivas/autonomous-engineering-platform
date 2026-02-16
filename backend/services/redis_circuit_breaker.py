@@ -11,7 +11,6 @@ Implements classic circuit breaker pattern (CLOSED → OPEN → HALF_OPEN) with:
 import logging
 import time
 from enum import Enum
-from typing import Optional
 
 import redis
 
@@ -76,11 +75,13 @@ end
 -- Remove old entries outside window
 redis.call("ZREMRANGEBYSCORE", window_key, "-inf", tostring(now - window_sec))
 
--- Add current call
+-- Add current call with unique member to prevent collisions under high QPS
 local score = now
-local member = tostring(now) .. ":" .. call_result
+local seq = redis.call("INCR", key_prefix .. ":seq")
+local member = tostring(now) .. ":" .. call_result .. ":" .. tostring(seq)
 redis.call("ZADD", window_key, score, member)
 redis.call("EXPIRE", window_key, window_sec * 2)
+redis.call("EXPIRE", key_prefix .. ":seq", window_sec * 2)
 
 -- Count failures in window
 local all_calls = redis.call("ZRANGE", window_key, 0, -1)
@@ -127,7 +128,8 @@ class RedisCircuitBreaker:
         self.window_sec = window_sec
         self.failure_threshold = failure_threshold
         self.open_duration_sec = open_duration_sec
-        self.key_prefix = f"circuit:{provider_id}"
+        # Use Redis hash tag so all related keys share the same cluster hash slot
+        self.key_prefix = f"circuit:{{{provider_id}}}"
 
         # Pre-register Lua script
         try:
@@ -256,8 +258,11 @@ class RedisCircuitBreaker:
 
         # CLOSED: sliding window
         self.redis.zremrangebyscore(window_key, "-inf", now - self.window_sec)
-        self.redis.zadd(window_key, {f"{now}:{result}": now})
+        # Use sequence number to prevent collisions under high QPS
+        seq = self.redis.incr(f"{self.key_prefix}:seq")
+        self.redis.zadd(window_key, {f"{now}:{result}:{seq}": now})
         self.redis.expire(window_key, self.window_sec * 2)
+        self.redis.expire(f"{self.key_prefix}:seq", self.window_sec * 2)
 
         all_calls = self.redis.zrange(window_key, 0, -1)
         failure_count = sum(

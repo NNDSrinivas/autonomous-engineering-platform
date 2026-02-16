@@ -48,6 +48,7 @@ if state == 1 then
     if now - open_at >= open_duration_sec then
         -- Transition to HALF_OPEN
         redis.call("SET", state_key, "2")
+        redis.call("EXPIRE", state_key, 86400)  -- 24h TTL to prevent indefinite persistence
         state = 2
     else
         -- Still open, block request
@@ -66,13 +67,16 @@ if state == 2 then
     if call_result == "success" then
         -- Recovery successful → CLOSED
         redis.call("SET", state_key, "0")
+        redis.call("EXPIRE", state_key, 86400)  -- 24h TTL
         redis.call("DEL", window_key)
         redis.call("DEL", open_at_key)
         return {0, 1, 0}
     else
         -- Probe failed → back to OPEN
         redis.call("SET", state_key, "1")
+        redis.call("EXPIRE", state_key, 86400)  -- 24h TTL
         redis.call("SET", open_at_key, tostring(now))
+        redis.call("EXPIRE", open_at_key, 86400)  -- 24h TTL
         return {1, 0, 1}
     end
 end
@@ -102,7 +106,9 @@ end
 if failure_count >= failure_threshold then
     -- Transition to OPEN
     redis.call("SET", state_key, "1")
+    redis.call("EXPIRE", state_key, 86400)  -- 24h TTL to prevent memory leaks
     redis.call("SET", open_at_key, tostring(now))
+    redis.call("EXPIRE", open_at_key, 86400)  -- 24h TTL
     return {1, 0, failure_count}
 end
 

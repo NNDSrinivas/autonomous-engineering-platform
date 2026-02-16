@@ -234,15 +234,23 @@ class ModelRouter:
         endpoint_key: str,
         supported_providers: set[str],
     ) -> RoutingDecision:
+        # Preserve original requested mode ID for metadata/observability
+        requested_mode_id_original = requested_mode_id
+        mode_fallback_reason = None
+        mode_fallback_code = None
+
         mode = self.mode_index.get(requested_mode_id)
         if not mode:
             default_mode = self.defaults.get("defaultModeId")
             mode = self.mode_index.get(default_mode)
-            requested_mode_id = default_mode
             if not mode:
                 raise ModelRoutingError(
                     "INVALID_MODE", "No valid NAVI mode available in registry"
                 )
+            # Set fallback metadata for unknown mode
+            mode_fallback_code = "UNKNOWN_MODE_ID"
+            mode_fallback_reason = f"Unknown mode '{requested_mode_id_original}'; using default mode '{default_mode}'."
+            requested_mode_id = default_mode  # Use default for routing
 
         candidates: list[str] = [
             m for m in mode.get("candidateModelIds", []) if isinstance(m, str)
@@ -265,18 +273,23 @@ class ModelRouter:
             selected_model_id, reason = selected
             model_cfg = self.model_index[selected_model_id]
             is_first_choice = selected_model_id == candidates[0]
-            was_fallback = not is_first_choice
-            fallback_reason_code = None
-            fallback_reason = None
-            if was_fallback:
-                fallback_reason_code = "MODE_CANDIDATE_UNAVAILABLE"
+            was_fallback = not is_first_choice or mode_fallback_reason is not None
+            fallback_reason_code = mode_fallback_code
+            fallback_reason = mode_fallback_reason
+
+            if not is_first_choice:
+                # Model candidate fallback within the mode
+                fallback_reason_code = fallback_reason_code or "MODE_CANDIDATE_UNAVAILABLE"
                 fallback_reason = reason or (
                     f"Primary mode candidate '{candidates[0]}' unavailable; used '{selected_model_id}'."
                 )
+                # If we also had a mode fallback, combine the reasons
+                if mode_fallback_reason:
+                    fallback_reason = f"{mode_fallback_reason} {fallback_reason}"
 
             return RoutingDecision(
                 requested_model_id=None,
-                requested_mode_id=requested_mode_id,
+                requested_mode_id=requested_mode_id_original,  # Use original, not effective
                 effective_model_id=selected_model_id,
                 provider=model_cfg["provider"],
                 model=model_cfg.get("providerModel")
@@ -297,20 +310,26 @@ class ModelRouter:
             default_model, endpoint_key, supported_providers, strict_private=False
         ):
             model_cfg = self.model_index[default_model]
+            # Combine mode fallback (if any) with model fallback
+            combined_reason = mode_fallback_reason or ""
+            if combined_reason:
+                combined_reason += " "
+            combined_reason += f"No configured models for mode '{requested_mode_id}'. Falling back to default model '{default_model}'."
+
             return RoutingDecision(
                 requested_model_id=None,
-                requested_mode_id=requested_mode_id,
+                requested_mode_id=requested_mode_id_original,  # Use original, not effective
                 effective_model_id=default_model,
                 provider=model_cfg["provider"],
                 model=model_cfg.get("providerModel") or default_model.split("/", 1)[1],
                 was_fallback=True,
-                fallback_reason_code="MODE_NO_AVAILABLE_MODELS",
-                fallback_reason=f"No configured models for mode '{requested_mode_id}'. Falling back to default model '{default_model}'.",
+                fallback_reason_code=mode_fallback_code or "MODE_NO_AVAILABLE_MODELS",
+                fallback_reason=combined_reason,
             )
 
         raise ModelRoutingError(
             "NO_MODELS_AVAILABLE",
-            f"No configured models available for mode '{requested_mode_id}'.",
+            f"No configured models available for mode '{requested_mode_id_original}'.",
         )
 
     def _route_model(

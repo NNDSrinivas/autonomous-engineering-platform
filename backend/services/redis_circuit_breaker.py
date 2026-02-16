@@ -56,6 +56,12 @@ if state == 1 then
 end
 
 -- HALF_OPEN state: single probe request
+-- NOTE: Only the FIRST call result causes state transition (CLOSED or OPEN).
+-- If multiple workers call record_call concurrently in HALF_OPEN:
+-- - First call: transitions to CLOSED (success) or OPEN (failure)
+-- - Subsequent calls: see new state and process normally (sliding window for CLOSED)
+-- The probe lease in try_acquire_probe_lease() prevents concurrent calls,
+-- but this handles the edge case where calls were already in flight.
 if state == 2 then
     if call_result == "success" then
         -- Recovery successful → CLOSED
@@ -163,6 +169,14 @@ class RedisCircuitBreaker:
             state = int(state_val) if state_val else 0
 
             # Check if OPEN → HALF_OPEN transition due
+            # NOTE: Race window exists - multiple workers can concurrently:
+            #   1) observe state == OPEN
+            #   2) see that open_duration_sec has elapsed
+            #   3) perform SET to transition to HALF_OPEN
+            # This doesn't corrupt state (all write "2" for HALF_OPEN), but
+            # means multiple workers may believe they triggered the transition.
+            # Correctness is enforced by try_acquire_probe_lease() which uses
+            # SET NX to ensure only one worker actually probes.
             if state == 1:
                 open_at = self.redis.get(open_at_key)
                 if open_at:

@@ -188,6 +188,14 @@ class ProviderHealthTracker:
             if state == CircuitState.HALF_OPEN:
                 # Only allow request if we can acquire probe lease
                 # This prevents thundering herd - only one worker probes
+                #
+                # NOTE: Timing window vulnerability exists - if the worker that
+                # acquires the lease crashes or times out before recording a result,
+                # other workers will be blocked for the full TTL (5s). This is
+                # acceptable because:
+                # 1. TTL is short (5s) - not a long outage
+                # 2. Provider timeout is typically < 5s, so normal failures will record
+                # 3. After TTL expires, another worker can acquire lease and probe again
                 if breaker.try_acquire_probe_lease():
                     logger.info(
                         f"Provider {provider_id} in HALF_OPEN: probe lease acquired, allowing probe request"

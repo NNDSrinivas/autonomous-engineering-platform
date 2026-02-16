@@ -369,6 +369,11 @@ class OpenAIAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
+        except httpx.HTTPError as e:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
 
         if response.status_code >= 400:
             error_body = self._parse_error_body(response)
@@ -394,26 +399,33 @@ class OpenAIAdapter(BaseLLMAdapter):
             raise RuntimeError(
                 f"OpenAI-compatible API error (status={response.status_code}). See server logs for details."
             )
-        data = response.json()
 
-        choice = data["choices"][0]
-        message = choice["message"]
+        try:
+            data = response.json()
+            choice = data["choices"][0]
+            message = choice["message"]
 
-        resp = LLMResponse(
-            content=message.get("content", ""),
-            model=data.get("model", self.config.model),
-            provider=self.config.provider.value,
-            usage=data.get("usage", {}),
-            tool_calls=message.get("tool_calls"),
-            finish_reason=choice.get("finish_reason"),
-            raw_response=data,
-        )
+            resp = LLMResponse(
+                content=message.get("content", ""),
+                model=data.get("model", self.config.model),
+                provider=self.config.provider.value,
+                usage=data.get("usage", {}),
+                tool_calls=message.get("tool_calls"),
+                finish_reason=choice.get("finish_reason"),
+                raw_response=data,
+            )
 
-        # Success - record after all error paths checked
-        if self.health_tracker:
-            self.health_tracker.record_success(provider_id)
+            # Success - record after all error paths checked
+            if self.health_tracker:
+                self.health_tracker.record_success(provider_id)
 
-        return resp
+            return resp
+
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            # Malformed response from provider
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise RuntimeError(f"Invalid response format from provider: {e}")
 
     async def stream(self, messages: List[LLMMessage]) -> AsyncGenerator[str, None]:
         api_key = self._get_api_key()
@@ -531,6 +543,11 @@ class OpenAIAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
+        except httpx.HTTPError as e:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
         else:
             # Success - only if no exception
             if self.health_tracker:
@@ -603,6 +620,11 @@ class AnthropicAdapter(BaseLLMAdapter):
         except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError as e:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
             raise
 
         if response.status_code >= 400:
@@ -715,6 +737,11 @@ class AnthropicAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
+        except httpx.HTTPError as e:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
         else:
             # Success - stream completed without errors
             if self.health_tracker:
@@ -768,6 +795,11 @@ class GoogleAdapter(BaseLLMAdapter):
         except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError as e:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
             raise
 
         if response.status_code >= 400:
@@ -870,6 +902,11 @@ class GoogleAdapter(BaseLLMAdapter):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
             raise
+        except httpx.HTTPError as e:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
+            raise
         else:
             # Success - stream completed without errors
             if self.health_tracker:
@@ -909,6 +946,11 @@ class OllamaAdapter(BaseLLMAdapter):
         except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError as e:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
             raise
 
         if response.status_code >= 400:
@@ -983,6 +1025,11 @@ class OllamaAdapter(BaseLLMAdapter):
         except (httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError):
             if self.health_tracker:
                 self.health_tracker.record_failure(provider_id, "network")
+            raise
+        except httpx.HTTPError as e:
+            # Catch-all for other httpx exceptions (StreamError, RequestError, etc.)
+            if self.health_tracker:
+                self.health_tracker.record_failure(provider_id, "unknown")
             raise
         else:
             # Success - stream completed without errors

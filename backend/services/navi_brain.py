@@ -6796,6 +6796,121 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
         except Exception:
             return text
 
+    @staticmethod
+    def _is_llm_payload_debug_enabled() -> bool:
+        value = str(os.getenv("NAVI_DEBUG_LLM_PAYLOADS", "")).strip().lower()
+        return value in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _summarize_openai_payload(
+        payload: Dict[str, Any], *, include_debug_details: bool = False
+    ) -> Dict[str, Any]:
+        if not isinstance(payload, dict):
+            return {"payload_type": type(payload).__name__}
+
+        messages = payload.get("messages")
+        message_count = 0
+        total_message_chars = 0
+        message_roles: Dict[str, int] = {}
+        message_shapes: List[Dict[str, Any]] = []
+        if isinstance(messages, list):
+            message_count = len(messages)
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                role = str(msg.get("role", "unknown"))
+                message_roles[role] = message_roles.get(role, 0) + 1
+                content = msg.get("content")
+                content_chars = 0
+                content_type = type(content).__name__
+                if isinstance(content, str):
+                    content_chars = len(content)
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict):
+                            part_text = part.get("text")
+                            if isinstance(part_text, str):
+                                content_chars += len(part_text)
+                total_message_chars += content_chars
+                if include_debug_details:
+                    message_shapes.append(
+                        {
+                            "role": role,
+                            "content_type": content_type,
+                            "content_chars": content_chars,
+                            "has_tool_calls": bool(msg.get("tool_calls")),
+                        }
+                    )
+
+        tools = payload.get("tools")
+        tool_count = 0
+        tool_names: List[str] = []
+        if isinstance(tools, list):
+            tool_count = len(tools)
+            for tool in tools[:20]:
+                if not isinstance(tool, dict):
+                    continue
+                name = None
+                function = tool.get("function")
+                if isinstance(function, dict):
+                    fn_name = function.get("name")
+                    if isinstance(fn_name, str):
+                        name = fn_name
+                if name is None:
+                    raw_name = tool.get("name")
+                    if isinstance(raw_name, str):
+                        name = raw_name
+                if name:
+                    tool_names.append(name)
+
+        summary: Dict[str, Any] = {
+            "payload_keys": sorted(payload.keys()),
+            "model": payload.get("model"),
+            "message_count": message_count,
+            "message_roles": message_roles,
+            "total_message_chars": total_message_chars,
+            "tool_count": tool_count,
+            "tool_names": tool_names,
+            "has_response_format": "response_format" in payload,
+        }
+        if "max_tokens" in payload:
+            summary["max_tokens"] = payload.get("max_tokens")
+        if "max_completion_tokens" in payload:
+            summary["max_completion_tokens"] = payload.get("max_completion_tokens")
+        if "temperature" in payload:
+            summary["temperature"] = payload.get("temperature")
+        if include_debug_details:
+            summary["message_shapes"] = message_shapes
+        return summary
+
+    @classmethod
+    def _summarize_openai_error_body(
+        cls, error_body: Any, *, include_debug_details: bool = False
+    ) -> Dict[str, Any]:
+        if isinstance(error_body, dict):
+            detail = error_body.get("error", error_body)
+            if isinstance(detail, dict):
+                summary = {
+                    "error_type": detail.get("type"),
+                    "error_code": detail.get("code"),
+                    "error_param": detail.get("param"),
+                    "has_message": bool(detail.get("message")),
+                    "message_chars": len(str(detail.get("message", ""))),
+                }
+                if include_debug_details:
+                    summary["error_keys"] = sorted(detail.keys())
+                return summary
+            return {"error_type": "dict", "error_keys": sorted(error_body.keys())}
+
+        text = str(error_body or "")
+        summary = {
+            "error_type": type(error_body).__name__,
+            "message_chars": len(text),
+        }
+        if include_debug_details and text:
+            summary["message_snippet"] = text[:240]
+        return summary
+
     def _log_openai_400_debug(
         self,
         *,
@@ -6805,13 +6920,23 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
         payload: Dict[str, Any],
         error_body: Any,
     ) -> None:
+        include_debug_details = self._is_llm_payload_debug_enabled()
+        payload_summary = self._summarize_openai_payload(
+            payload,
+            include_debug_details=include_debug_details,
+        )
+        error_summary = self._summarize_openai_error_body(
+            error_body,
+            include_debug_details=include_debug_details,
+        )
         logger.error(
-            "[NAVI] OpenAI-compatible 400 debug | model=%s endpoint=%s stream=%s payload=%s error.body=%s",
+            "[NAVI] OpenAI-compatible 400 debug | provider=%s model=%s endpoint=%s stream=%s payload_summary=%s error_summary=%s",
+            self.provider,
             model,
             endpoint,
             stream,
-            payload,
-            error_body,
+            payload_summary,
+            error_summary,
         )
 
     def _log_openai_request_debug(
@@ -6822,15 +6947,20 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
         stream: bool,
         payload: Dict[str, Any],
     ) -> None:
+        include_debug_details = self._is_llm_payload_debug_enabled()
+        payload_summary = self._summarize_openai_payload(
+            payload,
+            include_debug_details=include_debug_details,
+        )
         logger.info(
-            "[NAVI] OpenAI-compatible request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s payload=%s",
+            "[NAVI] OpenAI-compatible request | provider=%s endpoint=%s model=%s stream=%s messages=%s has_tools=%s payload_meta=%s",
             self.provider,
             endpoint,
             model,
             stream,
             len(payload.get("messages", [])) if isinstance(payload, dict) else 0,
             bool(payload.get("tools")) if isinstance(payload, dict) else False,
-            payload,
+            payload_summary,
         )
 
     def _get_base_url(self) -> str:

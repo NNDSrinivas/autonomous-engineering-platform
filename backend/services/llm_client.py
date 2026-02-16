@@ -852,7 +852,9 @@ class GoogleAdapter(BaseLLMAdapter):
                             data = json.loads(line[6:])
                             candidates = data.get("candidates", [])
                             if candidates:
-                                parts = candidates[0].get("content", {}).get("parts", [])
+                                parts = (
+                                    candidates[0].get("content", {}).get("parts", [])
+                                )
                                 for part in parts:
                                     text = part.get("text", "")
                                     if text:
@@ -988,7 +990,9 @@ class OllamaAdapter(BaseLLMAdapter):
             raise
 
 
-def get_adapter(config: LLMConfig, health_tracker=None, health_provider_id=None) -> BaseLLMAdapter:
+def get_adapter(
+    config: LLMConfig, health_tracker=None, health_provider_id=None
+) -> BaseLLMAdapter:
     """Get the appropriate adapter for the provider"""
     adapters = {
         LLMProvider.OPENAI: OpenAIAdapter,

@@ -113,7 +113,9 @@ class ProviderHealthTracker:
 
             # Update Prometheus metrics
             PROVIDER_CALLS.labels(provider=provider_id, status="error").inc()
-            PROVIDER_ERRORS.labels(provider=provider_id, error_type=normalized_error).inc()
+            PROVIDER_ERRORS.labels(
+                provider=provider_id, error_type=normalized_error
+            ).inc()
             self._update_circuit_state_metric(provider_id, new_state)
 
             # Log only on state transitions to reduce noise

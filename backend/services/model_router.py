@@ -305,9 +305,7 @@ class ModelRouter:
             try:
                 redis_client.ping()
             except Exception:
-                logger.warning(
-                    "Redis unavailable; provider health tracking disabled."
-                )
+                logger.warning("Redis unavailable; provider health tracking disabled.")
                 return None
 
             # Initialize health tracker with circuit breaker config

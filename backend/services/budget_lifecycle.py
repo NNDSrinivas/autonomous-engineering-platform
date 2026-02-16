@@ -11,7 +11,11 @@ from typing import Optional, TYPE_CHECKING, AsyncContextManager
 from contextlib import asynccontextmanager
 
 if TYPE_CHECKING:
-    from backend.services.budget_manager import BudgetManager, BudgetReservationToken, BudgetScopeKey
+    from backend.services.budget_manager import (
+        BudgetManager,
+        BudgetReservationToken,
+        BudgetScopeKey,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -88,18 +92,14 @@ async def budget_guard(
         logger.warning(f"Budget exceeded: {e}", exc_info=False)
         raise
 
-    except Exception as e:
+    except Exception:
         # LLM call or other error - release reservation
         if token:
             try:
                 budget_manager.release(token)
-                logger.info(
-                    f"Budget released due to error: {estimated_tokens} tokens"
-                )
+                logger.info(f"Budget released due to error: {estimated_tokens} tokens")
             except Exception as release_err:
-                logger.error(
-                    f"Budget release failed: {release_err}", exc_info=True
-                )
+                logger.error(f"Budget release failed: {release_err}", exc_info=True)
         raise
 
 

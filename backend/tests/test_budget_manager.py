@@ -7,7 +7,6 @@ and graceful degradation scenarios.
 Uses fakeredis for deterministic testing without real Redis dependency.
 """
 
-import time
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -15,6 +14,7 @@ import pytest
 
 try:
     import fakeredis
+
     FAKEREDIS_AVAILABLE = True
 except ImportError:
     FAKEREDIS_AVAILABLE = False
@@ -213,6 +213,7 @@ class TestCommitOperations:
     def test_commit_massive_overspend_logs_critical(self, budget_manager, caplog):
         """Massive overspend (>5x) triggers critical log."""
         import logging
+
         caplog.set_level(logging.CRITICAL)
 
         scopes = [BudgetScopeKey(BudgetScope.GLOBAL, "global")]
@@ -252,7 +253,9 @@ class TestMidnightSafety:
 
         with patch("backend.services.budget_manager.datetime") as mock_datetime:
             # Mock reserve at 2025-02-15 23:59:59 UTC
-            mock_datetime.now.return_value = datetime(2025, 2, 15, 23, 59, 59, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = datetime(
+                2025, 2, 15, 23, 59, 59, tzinfo=timezone.utc
+            )
 
             token = budget_manager.reserve(1000, scopes)
             assert token.day == "2025-02-15"
@@ -263,11 +266,15 @@ class TestMidnightSafety:
 
         with patch("backend.services.budget_manager.datetime") as mock_datetime:
             # Reserve on 2025-02-15
-            mock_datetime.now.return_value = datetime(2025, 2, 15, 23, 59, 59, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = datetime(
+                2025, 2, 15, 23, 59, 59, tzinfo=timezone.utc
+            )
             token = budget_manager.reserve(1000, scopes)
 
             # Commit on 2025-02-16 (after midnight)
-            mock_datetime.now.return_value = datetime(2025, 2, 16, 0, 0, 1, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = datetime(
+                2025, 2, 16, 0, 0, 1, tzinfo=timezone.utc
+            )
             budget_manager.commit(token, used_amount=1000)
 
             # Verify committed to 2025-02-15 bucket (token.day)
@@ -286,7 +293,7 @@ class TestModelIdSlashHandling:
     def test_model_id_slash_replaced(self, budget_manager):
         """Model ID slashes replaced with __ in Redis keys."""
         scopes = [BudgetScopeKey(BudgetScope.MODEL, "openai/gpt-4o")]
-        token = budget_manager.reserve(100, scopes)
+        _token = budget_manager.reserve(100, scopes)  # Reserve to create keys
 
         # Verify Redis key uses __ instead of /
         snapshot = budget_manager.snapshot(scopes)

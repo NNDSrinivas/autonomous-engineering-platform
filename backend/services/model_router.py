@@ -11,7 +11,6 @@ from typing import Any, Dict, Iterable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.services.provider_health import ProviderHealthTracker
-    from backend.services.budget_manager import BudgetManager, BudgetScopeKey
 
 logger = logging.getLogger(__name__)
 

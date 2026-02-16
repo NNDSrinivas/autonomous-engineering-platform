@@ -7030,39 +7030,116 @@ async def navi_chat_stream(
                     len(conversation_history_for_llm),
                 )
 
-            async for event in process_navi_request_streaming(
-                message=request.message,
-                workspace_path=workspace_root,
-                llm_provider=routing_decision.provider,
-                llm_model=routing_decision.model,
-                api_key=None,
-                current_file=current_file,
-                current_file_content=current_file_content,
-                selection=selection,
-                open_files=None,
-                errors=errors,
-                conversation_history=conversation_history_for_llm,
-            ):
-                # Stream activity events
-                if "activity" in event:
-                    activity = event["activity"]
-                    if activity.get("kind") == "file_read":
-                        files_read_live.append(activity.get("detail", ""))
-                    yield f"data: {json.dumps({'activity': activity})}\n\n"
+            # Phase 4: Authoritative budget enforcement (reserve/commit/release)
+            # Rebuild scopes with final provider + model from routing decision
+            final_scopes = build_budget_scopes(
+                org_id=org_id,
+                user_id=user_id,
+                provider=routing_decision.provider,
+                model_id=routing_decision.effective_model_id,
+            ) if budget_mgr else []
 
-                # Stream narrative events (conversational explanations like Claude Code)
-                elif "narrative" in event:
-                    narrative_text = event["narrative"]
-                    yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
+            try:
+                if budget_mgr and final_scopes:
+                    # Execution-layer atomic reserve (authoritative)
+                    async with budget_guard(
+                        budget_manager=budget_mgr,
+                        scopes=final_scopes,
+                        estimated_tokens=2500,  # Conservative default for streaming
+                    ) as budget_ctx:
+                        total_tokens_used = 0
+                        async for event in process_navi_request_streaming(
+                            message=request.message,
+                            workspace_path=workspace_root,
+                            llm_provider=routing_decision.provider,
+                            llm_model=routing_decision.model,
+                            api_key=None,
+                            current_file=current_file,
+                            current_file_content=current_file_content,
+                            selection=selection,
+                            open_files=None,
+                            errors=errors,
+                            conversation_history=conversation_history_for_llm,
+                        ):
+                            # Stream activity events
+                            if "activity" in event:
+                                activity = event["activity"]
+                                if activity.get("kind") == "file_read":
+                                    files_read_live.append(activity.get("detail", ""))
+                                yield f"data: {json.dumps({'activity': activity})}\n\n"
 
-                # Stream thinking content
-                elif "thinking" in event:
-                    thinking_text = event["thinking"]
-                    yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+                            # Stream narrative events (conversational explanations like Claude Code)
+                            elif "narrative" in event:
+                                narrative_text = event["narrative"]
+                                yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
 
-                # Capture final result
-                elif "result" in event:
-                    navi_result = event["result"]
+                            # Stream thinking content
+                            elif "thinking" in event:
+                                thinking_text = event["thinking"]
+                                yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+
+                            # Capture final result
+                            elif "result" in event:
+                                navi_result = event["result"]
+
+                            # Track actual tokens from provider response if available
+                            if isinstance(event, dict):
+                                usage = event.get("usage")
+                                if usage and isinstance(usage, dict):
+                                    total_tokens_used = usage.get("total_tokens", total_tokens_used)
+                        # Commit with actual usage (or conservative estimate if not tracked)
+                        budget_ctx["actual_tokens"] = total_tokens_used if total_tokens_used > 0 else 2500
+                else:
+                    # Budget enforcement disabled or unavailable
+                    async for event in process_navi_request_streaming(
+                        message=request.message,
+                        workspace_path=workspace_root,
+                        llm_provider=routing_decision.provider,
+                        llm_model=routing_decision.model,
+                        api_key=None,
+                        current_file=current_file,
+                        current_file_content=current_file_content,
+                        selection=selection,
+                        open_files=None,
+                        errors=errors,
+                        conversation_history=conversation_history_for_llm,
+                        ):
+                        # Stream activity events
+                        if "activity" in event:
+                            activity = event["activity"]
+                            if activity.get("kind") == "file_read":
+                                files_read_live.append(activity.get("detail", ""))
+                            yield f"data: {json.dumps({'activity': activity})}\n\n"
+
+                        # Stream narrative events (conversational explanations like Claude Code)
+                        elif "narrative" in event:
+                            narrative_text = event["narrative"]
+                            yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
+
+                        # Stream thinking content
+                        elif "thinking" in event:
+                            thinking_text = event["thinking"]
+                            yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+
+                        # Capture final result
+                        elif "result" in event:
+                            navi_result = event["result"]
+
+            except BudgetExceeded as budget_err:
+                # Execution-layer reserve failed (authoritative enforcement)
+                logger.warning(
+                    f"[NAVI-STREAM] Budget exceeded (execution-layer): {budget_err}",
+                    exc_info=False
+                )
+                error_payload = {
+                    "type": "error",
+                    "error": "Budget limit exceeded",
+                    "code": "BUDGET_EXCEEDED",
+                    "details": budget_err.details if hasattr(budget_err, "details") else {},
+                }
+                yield f"data: {json.dumps(error_payload)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
 
             # Process final result
             if navi_result:

@@ -672,17 +672,17 @@ class ModelRouter:
         if provider_id == "test":
             return True
 
-        # Ollama defaults to localhost:11434 if OLLAMA_HOST/OLLAMA_BASE_URL not set,
-        # so treat it as always configured (will fail at runtime if daemon unavailable)
-        if provider_id == "ollama":
-            return True
-
         keys = _PROVIDER_CREDENTIAL_KEYS.get(provider_id, ())
         if not keys:
             # Unknown providers are treated as unavailable.
             return False
         if any(bool(os.getenv(key)) for key in keys):
             return True
+
+        # Ollama can be configured via OLLAMA_BASE_URL (in credential keys) or
+        # OLLAMA_HOST as a fallback for compatibility.
+        if provider_id == "ollama":
+            return bool(os.getenv("OLLAMA_HOST") or os.getenv("OLLAMA_BASE_URL"))
 
         return False
 

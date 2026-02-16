@@ -872,7 +872,7 @@ const countLines = (text?: string): number => {
   return text.split("\n").length;
 };
 
-const escapeLinkHtml = (value: string): string =>
+const escapeHtml = (value: string): string =>
   value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -902,7 +902,7 @@ const makeLinksClickableSafe = (html: string): string => {
     const cleanTextForCompare = String(text || "").replace(/\s+/g, "");
     const displayText =
       cleanTextForCompare === cleanUrl ? cleanUrl : String(text || "").trim();
-    return `<a href="${escapeLinkHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+    return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
   });
 
   const urlPattern = /(https?\s*:\s*\/\s*\/\s*[^\s<>"'\[\]]+)/g;
@@ -918,8 +918,27 @@ const makeLinksClickableSafe = (html: string): string => {
     if (!cleanUrl) {
       return url;
     }
-    return `<a href="${escapeLinkHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
+    return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
   });
+
+  const commonDirs =
+    "src|lib|components|pages|app|backend|frontend|extensions|webview|utils|services|api|hooks|types|tests|test|__tests__|spec|config|configs|scripts|bin|dist|build|public|static|assets|styles|css|templates|views|models|controllers|routes|middleware|helpers|core|common|shared|modules|features|domains";
+  const filePathPattern = new RegExp(
+    `(?:^|[\\s(])((\\/[\\w\\-.]+)+\\.\\w+|(\\.\\.\\/[\\w\\-./]+\\.\\w+)|((?:${commonDirs})\\/[\\w\\-./]+\\.\\w+)|([\\w\\-]+\\.(?:tsx?|jsx?|py|go|rs|rb|java|cs|cpp|c|h|css|scss|less|html|json|ya?ml|toml|md|sql)))(?::(\\d+))?(?=[\\s),.:;!?]|$)`,
+    "g",
+  );
+  result = result.replace(
+    filePathPattern,
+    (match: string, _fullPath: string, _p1: string, _p2: string, _p3: string, _p4: string, lineNum?: string) => {
+      const leadingMatch = match.match(/^[\s(]/) || [""];
+      const leading = leadingMatch[0];
+      const pathPart = match.slice(leading.length);
+      const pathWithoutLine = pathPart.replace(/:(\d+)$/, "");
+      const dataLine = lineNum ? ` data-line="${lineNum}"` : "";
+      const safePathAttr = escapeHtml(pathWithoutLine);
+      return `${leading}<a href="#" class="navi-link navi-link--file" data-file-path="${safePathAttr}"${dataLine}>${safePathAttr}</a>`;
+    },
+  );
   return result;
 };
 
@@ -8032,68 +8051,6 @@ export default function NaviChatPanel({
     return normalized;
   };
 
-  const escapeHtml = (value: string): string =>
-    value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-
-  const sanitizeHttpUrl = (rawUrl: string): string | null => {
-    const compact = rawUrl.replace(/\s+/g, "");
-    try {
-      const parsed = new URL(compact);
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        return null;
-      }
-      return parsed.toString();
-    } catch {
-      return null;
-    }
-  };
-
-  // Shared linkification helper used across message and narrative renderers.
-  // Keep this scope-level so helper calls outside renderMessageContent do not crash.
-  const makeLinksClickable = (html: string): string => {
-    let result = html;
-
-    const markdownLinkPattern = /\[([^\]]+)\]\((https?\s*:\s*\/\s*\/\s*[^)]+)\)/g;
-    result = result.replace(markdownLinkPattern, (_match, text, url) => {
-      const cleanUrl = sanitizeHttpUrl(url);
-      if (!cleanUrl) {
-        return text;
-      }
-      const cleanTextForCompare = String(text || "").replace(/\s+/g, "");
-      const displayText =
-        cleanTextForCompare === cleanUrl ? cleanUrl : String(text || "").trim();
-      return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
-    });
-
-    const urlPattern = /(https?\s*:\s*\/\s*\/\s*[^\s<>"'\[\]]+)/g;
-    result = result.replace(
-      urlPattern,
-      (url: string, _p1: string, position: number) => {
-        const before = result.substring(Math.max(0, position - 15), position);
-        if (/href="$/.test(before) || /">$/.test(before)) {
-          return url;
-        }
-        const trailingMatch = url.match(/[.,;:!?]+$/);
-        const trailingPunctuation = trailingMatch ? trailingMatch[0] : "";
-        const rawUrl = trailingPunctuation
-          ? url.slice(0, -trailingPunctuation.length)
-          : url;
-        const cleanUrl = sanitizeHttpUrl(rawUrl);
-        if (!cleanUrl) {
-          return url;
-        }
-        return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
-      }
-    );
-
-    return result;
-  };
-
   const normalizeProseArtifacts = (value: string): string =>
     value
       .replace(/([A-Za-z0-9])\s+([’'])\s+([A-Za-z0-9])/g, "$1$2$3")
@@ -8337,76 +8294,6 @@ export default function NaviChatPanel({
 
       // Default file icon
       return `<svg class="${baseClass}" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="${baseStyle}"><path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-    };
-
-    // Make URLs and file paths clickable
-    const makeLinksClickable = (html: string): string => {
-      let result = html;
-
-      // First, handle markdown links: [text](url) - convert to anchor tags
-      // This prevents the URL from being matched again by the raw URL pattern
-      // Handle URLs with accidental spaces ANYWHERE (LLM tokenization artifact)
-      // Pattern allows spaces in: "http ://", "http: //", "http :/ /", etc.
-      const markdownLinkPattern = /\[([^\]]+)\]\((https?\s*:\s*\/\s*\/\s*[^)]+)\)/g;
-      result = result.replace(markdownLinkPattern, (_match, text, url) => {
-        const cleanUrl = sanitizeHttpUrl(url);
-        if (!cleanUrl) {
-          return text;
-        }
-        const cleanTextForCompare = text.replace(/\s+/g, '');
-        const displayText = cleanTextForCompare === cleanUrl ? cleanUrl : text.trim();
-        return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
-      });
-
-      // URL pattern - matches http/https links with potential spaces (LLM tokenization)
-      // Pattern allows: "http://", "http ://", "http: //", "http :/ /" etc.
-      // Skip URLs that are already converted (inside href="" or between > and <)
-      const urlPattern = /(https?\s*:\s*\/\s*\/\s*[^\s<>"'\[\]]+)/g;
-      result = result.replace(urlPattern, (url: string, _p1: string, position: number) => {
-        // Check if this URL is already inside an anchor tag by looking at context
-        const before = result.substring(Math.max(0, position - 15), position);
-        // Skip if preceded by href=" or "> (already in anchor tag)
-        if (/href="$/.test(before) || /">$/.test(before)) {
-          return url; // Don't modify - already in anchor
-        }
-        const trailingMatch = url.match(/[.,;:!?]+$/);
-        const trailingPunctuation = trailingMatch ? trailingMatch[0] : "";
-        const rawUrl = trailingPunctuation ? url.slice(0, -trailingPunctuation.length) : url;
-        const cleanUrl = sanitizeHttpUrl(rawUrl);
-        if (!cleanUrl) {
-          return url;
-        }
-        return `<a href="${escapeHtml(cleanUrl)}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
-      });
-
-      // File path pattern - matches common code file paths
-      // Only match paths that:
-      // 1. Start with / (absolute path like /Users/foo/bar.txt)
-      // 2. Start with ./ or ../ (relative path like ./src/file.ts)
-      // 3. Have directory structure with common code directories
-      // 4. Match filenames with extensions when wrapped in backticks
-      // Do NOT match: Next.js, server.The, fresh.I've, Node.js, etc.
-      const commonDirs = 'src|lib|components|pages|app|backend|frontend|extensions|webview|utils|services|api|hooks|types|tests|test|__tests__|spec|config|configs|scripts|bin|dist|build|public|static|assets|styles|css|templates|views|models|controllers|routes|middleware|helpers|core|common|shared|modules|features|domains';
-      const filePathPattern = new RegExp(
-        `(?:^|[\\s(])((\\/[\\w\\-.]+)+\\.\\w+|(\\.\\.\\/[\\w\\-./]+\\.\\w+)|((?:${commonDirs})\\/[\\w\\-./]+\\.\\w+)|([\\w\\-]+\\.(?:tsx?|jsx?|py|go|rs|rb|java|cs|cpp|c|h|css|scss|less|html|json|ya?ml|toml|md|sql)))(?::(\\d+))?(?=[\\s),.:;!?]|$)`,
-        'g'
-      );
-      result = result.replace(filePathPattern, (match, fullPath, _p1, _p2, _p3, _p4, lineNum) => {
-        // Preserve leading whitespace/punctuation
-        const leadingMatch = match.match(/^[\s(]/) || [''];
-        const leading = leadingMatch[0];
-        const pathPart = match.slice(leading.length);
-        const pathWithoutLine = pathPart.replace(/:(\d+)$/, '');
-        const iconColor = getFileIconColor(pathWithoutLine);
-        const dataLine = lineNum ? ` data-line="${lineNum}"` : '';
-        const safePathAttr = escapeHtml(pathWithoutLine);
-        // Use file-type specific SVG icon
-        const svgIcon = getFileIconSvg(pathWithoutLine, iconColor);
-        // Wrap in span with SVG icon
-        return `${leading}<span class="navi-file-link">${svgIcon}<a href="#" class="navi-link navi-link--file" data-file-path="${safePathAttr}"${dataLine}>${safePathAttr}</a></span>`;
-      });
-
-      return result;
     };
 
     // Render a text block with markdown-like formatting

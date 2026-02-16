@@ -5087,40 +5087,42 @@ async def navi_chat(
     )
     # Dedicated prod-readiness assessment path should remain available even when
     # provider keys are missing (deterministic plan mode does not require LLM calls).
-    try:
-        from backend.agent.intent_classifier import classify_intent
-        from backend.agent.intent_schema import IntentKind
+    is_prod_readiness_intent = _looks_like_prod_readiness_assessment(request.message)
+    if not is_prod_readiness_intent:
+        try:
+            from backend.agent.intent_classifier import classify_intent
+            from backend.agent.intent_schema import IntentKind
 
-        classified_intent = classify_intent(request.message)
-        is_prod_readiness_intent = (
-            classified_intent.kind == IntentKind.PROD_READINESS_AUDIT
-            or _looks_like_prod_readiness_assessment(request.message)
+            classified_intent = classify_intent(request.message)
+            is_prod_readiness_intent = (
+                classified_intent.kind == IntentKind.PROD_READINESS_AUDIT
+            )
+        except Exception:
+            logger.exception("[NAVI-CHAT] Prod-readiness intent pre-check failed")
+
+    if is_prod_readiness_intent and not _is_prod_readiness_execute_message(
+        request.message
+    ):
+        workspace_root = request.workspace_root or (request.workspace or {}).get(
+            "workspace_root"
         )
-        if is_prod_readiness_intent and not _is_prod_readiness_execute_message(
-            request.message
-        ):
-            workspace_root = request.workspace_root or (request.workspace or {}).get(
-                "workspace_root"
-            )
-            plan_text = _build_prod_readiness_audit_plan(
-                workspace_root=workspace_root,
-                execution_supported=bool(workspace_root),
-            )
-            return ChatResponse(
-                content=plan_text,
-                actions=[],
-                agentRun=None,
-                reply=plan_text,
-                should_stream=False,
-                state={
-                    "intent": "prod_readiness_audit",
-                    "mode": "plan_only",
-                    "execution_available": bool(workspace_root),
-                },
-                duration_ms=0,
-            )
-    except Exception:
-        logger.exception("[NAVI-CHAT] Prod-readiness intent pre-check failed")
+        plan_text = _build_prod_readiness_audit_plan(
+            workspace_root=workspace_root,
+            execution_supported=bool(workspace_root),
+        )
+        return ChatResponse(
+            content=plan_text,
+            actions=[],
+            agentRun=None,
+            reply=plan_text,
+            should_stream=False,
+            state={
+                "intent": "prod_readiness_audit",
+                "mode": "plan_only",
+                "execution_available": bool(workspace_root),
+            },
+            duration_ms=0,
+        )
 
     if not OPENAI_ENABLED:
         # Still return a `content` field so the extension stays happy
@@ -7383,21 +7385,21 @@ async def navi_chat_stream_v2(
         context["project_type"] = request.project_type
 
     # Deterministic prod-readiness plan should not require model routing or provider keys.
-    try:
-        from backend.agent.intent_classifier import classify_intent
-        from backend.agent.intent_schema import IntentKind
-
-        preclassified_intent = classify_intent(request.message)
-    except Exception:
-        preclassified_intent = None
-        logger.exception("[NAVI V2] Failed to classify intent before routing")
-
+    preclassified_intent = None
     is_prod_readiness_stream_request = _looks_like_prod_readiness_assessment(
         request.message
-    ) or (
-        preclassified_intent
-        and preclassified_intent.kind == IntentKind.PROD_READINESS_AUDIT
     )
+    if not is_prod_readiness_stream_request:
+        try:
+            from backend.agent.intent_classifier import classify_intent
+            from backend.agent.intent_schema import IntentKind
+
+            preclassified_intent = classify_intent(request.message)
+            is_prod_readiness_stream_request = (
+                preclassified_intent.kind == IntentKind.PROD_READINESS_AUDIT
+            )
+        except Exception:
+            logger.exception("[NAVI V2] Failed to classify intent before routing")
     if is_prod_readiness_stream_request and not _is_prod_readiness_execute_message(
         request.message
     ):
@@ -7925,6 +7927,7 @@ def _get_vision_provider_for_model(model: Optional[str]):
         return VisionProvider.ANTHROPIC  # Default to Claude
 
     provider = "anthropic"
+    raw = ""
     if isinstance(model, str):
         raw = model.strip().lower()
         if "/" in raw:
@@ -7950,13 +7953,28 @@ def _get_vision_provider_for_model(model: Optional[str]):
             }
             provider = mode_map.get(raw, "anthropic")
 
-    # Block external vision providers for private/local models
-    if provider in ("ollama", "self_hosted", "groq", "openrouter"):
+    # Block private/local models that currently have no local vision implementation.
+    if provider in ("ollama", "self_hosted"):
         raise ValueError(
             f"Vision/image attachments are not supported with {provider} provider. "
             "Private mode requires a local vision model, which is not yet implemented. "
             "Please use a SaaS provider (OpenAI, Anthropic, Google) for image analysis."
         )
+
+    # For OpenRouter/Groq text models, preserve legacy behavior by using a
+    # supported SaaS vision backend instead of dropping image context entirely.
+    if provider == "openrouter":
+        inferred = raw.split("/", 1)[1] if isinstance(model, str) and "/" in raw else ""
+        if inferred.startswith("gpt") or (
+            inferred.startswith("o") and len(inferred) > 1 and inferred[1].isdigit()
+        ):
+            provider = "openai"
+        elif inferred.startswith("gemini"):
+            provider = "google"
+        else:
+            provider = "anthropic"
+    elif provider == "groq":
+        provider = "anthropic"
 
     if provider == "openai":
         return VisionProvider.OPENAI

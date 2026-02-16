@@ -448,16 +448,20 @@ class ModelRouter:
         return True
 
     def _is_provider_configured(self, provider_id: str) -> bool:
-        # Ollama defaults to localhost:11434, so it's always available
-        # even without OLLAMA_BASE_URL being set.
-        if provider_id == "ollama":
-            return True
-
         keys = _PROVIDER_CREDENTIAL_KEYS.get(provider_id, ())
         if not keys:
             # Unknown providers are treated as unavailable.
             return False
-        return any(bool(os.getenv(key)) for key in keys)
+        if any(bool(os.getenv(key)) for key in keys):
+            return True
+
+        # Ollama must be explicitly configured for strict-private routing.
+        # Treating it as always available causes private mode to route to an
+        # unavailable local daemon in SaaS-only environments.
+        if provider_id == "ollama":
+            return bool(os.getenv("OLLAMA_HOST"))
+
+        return False
 
     @staticmethod
     def _normalize_endpoint(endpoint: str) -> str:

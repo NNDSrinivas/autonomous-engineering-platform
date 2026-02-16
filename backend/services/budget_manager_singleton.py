@@ -17,7 +17,7 @@ _BUDGET_MANAGER: Optional[BudgetManager] = None
 
 def _load_policy(app_env: str) -> dict:
     # backend/services/ -> backend/ -> repo_root/
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = Path(__file__).resolve().parents[2]
 
     fname = {
         "prod": "budget-policy-prod.json",

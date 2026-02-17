@@ -91,16 +91,40 @@ npm install
 cp .env.template .env
 ```
 
-Open `.env` and set at minimum:
+Open the **root `.env`** file (not `backend/.env`) and fill in your values. This is the only file `start_backend_dev.sh` reads.
+
+#### Required keys (at minimum one LLM provider)
 
 ```
-OPENAI_API_KEY=sk-...        # or ANTHROPIC_API_KEY
+# Infrastructure
 DATABASE_URL=postgresql+psycopg://mentor:mentor@localhost:5432/mentor
 REDIS_URL=redis://localhost:6379/0
 APP_ENV=dev
 JWT_ENABLED=false
 ALLOW_DEV_AUTH_BYPASS=true
+
+# LLM provider — set at least ONE of these
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+#### All supported LLM provider keys
+
+| Provider | Env variable | Where to get the key | Required? |
+|----------|-------------|----------------------|-----------|
+| **OpenAI** (GPT-4o, GPT-4, etc.) | `OPENAI_API_KEY` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | Yes — default provider |
+| **Anthropic** (Claude 3.5/3.7) | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) | If using Claude models |
+| **Google / Gemini** | `GOOGLE_API_KEY` | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) | If using Gemini models |
+| **Groq** (fast inference) | `GROQ_API_KEY` | [console.groq.com/keys](https://console.groq.com/keys) | If using Groq models |
+| **xAI / Grok** | `XAI_API_KEY` | [console.x.ai](https://console.x.ai) | If using Grok models |
+| **OpenRouter** (multi-provider) | `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) | If using OpenRouter |
+| **Mistral** | `MISTRAL_API_KEY` | [console.mistral.ai](https://console.mistral.ai) | If using Mistral models |
+| **Cohere** | `COHERE_API_KEY` | [dashboard.cohere.com/api-keys](https://dashboard.cohere.com/api-keys) | If using Cohere models |
+| **Ollama** (local/self-hosted) | `OLLAMA_BASE_URL` | Set to `http://localhost:11434` | If running Ollama locally |
+
+> **One key is enough to get started.** `OPENAI_API_KEY` is the default. All other provider keys are only needed when you route requests to those providers.
+
+> **Security:** `.env` is git-ignored. Never commit real API keys. For production/staging, use environment secrets (AWS Secrets Manager, Vault, Kubernetes Secrets — see `kubernetes/secrets/`).
 
 ### Step 3 — Start infrastructure (PostgreSQL + Redis)
 
@@ -154,6 +178,61 @@ Vite starts on **http://localhost:3000** (auto-increments to 3007/3008/etc. if t
 
 ---
 
+### Step 8 — VS Code Extension (optional, for extension development)
+
+The NAVI VS Code extension lives in `extensions/vscode-aep/`. You only need this step if you're developing or debugging the extension itself.
+
+#### One-time setup
+
+```bash
+# Install extension dependencies
+cd extensions/vscode-aep
+npm install
+
+# Compile the extension + webview (must do this before launching)
+npm run compile
+```
+
+#### Launch the extension host
+
+1. Open the repo root in VS Code
+2. Press **F5** — this reads `.vscode/launch.json` and opens a new **Extension Development Host** window with the extension loaded
+
+The `launch.json` configuration:
+```json
+{
+  "name": "Launch Extension",
+  "type": "extensionHost",
+  "request": "launch",
+  "args": ["--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode-aep"]
+}
+```
+
+#### VS Code settings required
+
+Your `.vscode/settings.json` already contains these — verify they match your setup:
+
+```json
+{
+  "aep.navi.backendUrl": "http://127.0.0.1:8787",
+  "aep.development.useReactDevServer": true
+}
+```
+
+> `useReactDevServer: true` tells the extension to load the UI from the Vite dev server (Step 7) instead of the compiled bundle — so hot-reload works.
+
+#### Tasks available (Ctrl+Shift+P → "Tasks: Run Task")
+
+| Task | What it does |
+|------|-------------|
+| `npm: compile - extensions/vscode-aep` | One-time build before F5 |
+| `npm: watch` | Incremental TypeScript compile on save |
+| `webview: watch` | Hot-reload the webview React app |
+| `dev: start all (backend + frontend + watch)` | Starts backend + frontend + both watchers in parallel |
+| `backend: restart` | Kill + restart backend on port 8787 |
+
+---
+
 ### All services at a glance
 
 | Service | URL | Started by |
@@ -194,6 +273,50 @@ python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8787 --workers 4
 # Frontend
 cd frontend && npm run build && npm run preview
 ```
+
+---
+
+### Common gotchas
+
+These are the most frequent issues new developers run into:
+
+**1. Wrong `.env` file — keys not picked up**
+`start_backend_dev.sh` reads the **root `.env`**, not `backend/.env`. Always edit the root one. If you added keys to `backend/.env` only, the backend won't see them.
+
+**2. Docker Desktop not running**
+`docker compose up -d` silently fails or errors if Docker Desktop isn't started first. Open Docker Desktop, wait for it to be ready, then retry.
+
+**3. Migrations fail with "connection refused"**
+`alembic upgrade head` needs postgres running first. Run `docker compose up -d` and wait for healthy status before migrating.
+
+**4. Virtual environment mismatch**
+The repo has `aep-venv/` (what `start_backend_dev.sh` uses). If VSCode shows import errors, point it at the right interpreter:
+`Ctrl+Shift+P` → **Python: Select Interpreter** → choose `./aep-venv/bin/python`
+
+**5. Frontend shows a different port than 3000**
+Vite auto-increments if 3000 (or the next port) is taken. Always read the **actual URL from the terminal output** after `npm run dev`. Update `.vscode/settings.json` → `aep.development.useReactDevServer` accordingly if the extension can't connect.
+
+**6. Extension blank panel after F5**
+The backend and the Vite dev server (Step 6 + 7) must both be running before launching the extension host. Also ensure you ran `npm run compile` in `extensions/vscode-aep/` first.
+
+**7. `npm install` run from the wrong directory**
+Always run the root `npm install` from the **repo root**, not from `frontend/` or `extensions/vscode-aep/`. The root `package.json` is a workspace config that installs all sub-packages at once.
+
+**8. Grafana port conflict**
+`run_grafana_local.sh` defaults to port **3001** for Grafana and **9090** for Prometheus. If either port is taken, override before running:
+```bash
+GRAFANA_PORT=3002 ./scripts/run_grafana_local.sh
+```
+
+**9. Budget policy validation fails at startup**
+If the backend logs `budget policy invalid`, run:
+```bash
+npm run validate:budget-policy
+```
+and check `shared/budget-policy-dev.json` against the schema in `shared/budget-policy.schema.json`.
+
+**10. `alembic` not found**
+Make sure the venv is activated: `source aep-venv/bin/activate`. Alembic is a Python package installed into the venv, not globally.
 
 ---
 

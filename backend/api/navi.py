@@ -95,6 +95,10 @@ from backend.services.budget_manager import BudgetExceeded
 from backend.services.budget_manager_singleton import get_budget_manager
 from backend.services.budget_lifecycle import build_budget_scopes
 
+# Default token estimate used when no actual usage is available at reserve time.
+# Override via env var for environments with different average request sizes.
+_BUDGET_DEFAULT_ESTIMATE_TOKENS: int = int(os.getenv("BUDGET_DEFAULT_ESTIMATE_TOKENS", "2500"))
+
 # NOTE: ProjectAnalyzer is in backend/services/navi_brain.py
 # The /api/navi/chat endpoint in chat.py uses navi_brain.py's implementation
 
@@ -299,7 +303,14 @@ def create_budget_cleanup_handlers(
         Guaranteed cleanup via StreamingResponse background task.
         On disconnect: release immediately.
         On normal completion: commit with actual_tokens.
+
+        The finalized flag ensures exactly one terminal action (commit or release)
+        is executed even if _finalize_budget is somehow invoked more than once.
         """
+        # Idempotency guard: only one terminal action per token.
+        if budget_state.get("finalized"):
+            return
+
         # Start disconnect watcher now (inside BackgroundTask, not before)
         disconnect_task = asyncio.create_task(_watch_disconnect())
 
@@ -313,17 +324,23 @@ def create_budget_cleanup_handlers(
 
             if disconnect_evt.is_set():
                 if budget_mgr and pre_reserved_token:
+                    budget_state["finalized"] = True
                     await budget_mgr.release(pre_reserved_token)
                 return
 
             if not (budget_mgr and pre_reserved_token):
                 return
 
+            budget_state["finalized"] = True
             if budget_state["ok"]:
-                used = budget_state["actual_tokens"]
-                if used is None or int(used) <= 0:
+                raw = budget_state["actual_tokens"]
+                try:
+                    used = int(raw) if raw is not None else 0
+                except (TypeError, ValueError):
+                    used = 0
+                if used <= 0:
                     used = estimated_tokens
-                await budget_mgr.commit(pre_reserved_token, int(used))
+                await budget_mgr.commit(pre_reserved_token, used)
             else:
                 await budget_mgr.release(pre_reserved_token)
         finally:
@@ -6720,7 +6737,7 @@ async def navi_chat_stream(
     budget_mgr = get_budget_manager()
     # TODO: Derive estimate from message length + history count for better accuracy.
     # Currently a conservative flat estimate to avoid blocking short requests.
-    estimated_tokens = 2500
+    estimated_tokens = _BUDGET_DEFAULT_ESTIMATE_TOKENS
     final_scopes = []
     pre_reserved_token = None
 
@@ -6757,7 +6774,7 @@ async def navi_chat_stream(
     # ---------------------------
     # Phase 4: Budget lifecycle state + disconnect watcher (V1)
     # ---------------------------
-    budget_state = {"actual_tokens": None, "ok": False, "done": False}
+    budget_state = {"actual_tokens": None, "ok": False, "done": False, "finalized": False}
     _finalize_budget = create_budget_cleanup_handlers(
         http_request=http_request,
         budget_mgr=budget_mgr,
@@ -7652,7 +7669,7 @@ async def navi_chat_stream_v2(
     budget_mgr = get_budget_manager()
     # TODO: Derive estimate from message length + history count for better accuracy.
     # Currently a conservative flat estimate to avoid blocking short requests.
-    estimated_tokens = 2500
+    estimated_tokens = _BUDGET_DEFAULT_ESTIMATE_TOKENS
     final_scopes = []
     pre_reserved_token = None
 
@@ -7687,7 +7704,7 @@ async def navi_chat_stream_v2(
     # ---------------------------
     # Phase 4: Budget lifecycle state + disconnect watcher (V2)
     # ---------------------------
-    budget_state = {"actual_tokens": None, "ok": False, "done": False}
+    budget_state = {"actual_tokens": None, "ok": False, "done": False, "finalized": False}
     _finalize_budget = create_budget_cleanup_handlers(
         http_request=http_request,
         budget_mgr=budget_mgr,

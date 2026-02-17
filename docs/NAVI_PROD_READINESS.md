@@ -3388,7 +3388,7 @@ Phase 4 introduces production-grade token budget enforcement to prevent cost ove
 #### Critical Invariants
 
 ✅ **Single Terminal Action** - Exactly ONE of (commit | release | nothing) per request
-✅ **Idempotent Finalization** - `finalized` flag prevents double-charge
+✅ **Idempotent Finalization** - `budget_state["finalized"]` flag set before every terminal action; prevents double commit/release if `_finalize_budget` is invoked more than once
 ✅ **Reserve-Before-Stream** - Budget check before HTTP response starts
 ✅ **Midnight Safety** - `token.day` captured at reserve, reused in commit/release
 ✅ **TTL Management** - All Redis keys expire after 48 hours

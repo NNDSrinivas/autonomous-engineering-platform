@@ -78,22 +78,26 @@ async def init_budget_manager() -> Optional[BudgetManager]:
         logger.info("Budget manager ACTIVE: mode=%s env=%s redis=%s", enforcement, app_env, _redact_redis_url(redis_url))
         return _BUDGET_MANAGER
     except Exception as e:
+        # Redact the Redis URL from the exception string before logging to avoid
+        # leaking credentials that may appear in connection error messages.
+        safe_error = _redact_redis_url(str(e))
+
         if enforcement == "disabled":
             # Redis is unreachable; initialize BudgetManager without a Redis client
             _BUDGET_MANAGER = BudgetManager(None, enforcement_mode="disabled", policy=policy)
-            logger.warning("Budget manager init: disabled mode (Redis unreachable): %s", e)
+            logger.warning("Budget manager init: disabled mode (Redis unreachable): %s", safe_error)
             return _BUDGET_MANAGER
 
         if enforcement == "advisory":
             # Redis is unreachable; initialize BudgetManager without a Redis client
             _BUDGET_MANAGER = BudgetManager(None, enforcement_mode="advisory", policy=policy)
-            logger.warning("Budget manager init: advisory mode (Redis unreachable): %s", e)
+            logger.warning("Budget manager init: advisory mode (Redis unreachable): %s", safe_error)
             return _BUDGET_MANAGER
 
         # strict + redis down => keep None (endpoint maps to 503)
         logger.error(
             "CRITICAL: Budget manager UNAVAILABLE in strict mode - all requests will return 503. "
-            "Redis connection failed: %s", e
+            "Redis connection failed: %s", safe_error
         )
         _BUDGET_MANAGER = None
         return None

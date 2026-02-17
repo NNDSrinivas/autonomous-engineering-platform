@@ -1,5 +1,8 @@
 from __future__ import annotations
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 async def on_startup():
@@ -85,5 +88,5 @@ async def on_shutdown():
     try:
         from ...services.budget_manager_singleton import close_budget_manager
         await close_budget_manager()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Budget manager cleanup failed during shutdown: %s", e)

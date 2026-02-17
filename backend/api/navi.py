@@ -9969,7 +9969,7 @@ async def navi_autonomous_task(
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
-        ensure_generator_cleanup(stream_generator()),
+        stream_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

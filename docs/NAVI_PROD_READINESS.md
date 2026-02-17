@@ -3939,8 +3939,8 @@ Run the critical subset immediately after deploy:
 
 | Test | Command | Expected |
 |---|---|---|
-| Test 0: Exception after reserve | `BUDGET_TEST_THROW_AFTER_RESERVE=1` + POST `/chat/stream/v2` | HTTP 500, reserved → 0 |
-| Test 2: Client disconnect | `timeout 2 curl -N` POST `/chat/stream/v2` | reserved → 0 after disconnect |
+| Test 0: Exception after reserve | `BUDGET_TEST_THROW_AFTER_RESERVE=1` + POST `/api/navi/chat/stream/v2` | HTTP 500, reserved → 0 |
+| Test 2: Client disconnect | `timeout 2 curl -N` POST `/api/navi/chat/stream/v2` | reserved → 0 after disconnect |
 | Test 3: Concurrent atomicity | 10 concurrent requests with 5000-token limit | 2 succeed, 8 get HTTP 429 |
 | Test 6: Strict + Redis down → 503 | Temporarily kill budget Redis, `BUDGET_ENFORCEMENT_MODE=strict` | HTTP 503 |
 | Test 8: TTL never -1 | `redis-cli TTL budget:global:global:<today>` | positive number, not -1 |
@@ -3955,14 +3955,25 @@ Let staging run under real or simulated traffic. Use Prometheus metrics as gates
 
 **Hard gates — must all be true before promoting to prod:**
 
-```promql
-# No reservation leaks
-aep_budget_current_reserved_tokens == 0   # during idle windows
+> **Note:** `aep_budget_current_reserved_tokens` gauge is not yet emitted (planned for a future observability phase — see `backend/telemetry/metrics.py`). Use the Redis and counter checks below instead.
 
-# No enforcement-unavailable events in strict mode
+```bash
+# Gate 1: No reservation leaks — check Redis directly during an idle window
+redis-cli HGET budget:global:global:$(date -u +%Y-%m-%d) reserved
+# Expected: "0" or key missing
+
+# Gate 2: reserved count == committed + released over the soak window (no leaks via counters)
+# In Prometheus (all counters are available):
+#   increase(aep_budget_tokens_reserved_total[24h])
+#     should equal
+#   increase(aep_budget_tokens_committed_total[24h]) + increase(aep_budget_tokens_released_total[24h])
+```
+
+```promql
+# Gate 3: No enforcement-unavailable events in strict mode
 increase(aep_budget_reserve_total{status="unavailable"}[30m]) == 0
 
-# No critical overspend anomalies
+# Gate 4: No critical overspend anomalies
 increase(aep_budget_overspend_anomalies_total{severity="critical"}[24h]) == 0
 ```
 
@@ -3999,8 +4010,8 @@ Recommended unless hard budget enforcement is a contractual requirement from day
 - [ ] Prometheus scraping: `curl http://<host>/metrics | grep aep_budget`
 - [ ] 429 responses carry `"code": "BUDGET_EXCEEDED"` body
 - [ ] 503 responses carry `"code": "BUDGET_ENFORCEMENT_UNAVAILABLE"` body
-- [ ] `aep_budget_current_reserved_tokens` returns to ~0 between requests
-- [ ] No `unavailable` reserve status in strict mode with healthy Redis
+- [ ] Redis `reserved` field returns to 0 during idle: `redis-cli HGET budget:global:global:<today> reserved`
+- [ ] No `unavailable` reserve status in strict mode with healthy Redis: `increase(aep_budget_reserve_total{status="unavailable"}[5m]) == 0`
 
 ---
 

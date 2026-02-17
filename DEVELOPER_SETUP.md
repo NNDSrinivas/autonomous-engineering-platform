@@ -98,7 +98,7 @@ alembic upgrade head
 
 # 9. Start frontend (Terminal 2)
 cd frontend && npm run dev
-# UI → http://localhost:3000  (Vite auto-increments port if 3000 is taken)
+# UI → http://localhost:3007  (Vite default; auto-increments to 3008/3009 if taken)
 ```
 
 **Done!** ✅ Skip to [Development Workflows](#-development-workflows)
@@ -106,7 +106,7 @@ cd frontend && npm run dev
 | Service | URL |
 |---------|-----|
 | Backend API | http://localhost:8787 |
-| Frontend | http://localhost:3000 (check terminal for actual port) |
+| Frontend | http://localhost:3007 (check terminal for actual port) |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3001 |
 | PostgreSQL | localhost:5432 |
@@ -279,13 +279,13 @@ cd frontend
 # Start development server with hot reload
 npm run dev
 
-# Server should start at http://localhost:3000
+# Server should start at http://localhost:3007  (configured in frontend/vite.config.ts)
 # VITE v6.x ready in 500ms
 ```
 
 **Verify frontend is running:**
 
-Open http://localhost:3000 in your browser
+Open http://localhost:3007 in your browser
 
 #### Terminal 3: Redis (Optional)
 
@@ -310,7 +310,7 @@ curl http://localhost:8787/metrics  # Prometheus metrics
 ```
 
 **Frontend Access:**
-- Open http://localhost:3000
+- Open http://localhost:3007
 - You should see the AEP dashboard/UI
 
 **Database Check:**

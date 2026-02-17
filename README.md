@@ -187,7 +187,7 @@ Verify: `curl http://localhost:8787/health`
 cd frontend && npm run dev
 ```
 
-Vite starts on **http://localhost:3000** (auto-increments to 3007/3008/etc. if the port is taken — the terminal output shows the actual URL).
+Vite starts on **http://localhost:3007** (configured in `frontend/vite.config.ts`; auto-increments to 3008/3009/etc. if 3007 is taken — the terminal output shows the actual URL).
 
 ---
 
@@ -251,7 +251,7 @@ Your `.vscode/settings.json` already contains these — verify they match your s
 | Service | URL | Started by |
 |---------|-----|------------|
 | Backend API | http://localhost:8787 | `./start_backend_dev.sh` |
-| Frontend | http://localhost:3000 | `cd frontend && npm run dev` |
+| Frontend | http://localhost:3007 | `cd frontend && npm run dev` |
 | Prometheus | http://localhost:9090 | `./scripts/run_grafana_local.sh` |
 | Grafana | http://localhost:3001 | `./scripts/run_grafana_local.sh` |
 | PostgreSQL | localhost:5432 | `docker compose up -d` |
@@ -306,8 +306,8 @@ These are the most frequent issues new developers run into:
 The repo has `aep-venv/` (what `start_backend_dev.sh` uses). If VSCode shows import errors, point it at the right interpreter:
 `Ctrl+Shift+P` → **Python: Select Interpreter** → choose `./aep-venv/bin/python`
 
-**5. Frontend shows a different port than 3000**
-Vite auto-increments if 3000 (or the next port) is taken. Always read the **actual URL from the terminal output** after `npm run dev`. Update `.vscode/settings.json` → `aep.development.useReactDevServer` accordingly if the extension can't connect.
+**5. Frontend shows a different port than 3007**
+Vite is configured to start on **3007** (`frontend/vite.config.ts`) and auto-increments to 3008/3009/etc. if that port is taken. Always read the **actual URL from the terminal output** after `npm run dev`. If the VS Code extension can't connect, verify `aep.navi.backendUrl` in `.vscode/settings.json` is pointing at the right port.
 
 **6. Extension blank panel after F5**
 The backend and the Vite dev server (Step 6 + 7) must both be running before launching the extension host. Also ensure you ran `npm run compile` in `extensions/vscode-aep/` first.

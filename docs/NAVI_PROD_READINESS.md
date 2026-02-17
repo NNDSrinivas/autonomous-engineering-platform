@@ -3558,6 +3558,13 @@ curl http://localhost:8787/metrics | grep aep_budget_current_usage
 1. **Increase Policy Limit** (if legitimate usage)
    - Edit `shared/budget-policy-{env}.json`
    - Redeploy backend
+   - **Important:** Policy limit changes do **not** retroactively update existing Redis keys. Existing
+     keys continue enforcing the old limit until their TTL expires (up to 48 hours).
+   - To apply new limits immediately, flush affected keys:
+     ```bash
+     redis-cli DEL budget:global:global:$(date -u +%Y-%m-%d)
+     redis-cli DEL budget:org:<org-id>:$(date -u +%Y-%m-%d)
+     ```
 
 2. **Investigate Budget Leak** (if `reserved` stuck > 0)
    - Check Prometheus `aep_budget_current_reserved_tokens`

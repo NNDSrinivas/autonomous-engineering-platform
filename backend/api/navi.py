@@ -304,11 +304,12 @@ def create_budget_cleanup_handlers(
         disconnect_task = asyncio.create_task(_watch_disconnect())
 
         try:
-            # Wait briefly for generator to mark done
-            for _ in range(max_wait_iterations):
-                if budget_state["done"] or disconnect_evt.is_set():
-                    break
-                await asyncio.sleep(polling_interval)
+            # Wait for generator to mark done (skip poll if already done)
+            if not budget_state["done"] and not disconnect_evt.is_set():
+                for _ in range(max_wait_iterations):
+                    if budget_state["done"] or disconnect_evt.is_set():
+                        break
+                    await asyncio.sleep(polling_interval)
 
             if disconnect_evt.is_set():
                 if budget_mgr and pre_reserved_token:
@@ -6717,7 +6718,9 @@ async def navi_chat_stream(
     # BackgroundTask (_finalize_budget), not by the generator itself.
     # ---------------------------
     budget_mgr = get_budget_manager()
-    estimated_tokens = 2500  # conservative default
+    # TODO: Derive estimate from message length + history count for better accuracy.
+    # Currently a conservative flat estimate to avoid blocking short requests.
+    estimated_tokens = 2500
     final_scopes = []
     pre_reserved_token = None
 
@@ -7144,9 +7147,6 @@ async def navi_chat_stream(
 
             # Phase 4: Budget lifecycle - generator only updates token tracking (V1)
             try:
-                if os.getenv("BUDGET_TEST_THROW_AFTER_RESERVE") == "1":
-                    raise RuntimeError("Test exception after reserve")
-
                 async for event in process_navi_request_streaming(
                     message=request.message,
                     workspace_path=workspace_root,
@@ -7650,7 +7650,9 @@ async def navi_chat_stream_v2(
     # BackgroundTask (_finalize_budget), not by the generator itself.
     # ---------------------------
     budget_mgr = get_budget_manager()
-    estimated_tokens = 2500  # conservative default
+    # TODO: Derive estimate from message length + history count for better accuracy.
+    # Currently a conservative flat estimate to avoid blocking short requests.
+    estimated_tokens = 2500
     final_scopes = []
     pre_reserved_token = None
 
@@ -8027,10 +8029,6 @@ async def navi_chat_stream_v2(
 
             # Phase 4: Budget lifecycle - generator only updates token tracking
             try:
-                # Test 0: exception after reserve, before first yield
-                if os.getenv("BUDGET_TEST_THROW_AFTER_RESERVE") == "1":
-                    raise RuntimeError("Test exception after reserve")
-
                 async for payload in heartbeat_wrapper(provider_event_generator()):
                     # Token tracking: provider yields {"type":"usage","total_tokens":1234}
                     try:

@@ -88,6 +88,9 @@ for i=1,n do
 
   if redis.call("EXISTS", KEYS[i]) == 0 then
     redis.call("HSET", KEYS[i], "limit", limit, "used", 0, "reserved", 0)
+  else
+    -- Always sync limit so policy changes propagate within TTL window
+    redis.call("HSET", KEYS[i], "limit", limit)
   end
   redis.call("EXPIRE", KEYS[i], ttl)
 
@@ -116,11 +119,18 @@ for i=1,n do
   local limit = tonumber(ARGV[i])
   if redis.call("EXISTS", KEYS[i]) == 0 then
     redis.call("HSET", KEYS[i], "limit", limit, "used", 0, "reserved", 0)
+  else
+    redis.call("HSET", KEYS[i], "limit", limit)
   end
   redis.call("EXPIRE", KEYS[i], ttl)
 
   if reserved_amount > 0 then
-    redis.call("HINCRBY", KEYS[i], "reserved", -reserved_amount)
+    -- Guard: never decrement reserved below 0 (handles double-release or data skew)
+    local cur_reserved = tonumber(redis.call("HGET", KEYS[i], "reserved") or "0")
+    local decrement = math.min(reserved_amount, cur_reserved)
+    if decrement > 0 then
+      redis.call("HINCRBY", KEYS[i], "reserved", -decrement)
+    end
   end
   if used_amount > 0 then
     redis.call("HINCRBY", KEYS[i], "used", used_amount)
@@ -138,11 +148,18 @@ for i=1,n do
   local limit = tonumber(ARGV[i])
   if redis.call("EXISTS", KEYS[i]) == 0 then
     redis.call("HSET", KEYS[i], "limit", limit, "used", 0, "reserved", 0)
+  else
+    redis.call("HSET", KEYS[i], "limit", limit)
   end
   redis.call("EXPIRE", KEYS[i], ttl)
 
   if reserved_amount > 0 then
-    redis.call("HINCRBY", KEYS[i], "reserved", -reserved_amount)
+    -- Guard: never decrement reserved below 0 (handles double-release or data skew)
+    local cur_reserved = tonumber(redis.call("HGET", KEYS[i], "reserved") or "0")
+    local decrement = math.min(reserved_amount, cur_reserved)
+    if decrement > 0 then
+      redis.call("HINCRBY", KEYS[i], "reserved", -decrement)
+    end
   end
 end
 return {1}

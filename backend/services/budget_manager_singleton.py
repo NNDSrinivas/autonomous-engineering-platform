@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 import redis.asyncio as redis
 
@@ -18,8 +18,16 @@ _BUDGET_MANAGER: Optional[BudgetManager] = None
 
 def _redact_redis_url(url: str) -> str:
     """Redact password from Redis URL for safe logging."""
-    # Pattern: redis://[:password@]host:port/db
-    return re.sub(r'://[^@]*@', '://*****@', url)
+    try:
+        parsed = urlparse(url)
+        if parsed.password:
+            netloc = f"{parsed.username}:*****@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            return urlunparse(parsed._replace(netloc=netloc))
+    except Exception:
+        pass
+    return url
 
 
 def _load_policy(app_env: str) -> dict:

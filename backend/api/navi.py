@@ -6758,7 +6758,7 @@ async def navi_chat_stream(
     # Phase 4: Budget lifecycle state + disconnect watcher (V1)
     # ---------------------------
     budget_state = {"actual_tokens": None, "ok": False, "done": False}
-    _finalize_budget, disconnect_task = create_budget_cleanup_handlers(
+    _finalize_budget, _disconnect_task = create_budget_cleanup_handlers(
         http_request=http_request,
         budget_mgr=budget_mgr,
         pre_reserved_token=pre_reserved_token,
@@ -7689,7 +7689,7 @@ async def navi_chat_stream_v2(
     # Phase 4: Budget lifecycle state + disconnect watcher (V2)
     # ---------------------------
     budget_state = {"actual_tokens": None, "ok": False, "done": False}
-    _finalize_budget, disconnect_task = create_budget_cleanup_handlers(
+    _finalize_budget, _disconnect_task = create_budget_cleanup_handlers(
         http_request=http_request,
         budget_mgr=budget_mgr,
         pre_reserved_token=pre_reserved_token,

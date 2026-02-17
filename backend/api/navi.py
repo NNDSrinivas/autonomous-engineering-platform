@@ -6785,16 +6785,24 @@ async def navi_chat_stream(
 
     trace_store = get_trace_store()
     trace_task_id = request.conversation_id or f"stream-{uuid4()}"
-    trace_store.append(
-        "routing_decision",
-        {
-            "taskId": trace_task_id,
-            "conversationId": request.conversation_id,
-            "endpoint": "stream",
-            "mode": request.mode,
-            **routing_decision.to_public_dict(),
-        },
-    )
+    try:
+        trace_store.append(
+            "routing_decision",
+            {
+                "taskId": trace_task_id,
+                "conversationId": request.conversation_id,
+                "endpoint": "stream",
+                "mode": request.mode,
+                **routing_decision.to_public_dict(),
+            },
+        )
+    except Exception:
+        # Release reservation if pre-StreamingResponse setup fails; the
+        # BackgroundTask (_finalize_budget) only runs once StreamingResponse
+        # is created and started, so we must release manually here.
+        if budget_mgr and pre_reserved_token:
+            await budget_mgr.release(pre_reserved_token)
+        raise
 
     async def generate_stream():
         """Generator for SSE events."""
@@ -7722,16 +7730,24 @@ async def navi_chat_stream_v2(
     )
     trace_store = get_trace_store()
     trace_task_id = request.conversation_id or f"stream-v2-{uuid4()}"
-    trace_store.append(
-        "routing_decision",
-        {
-            "taskId": trace_task_id,
-            "conversationId": request.conversation_id,
-            "endpoint": "stream_v2",
-            "mode": request.mode,
-            **routing_decision.to_public_dict(),
-        },
-    )
+    try:
+        trace_store.append(
+            "routing_decision",
+            {
+                "taskId": trace_task_id,
+                "conversationId": request.conversation_id,
+                "endpoint": "stream_v2",
+                "mode": request.mode,
+                **routing_decision.to_public_dict(),
+            },
+        )
+    except Exception:
+        # Release reservation if pre-StreamingResponse setup fails; the
+        # BackgroundTask (_finalize_budget) only runs once StreamingResponse
+        # is created and started, so we must release manually here.
+        if budget_mgr and pre_reserved_token:
+            await budget_mgr.release(pre_reserved_token)
+        raise
 
     async def stream_generator():
         """Generate SSE events from the streaming agent."""

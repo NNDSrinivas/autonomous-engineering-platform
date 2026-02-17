@@ -97,7 +97,6 @@ Open the **root `.env`** file (not `backend/.env`) and fill in your values. This
 
 ```
 # Infrastructure
-DATABASE_URL=postgresql+psycopg://mentor:mentor@localhost:5432/mentor
 REDIS_URL=redis://localhost:6379/0
 APP_ENV=dev
 JWT_ENABLED=false
@@ -106,6 +105,20 @@ ALLOW_DEV_AUTH_BYPASS=true
 # LLM provider — set at least ONE of these
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Database** — the template already contains individual `DB_*` components; the backend constructs the connection URL from them automatically. No extra action needed for local dev. If you prefer a single URL (e.g. for a remote DB), you can set `DATABASE_URL` instead — it takes precedence:
+
+```
+# Default (already in .env.template — no changes needed):
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=mentor
+DB_PASSWORD=mentor
+DB_NAME=mentor
+
+# Alternative — overrides the components above when set:
+# DATABASE_URL=postgresql+psycopg://mentor:mentor@localhost:5432/mentor
 ```
 
 #### All supported LLM provider keys

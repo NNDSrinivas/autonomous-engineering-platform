@@ -224,6 +224,16 @@ return {1}
             for scope in scopes:
                 BUDGET_RESERVE_TOTAL.labels(scope_type=scope.scope, status="exceeded").inc()
 
+            if self.enforcement_mode == "advisory":
+                # Advisory mode: log the breach but allow the request through.
+                # Callers should still commit/release the returned token.
+                logger.warning(
+                    "Budget exceeded (advisory - request allowed): scope=%s remaining=%s",
+                    failed_scope.scope_id if failed_scope else "unknown",
+                    remaining,
+                )
+                return BudgetReservationToken(day=day, amount=amount, scopes=tuple(scopes))
+
             raise BudgetExceeded(
                 "Budget exceeded",
                 code="BUDGET_EXCEEDED",

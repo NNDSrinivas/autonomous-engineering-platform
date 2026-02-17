@@ -3861,9 +3861,9 @@ wait
 
 ### Related Documentation
 
-- **Implementation:** Phase 4 Budget Enforcement Plan (`~/.claude/plans/shiny-pondering-pizza.md`)
+- **Implementation:** Phase 4 Budget Enforcement (internal design doc)
 - **PR:** #70 - Phase 4: Budget Enforcement (Token Governance)
-- **Smoke Tests:** See plan file for comprehensive test suite
+- **Smoke Tests:** See Phase 4 Budget Enforcement design doc for comprehensive test suite
 - **Code Audit:** Single terminal action invariant, midnight safety, atomic enforcement
 
 ---

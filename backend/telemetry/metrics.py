@@ -128,20 +128,8 @@ BUDGET_OVERSPEND_ANOMALIES = Counter(
     ["scope_type", "severity"],  # severity: moderate|critical
 )
 
-BUDGET_CURRENT_USAGE = Gauge(
-    "aep_budget_current_usage_tokens",
-    "Current budget usage in tokens",
-    ["scope_type", "scope_id", "day"],
-)
-
-BUDGET_CURRENT_RESERVED = Gauge(
-    "aep_budget_current_reserved_tokens",
-    "Currently reserved tokens (in-flight requests)",
-    ["scope_type", "scope_id", "day"],
-)
-
-BUDGET_LIMIT = Gauge(
-    "aep_budget_limit_tokens",
-    "Budget limit in tokens",
-    ["scope_type", "scope_id", "day"],
-)
+# NOTE: BUDGET_CURRENT_USAGE, BUDGET_CURRENT_RESERVED, BUDGET_LIMIT gauges
+# intentionally omitted. Properly updating gauges requires a background
+# Redis-polling task (to read hashes across all active scopes), which is
+# planned for a future observability phase. Shipping always-zero gauges
+# would make dashboards and alerts inaccurate.

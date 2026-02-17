@@ -97,7 +97,18 @@ from backend.services.budget_lifecycle import build_budget_scopes
 
 # Default token estimate used when no actual usage is available at reserve time.
 # Override via env var for environments with different average request sizes.
-_BUDGET_DEFAULT_ESTIMATE_TOKENS: int = int(os.getenv("BUDGET_DEFAULT_ESTIMATE_TOKENS", "2500"))
+_BUDGET_DEFAULT_ESTIMATE_TOKENS: int = 2500
+_env_budget_estimate = os.getenv("BUDGET_DEFAULT_ESTIMATE_TOKENS")
+if _env_budget_estimate is not None:
+    try:
+        _BUDGET_DEFAULT_ESTIMATE_TOKENS = int(_env_budget_estimate)
+    except ValueError:
+        logging.warning(
+            "Invalid BUDGET_DEFAULT_ESTIMATE_TOKENS value %r; using default %d",
+            _env_budget_estimate,
+            _BUDGET_DEFAULT_ESTIMATE_TOKENS,
+        )
+del _env_budget_estimate
 
 # NOTE: ProjectAnalyzer is in backend/services/navi_brain.py
 # The /api/navi/chat endpoint in chat.py uses navi_brain.py's implementation

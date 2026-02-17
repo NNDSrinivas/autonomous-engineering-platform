@@ -165,6 +165,19 @@ return {1}
         if self.enforcement_mode == "disabled":
             return BudgetReservationToken(day=day, amount=amount, scopes=tuple(scopes))
 
+        if self._r is None:
+            error_msg = "Redis client is not configured"
+            for scope in scopes:
+                BUDGET_RESERVE_TOTAL.labels(scope_type=scope.scope, status="unavailable").inc()
+            if self.enforcement_mode == "strict":
+                raise BudgetExceeded(
+                    "Budget enforcement unavailable (Redis/Lua error)",
+                    code="BUDGET_ENFORCEMENT_UNAVAILABLE",
+                    details={"error": error_msg},
+                )
+            logger.warning("Budget reserve skipped (advisory mode): %s", error_msg)
+            return BudgetReservationToken(day=day, amount=amount, scopes=tuple(scopes))
+
         keys = [self._key_for(s, day) for s in scopes]
         limits = [s.per_day_limit for s in scopes]
         argv = [*map(str, limits), str(amount), str(self.TTL_SECONDS)]
@@ -221,6 +234,9 @@ return {1}
             return
         if self.enforcement_mode == "disabled":
             return
+        if self._r is None:
+            logger.warning("Budget commit skipped (Redis not configured): advisory mode")
+            return
 
         used_amount = int(used_amount) if used_amount is not None else token.amount
         if used_amount <= 0:
@@ -263,6 +279,9 @@ return {1}
         if token.amount <= 0:
             return
         if self.enforcement_mode == "disabled":
+            return
+        if self._r is None:
+            logger.warning("Budget release skipped (Redis not configured): advisory mode")
             return
 
         keys = [self._key_for(s, token.day) for s in token.scopes]

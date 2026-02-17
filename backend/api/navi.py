@@ -307,11 +307,6 @@ def create_budget_cleanup_handlers(
         disconnect_task_ref.append(disconnect_task)
 
         try:
-            if disconnect_evt.is_set():
-                if budget_mgr and pre_reserved_token:
-                    await budget_mgr.release(pre_reserved_token)
-                return
-
             # Wait briefly for generator to mark done
             for _ in range(max_wait_iterations):
                 if budget_state["done"] or disconnect_evt.is_set():

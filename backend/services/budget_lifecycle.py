@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import os
-from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from typing import List, Optional
 
-from .budget_manager import BudgetExceeded, BudgetManager, BudgetReservationToken, BudgetScope
+from .budget_manager import BudgetManager, BudgetScope
 
 logger = logging.getLogger(__name__)
 
@@ -58,70 +55,3 @@ def build_budget_scopes(
         scopes.append(BudgetScope(scope="model", scope_id=model_id, per_day_limit=model_limit))
 
     return scopes
-
-
-@asynccontextmanager
-async def budget_guard(
-    budget_manager: BudgetManager,
-    scopes: List[BudgetScope],
-    estimated_tokens: int,
-    *,
-    pre_reserved_token: Optional[BudgetReservationToken] = None,
-) -> Dict:
-    """
-    Single terminal action invariant:
-      - reserve fails: raises BudgetExceeded, no commit/release
-      - reserve succeeds:
-          normal exit => commit exactly once
-          exception/cancel => release exactly once
-
-    budget_ctx:
-      - set budget_ctx["actual_tokens"] during streaming (cumulative/total)
-      - if not set, commit uses estimated_tokens (conservative fallback)
-    """
-    token: Optional[BudgetReservationToken] = None
-    finalized = False
-
-    budget_ctx: Dict = {
-        "estimated_tokens": int(estimated_tokens),
-        "actual_tokens": None,
-        "token_day": None,
-        "finalized": False,
-    }
-
-    try:
-        token = pre_reserved_token or await budget_manager.reserve(int(estimated_tokens), scopes)
-        budget_ctx["token_day"] = token.day
-
-        # Deterministic concurrency hold (dev-only test)
-        if os.getenv("BUDGET_TEST_HOLD_STREAM") == "1":
-            await asyncio.sleep(2)
-
-        yield budget_ctx
-
-        if token is not None and not finalized:
-            used = budget_ctx.get("actual_tokens")
-            if used is None or int(used) <= 0:
-                used = int(estimated_tokens)  # conservative fallback
-            await budget_manager.commit(token, int(used))
-            finalized = True
-            budget_ctx["finalized"] = True
-
-    except BudgetExceeded:
-        # Reserve failure OR enforcement unavailable in strict.
-        # If token exists (defensive), release it.
-        if token is not None and not finalized:
-            try:
-                await budget_manager.release(token)
-            except Exception:
-                pass
-        raise
-
-    except BaseException:
-        # cancellation/errors after reserve must release
-        if token is not None and not finalized:
-            try:
-                await budget_manager.release(token)
-            except Exception:
-                pass
-        raise

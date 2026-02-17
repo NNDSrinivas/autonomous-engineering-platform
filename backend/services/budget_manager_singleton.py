@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +14,12 @@ from .budget_manager import BudgetManager
 logger = logging.getLogger(__name__)
 
 _BUDGET_MANAGER: Optional[BudgetManager] = None
+
+
+def _redact_redis_url(url: str) -> str:
+    """Redact password from Redis URL for safe logging."""
+    # Pattern: redis://[:password@]host:port/db
+    return re.sub(r'://[^@]*@', '://*****@', url)
 
 
 def _load_policy(app_env: str) -> dict:
@@ -60,7 +67,7 @@ async def init_budget_manager() -> Optional[BudgetManager]:
         r = redis.from_url(redis_url, decode_responses=False)
         await r.ping()
         _BUDGET_MANAGER = BudgetManager(r, enforcement_mode=enforcement, policy=policy)
-        logger.info("Budget manager initialized: mode=%s env=%s redis=%s", enforcement, app_env, redis_url)
+        logger.info("Budget manager ACTIVE: mode=%s env=%s redis=%s", enforcement, app_env, _redact_redis_url(redis_url))
         return _BUDGET_MANAGER
     except Exception as e:
         if enforcement == "disabled":
@@ -76,7 +83,10 @@ async def init_budget_manager() -> Optional[BudgetManager]:
             return _BUDGET_MANAGER
 
         # strict + redis down => keep None (endpoint maps to 503)
-        logger.error("Budget manager unavailable in strict mode: %s", e)
+        logger.error(
+            "CRITICAL: Budget manager UNAVAILABLE in strict mode - all requests will return 503. "
+            "Redis connection failed: %s", e
+        )
         _BUDGET_MANAGER = None
         return None
 

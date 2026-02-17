@@ -30,7 +30,7 @@ function validateOne(schemaPath: string, policyPath: string) {
 }
 
 function main() {
-  const repoRoot = path.resolve(__dirname, "..");
+  const repoRoot = process.cwd();
   const schemaPath = path.join(repoRoot, "shared", "budget-policy.schema.json");
 
   const policies = [

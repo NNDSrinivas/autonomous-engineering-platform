@@ -13,7 +13,7 @@
     "units": {
       "type": "string",
       "description": "Phase 4 budgets are token-based",
-      "minLength": 1
+      "enum": ["tokens"]
     },
     "defaults": {
       "type": "object",

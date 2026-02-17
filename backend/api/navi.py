@@ -269,7 +269,9 @@ def create_budget_cleanup_handlers(
     """
     Create budget cleanup handlers for streaming endpoints.
 
-    Returns: (finalize_budget callable, disconnect_task)
+    Returns: (finalize_budget callable, disconnect_task_ref)
+    The disconnect_task_ref is a single-item list that will contain the task
+    once started (allows late cancellation if needed).
 
     Args:
         http_request: FastAPI Request object
@@ -281,6 +283,7 @@ def create_budget_cleanup_handlers(
         max_wait_iterations: Max iterations to wait for generator completion (default: 8)
     """
     disconnect_evt = asyncio.Event()
+    disconnect_task_ref = []  # Will hold [task] once started
 
     async def _watch_disconnect():
         """Poll for client disconnect and trigger immediate release."""
@@ -290,10 +293,8 @@ def create_budget_cleanup_handlers(
                     disconnect_evt.set()
                     break
                 await asyncio.sleep(polling_interval)
-        except Exception:
+        except (asyncio.CancelledError, Exception):
             pass
-
-    disconnect_task = asyncio.create_task(_watch_disconnect())
 
     async def _finalize_budget():
         """
@@ -301,6 +302,10 @@ def create_budget_cleanup_handlers(
         On disconnect: release immediately.
         On normal completion: commit with actual_tokens.
         """
+        # Start disconnect watcher now (inside BackgroundTask, not before)
+        disconnect_task = asyncio.create_task(_watch_disconnect())
+        disconnect_task_ref.append(disconnect_task)
+
         try:
             if disconnect_evt.is_set():
                 if budget_mgr and pre_reserved_token:
@@ -331,10 +336,10 @@ def create_budget_cleanup_handlers(
         finally:
             if not disconnect_task.done():
                 disconnect_task.cancel()
-                with suppress(Exception):
+                with suppress(asyncio.CancelledError, Exception):
                     await disconnect_task
 
-    return _finalize_budget, disconnect_task
+    return _finalize_budget, disconnect_task_ref
 
 
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
@@ -6716,7 +6721,8 @@ async def navi_chat_stream(
     # ---------------------------
     # Phase 4 Budget Governance
     # Reserve BEFORE StreamingResponse so we can return 429/503 cleanly.
-    # Generator will only commit/release via budget_guard(pre_reserved_token=...).
+    # Commit/release of this pre-reservation is handled by the StreamingResponse
+    # BackgroundTask (_finalize_budget), not by the generator itself.
     # ---------------------------
     budget_mgr = get_budget_manager()
     estimated_tokens = 2500  # conservative default
@@ -7648,7 +7654,8 @@ async def navi_chat_stream_v2(
     # ---------------------------
     # Phase 4 Budget Governance
     # Reserve BEFORE StreamingResponse so we can return 429/503 cleanly.
-    # Generator will only commit/release via budget_guard(pre_reserved_token=...).
+    # Commit/release of this pre-reservation is handled by the StreamingResponse
+    # BackgroundTask (_finalize_budget), not by the generator itself.
     # ---------------------------
     budget_mgr = get_budget_manager()
     estimated_tokens = 2500  # conservative default

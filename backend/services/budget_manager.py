@@ -284,6 +284,14 @@ return {1}
     async def snapshot(self, scopes: List[BudgetScope], day: Optional[str] = None) -> Dict[str, Dict[str, int]]:
         day = day or _utc_day_bucket()
         out: Dict[str, Dict[str, int]] = {}
+
+        # If Redis is unavailable (disabled/advisory mode), return policy limits with zero usage
+        if self._r is None:
+            for s in scopes:
+                key = self._key_for(s, day)
+                out[key] = {"limit": s.per_day_limit, "used": 0, "reserved": 0, "remaining": s.per_day_limit}
+            return out
+
         for s in scopes:
             key = self._key_for(s, day)
             try:

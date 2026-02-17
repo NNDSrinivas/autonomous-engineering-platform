@@ -22,13 +22,14 @@ This guide will get you from `git clone` to a fully running development environm
 
 ### Required Software
 
-| Tool | Required Version | Check Command | Install Command |
-|------|-----------------|---------------|-----------------|
-| **Python** | 3.11.x (recommended)<br>3.9-3.12 supported | `python3 --version` | macOS: `brew install python@3.11`<br>Linux: `sudo apt install python3.11` |
-| **Node.js** | 20+ LTS (recommended)<br>18.19+ minimum | `node --version` | macOS: `brew install node@20`<br>Linux: [nodejs.org](https://nodejs.org) |
-| **PostgreSQL** | 13+ | `psql --version` | macOS: `brew install postgresql@15`<br>Linux: `sudo apt install postgresql` |
-| **Redis** | 6+ (optional for dev) | `redis-cli --version` | macOS: `brew install redis`<br>Linux: `sudo apt install redis` |
+| Tool | Required Version | Check Command | Install |
+|------|-----------------|---------------|---------|
+| **Python** | 3.11.x recommended (3.13+ not supported) | `python3 --version` | macOS: `brew install python@3.11`<br>Linux: `sudo apt install python3.11` |
+| **Node.js** | 20+ LTS (18.19+ minimum) | `node --version` | macOS: `brew install node@20`<br>Linux: [nodejs.org](https://nodejs.org) |
+| **Docker Desktop** | Latest | `docker --version` | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
 | **Git** | 2.0+ | `git --version` | macOS: `brew install git`<br>Linux: `sudo apt install git` |
+
+> **PostgreSQL and Redis run inside Docker** via `docker compose up -d` — no local install needed.
 
 ### Quick Version Check
 
@@ -36,10 +37,9 @@ Run this command to check all prerequisites:
 
 ```bash
 echo "Python: $(python3 --version)"
-echo "Node: $(node --version)"
-echo "PostgreSQL: $(psql --version)"
-echo "Redis: $(redis-cli --version 2>/dev/null || echo 'Not installed (optional for dev)')"
-echo "Git: $(git --version)"
+echo "Node:   $(node --version)"
+echo "Docker: $(docker --version)"
+echo "Git:    $(git --version)"
 ```
 
 ### Environment Setup
@@ -57,41 +57,60 @@ You'll need API keys for LLM providers (at least one):
 **For experienced developers who want the fastest path:**
 
 ```bash
-# 1. Clone and enter directory
+# 1. Clone
 git clone <repository-url>
 cd autonomous-engineering-platform
 
-# 2. Setup Python backend
+# 2. Python backend
 python3.11 -m venv aep-venv
 source aep-venv/bin/activate
 pip install -r requirements.txt
-pip install -r requirements-test.txt  # For running tests
+pip install -r requirements-test.txt  # for running tests
 
-# 3. Setup Node.js workspaces (frontend, extension, webview)
-npm install  # Run from repository root!
+# 3. Node.js workspaces (frontend + all packages) — run from repo root
+npm install
 
-# 4. Configure environment
+# 4. Environment — copy template and set your API key(s)
 cp .env.template .env
-# Edit .env and add your API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
+# Minimum required in .env:
+#   OPENAI_API_KEY=sk-...  (or ANTHROPIC_API_KEY)
+#   DATABASE_URL=postgresql+psycopg://mentor:mentor@localhost:5432/mentor
+#   REDIS_URL=redis://localhost:6379/0
+#   APP_ENV=dev
+#   JWT_ENABLED=false
+#   ALLOW_DEV_AUTH_BYPASS=true
 
-# 5. Setup database
+# 5. Start PostgreSQL + Redis via Docker
+docker compose up -d
+# Verify: docker compose ps  (both should show "healthy")
+
+# 6. Run database migrations
 alembic upgrade head
 
-# 6. Start development servers (in separate terminals)
+# 7. Start Prometheus + Grafana (observability stack)
+./scripts/run_grafana_local.sh
+# Prometheus → http://localhost:9090
+# Grafana    → http://localhost:3001  (admin / admin)
 
-# Terminal 1: Backend
-source aep-venv/bin/activate
-python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8787
+# 8. Start backend (Terminal 1) — loads .env and activates venv automatically
+./start_backend_dev.sh
+# API → http://localhost:8787
 
-# Terminal 2: Frontend
+# 9. Start frontend (Terminal 2)
 cd frontend && npm run dev
-
-# 7. Verify
-# Backend: http://localhost:8787/health
-# Frontend: http://localhost:3000
+# UI → http://localhost:3000  (Vite auto-increments port if 3000 is taken)
 ```
 
 **Done!** ✅ Skip to [Development Workflows](#-development-workflows)
+
+| Service | URL |
+|---------|-----|
+| Backend API | http://localhost:8787 |
+| Frontend | http://localhost:3000 (check terminal for actual port) |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3001 |
+| PostgreSQL | localhost:5432 |
+| Redis | localhost:6379 |
 
 ---
 

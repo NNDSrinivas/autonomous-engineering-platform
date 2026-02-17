@@ -56,72 +56,143 @@ Transform how engineering teams work by providing an **autonomous AI assistant**
 ## ⚙️ Quick Start
 
 ### Prerequisites
-- **Python 3.11.x** (recommended) or 3.9-3.12
-  - ⚠️ Python 3.13+ not yet supported due to dependency compatibility
-  - Install Python 3.11: `brew install python@3.11` (macOS) or download from [python.org](https://www.python.org)
-- **Node.js 20+ LTS** (strongly recommended for all development)
-  - Minimum: Node.js 18.19+ supported, but Node 20+ LTS recommended to avoid environment inconsistencies
-  - Vite 6.x build tooling works best with Node 20+
-  - Install Node 20 LTS: `brew install node@20` (macOS) or download from [nodejs.org](https://nodejs.org)
-- **PostgreSQL**
-- **Redis** (optional for development, required for production)
 
-### Installation
+| Tool | Version | Install (macOS) | Install (Linux) |
+|------|---------|-----------------|-----------------|
+| **Python** | 3.11.x recommended (3.13+ not supported) | `brew install python@3.11` | `sudo apt install python3.11` |
+| **Node.js** | 20+ LTS (18.19+ minimum) | `brew install node@20` | [nodejs.org](https://nodejs.org) |
+| **Docker Desktop** | Latest | [docker.com](https://www.docker.com/products/docker-desktop/) | [docs.docker.com](https://docs.docker.com/engine/install/) |
+| **Git** | 2.0+ | `brew install git` | `sudo apt install git` |
+
+**API keys** — you need at least one LLM provider key:
+- OpenAI: [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+- Anthropic: [console.anthropic.com](https://console.anthropic.com)
+
+---
+
+### Step 1 — Clone and install dependencies
+
 ```bash
 git clone <repository-url>
 cd autonomous-engineering-platform
 
-# Backend setup
+# Python backend
 python3.11 -m venv aep-venv
 source aep-venv/bin/activate
 pip install -r requirements.txt
 
-# Install all npm workspaces (frontend, extension, webview, packages)
+# Node.js (frontend + all workspaces) — run from repo root
 npm install
+```
 
-# Copy environment configuration
+### Step 2 — Configure environment
+
+```bash
 cp .env.template .env
-# Edit .env with your configuration
 ```
 
-### Run Services
+Open `.env` and set at minimum:
 
-#### Development Mode (Fast, No Auto-Reload)
+```
+OPENAI_API_KEY=sk-...        # or ANTHROPIC_API_KEY
+DATABASE_URL=postgresql+psycopg://mentor:mentor@localhost:5432/mentor
+REDIS_URL=redis://localhost:6379/0
+APP_ENV=dev
+JWT_ENABLED=false
+ALLOW_DEV_AUTH_BYPASS=true
+```
+
+### Step 3 — Start infrastructure (PostgreSQL + Redis)
+
 ```bash
-# Start backend (recommended for development)
+docker compose up -d
+```
+
+Starts `aep_postgres` on port **5432** and `aep_redis` on port **6379**.
+
+Verify:
+```bash
+docker compose ps    # both should show "healthy"
+```
+
+### Step 4 — Run database migrations
+
+```bash
 source aep-venv/bin/activate
-python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8787
-
-# Start frontend
-cd frontend && npm run dev          # Web UI (port 3000)
+alembic upgrade head
 ```
 
-#### Development Mode (With Auto-Reload)
+### Step 5 — Start observability stack (Prometheus + Grafana)
+
 ```bash
-# ⚠️ Warning: Auto-reload can cause slow startup on large codebases
-# Only use if you need automatic code reloading
-source aep-venv/bin/activate
-python -m uvicorn backend.api.main:app --reload --host 127.0.0.1 --port 8787
+./scripts/run_grafana_local.sh
 ```
 
-#### Production Mode
+This starts:
+- **Prometheus** → http://localhost:9090
+- **Grafana** → http://localhost:3001 (login: `admin` / `admin`)
+
+All 4 dashboards (LLM metrics, task metrics, errors, learning) are provisioned automatically.
+
+### Step 6 — Start backend
+
 ```bash
-# Start with production settings
+./start_backend_dev.sh
+```
+
+This activates the venv, loads `.env`, and starts the API on **http://localhost:8787**.
+
+Verify: `curl http://localhost:8787/health`
+
+### Step 7 — Start frontend
+
+```bash
+cd frontend && npm run dev
+```
+
+Vite starts on **http://localhost:3000** (auto-increments to 3007/3008/etc. if the port is taken — the terminal output shows the actual URL).
+
+---
+
+### All services at a glance
+
+| Service | URL | Started by |
+|---------|-----|------------|
+| Backend API | http://localhost:8787 | `./start_backend_dev.sh` |
+| Frontend | http://localhost:3000 | `cd frontend && npm run dev` |
+| Prometheus | http://localhost:9090 | `./scripts/run_grafana_local.sh` |
+| Grafana | http://localhost:3001 | `./scripts/run_grafana_local.sh` |
+| PostgreSQL | localhost:5432 | `docker compose up -d` |
+| Redis | localhost:6379 | `docker compose up -d` |
+
+---
+
+### Stop everything
+
+```bash
+# Stop backend and frontend: Ctrl+C in their terminals
+
+# Stop Docker services (keeps data)
+docker compose down
+
+# Stop Prometheus + Grafana (keeps data)
+docker stop navi-prometheus grafana
+
+# Stop Prometheus + Grafana AND remove containers (fresh start next time)
+./scripts/stop_grafana_local.sh
+```
+
+---
+
+### Production mode
+
+```bash
+# Backend
 source aep-venv/bin/activate
 python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8787 --workers 4
 
-# Frontend production build
+# Frontend
 cd frontend && npm run build && npm run preview
-```
-
-### Verify Installation
-```bash
-# Check backend health
-curl http://localhost:8787/health
-# Expected: {"status":"ok","service":"core"}
-
-# Check frontend
-open http://localhost:3000
 ```
 
 ---

@@ -3868,5 +3868,182 @@ wait
 
 ---
 
+### Staging & Production Rollout Plan
+
+> **Status:** Blocked — implementation is complete (PR #70 merged). Execute this plan
+> once a staging environment exists. Do NOT start Workstream 0 / Workstream 1 from
+> the 30-Day Hardening Plan until budget enforcement is confirmed healthy in staging
+> and production.
+
+#### Step 1: Tag a Release Artifact
+
+Before any deploy, create an immutable reference point on `main`:
+
+```bash
+git tag -a v0.4.0-budget -m "Phase 4: Budget Enforcement (Token Governance)"
+git push origin v0.4.0-budget
+```
+
+Build and publish the container image at this SHA so you have a known-good
+deployable unit you can roll back to.
+
+---
+
+#### Step 2: Staging Setup (One-Time)
+
+If staging does not yet exist, the minimum viable setup is:
+
+- One VM (DigitalOcean / EC2 / Linode) with Docker installed
+- `deploy/compose.staging.yml` — backend + Redis (auth) + Redis (budget) + DB
+- `.env.staging.example` — required vars with placeholder values
+
+**Minimum `.env.staging` vars:**
+
+| Variable | Value |
+|---|---|
+| `APP_ENV` | `staging` |
+| `BUDGET_ENFORCEMENT_MODE` | `advisory` (start here, flip to `strict` after soak) |
+| `BUDGET_REDIS_URL` | Redis URL for budget subsystem |
+| `REDIS_URL` | Redis URL for auth/cache |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_ENABLED` | `true` |
+
+---
+
+#### Step 3: Staging Pre-flight Checks
+
+Run before every deploy to staging:
+
+```bash
+# Validate policy files
+npm run validate:budget-policy
+
+# Run unit + hardening tests
+pytest backend/tests/test_budget_manager.py \
+       backend/tests/test_budget_manager_hardening.py -q
+
+# Verify Redis reachable
+redis-cli -u $BUDGET_REDIS_URL ping   # → PONG
+redis-cli -u $REDIS_URL ping           # → PONG
+
+# Confirm startup log shows correct mode
+grep "Budget manager initialized" <(docker logs backend 2>&1)
+# Expected: mode=advisory env=staging
+```
+
+---
+
+#### Step 4: Staging Smoke Tests
+
+Run the critical subset immediately after deploy:
+
+| Test | Command | Expected |
+|---|---|---|
+| Test 0: Exception after reserve | `BUDGET_TEST_THROW_AFTER_RESERVE=1` + POST `/chat/stream/v2` | HTTP 500, reserved → 0 |
+| Test 2: Client disconnect | `timeout 2 curl -N` POST `/chat/stream/v2` | reserved → 0 after disconnect |
+| Test 3: Concurrent atomicity | 10 concurrent requests with 5000-token limit | 2 succeed, 8 get HTTP 429 |
+| Test 6: Strict + Redis down → 503 | Temporarily kill budget Redis, `BUDGET_ENFORCEMENT_MODE=strict` | HTTP 503 |
+| Test 8: TTL never -1 | `redis-cli TTL budget:global:global:<today>` | positive number, not -1 |
+
+Script: `scripts/smoke_budget.sh` — see Phase 4 design doc for full curl commands.
+
+---
+
+#### Step 5: Staging Soak (12–24 hours)
+
+Let staging run under real or simulated traffic. Use Prometheus metrics as gates.
+
+**Hard gates — must all be true before promoting to prod:**
+
+```promql
+# No reservation leaks
+aep_budget_current_reserved_tokens == 0   # during idle windows
+
+# No enforcement-unavailable events in strict mode
+increase(aep_budget_reserve_total{status="unavailable"}[30m]) == 0
+
+# No critical overspend anomalies
+increase(aep_budget_overspend_anomalies_total{severity="critical"}[24h]) == 0
+```
+
+**Soft gates — investigate if elevated, but don't block:**
+
+- `aep_budget_reserve_total{status="exceeded"}` spike → policy limits may be too low
+  for staging traffic shape; adjust `budget-policy-staging.json`
+- `reserved` elevated only during high traffic → expected, verify it returns to baseline
+
+---
+
+#### Step 6: Production Rollout (Option A — Availability-first)
+
+Recommended unless hard budget enforcement is a contractual requirement from day 1.
+
+1. **Deploy prod** with `APP_ENV=prod`, `BUDGET_ENFORCEMENT_MODE=advisory`
+2. **Canary:** Route 1–5% of traffic for 30–60 min; confirm no regressions
+3. **Ramp:** 25% → 50% → 100% over 2–4 hours
+4. **Flip to strict:** Once Prometheus gates pass and Redis HA is confirmed
+
+**Alternative — Option B: Enforcement-first** (if financial controls required on day 1):
+
+- Deploy directly with `BUDGET_ENFORCEMENT_MODE=strict`
+- Only valid if budget Redis is HA (Sentinel/Cluster) and the team accepts HTTP 503
+  on Redis outage as designed behavior
+
+---
+
+#### Step 7: Production Verification Checklist (First Hour)
+
+- [ ] Hit `/api/navi/chat/stream/v2` happy path — normal 200 + SSE response
+- [ ] Startup log shows `mode=strict env=prod` (or `advisory` if canary)
+- [ ] `redis-cli TTL budget:global:global:<today>` returns > 0 (not -1)
+- [ ] Prometheus scraping: `curl http://<host>/metrics | grep aep_budget`
+- [ ] 429 responses carry `"code": "BUDGET_EXCEEDED"` body
+- [ ] 503 responses carry `"code": "BUDGET_ENFORCEMENT_UNAVAILABLE"` body
+- [ ] `aep_budget_current_reserved_tokens` returns to ~0 between requests
+- [ ] No `unavailable` reserve status in strict mode with healthy Redis
+
+---
+
+#### Step 8: Rollback Criteria
+
+Roll back to the previous image immediately if any of these occur:
+
+- Reserved tokens rising monotonically over time (leak regression)
+- `unavailable` reserve status non-zero with healthy Redis in strict mode
+- Sustained HTTP 503s above agreed threshold (e.g., >1% of requests for >5 min)
+- Latency regression on `/chat/stream` endpoints (Lua should add <5ms)
+
+**Rollback command (Docker Compose):**
+```bash
+docker compose pull backend  # pull previous tagged image
+docker compose up -d backend
+```
+
+**Rollback command (Kubernetes):**
+```bash
+kubectl rollout undo deployment/backend
+```
+
+---
+
+#### What Comes After Staging + Prod Are Confirmed
+
+Once budget enforcement is healthy in production, resume the **30-Day Hardening Plan**:
+
+1. **Workstream 0 — Tool Sandbox + Policy Layer** (Feb 16–27)
+   - Command allowlist/denylist for execution tools
+   - Workspace directory confinement for file/system tools
+   - Per-tool resource limits (CPU, memory, timeout, output size, concurrency)
+   - Platform-wide secrets redaction pipeline for logs/events/traces/UI payloads
+   - Policy evaluation record for every tool invocation
+
+2. **Workstream 1 — Core Security Hardening** (Feb 16–28)
+   - SSO token verification fix (`backend/api/routers/sso.py`)
+   - Integration tokens encrypted at rest + rotation procedure
+   - Secure production auth defaults (`backend/core/settings.py`)
+   - Webhook signature, replay, and auth negative-case tests
+
+---
+
 **Last Updated:** February 16, 2026
 **Next Review:** March 1, 2026 (after first month of customer pilots)

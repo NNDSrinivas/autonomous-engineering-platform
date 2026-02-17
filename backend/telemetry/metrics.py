@@ -96,3 +96,40 @@ CIRCUIT_BREAKER_STATE = Gauge(
     "Circuit breaker state (0=closed,1=open,2=half_open)",
     ["provider"],
 )
+
+# Phase 4: Budget enforcement metrics
+BUDGET_RESERVE_TOTAL = Counter(
+    "aep_budget_reserve_total",
+    "Budget reserve attempts",
+    ["scope_type", "status"],  # status: success|exceeded|unavailable
+)
+
+BUDGET_TOKENS_RESERVED = Counter(
+    "aep_budget_tokens_reserved_total",
+    "Total tokens reserved (pre-flight)",
+    ["scope_type"],
+)
+
+BUDGET_TOKENS_COMMITTED = Counter(
+    "aep_budget_tokens_committed_total",
+    "Total tokens committed (actual usage)",
+    ["scope_type"],
+)
+
+BUDGET_TOKENS_RELEASED = Counter(
+    "aep_budget_tokens_released_total",
+    "Total tokens released (cancelled/error)",
+    ["scope_type"],
+)
+
+BUDGET_OVERSPEND_ANOMALIES = Counter(
+    "aep_budget_overspend_anomalies_total",
+    "Overspend anomalies (actual >> estimate)",
+    ["scope_type", "severity"],  # severity: moderate|critical
+)
+
+# NOTE: BUDGET_CURRENT_USAGE, BUDGET_CURRENT_RESERVED, BUDGET_LIMIT gauges
+# intentionally omitted. Properly updating gauges requires a background
+# Redis-polling task (to read hashes across all active scopes), which is
+# planned for a future observability phase. Shipping always-zero gauges
+# would make dashboards and alerts inaccurate.

@@ -36,6 +36,7 @@ import re
 import threading
 import time
 from asyncio.subprocess import STDOUT
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal, Tuple, no_type_check
 from uuid import uuid4
@@ -45,6 +46,7 @@ from openai import AsyncOpenAI
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -87,6 +89,26 @@ from backend.services.consent_service import get_consent_service
 # Redis for distributed consent state
 import redis.asyncio as redis
 from datetime import datetime
+
+# Phase 4 Budget Governance
+from backend.services.budget_manager import BudgetExceeded
+from backend.services.budget_manager_singleton import get_budget_manager
+from backend.services.budget_lifecycle import build_budget_scopes
+
+# Default token estimate used when no actual usage is available at reserve time.
+# Override via env var for environments with different average request sizes.
+_BUDGET_DEFAULT_ESTIMATE_TOKENS: int = 2500
+_env_budget_estimate = os.getenv("BUDGET_DEFAULT_ESTIMATE_TOKENS")
+if _env_budget_estimate is not None:
+    try:
+        _BUDGET_DEFAULT_ESTIMATE_TOKENS = int(_env_budget_estimate)
+    except ValueError:
+        logging.warning(
+            "Invalid BUDGET_DEFAULT_ESTIMATE_TOKENS value %r; using default %d",
+            _env_budget_estimate,
+            _BUDGET_DEFAULT_ESTIMATE_TOKENS,
+        )
+del _env_budget_estimate
 
 # NOTE: ProjectAnalyzer is in backend/services/navi_brain.py
 # The /api/navi/chat endpoint in chat.py uses navi_brain.py's implementation
@@ -248,6 +270,97 @@ def _build_router_info(
     if auto_execute is not None:
         router_info["auto_execute"] = auto_execute
     return router_info
+
+
+def create_budget_cleanup_handlers(
+    http_request: Request,
+    budget_mgr: Optional[Any],
+    pre_reserved_token: Optional[Any],
+    estimated_tokens: int,
+    budget_state: Dict[str, Any],
+    polling_interval: float = 0.5,
+    max_wait_iterations: int = 8,
+):
+    """
+    Create budget cleanup handlers for streaming endpoints.
+
+    Returns: finalize_budget callable (BackgroundTask-compatible coroutine).
+    The disconnect watcher task is created and managed internally within _finalize_budget.
+
+    Args:
+        http_request: FastAPI Request object
+        budget_mgr: BudgetManager instance or None
+        pre_reserved_token: Token from reserve() or None
+        estimated_tokens: Fallback token estimate
+        budget_state: Shared state dict with keys: actual_tokens, ok, done
+        polling_interval: Disconnect polling interval in seconds (default: 0.5s)
+        max_wait_iterations: Max iterations to wait for generator completion (default: 8)
+    """
+    disconnect_evt = asyncio.Event()
+
+    async def _watch_disconnect():
+        """Poll for client disconnect and trigger immediate release."""
+        try:
+            while not budget_state["done"]:
+                if await http_request.is_disconnected():
+                    disconnect_evt.set()
+                    break
+                await asyncio.sleep(polling_interval)
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    async def _finalize_budget():
+        """
+        Guaranteed cleanup via StreamingResponse background task.
+        On disconnect: release immediately.
+        On normal completion: commit with actual_tokens.
+
+        The finalized flag ensures exactly one terminal action (commit or release)
+        is executed even if _finalize_budget is somehow invoked more than once.
+        """
+        # Idempotency guard: only one terminal action per token.
+        if budget_state.get("finalized"):
+            return
+
+        # Start disconnect watcher now (inside BackgroundTask, not before)
+        disconnect_task = asyncio.create_task(_watch_disconnect())
+
+        try:
+            # Wait for generator to mark done (skip poll if already done)
+            if not budget_state["done"] and not disconnect_evt.is_set():
+                for _ in range(max_wait_iterations):
+                    if budget_state["done"] or disconnect_evt.is_set():
+                        break
+                    await asyncio.sleep(polling_interval)
+
+            if disconnect_evt.is_set():
+                if budget_mgr and pre_reserved_token:
+                    budget_state["finalized"] = True
+                    await budget_mgr.release(pre_reserved_token)
+                return
+
+            if not (budget_mgr and pre_reserved_token):
+                return
+
+            budget_state["finalized"] = True
+            if budget_state["ok"]:
+                raw = budget_state["actual_tokens"]
+                try:
+                    used = int(raw) if raw is not None else 0
+                except (TypeError, ValueError):
+                    used = 0
+                if used <= 0:
+                    used = estimated_tokens
+                await budget_mgr.commit(pre_reserved_token, used)
+            else:
+                await budget_mgr.release(pre_reserved_token)
+        finally:
+            if not disconnect_task.done():
+                disconnect_task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await disconnect_task
+
+    return _finalize_budget
 
 
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
@@ -6625,18 +6738,82 @@ async def navi_chat_stream(
                 "requestedModelId": request.model,
             },
         ) from exc
+
+    # ---------------------------
+    # Phase 4 Budget Governance
+    # Reserve BEFORE StreamingResponse so we can return 429/503 cleanly.
+    # Commit/release of this pre-reservation is handled by the StreamingResponse
+    # BackgroundTask (_finalize_budget), not by the generator itself.
+    # ---------------------------
+    budget_mgr = get_budget_manager()
+    # TODO: Derive estimate from message length + history count for better accuracy.
+    # Currently a conservative flat estimate to avoid blocking short requests.
+    estimated_tokens = _BUDGET_DEFAULT_ESTIMATE_TOKENS
+    final_scopes = []
+    pre_reserved_token = None
+
+    provider = getattr(routing_decision, "provider", None)
+    model_name = getattr(routing_decision, "model", None)
+
+    if budget_mgr is None and os.getenv("BUDGET_ENFORCEMENT_MODE", "strict").lower() == "strict":
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "BUDGET_ENFORCEMENT_UNAVAILABLE", "message": "Budget enforcement unavailable"},
+        )
+
+    if budget_mgr is not None and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled":
+        final_scopes = build_budget_scopes(
+            budget_manager=budget_mgr,
+            org_id=org_id or "org:unknown",
+            user_id=user_id or None,
+            provider_id=provider,
+            model_id=model_name,
+        )
+        try:
+            pre_reserved_token = await budget_mgr.reserve(estimated_tokens, final_scopes)
+        except BudgetExceeded as e:
+            if e.code == "BUDGET_EXCEEDED":
+                raise HTTPException(
+                    status_code=429,
+                    detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+                )
+            raise HTTPException(
+                status_code=503,
+                detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+            )
+
+    # ---------------------------
+    # Phase 4: Budget lifecycle state + disconnect watcher (V1)
+    # ---------------------------
+    budget_state = {"actual_tokens": None, "ok": False, "done": False, "finalized": False}
+    _finalize_budget = create_budget_cleanup_handlers(
+        http_request=http_request,
+        budget_mgr=budget_mgr,
+        pre_reserved_token=pre_reserved_token,
+        estimated_tokens=estimated_tokens,
+        budget_state=budget_state,
+    )
+
     trace_store = get_trace_store()
     trace_task_id = request.conversation_id or f"stream-{uuid4()}"
-    trace_store.append(
-        "routing_decision",
-        {
-            "taskId": trace_task_id,
-            "conversationId": request.conversation_id,
-            "endpoint": "stream",
-            "mode": request.mode,
-            **routing_decision.to_public_dict(),
-        },
-    )
+    try:
+        trace_store.append(
+            "routing_decision",
+            {
+                "taskId": trace_task_id,
+                "conversationId": request.conversation_id,
+                "endpoint": "stream",
+                "mode": request.mode,
+                **routing_decision.to_public_dict(),
+            },
+        )
+    except Exception:
+        # Release reservation if pre-StreamingResponse setup fails; the
+        # BackgroundTask (_finalize_budget) only runs once StreamingResponse
+        # is created and started, so we must release manually here.
+        if budget_mgr and pre_reserved_token:
+            await budget_mgr.release(pre_reserved_token)
+        raise
 
     async def generate_stream():
         """Generator for SSE events."""
@@ -7004,39 +7181,61 @@ async def navi_chat_stream(
                     len(conversation_history_for_llm),
                 )
 
-            async for event in process_navi_request_streaming(
-                message=request.message,
-                workspace_path=workspace_root,
-                llm_provider=routing_decision.provider,
-                llm_model=routing_decision.model,
-                api_key=None,
-                current_file=current_file,
-                current_file_content=current_file_content,
-                selection=selection,
-                open_files=None,
-                errors=errors,
-                conversation_history=conversation_history_for_llm,
-            ):
-                # Stream activity events
-                if "activity" in event:
-                    activity = event["activity"]
-                    if activity.get("kind") == "file_read":
-                        files_read_live.append(activity.get("detail", ""))
-                    yield f"data: {json.dumps({'activity': activity})}\n\n"
+            # Phase 4: Budget lifecycle - generator only updates token tracking (V1)
+            try:
+                async for event in process_navi_request_streaming(
+                    message=request.message,
+                    workspace_path=workspace_root,
+                    llm_provider=routing_decision.provider,
+                    llm_model=routing_decision.model,
+                    api_key=None,
+                    current_file=current_file,
+                    current_file_content=current_file_content,
+                    selection=selection,
+                    open_files=None,
+                    errors=errors,
+                    conversation_history=conversation_history_for_llm,
+                ):
+                    # Token tracking: support common shapes
+                    try:
+                        if isinstance(event, dict):
+                            if event.get("type") == "usage" and event.get("total_tokens") is not None:
+                                budget_state["actual_tokens"] = int(event["total_tokens"])
+                            elif isinstance(event.get("usage"), dict):
+                                tt = event["usage"].get("total_tokens")
+                                if tt is not None:
+                                    budget_state["actual_tokens"] = int(tt)
+                    except Exception:
+                        pass
 
-                # Stream narrative events (conversational explanations like Claude Code)
-                elif "narrative" in event:
-                    narrative_text = event["narrative"]
-                    yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
+                    # Stream activity events
+                    if "activity" in event:
+                        activity = event["activity"]
+                        if activity.get("kind") == "file_read":
+                            files_read_live.append(activity.get("detail", ""))
+                        yield f"data: {json.dumps({'activity': activity})}\n\n"
 
-                # Stream thinking content
-                elif "thinking" in event:
-                    thinking_text = event["thinking"]
-                    yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+                    # Stream narrative events (conversational explanations like Claude Code)
+                    elif "narrative" in event:
+                        narrative_text = event["narrative"]
+                        yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
 
-                # Capture final result
-                elif "result" in event:
-                    navi_result = event["result"]
+                    # Stream thinking content
+                    elif "thinking" in event:
+                        thinking_text = event["thinking"]
+                        yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+
+                    # Capture final result
+                    elif "result" in event:
+                        navi_result = event["result"]
+
+                budget_state["ok"] = True
+            except BaseException:
+                # Includes CancelledError on disconnect/cancel
+                budget_state["ok"] = False
+                raise
+            finally:
+                budget_state["done"] = True
 
             # Process final result
             if navi_result:
@@ -7246,6 +7445,7 @@ async def navi_chat_stream(
     return StreamingResponse(
         generate_stream(),
         media_type="text/event-stream",
+        background=BackgroundTask(_finalize_budget),
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
@@ -7329,6 +7529,7 @@ class ToolStreamRequest(BaseModel):
 @router.post("/chat/stream/v2")
 async def navi_chat_stream_v2(
     request: ToolStreamRequest,
+    http_request: Request,
     user: User = Depends(require_role(Role.VIEWER)),
 ):
     """
@@ -7478,6 +7679,59 @@ async def navi_chat_stream_v2(
     provider = routing_decision.provider
     model_name = routing_decision.model
 
+    # ---------------------------
+    # Phase 4 Budget Governance
+    # Reserve BEFORE StreamingResponse so we can return 429/503 cleanly.
+    # Commit/release of this pre-reservation is handled by the StreamingResponse
+    # BackgroundTask (_finalize_budget), not by the generator itself.
+    # ---------------------------
+    budget_mgr = get_budget_manager()
+    # TODO: Derive estimate from message length + history count for better accuracy.
+    # Currently a conservative flat estimate to avoid blocking short requests.
+    estimated_tokens = _BUDGET_DEFAULT_ESTIMATE_TOKENS
+    final_scopes = []
+    pre_reserved_token = None
+
+    if budget_mgr is None and os.getenv("BUDGET_ENFORCEMENT_MODE", "strict").lower() == "strict":
+        # Strict mode requires enforcement available; fail closed.
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "BUDGET_ENFORCEMENT_UNAVAILABLE", "message": "Budget enforcement unavailable"},
+        )
+
+    if budget_mgr is not None and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled":
+        final_scopes = build_budget_scopes(
+            budget_manager=budget_mgr,
+            org_id=org_id or "org:unknown",
+            user_id=user_id or None,
+            provider_id=provider,
+            model_id=model_name,
+        )
+        try:
+            pre_reserved_token = await budget_mgr.reserve(estimated_tokens, final_scopes)
+        except BudgetExceeded as e:
+            if e.code == "BUDGET_EXCEEDED":
+                raise HTTPException(
+                    status_code=429,
+                    detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+                )
+            raise HTTPException(
+                status_code=503,
+                detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+            )
+
+    # ---------------------------
+    # Phase 4: Budget lifecycle state + disconnect watcher (V2)
+    # ---------------------------
+    budget_state = {"actual_tokens": None, "ok": False, "done": False, "finalized": False}
+    _finalize_budget = create_budget_cleanup_handlers(
+        http_request=http_request,
+        budget_mgr=budget_mgr,
+        pre_reserved_token=pre_reserved_token,
+        estimated_tokens=estimated_tokens,
+        budget_state=budget_state,
+    )
+
     logger.info(
         "[NAVI V2] Parsed model: provider=%s, model=%s, user=%s, org=%s",
         provider,
@@ -7487,16 +7741,24 @@ async def navi_chat_stream_v2(
     )
     trace_store = get_trace_store()
     trace_task_id = request.conversation_id or f"stream-v2-{uuid4()}"
-    trace_store.append(
-        "routing_decision",
-        {
-            "taskId": trace_task_id,
-            "conversationId": request.conversation_id,
-            "endpoint": "stream_v2",
-            "mode": request.mode,
-            **routing_decision.to_public_dict(),
-        },
-    )
+    try:
+        trace_store.append(
+            "routing_decision",
+            {
+                "taskId": trace_task_id,
+                "conversationId": request.conversation_id,
+                "endpoint": "stream_v2",
+                "mode": request.mode,
+                **routing_decision.to_public_dict(),
+            },
+        )
+    except Exception:
+        # Release reservation if pre-StreamingResponse setup fails; the
+        # BackgroundTask (_finalize_budget) only runs once StreamingResponse
+        # is created and started, so we must release manually here.
+        if budget_mgr and pre_reserved_token:
+            await budget_mgr.release(pre_reserved_token)
+        raise
 
     async def stream_generator():
         """Generate SSE events from the streaming agent."""
@@ -7809,8 +8071,27 @@ async def navi_chat_stream_v2(
                     except Exception:
                         pass
 
-            async for payload in heartbeat_wrapper(provider_event_generator()):
-                yield f"data: {json.dumps(payload)}\n\n"
+            # Phase 4: Budget lifecycle - generator only updates token tracking
+            try:
+                async for payload in heartbeat_wrapper(provider_event_generator()):
+                    # Token tracking: provider yields {"type":"usage","total_tokens":1234}
+                    try:
+                        if isinstance(payload, dict) and payload.get("type") == "usage":
+                            t = payload.get("total_tokens")
+                            if t is not None:
+                                budget_state["actual_tokens"] = int(t)
+                    except Exception:
+                        pass
+
+                    yield f"data: {json.dumps(payload)}\n\n"
+
+                budget_state["ok"] = True
+            except BaseException:
+                # Includes CancelledError on disconnect/cancel
+                budget_state["ok"] = False
+                raise
+            finally:
+                budget_state["done"] = True
 
             # Mark LLM activity as done
             yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'llm_call', 'label': 'Generating response', 'detail': 'Complete', 'status': 'done'}})}\n\n"
@@ -7847,6 +8128,7 @@ async def navi_chat_stream_v2(
     return StreamingResponse(
         stream_generator(),
         media_type="text/event-stream",
+        background=BackgroundTask(_finalize_budget),
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",

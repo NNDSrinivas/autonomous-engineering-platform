@@ -934,6 +934,10 @@ def _normalize_conversation_history(
 
 # ------------------------------------------------------------------------------
 # Navi entrypoints: /api/navi/chat and /api/navi/chat/stream
+#
+# NOTE: This endpoint (/api/navi/chat/stream in chat.py) does NOT enforce budget limits (Phase 4).
+# Budget enforcement is implemented on both /chat/stream and /chat/stream/v2 in navi.py.
+# TODO: Add budget enforcement here or migrate callers to the budget-enforced endpoints in navi.py.
 # ------------------------------------------------------------------------------
 @navi_router.post("/chat/stream")
 async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_db)):

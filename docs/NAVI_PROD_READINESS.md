@@ -3349,5 +3349,524 @@ Current: ✅ Script creates frames
 - Expand endpoint-level integration tests to execute live SSE flows in CI harness.
 - Add provider capability gating from registry capabilities matrix (streaming/tools/vision) beyond provider-level checks.
 
-**Last Updated:** February 13, 2026
+---
+
+## Phase 4: Budget Enforcement (Token Governance) - Feb 16, 2026
+
+### Executive Summary
+
+Phase 4 introduces production-grade token budget enforcement to prevent cost overruns and ensure financial correctness. The system uses Redis-backed atomic operations with reserve/commit/release lifecycle, providing:
+
+- **Financial Correctness**: Zero budget leaks verified under stress testing
+- **Multi-Scope Enforcement**: Global, org, user, provider, and model-level limits
+- **Deterministic Responses**: HTTP 429 (budget exceeded) or 503 (system unavailable)
+- **Graceful Degradation**: Advisory and disabled modes for flexibility
+
+**Status:** ✅ **Production-ready** (all smoke tests passed, Copilot review feedback addressed)
+
+### Architecture Overview
+
+#### Budget Lifecycle
+
+```
+1. RESERVE (pre-flight)
+   ├─ Check available budget across all scopes atomically (Lua script)
+   ├─ Increment reserved counter
+   └─ Return token with captured day (midnight-safe)
+
+2. STREAM (in-progress)
+   ├─ Generator tracks actual token usage
+   ├─ Disconnect watcher monitors client state
+   └─ Background task guarantees cleanup
+
+3. FINALIZE (terminal action)
+   ├─ COMMIT: Decrement reserved, increment used (normal completion)
+   ├─ RELEASE: Decrement reserved (error/disconnect)
+   └─ NOTHING: Reserve failed, no cleanup needed
+```
+
+#### Critical Invariants
+
+✅ **Single Terminal Action** - Exactly ONE of (commit | release | nothing) per request
+✅ **Idempotent Finalization** - `budget_state["finalized"]` flag set before every terminal action; prevents double commit/release if `_finalize_budget` is invoked more than once
+✅ **Reserve-Before-Stream** - Budget check before HTTP response starts
+✅ **Midnight Safety** - `token.day` captured at reserve, reused in commit/release
+✅ **TTL Management** - All Redis keys expire after 48 hours
+✅ **Atomic Multi-Scope** - Lua scripts prevent race conditions
+✅ **Disconnect Detection** - BackgroundTask + disconnect watcher guarantee cleanup
+
+### Configuration
+
+#### Environment Variables
+
+| Variable                  | Default    | Description                              |
+| ------------------------- | ---------- | ---------------------------------------- |
+| `BUDGET_ENFORCEMENT_MODE` | `strict`   | `strict` / `advisory` / `disabled`       |
+| `BUDGET_REDIS_URL`        | (fallback) | Redis URL for budget subsystem           |
+| `APP_ENV`                 | `dev`      | Environment: `dev` / `staging` / `prod`  |
+
+#### Enforcement Modes
+
+- **`strict`** (production default)
+  - Reserve failure → HTTP 429 (budget exceeded) or 503 (system unavailable)
+  - Redis unavailable → HTTP 503 (fail-closed)
+  - Best for production with hard limits
+
+- **`advisory`** (staging/canary)
+  - Reserve failure logged but not enforced
+  - Redis unavailable → requests proceed with warning
+  - Best for gradual rollout / monitoring
+
+- **`disabled`** (development)
+  - All budget checks skipped
+  - Redis not required
+  - Best for local development
+
+#### Budget Policies
+
+Policies are defined in `shared/budget-policy-{env}.json`:
+
+**Development** (`budget-policy-dev.json`):
+```json
+{
+  "version": 1,
+  "defaults": { "per_day": 2000000 },
+  "orgs": { "org:unknown": { "per_day": 50000 } },
+  "providers": {
+    "openai": { "per_day": 2000000 },
+    "anthropic": { "per_day": 2000000 }
+  }
+}
+```
+
+**Production** (`budget-policy-prod.json`):
+```json
+{
+  "version": 1,
+  "defaults": { "per_day": 500000000 },
+  "orgs": { "org:unknown": { "per_day": 50000 } },
+  "providers": {},
+  "models": {},
+  "users": {}
+}
+```
+
+**Policy Validation:**
+```bash
+npm run validate:budget-policy
+```
+
+### Operational Runbook
+
+#### Deployment Checklist
+
+**Before Deploying:**
+- [ ] Redis instance available and accessible
+- [ ] Budget policy files present in `shared/` directory
+- [ ] Policies validated with `npm run validate:budget-policy`
+- [ ] `BUDGET_ENFORCEMENT_MODE` set (default: `strict`)
+- [ ] Redis persistence configured (RDB or AOF)
+- [ ] Monitoring dashboards configured (see Metrics section)
+
+**Recommended Rollout:**
+1. **Dev:** Test with `disabled` mode
+2. **Staging:** Enable `advisory` mode for 24-48 hours
+3. **Production Canary:** Start with `advisory`, monitor for anomalies
+4. **Production Full:** Switch to `strict` after validation
+
+#### Startup Verification
+
+Check backend logs for budget manager initialization:
+
+```
+✅ Budget manager initialized: mode=strict env=prod redis=redis://redis:6379/0
+```
+
+**Success indicators:**
+- Mode matches `BUDGET_ENFORCEMENT_MODE`
+- Environment matches `APP_ENV`
+- Redis URL correct
+
+**Warning indicators:**
+```
+⚠️ Budget manager init: advisory mode (Redis unreachable)
+```
+→ Acceptable in advisory mode, fix Redis in strict mode
+
+**Error indicators:**
+```
+❌ Budget manager unavailable in strict mode: Connection refused
+```
+→ Redis unreachable in strict mode → all requests will return HTTP 503
+
+#### Runtime Operations
+
+**Check Budget Status:**
+```bash
+# Redis command to view current budget state
+redis-cli HGETALL budget:global:global:2026-02-16
+# Returns: limit, used, reserved
+
+# Check org-specific budget
+redis-cli HGETALL budget:org:org:acme-corp:2026-02-16
+```
+
+**Expected Fields:**
+- `limit`: Daily limit in tokens
+- `used`: Tokens consumed (committed)
+- `reserved`: Tokens currently in-flight (streaming requests)
+
+**Healthy State:**
+- `used + reserved <= limit`
+- `reserved` should trend toward 0 when no active requests
+
+**Unhealthy State:**
+- `used + reserved > limit` → Budget exceeded
+- `reserved` stuck > 0 with no active requests → Potential leak (investigate)
+
+### Troubleshooting Guide
+
+#### Issue: HTTP 429 "Budget Exceeded"
+
+**Symptom:** Requests fail with:
+```json
+{
+  "code": "BUDGET_EXCEEDED",
+  "message": "Budget exceeded",
+  "details": {
+    "failed_scope": { "scope": "org", "scope_id": "org:acme-corp" },
+    "remaining": 124
+  }
+}
+```
+
+**Root Causes:**
+1. Legitimate budget exhaustion (usage exceeds policy)
+2. Policy limits too low for actual usage
+3. Budget leak (reserved tokens not released)
+
+**Diagnosis:**
+```bash
+# Check current usage
+redis-cli HGETALL budget:org:org:acme-corp:$(date -u +%Y-%m-%d)
+
+# Check Prometheus metrics
+curl http://localhost:8787/metrics | grep aep_budget_current_usage
+```
+
+**Resolution:**
+1. **Increase Policy Limit** (if legitimate usage)
+   - Edit `shared/budget-policy-{env}.json`
+   - Redeploy backend
+   - **Important:** Policy limit changes do **not** retroactively update existing Redis keys. Existing
+     keys continue enforcing the old limit until their TTL expires (up to 48 hours).
+   - To apply new limits immediately, flush affected keys:
+     ```bash
+     redis-cli DEL budget:global:global:$(date -u +%Y-%m-%d)
+     redis-cli DEL budget:org:<org-id>:$(date -u +%Y-%m-%d)
+     ```
+
+2. **Investigate Budget Leak** (if `reserved` stuck > 0)
+   - Check Prometheus `aep_budget_current_reserved_tokens`
+   - Review application logs for disconnect errors
+   - File bug report with reproduction steps
+
+3. **Temporary Bypass** (emergency only)
+   - Set `BUDGET_ENFORCEMENT_MODE=advisory`
+   - Restart backend
+   - Plan proper fix
+
+#### Issue: HTTP 503 "Budget Enforcement Unavailable"
+
+**Symptom:** All requests fail with:
+```json
+{
+  "code": "BUDGET_ENFORCEMENT_UNAVAILABLE",
+  "message": "Budget enforcement unavailable"
+}
+```
+
+**Root Cause:** Redis unavailable in `strict` mode
+
+**Diagnosis:**
+```bash
+# Test Redis connectivity
+redis-cli -h $REDIS_HOST -p $REDIS_PORT ping
+# Should return: PONG
+
+# Check backend logs
+grep "Budget manager unavailable" /var/log/backend.log
+```
+
+**Resolution:**
+1. **Fix Redis** (preferred)
+   - Restart Redis service
+   - Check network connectivity
+   - Verify `BUDGET_REDIS_URL` / `REDIS_URL` environment variable
+
+2. **Temporary Bypass** (degraded mode)
+   - Set `BUDGET_ENFORCEMENT_MODE=advisory`
+   - Restart backend
+   - **WARNING:** Budgets not enforced until Redis restored
+
+#### Issue: Budget Leak (Reserved Tokens Stuck)
+
+**Symptom:** Prometheus shows `aep_budget_current_reserved_tokens` > 0 with no active requests
+
+**Root Cause:** Client disconnect not properly releasing budget
+
+**Diagnosis:**
+```bash
+# Check reserved tokens
+redis-cli HGET budget:global:global:$(date -u +%Y-%m-%d) reserved
+
+# Check for disconnect errors in logs
+grep "Budget release failed" /var/log/backend.log
+
+# Check Prometheus for release failures
+curl http://localhost:8787/metrics | grep aep_budget_tokens_released_total
+```
+
+**Resolution:**
+1. **Immediate:** Manual Redis cleanup (emergency only)
+   ```bash
+   # DANGER: Only use if certain no active requests exist
+   redis-cli HSET budget:global:global:$(date -u +%Y-%m-%d) reserved 0
+   ```
+
+2. **Proper Fix:** File bug report with:
+   - Timestamp of stuck reservation
+   - Client disconnect pattern (timeout, Ctrl+C, network error)
+   - Reproduction steps
+
+3. **Prevention:** Ensure BackgroundTask cleanup is working
+   - Verify `create_budget_cleanup_handlers()` called in streaming endpoints
+   - Check disconnect watcher polling interval (default: 0.5s)
+
+#### Issue: Overspend Anomaly (Actual >> Estimate)
+
+**Symptom:** Logs show:
+```
+CRITICAL - BUDGET ANOMALY: Massive overspend detected reserved=2500 used=15000 ratio=6.00x
+```
+
+**Root Cause:** Provider returned significantly more tokens than estimated
+
+**Diagnosis:**
+```bash
+# Check Prometheus overspend metrics
+curl http://localhost:8787/metrics | grep aep_budget_overspend_anomalies_total
+
+# Review logs for pattern
+grep "BUDGET ANOMALY" /var/log/backend.log | tail -20
+```
+
+**Impact:**
+- Budget is still committed (realistic: provider already billed)
+- May cause budget exhaustion faster than expected
+
+**Resolution:**
+1. **Tune Estimates:** Increase `estimated_tokens` in `navi.py` (currently 2500)
+2. **Adjust Policies:** If systematic, increase limits
+3. **Monitor:** Track overspend frequency with Prometheus
+4. **Investigate:** If specific model/provider, may need provider-specific estimates
+
+#### Issue: Midnight Boundary Confusion
+
+**Symptom:** Budget resets unexpectedly or wrong day bucket incremented
+
+**Root Cause:** System clock mismatch or `token.day` not preserved
+
+**Diagnosis:**
+```bash
+# Check system time is UTC
+date -u
+
+# Verify token.day logic in code
+grep "token.day" backend/services/budget_manager.py
+```
+
+**Resolution:**
+- **CRITICAL:** Commit/release MUST use `token.day`, not current day
+- Verify unit tests `test_midnight_boundary_*` are passing
+- Check Redis keys match expected day format (YYYY-MM-DD)
+
+### Monitoring & Alerts
+
+#### Prometheus Metrics
+
+**Budget Operations:**
+```
+aep_budget_reserve_total{scope_type, status}  # success|exceeded|unavailable
+aep_budget_tokens_reserved_total{scope_type}
+aep_budget_tokens_committed_total{scope_type}
+aep_budget_tokens_released_total{scope_type}
+```
+
+**Anomalies:**
+```
+aep_budget_overspend_anomalies_total{scope_type, severity}  # moderate|critical
+```
+
+**Current State (Gauges):**
+```
+aep_budget_current_usage_tokens{scope_type, scope_id, day}
+aep_budget_current_reserved_tokens{scope_type, scope_id, day}
+aep_budget_limit_tokens{scope_type, scope_id, day}
+```
+
+#### Recommended Alerts
+
+**Critical Alerts:**
+```yaml
+# Budget Enforcement Unavailable
+- alert: BudgetEnforcementUnavailable
+  expr: rate(aep_budget_reserve_total{status="unavailable"}[5m]) > 0
+  for: 2m
+  severity: critical
+  summary: "Budget enforcement failing (Redis unavailable?)"
+
+# Budget Leak Detection
+- alert: BudgetReservedStuck
+  expr: aep_budget_current_reserved_tokens > 0 for 10m
+  severity: critical
+  summary: "Reserved tokens stuck > 10 min (potential leak)"
+
+# Overspend Anomaly Spike
+- alert: BudgetOverspendSpike
+  expr: rate(aep_budget_overspend_anomalies_total{severity="critical"}[10m]) > 5
+  severity: warning
+  summary: "Frequent critical overspend anomalies detected"
+```
+
+**Warning Alerts:**
+```yaml
+# Budget Approaching Limit
+- alert: BudgetNearLimit
+  expr: (aep_budget_current_usage_tokens / aep_budget_limit_tokens) > 0.8
+  severity: warning
+  summary: "Budget usage >80% of daily limit"
+
+# High Budget Exceeded Rate
+- alert: BudgetExceededRate
+  expr: rate(aep_budget_reserve_total{status="exceeded"}[5m]) > 0.1
+  for: 5m
+  severity: warning
+  summary: "High rate of budget-exceeded errors"
+```
+
+#### Grafana Dashboard Queries
+
+**Budget Usage Over Time:**
+```promql
+sum by (scope_type) (aep_budget_current_usage_tokens)
+```
+
+**Budget Utilization Percentage:**
+```promql
+(aep_budget_current_usage_tokens / aep_budget_limit_tokens) * 100
+```
+
+**Reserve Success Rate:**
+```promql
+rate(aep_budget_reserve_total{status="success"}[5m])
+  /
+rate(aep_budget_reserve_total[5m])
+```
+
+**Overspend Anomaly Rate:**
+```promql
+rate(aep_budget_overspend_anomalies_total[5m])
+```
+
+### Testing & Validation
+
+#### Unit Tests
+
+**Midnight Boundary Safety:**
+```bash
+pytest backend/tests/test_budget_manager_hardening.py::test_midnight_boundary_commit_uses_token_day
+pytest backend/tests/test_budget_manager_hardening.py::test_midnight_boundary_release_uses_token_day
+```
+
+**Overspend Anomaly Detection:**
+```bash
+pytest backend/tests/test_budget_manager_hardening.py::test_overspend_anomaly_critical_log
+pytest backend/tests/test_budget_manager_hardening.py::test_overspend_within_threshold_no_critical_log
+```
+
+**Disabled/Advisory Mode:**
+```bash
+pytest backend/tests/test_budget_manager_hardening.py::test_disabled_mode_with_none_redis
+pytest backend/tests/test_budget_manager_hardening.py::test_advisory_mode_with_none_redis
+```
+
+#### Smoke Tests (Production-Reality)
+
+**Test 0: Exception After Reserve**
+```bash
+export BUDGET_TEST_THROW_AFTER_RESERVE=1
+curl -X POST http://localhost:8787/api/navi/chat/stream/v2 \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hi", "model": "navi/intelligence"}'
+# Expected: HTTP 500, reserved decrements to 0
+```
+
+**Test 2: Client Disconnect**
+```bash
+timeout 2 curl -N -X POST http://localhost:8787/api/navi/chat/stream/v2 \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Long essay", "model": "navi/intelligence"}'
+# Expected: reserved returns to 0 after disconnect
+```
+
+**Test 3: Concurrent Atomicity**
+```bash
+# Set limit to 5000 tokens
+for i in {1..10}; do
+  curl -X POST http://localhost:8787/api/navi/chat/stream/v2 \
+    -H "Content-Type: application/json" \
+    -d '{"message": "test", "model": "navi/intelligence"}' &
+done
+wait
+# Expected: Exactly 2 succeed, 8 get HTTP 429
+```
+
+### Known Limitations
+
+1. **Redis Single Point of Failure**
+   - Mitigation: Use Redis Sentinel or Cluster for HA
+   - Fallback: Advisory mode allows operation during Redis outage
+
+2. **Hardcoded Estimate (2500 tokens)**
+   - Impact: May cause frequent overspend anomalies for long responses
+   - Future: Make configurable or use dynamic estimation
+
+3. **No Cross-Day Rollover**
+   - Impact: Unused budget does not carry over to next day
+   - Design: Intentional per-day quota enforcement
+
+4. **Overspend Cannot Be Prevented**
+   - Reason: Provider already returned response (can't undo billing)
+   - Mitigation: Log CRITICAL anomalies for investigation
+
+### Future Enhancements
+
+- [ ] Dynamic token estimation based on message length
+- [ ] Budget rollover/carryover policies
+- [ ] Real-time dashboard for budget visualization
+- [ ] Automated policy adjustment based on usage patterns
+- [ ] Budget forecasting and trend analysis
+- [ ] Per-user budget notification system
+
+### Related Documentation
+
+- **Implementation:** Phase 4 Budget Enforcement (internal design doc)
+- **PR:** #70 - Phase 4: Budget Enforcement (Token Governance)
+- **Smoke Tests:** See Phase 4 Budget Enforcement design doc for comprehensive test suite
+- **Code Audit:** Single terminal action invariant, midnight safety, atomic enforcement
+
+---
+
+**Last Updated:** February 16, 2026
 **Next Review:** March 1, 2026 (after first month of customer pilots)

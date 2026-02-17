@@ -96,3 +96,52 @@ CIRCUIT_BREAKER_STATE = Gauge(
     "Circuit breaker state (0=closed,1=open,2=half_open)",
     ["provider"],
 )
+
+# Phase 4: Budget enforcement metrics
+BUDGET_RESERVE_TOTAL = Counter(
+    "aep_budget_reserve_total",
+    "Budget reserve attempts",
+    ["scope_type", "status"],  # status: success|exceeded|unavailable
+)
+
+BUDGET_TOKENS_RESERVED = Counter(
+    "aep_budget_tokens_reserved_total",
+    "Total tokens reserved (pre-flight)",
+    ["scope_type"],
+)
+
+BUDGET_TOKENS_COMMITTED = Counter(
+    "aep_budget_tokens_committed_total",
+    "Total tokens committed (actual usage)",
+    ["scope_type"],
+)
+
+BUDGET_TOKENS_RELEASED = Counter(
+    "aep_budget_tokens_released_total",
+    "Total tokens released (cancelled/error)",
+    ["scope_type"],
+)
+
+BUDGET_OVERSPEND_ANOMALIES = Counter(
+    "aep_budget_overspend_anomalies_total",
+    "Overspend anomalies (actual >> estimate)",
+    ["scope_type", "severity"],  # severity: moderate|critical
+)
+
+BUDGET_CURRENT_USAGE = Gauge(
+    "aep_budget_current_usage_tokens",
+    "Current budget usage in tokens",
+    ["scope_type", "scope_id", "day"],
+)
+
+BUDGET_CURRENT_RESERVED = Gauge(
+    "aep_budget_current_reserved_tokens",
+    "Currently reserved tokens (in-flight requests)",
+    ["scope_type", "scope_id", "day"],
+)
+
+BUDGET_LIMIT = Gauge(
+    "aep_budget_limit_tokens",
+    "Budget limit in tokens",
+    ["scope_type", "scope_id", "day"],
+)

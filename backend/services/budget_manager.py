@@ -7,6 +7,14 @@ from typing import Dict, List, Optional, Tuple
 
 import redis.asyncio as redis
 
+from backend.telemetry.metrics import (
+    BUDGET_OVERSPEND_ANOMALIES,
+    BUDGET_RESERVE_TOTAL,
+    BUDGET_TOKENS_COMMITTED,
+    BUDGET_TOKENS_RELEASED,
+    BUDGET_TOKENS_RESERVED,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -164,6 +172,10 @@ return {1}
         try:
             res = await self._r.eval(self.LUA_RESERVE, len(keys), *keys, *argv)
         except Exception as e:
+            # Emit metric: reserve unavailable
+            for scope in scopes:
+                BUDGET_RESERVE_TOTAL.labels(scope_type=scope.scope, status="unavailable").inc()
+
             if self.enforcement_mode == "strict":
                 raise BudgetExceeded(
                     "Budget enforcement unavailable (Redis/Lua error)",
@@ -177,6 +189,11 @@ return {1}
             failed_index = int(res[1])
             remaining = int(res[2])
             failed_scope = scopes[failed_index - 1] if 0 <= failed_index - 1 < len(scopes) else None
+
+            # Emit metric: reserve exceeded
+            for scope in scopes:
+                BUDGET_RESERVE_TOTAL.labels(scope_type=scope.scope, status="exceeded").inc()
+
             raise BudgetExceeded(
                 "Budget exceeded",
                 code="BUDGET_EXCEEDED",
@@ -191,6 +208,12 @@ return {1}
             )
 
         logger.info("Budget reserved: amount=%s day=%s scopes=%s", amount, day, [(s.scope, s.scope_id) for s in scopes])
+
+        # Emit metrics: reserve success
+        for scope in scopes:
+            BUDGET_RESERVE_TOTAL.labels(scope_type=scope.scope, status="success").inc()
+            BUDGET_TOKENS_RESERVED.labels(scope_type=scope.scope).inc(amount)
+
         return BudgetReservationToken(day=day, amount=amount, scopes=tuple(scopes))
 
     async def commit(self, token: BudgetReservationToken, used_amount: int) -> None:
@@ -210,8 +233,14 @@ return {1}
                     "BUDGET ANOMALY: Massive overspend detected reserved=%s used=%s ratio=%.2fx",
                     token.amount, used_amount, ratio,
                 )
+                # Emit metric: critical overspend anomaly
+                for scope in token.scopes:
+                    BUDGET_OVERSPEND_ANOMALIES.labels(scope_type=scope.scope, severity="critical").inc()
             else:
                 logger.warning("Budget overspend: reserved=%s used=%s", token.amount, used_amount)
+                # Emit metric: moderate overspend anomaly
+                for scope in token.scopes:
+                    BUDGET_OVERSPEND_ANOMALIES.labels(scope_type=scope.scope, severity="moderate").inc()
 
         keys = [self._key_for(s, token.day) for s in token.scopes]
         limits = [s.per_day_limit for s in token.scopes]
@@ -225,6 +254,10 @@ return {1}
             return
 
         logger.info("Budget committed: reserved=%s used=%s day=%s", token.amount, used_amount, token.day)
+
+        # Emit metrics: commit success
+        for scope in token.scopes:
+            BUDGET_TOKENS_COMMITTED.labels(scope_type=scope.scope).inc(used_amount)
 
     async def release(self, token: BudgetReservationToken) -> None:
         if token.amount <= 0:
@@ -243,6 +276,10 @@ return {1}
             return
 
         logger.info("Budget released: amount=%s day=%s", token.amount, token.day)
+
+        # Emit metrics: release success
+        for scope in token.scopes:
+            BUDGET_TOKENS_RELEASED.labels(scope_type=scope.scope).inc(token.amount)
 
     async def snapshot(self, scopes: List[BudgetScope], day: Optional[str] = None) -> Dict[str, Dict[str, int]]:
         day = day or _utc_day_bucket()

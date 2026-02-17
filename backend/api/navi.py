@@ -257,6 +257,86 @@ def _build_router_info(
     return router_info
 
 
+def create_budget_cleanup_handlers(
+    http_request: Request,
+    budget_mgr: Optional[Any],
+    pre_reserved_token: Optional[Any],
+    estimated_tokens: int,
+    budget_state: Dict[str, Any],
+    polling_interval: float = 0.5,
+    max_wait_iterations: int = 8,
+):
+    """
+    Create budget cleanup handlers for streaming endpoints.
+
+    Returns: (finalize_budget callable, disconnect_task)
+
+    Args:
+        http_request: FastAPI Request object
+        budget_mgr: BudgetManager instance or None
+        pre_reserved_token: Token from reserve() or None
+        estimated_tokens: Fallback token estimate
+        budget_state: Shared state dict with keys: actual_tokens, ok, done
+        polling_interval: Disconnect polling interval in seconds (default: 0.5s)
+        max_wait_iterations: Max iterations to wait for generator completion (default: 8)
+    """
+    disconnect_evt = asyncio.Event()
+
+    async def _watch_disconnect():
+        """Poll for client disconnect and trigger immediate release."""
+        try:
+            while not budget_state["done"]:
+                if await http_request.is_disconnected():
+                    disconnect_evt.set()
+                    break
+                await asyncio.sleep(polling_interval)
+        except Exception:
+            pass
+
+    disconnect_task = asyncio.create_task(_watch_disconnect())
+
+    async def _finalize_budget():
+        """
+        Guaranteed cleanup via StreamingResponse background task.
+        On disconnect: release immediately.
+        On normal completion: commit with actual_tokens.
+        """
+        try:
+            if disconnect_evt.is_set():
+                if budget_mgr and pre_reserved_token:
+                    await budget_mgr.release(pre_reserved_token)
+                return
+
+            # Wait briefly for generator to mark done
+            for _ in range(max_wait_iterations):
+                if budget_state["done"] or disconnect_evt.is_set():
+                    break
+                await asyncio.sleep(polling_interval)
+
+            if disconnect_evt.is_set():
+                if budget_mgr and pre_reserved_token:
+                    await budget_mgr.release(pre_reserved_token)
+                return
+
+            if not (budget_mgr and pre_reserved_token):
+                return
+
+            if budget_state["ok"]:
+                used = budget_state["actual_tokens"]
+                if used is None or int(used) <= 0:
+                    used = estimated_tokens
+                await budget_mgr.commit(pre_reserved_token, int(used))
+            else:
+                await budget_mgr.release(pre_reserved_token)
+        finally:
+            if not disconnect_task.done():
+                disconnect_task.cancel()
+                with suppress(Exception):
+                    await disconnect_task
+
+    return _finalize_budget, disconnect_task
+
+
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
 agent_router = APIRouter(prefix="/api/agent", tags=["agent-classify"])
 jobs_router = APIRouter(prefix="/api/jobs", tags=["navi-jobs"])
@@ -6677,59 +6757,13 @@ async def navi_chat_stream(
     # Phase 4: Budget lifecycle state + disconnect watcher (V1)
     # ---------------------------
     budget_state = {"actual_tokens": None, "ok": False, "done": False}
-    disconnect_evt = asyncio.Event()
-
-    async def _watch_disconnect():
-        """Poll for client disconnect and trigger immediate release."""
-        try:
-            while not budget_state["done"]:
-                if await http_request.is_disconnected():
-                    disconnect_evt.set()
-                    break
-                await asyncio.sleep(0.25)
-        except Exception:
-            pass
-
-    disconnect_task = asyncio.create_task(_watch_disconnect())
-
-    async def _finalize_budget():
-        """
-        Guaranteed cleanup via StreamingResponse background task.
-        On disconnect: release immediately.
-        On normal completion: commit with actual_tokens.
-        """
-        try:
-            if disconnect_evt.is_set():
-                if budget_mgr and pre_reserved_token:
-                    await budget_mgr.release(pre_reserved_token)
-                return
-
-            # Wait briefly for generator to mark done
-            for _ in range(40):
-                if budget_state["done"] or disconnect_evt.is_set():
-                    break
-                await asyncio.sleep(0.25)
-
-            if disconnect_evt.is_set():
-                if budget_mgr and pre_reserved_token:
-                    await budget_mgr.release(pre_reserved_token)
-                return
-
-            if not (budget_mgr and pre_reserved_token):
-                return
-
-            if budget_state["ok"]:
-                used = budget_state["actual_tokens"]
-                if used is None or int(used) <= 0:
-                    used = estimated_tokens
-                await budget_mgr.commit(pre_reserved_token, int(used))
-            else:
-                await budget_mgr.release(pre_reserved_token)
-        finally:
-            if not disconnect_task.done():
-                disconnect_task.cancel()
-                with suppress(Exception):
-                    await disconnect_task
+    _finalize_budget, disconnect_task = create_budget_cleanup_handlers(
+        http_request=http_request,
+        budget_mgr=budget_mgr,
+        pre_reserved_token=pre_reserved_token,
+        estimated_tokens=estimated_tokens,
+        budget_state=budget_state,
+    )
 
     trace_store = get_trace_store()
     trace_task_id = request.conversation_id or f"stream-{uuid4()}"
@@ -7650,62 +7684,16 @@ async def navi_chat_stream_v2(
             )
 
     # ---------------------------
-    # Phase 4: Budget lifecycle state + disconnect watcher
+    # Phase 4: Budget lifecycle state + disconnect watcher (V2)
     # ---------------------------
     budget_state = {"actual_tokens": None, "ok": False, "done": False}
-    disconnect_evt = asyncio.Event()
-
-    async def _watch_disconnect():
-        """Poll for client disconnect and trigger immediate release."""
-        try:
-            while not budget_state["done"]:
-                if await http_request.is_disconnected():
-                    disconnect_evt.set()
-                    break
-                await asyncio.sleep(0.25)
-        except Exception:
-            pass
-
-    disconnect_task = asyncio.create_task(_watch_disconnect())
-
-    async def _finalize_budget():
-        """
-        Guaranteed cleanup via StreamingResponse background task.
-        On disconnect: release immediately.
-        On normal completion: commit with actual_tokens.
-        """
-        try:
-            if disconnect_evt.is_set():
-                if budget_mgr and pre_reserved_token:
-                    await budget_mgr.release(pre_reserved_token)
-                return
-
-            # Wait briefly for generator to mark done
-            for _ in range(40):
-                if budget_state["done"] or disconnect_evt.is_set():
-                    break
-                await asyncio.sleep(0.25)
-
-            if disconnect_evt.is_set():
-                if budget_mgr and pre_reserved_token:
-                    await budget_mgr.release(pre_reserved_token)
-                return
-
-            if not (budget_mgr and pre_reserved_token):
-                return
-
-            if budget_state["ok"]:
-                used = budget_state["actual_tokens"]
-                if used is None or int(used) <= 0:
-                    used = estimated_tokens
-                await budget_mgr.commit(pre_reserved_token, int(used))
-            else:
-                await budget_mgr.release(pre_reserved_token)
-        finally:
-            if not disconnect_task.done():
-                disconnect_task.cancel()
-                with suppress(Exception):
-                    await disconnect_task
+    _finalize_budget, disconnect_task = create_budget_cleanup_handlers(
+        http_request=http_request,
+        budget_mgr=budget_mgr,
+        pre_reserved_token=pre_reserved_token,
+        estimated_tokens=estimated_tokens,
+        budget_state=budget_state,
+    )
 
     logger.info(
         "[NAVI V2] Parsed model: provider=%s, model=%s, user=%s, org=%s",

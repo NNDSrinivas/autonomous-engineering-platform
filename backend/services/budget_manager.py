@@ -140,7 +140,7 @@ end
 return {1}
 """
 
-    def __init__(self, redis_client: redis.Redis, *, enforcement_mode: str, policy: dict):
+    def __init__(self, redis_client: Optional[redis.Redis], *, enforcement_mode: str, policy: dict):
         self._r = redis_client
         self.enforcement_mode = enforcement_mode  # strict|advisory|disabled
         self.policy = policy

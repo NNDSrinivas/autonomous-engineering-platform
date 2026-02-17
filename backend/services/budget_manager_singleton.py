@@ -64,14 +64,14 @@ async def init_budget_manager() -> Optional[BudgetManager]:
         return _BUDGET_MANAGER
     except Exception as e:
         if enforcement == "disabled":
-            r = redis.from_url(redis_url, decode_responses=False)
-            _BUDGET_MANAGER = BudgetManager(r, enforcement_mode="disabled", policy=policy)
+            # Redis is unreachable; initialize BudgetManager without a Redis client
+            _BUDGET_MANAGER = BudgetManager(None, enforcement_mode="disabled", policy=policy)
             logger.warning("Budget manager init: disabled mode (Redis unreachable): %s", e)
             return _BUDGET_MANAGER
 
         if enforcement == "advisory":
-            r = redis.from_url(redis_url, decode_responses=False)
-            _BUDGET_MANAGER = BudgetManager(r, enforcement_mode="advisory", policy=policy)
+            # Redis is unreachable; initialize BudgetManager without a Redis client
+            _BUDGET_MANAGER = BudgetManager(None, enforcement_mode="advisory", policy=policy)
             logger.warning("Budget manager init: advisory mode (Redis unreachable): %s", e)
             return _BUDGET_MANAGER
 

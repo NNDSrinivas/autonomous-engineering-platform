@@ -8,7 +8,10 @@ server {
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
 
-    # Proxy /api/* → backend (URL injected at runtime via BACKEND_URL env var)
+    # Proxy /api/* → backend (URL injected at runtime via BACKEND_URL env var).
+    # IMPORTANT: BACKEND_URL must NOT have a trailing slash.
+    # Use http://backend:8787 — NOT http://backend:8787/
+    # A trailing slash causes nginx to strip the /api/ prefix when proxying.
     location /api/ {
         proxy_pass ${BACKEND_URL};
         proxy_http_version 1.1;

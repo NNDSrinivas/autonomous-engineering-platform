@@ -273,9 +273,6 @@ Create `.vscode/settings.json` if it doesn't exist and add:
 # Stop Docker services (keeps data)
 docker compose down
 
-# Stop Prometheus + Grafana (keeps data)
-docker stop navi-prometheus grafana
-
 # Stop Prometheus + Grafana using helper script (stops containers, keeps data)
 ./scripts/stop_grafana_local.sh
 

@@ -15,7 +15,10 @@ RUN npm install --prefer-offline
 # Copy source
 COPY . .
 
-# Build-time env vars (Vite bakes these into the JS bundle)
+# Build-time env vars (Vite bakes these into the JS bundle).
+# WARNING: Defaults point to localhost — only valid for local dev builds.
+# Always override via --build-arg for staging/production, e.g.:
+#   docker buildx build --build-arg VITE_CORE_API=https://staging.navralabs.com ...
 ARG VITE_CORE_API=http://localhost:8787
 ARG VITE_API_BASE_URL=http://localhost:8787
 ARG VITE_NAVI_BACKEND_URL=http://localhost:8787

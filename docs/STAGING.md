@@ -34,7 +34,7 @@ The staging environment runs on AWS ECS Fargate and is the canonical integration
 
 ### Web browser
 
-Open https://staging.navralabs.com — no login required (JWT disabled in staging).
+Open https://staging.navralabs.com — no login required (`JWT_ENABLED=false` is set explicitly in the ECS task definition).
 
 ### VS Code extension — workspace files
 
@@ -145,11 +145,15 @@ aws ecs update-service --cluster aep-staging --service aep-frontend-staging-svc 
 Run after any schema change (Alembic one-off task):
 
 ```bash
+# Set these from your AWS console (VPC → Subnets / Security Groups for the staging cluster)
+SUBNET_ID=subnet-xxxxxxxxxxxxxxx
+SG_ID=sg-xxxxxxxxxxxxxxx
+
 aws ecs run-task \
   --cluster aep-staging \
   --task-definition aep-backend-staging \
   --launch-type FARGATE \
-  --network-configuration 'awsvpcConfiguration={subnets=[subnet-0dc371c9bb85d680e],securityGroups=[sg-024e491e60830af98],assignPublicIp=ENABLED}' \
+  --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$SG_ID],assignPublicIp=ENABLED}" \
   --overrides '{"containerOverrides":[{"name":"aep-backend","command":["python","-m","alembic","upgrade","head"]}]}' \
   --region us-east-1 --profile navra-staging
 ```

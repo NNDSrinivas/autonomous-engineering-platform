@@ -15,7 +15,8 @@
       ],
       "environment": [
         { "name": "APP_ENV", "value": "staging" },
-        { "name": "BUDGET_ENFORCEMENT_MODE", "value": "strict" },
+        { "name": "BUDGET_ENFORCEMENT_MODE", "value": "advisory" },
+        { "name": "JWT_ENABLED", "value": "false" },
         { "name": "CORS_ALLOW_ORIGINS", "value": "https://staging.navralabs.com" }
       ],
       "secrets": [

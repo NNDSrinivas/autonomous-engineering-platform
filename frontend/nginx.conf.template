@@ -13,7 +13,12 @@ server {
     # Use http://backend:8787 — NOT http://backend:8787/
     # A trailing slash causes nginx to strip the /api/ prefix when proxying.
     location /api/ {
-        proxy_pass ${BACKEND_URL};
+        # Validate BACKEND_URL has no trailing slash (trailing slash strips /api/ prefix).
+        set $backend_url "${BACKEND_URL}";
+        if ($backend_url ~ "/$") {
+            return 500 "Misconfigured BACKEND_URL: must not have a trailing slash";
+        }
+        proxy_pass $backend_url;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

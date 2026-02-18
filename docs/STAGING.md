@@ -190,11 +190,11 @@ Users then install via the Extensions tab: search `NAVI Assistant` (prod) or `NA
 | ECS cluster | `aep-staging` |
 | Backend task definition | `aep-backend-staging` |
 | Frontend task definition | `aep-frontend-staging` |
-| ECR — backend | `625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend` |
-| ECR — frontend | `625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend` |
+| ECR — backend | `<AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend` |
+| ECR — frontend | `<AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend` |
 | ECS execution role | `NavraLabsEcsTaskExecutionRole-Staging` |
-| VPC subnet | `subnet-0dc371c9bb85d680e` |
-| Security group | `sg-024e491e60830af98` |
+| VPC subnet | `<STAGING_SUBNET_ID>` |
+| Security group | `<STAGING_SECURITY_GROUP_ID>` |
 | RDS | `aep-staging-db` (PostgreSQL 15, `us-east-1`) |
 | Redis | `aep-staging-redis` (ElastiCache 7.1, `us-east-1`) |
 | Secrets Manager prefix | `aep/staging/*` |

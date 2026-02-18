@@ -336,6 +336,7 @@ jobs:
       JWT_SECRET: test-jwt-secret-for-ci
       ENABLE_AUDIT_LOGGING: false
       OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
+      PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

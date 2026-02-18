@@ -67,8 +67,5 @@
     "lodash": ">=4.17.23",
     "esbuild": ">=0.25.0",
     "ajv": ">=8.18.0"
-  },
-  "comments": {
-    "overrides": "Security patches for transitive deps — remove when direct deps ship updated versions: qs (CVE GHSA-7gc5-rxh8-rcxf DoS), lodash (CVE GHSA-jf85-cpcp-j695 prototype pollution), esbuild (CVE GHSA-67mh-4wv8-2f99 dev server CORS), ajv (CVE GHSA-2g4f-4pwh-qvx6 ReDoS)"
   }
 }

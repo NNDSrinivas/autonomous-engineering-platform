@@ -25,11 +25,19 @@ ARG VITE_NAVI_BACKEND_URL=http://localhost:8787
 ARG VITE_ORG_ID=default
 ARG VITE_USER_ID=default_user
 
+ARG NODE_ENV=development
 ENV VITE_CORE_API=$VITE_CORE_API \
     VITE_API_BASE_URL=$VITE_API_BASE_URL \
     VITE_NAVI_BACKEND_URL=$VITE_NAVI_BACKEND_URL \
     VITE_ORG_ID=$VITE_ORG_ID \
-    VITE_USER_ID=$VITE_USER_ID
+    VITE_USER_ID=$VITE_USER_ID \
+    NODE_ENV=$NODE_ENV
+
+# Fail fast: refuse to build a production image baked with localhost URLs.
+RUN if [ "$NODE_ENV" = "production" ] && echo "$VITE_CORE_API" | grep -qi "localhost"; then \
+      echo "ERROR: VITE_CORE_API points to localhost while NODE_ENV=production. Pass --build-arg VITE_CORE_API=https://..."; \
+      exit 1; \
+    fi
 
 RUN npm run build
 

@@ -98,7 +98,7 @@ alembic upgrade head
 
 # 9. Start frontend (Terminal 2)
 cd frontend && npm run dev
-# UI → http://localhost:3007  (Vite default; auto-increments to 3008/3009 if taken)
+# UI → http://localhost:3007  (Vite default; will auto-increment to 3008, 3009, etc. if 3007 is in use — check terminal output for actual port)
 ```
 
 **Done!** ✅ Skip to [Development Workflows](#-development-workflows)

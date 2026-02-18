@@ -15,18 +15,29 @@ RUN npm install --prefer-offline
 # Copy source
 COPY . .
 
-# Build-time env vars (Vite bakes these into the JS bundle)
+# Build-time env vars (Vite bakes these into the JS bundle).
+# WARNING: Defaults point to localhost — only valid for local dev builds.
+# Always override via --build-arg for staging/production, e.g.:
+#   docker buildx build --build-arg VITE_CORE_API=https://staging.navralabs.com ...
 ARG VITE_CORE_API=http://localhost:8787
 ARG VITE_API_BASE_URL=http://localhost:8787
 ARG VITE_NAVI_BACKEND_URL=http://localhost:8787
 ARG VITE_ORG_ID=default
 ARG VITE_USER_ID=default_user
 
+ARG NODE_ENV=development
 ENV VITE_CORE_API=$VITE_CORE_API \
     VITE_API_BASE_URL=$VITE_API_BASE_URL \
     VITE_NAVI_BACKEND_URL=$VITE_NAVI_BACKEND_URL \
     VITE_ORG_ID=$VITE_ORG_ID \
-    VITE_USER_ID=$VITE_USER_ID
+    VITE_USER_ID=$VITE_USER_ID \
+    NODE_ENV=$NODE_ENV
+
+# Fail fast: refuse to build a production image baked with localhost URLs.
+RUN if [ "$NODE_ENV" = "production" ] && echo "$VITE_CORE_API" | grep -qiE "localhost|127\.0\.0\.1|0\.0\.0\.0"; then \
+      echo "ERROR: VITE_CORE_API points to a local address while NODE_ENV=production. Pass --build-arg VITE_CORE_API=https://..."; \
+      exit 1; \
+    fi
 
 RUN npm run build
 

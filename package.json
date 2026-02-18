@@ -46,5 +46,8 @@
     "@eslint/eslintrc": {
       "ajv": ">=8.18.0"
     }
+  },
+  "comments": {
+    "overrides": "ajv >=8.18.0 patches CVE GHSA-2g4f-4pwh-qvx6 (ReDoS via $data option). Remove once eslint and @eslint/eslintrc ship ajv 8.18+ natively."
   }
 }

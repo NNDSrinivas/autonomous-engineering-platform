@@ -8,9 +8,19 @@ server {
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
 
-    # Proxy /api/* → backend (URL injected at runtime via BACKEND_URL env var)
+    # Proxy /api/* → backend (URL injected at runtime via BACKEND_URL env var).
+    # IMPORTANT: BACKEND_URL must NOT have a trailing slash.
+    # Use http://backend:8787 — NOT http://backend:8787/
+    # A trailing slash causes nginx to strip the /api/ prefix when proxying.
     location /api/ {
-        proxy_pass ${BACKEND_URL};
+        # Validate BACKEND_URL has no trailing slash (trailing slash strips /api/ prefix).
+        # Note: using `if` here is safe — this is an early-return guard on a variable,
+        # not conditional proxy logic. See https://www.nginx.com/resources/wiki/start/topics/depth/ifisevil/
+        set $backend_url "${BACKEND_URL}";
+        if ($backend_url ~ "/$") {
+            return 500 "Misconfigured BACKEND_URL: must not have a trailing slash";
+        }
+        proxy_pass $backend_url;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

@@ -3,6 +3,7 @@
         { "path": "." }
     ],
     "settings": {
+        // aspirational — production does not exist yet; update URL when prod is deployed
         "aep.navi.backendUrl": "https://app.navralabs.com",
         "aep.navi.orgId": "default",
         "aep.development.useReactDevServer": false

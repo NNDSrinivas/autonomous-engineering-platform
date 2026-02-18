@@ -25,7 +25,7 @@ The staging environment runs on AWS ECS Fargate and is the canonical integration
 | Frontend | React + Vite + nginx, ECS Fargate, `aep-frontend-staging:latest` |
 | Database | RDS PostgreSQL 15 (`aep-staging-db`) |
 | Cache | ElastiCache Redis 7.1 (`aep-staging-redis`) |
-| Budget enforcement | `BUDGET_ENFORCEMENT_MODE=strict` (Phase 4 live) |
+| Budget enforcement | `BUDGET_ENFORCEMENT_MODE=advisory` (flip to `strict` after soak) |
 | Secrets | All secrets in AWS Secrets Manager under `aep/staging/*` |
 
 ---
@@ -34,7 +34,7 @@ The staging environment runs on AWS ECS Fargate and is the canonical integration
 
 ### Web browser
 
-Open https://staging.navralabs.com — no login required (JWT disabled in staging).
+Open https://staging.navralabs.com — no login required (`JWT_ENABLED=false` is set explicitly in the ECS task definition).
 
 ### VS Code extension — workspace files
 
@@ -102,18 +102,24 @@ curl https://staging.navralabs.com/api/health/ready
 
 Run from the repo root. Requires the `navra-staging` AWS CLI profile and Docker Desktop.
 
+Set your AWS account ID once before running any of the commands below:
+
+```bash
+export AWS_ACCOUNT_ID=<your-aws-account-id>
+```
+
 ### Refresh ECR credentials
 
 ```bash
 aws ecr get-login-password --region us-east-1 --profile navra-staging \
-  | docker login --username AWS --password-stdin 625847798833.dkr.ecr.us-east-1.amazonaws.com
+  | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
 ```
 
 ### Build and push backend
 
 ```bash
 docker buildx build --platform linux/amd64 \
-  -t 625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend:staging \
+  -t $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend:staging \
   --push .
 ```
 
@@ -126,7 +132,7 @@ docker buildx build --platform linux/amd64 \
   --build-arg VITE_CORE_API=https://staging.navralabs.com \
   --build-arg VITE_API_BASE_URL=https://staging.navralabs.com \
   --build-arg VITE_NAVI_BACKEND_URL=https://staging.navralabs.com \
-  -t 625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend:staging \
+  -t $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend:staging \
   --push ./frontend
 ```
 
@@ -145,11 +151,15 @@ aws ecs update-service --cluster aep-staging --service aep-frontend-staging-svc 
 Run after any schema change (Alembic one-off task):
 
 ```bash
+# Set these from your AWS console (VPC → Subnets / Security Groups for the staging cluster)
+SUBNET_ID=subnet-xxxxxxxxxxxxxxx
+SG_ID=sg-xxxxxxxxxxxxxxx
+
 aws ecs run-task \
   --cluster aep-staging \
   --task-definition aep-backend-staging \
   --launch-type FARGATE \
-  --network-configuration 'awsvpcConfiguration={subnets=[subnet-0dc371c9bb85d680e],securityGroups=[sg-024e491e60830af98],assignPublicIp=ENABLED}' \
+  --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$SG_ID],assignPublicIp=ENABLED}" \
   --overrides '{"containerOverrides":[{"name":"aep-backend","command":["python","-m","alembic","upgrade","head"]}]}' \
   --region us-east-1 --profile navra-staging
 ```
@@ -186,11 +196,11 @@ Users then install via the Extensions tab: search `NAVI Assistant` (prod) or `NA
 | ECS cluster | `aep-staging` |
 | Backend task definition | `aep-backend-staging` |
 | Frontend task definition | `aep-frontend-staging` |
-| ECR — backend | `625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend` |
-| ECR — frontend | `625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend` |
+| ECR — backend | `<AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend` |
+| ECR — frontend | `<AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend` |
 | ECS execution role | `NavraLabsEcsTaskExecutionRole-Staging` |
-| VPC subnet | `subnet-0dc371c9bb85d680e` |
-| Security group | `sg-024e491e60830af98` |
+| VPC subnet | `<STAGING_SUBNET_ID>` |
+| Security group | `<STAGING_SECURITY_GROUP_ID>` |
 | RDS | `aep-staging-db` (PostgreSQL 15, `us-east-1`) |
 | Redis | `aep-staging-redis` (ElastiCache 7.1, `us-east-1`) |
 | Secrets Manager prefix | `aep/staging/*` |

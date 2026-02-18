@@ -78,6 +78,9 @@ jobs:
       OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
       CI_NON_BLOCKING_DB_CHECKS: true
       REQUIRE_REDIS_FOR_LOCK_TESTS: "false"
+      # opentelemetry-proto <5.0 ships old-style .pb2 files that break under
+      # protobuf 5.x C extension (upb). Force pure-Python implementation.
+      PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -118,6 +121,7 @@ jobs:
       NAVI_TEST_REDIS_URL: redis://127.0.0.1:6379/15
       CI: "true"
       REQUIRE_REDIS_FOR_LOCK_TESTS: "true"
+      PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -207,6 +211,7 @@ jobs:
       OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
       RUN_INTEGRATION_TESTS: "1"
       NAVI_TEST_URL: http://127.0.0.1:8000
+      PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -331,6 +336,7 @@ jobs:
       JWT_SECRET: test-jwt-secret-for-ci
       ENABLE_AUDIT_LOGGING: false
       OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
+      PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

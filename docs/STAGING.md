@@ -102,18 +102,24 @@ curl https://staging.navralabs.com/api/health/ready
 
 Run from the repo root. Requires the `navra-staging` AWS CLI profile and Docker Desktop.
 
+Set your AWS account ID once before running any of the commands below:
+
+```bash
+export AWS_ACCOUNT_ID=<your-aws-account-id>
+```
+
 ### Refresh ECR credentials
 
 ```bash
 aws ecr get-login-password --region us-east-1 --profile navra-staging \
-  | docker login --username AWS --password-stdin 625847798833.dkr.ecr.us-east-1.amazonaws.com
+  | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
 ```
 
 ### Build and push backend
 
 ```bash
 docker buildx build --platform linux/amd64 \
-  -t 625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend:staging \
+  -t $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend:staging \
   --push .
 ```
 
@@ -126,7 +132,7 @@ docker buildx build --platform linux/amd64 \
   --build-arg VITE_CORE_API=https://staging.navralabs.com \
   --build-arg VITE_API_BASE_URL=https://staging.navralabs.com \
   --build-arg VITE_NAVI_BACKEND_URL=https://staging.navralabs.com \
-  -t 625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend:staging \
+  -t $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend:staging \
   --push ./frontend
 ```
 

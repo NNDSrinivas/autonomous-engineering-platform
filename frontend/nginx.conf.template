@@ -14,6 +14,8 @@ server {
     # A trailing slash causes nginx to strip the /api/ prefix when proxying.
     location /api/ {
         # Validate BACKEND_URL has no trailing slash (trailing slash strips /api/ prefix).
+        # Note: using `if` here is safe — this is an early-return guard on a variable,
+        # not conditional proxy logic. See https://www.nginx.com/resources/wiki/start/topics/depth/ifisevil/
         set $backend_url "${BACKEND_URL}";
         if ($backend_url ~ "/$") {
             return 500 "Misconfigured BACKEND_URL: must not have a trailing slash";

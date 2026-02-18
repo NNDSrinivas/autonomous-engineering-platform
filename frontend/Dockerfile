@@ -34,8 +34,8 @@ ENV VITE_CORE_API=$VITE_CORE_API \
     NODE_ENV=$NODE_ENV
 
 # Fail fast: refuse to build a production image baked with localhost URLs.
-RUN if [ "$NODE_ENV" = "production" ] && echo "$VITE_CORE_API" | grep -qi "localhost"; then \
-      echo "ERROR: VITE_CORE_API points to localhost while NODE_ENV=production. Pass --build-arg VITE_CORE_API=https://..."; \
+RUN if [ "$NODE_ENV" = "production" ] && echo "$VITE_CORE_API" | grep -qiE "localhost|127\.0\.0\.1|0\.0\.0\.0"; then \
+      echo "ERROR: VITE_CORE_API points to a local address while NODE_ENV=production. Pass --build-arg VITE_CORE_API=https://..."; \
       exit 1; \
     fi
 

@@ -93,7 +93,7 @@ Once the extension is published as two separate editions (`NAVI Assistant` for p
 
 ```bash
 curl https://staging.navralabs.com/health/live
-curl https://staging.navralabs.com/api/health/ready
+curl https://staging.navralabs.com/health/ready
 ```
 
 ---

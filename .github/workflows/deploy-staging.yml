@@ -94,8 +94,8 @@ jobs:
           curl -fsS --retry 5 --retry-delay 10 \
             https://staging.navralabs.com/health/live
           echo ""
-          echo "GET https://staging.navralabs.com/api/health/ready"
+          echo "GET https://staging.navralabs.com/health/ready"
           curl -fsS --retry 5 --retry-delay 10 \
-            https://staging.navralabs.com/api/health/ready
+            https://staging.navralabs.com/health/ready
           echo ""
           echo "Staging deploy complete and healthy."

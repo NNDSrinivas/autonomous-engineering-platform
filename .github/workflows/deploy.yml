@@ -2,7 +2,13 @@ name: Deploy NAVI to Production (ECS)
 
 # Deploys backend + frontend to the production environment:
 #   AWS ECS Fargate cluster: aep-production
-#   URL: https://app.navralabs.com  (future — not yet live)
+#   URL: https://app.navralabs.com
+#
+# Prerequisites — must exist before this workflow can succeed:
+#   - ECS cluster:  aep-production
+#   - ECS services: aep-backend-production-svc, aep-frontend-production-svc
+#   - ECR repos:    navralabs/aep-backend, navralabs/aep-frontend (same as staging)
+#   - DNS + ALB:    app.navralabs.com → production ALB
 #
 # Required GitHub Actions secrets (Settings → Environments → production):
 #   AWS_ACCOUNT_ID        — 12-digit AWS account ID
@@ -47,7 +53,10 @@ jobs:
     needs: gate
     environment: production
     timeout-minutes: 40
-    if: github.ref == 'refs/heads/main'
+    # Only run when the production ECS cluster has been provisioned.
+    # Set the PRODUCTION_ACTIVE secret to "true" in the production environment once
+    # the aep-production cluster, services, and app.navralabs.com DNS are ready.
+    if: github.ref == 'refs/heads/main' && vars.PRODUCTION_ACTIVE == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -116,8 +125,8 @@ jobs:
           curl -fsS --retry 5 --retry-delay 10 \
             https://app.navralabs.com/health/live
           echo ""
-          echo "GET https://app.navralabs.com/api/health/ready"
+          echo "GET https://app.navralabs.com/health/ready"
           curl -fsS --retry 5 --retry-delay 10 \
-            https://app.navralabs.com/api/health/ready
+            https://app.navralabs.com/health/ready
           echo ""
           echo "Production deploy complete and healthy."

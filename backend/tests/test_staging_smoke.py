@@ -32,8 +32,8 @@ def test_health_live():
 
 def test_health_ready():
     """Backend readiness probe must return 200 (DB + Redis connected)."""
-    resp = requests.get(f"{STAGING_URL}/api/health/ready", timeout=15)
-    assert resp.status_code == 200, f"/api/health/ready returned {resp.status_code}: {resp.text}"
+    resp = requests.get(f"{STAGING_URL}/health/ready", timeout=15)
+    assert resp.status_code == 200, f"/health/ready returned {resp.status_code}: {resp.text}"
 
 
 def test_frontend_serves_html():

@@ -794,6 +794,51 @@ When asking for help, include:
 
 ---
 
+## 🌐 Connecting to Staging
+
+You don't need to run the backend locally to test against the live staging environment. This section covers how to point your local tooling at `https://staging.navralabs.com`.
+
+### VS Code extension — open the staging workspace
+
+The repo ships three workspace files. Open the right one based on what you're doing:
+
+| Workspace file | Backend URL | When to use |
+|---|---|---|
+| `aep.dev.code-workspace` | `http://127.0.0.1:8787` | Local development |
+| `aep.staging.code-workspace` | `https://staging.navralabs.com` | Testing against staging |
+| `aep.prod.code-workspace` | `https://app.navralabs.com` | Production access (future) |
+
+```
+File → Open Workspace from File → aep.staging.code-workspace
+```
+
+The NAVI extension will immediately connect to staging — no settings change needed.
+
+> **No repo access?** Ask the team for the `navi-assistant-staging-<version>.vsix` file and install it with:
+> ```bash
+> code --install-extension navi-assistant-staging-<version>.vsix
+> ```
+
+### Web app
+
+Open https://staging.navralabs.com in any browser. No login required currently (JWT disabled in staging).
+
+### Checking staging health
+
+```bash
+# Backend liveness
+curl https://staging.navralabs.com/health/live
+
+# Backend via API path
+curl https://staging.navralabs.com/api/health/ready
+```
+
+### Deploying to staging
+
+See **[docs/STAGING.md](./docs/STAGING.md)** for full deploy commands, migration one-liners, and AWS infrastructure reference.
+
+---
+
 ## ✅ Setup Checklist
 
 Use this to verify your setup is complete:

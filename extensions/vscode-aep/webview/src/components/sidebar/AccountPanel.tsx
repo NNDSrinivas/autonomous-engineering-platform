@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { resolveBackendBase, buildHeaders } from '../../api/navi/client';
+import { PremiumAuthEntry } from '../auth/PremiumAuthEntry';
 
 interface UserProfile {
   email?: string;
@@ -26,6 +27,7 @@ interface AccountPanelProps {
   isAuthenticated: boolean;
   user?: UserProfile;
   onSignIn: () => void;
+  onSignUp: () => void;
   onSignOut: () => void;
   onOpenEnterpriseProjects?: () => void;
 }
@@ -50,13 +52,6 @@ const UserIcon = () => (
 const CloseIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M18 6L6 18M6 6l12 12" />
-  </svg>
-);
-
-const LockIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
   </svg>
 );
 
@@ -136,6 +131,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
   isAuthenticated,
   user,
   onSignIn,
+  onSignUp,
   onSignOut,
   onOpenEnterpriseProjects,
 }) => {
@@ -213,16 +209,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
         {/* Content */}
         <div className="navi-overlay-content">
           {!isAuthenticated ? (
-            <div className="account-signin">
-              <div className="account-signin-icon">
-                <LockIcon />
-              </div>
-              <h4>Sign in to NAVI</h4>
-              <p>Access your personalized settings, conversation history, and team features.</p>
-              <button className="account-signin-btn" onClick={onSignIn}>
-                Sign In
-              </button>
-            </div>
+            <PremiumAuthEntry onSignIn={onSignIn} onSignUp={onSignUp} />
           ) : (
             <>
               {/* User Profile Card */}

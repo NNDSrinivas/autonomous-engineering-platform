@@ -66,6 +66,7 @@ import { naviClient, McpExecutionResult, McpServer, buildHeaders, resolveBackend
 import NaviChatPanel from "../navi/NaviChatPanel";
 import { HistoryPanel } from "../navi/HistoryPanel";
 import { SidebarPanel } from "../sidebar/SidebarPanel";
+import { PremiumAuthEntry } from "../auth/PremiumAuthEntry";
 import { ActivityPanel } from "../ActivityPanel";
 import { useActivityPanel } from "../../hooks/useActivityPanel";
 import { postMessage, onMessage } from "../../utils/vscodeApi";
@@ -776,6 +777,10 @@ export function CodeCompanionShell() {
   // Handle sign in/out
   const handleSignIn = () => {
     postMessage({ type: "auth.signIn" });
+  };
+
+  const handleSignUp = () => {
+    postMessage({ type: "auth.signUp" });
   };
 
   const handleSignOut = () => {
@@ -1492,6 +1497,7 @@ export function CodeCompanionShell() {
                 isAuthenticated={isAuthenticated}
                 user={user}
                 onSignIn={handleSignIn}
+                onSignUp={handleSignUp}
                 onSignOut={handleSignOut}
                 onExecuteMcpTool={handleExecuteMcpTool}
                 onOpenFullPanel={() => setFullPanelOpen(true)}
@@ -2098,15 +2104,14 @@ export function CodeCompanionShell() {
               {fullPanelTab === 'account' && (
                 <div className="navi-cc-account">
                   {!isAuthenticated ? (
-                    <div className="navi-cc-account__signin">
-                      <div className="navi-cc-account__signin-icon">
-                        <User className="h-8 w-8" />
-                      </div>
-                      <h3>Sign in to NAVI</h3>
-                      <p>Access your personalized settings, conversation history, and team features.</p>
-                      <button className="navi-cc-account__signin-btn" onClick={handleSignIn}>
-                        Sign In
-                      </button>
+                    <div className="navi-cc-account__auth-entry">
+                      <PremiumAuthEntry
+                        variant="compact"
+                        onSignIn={handleSignIn}
+                        onSignUp={handleSignUp}
+                        title="Continue with NAVI account"
+                        subtitle="Use sign in to continue existing sessions or sign up to create a new NAVI workspace."
+                      />
                     </div>
                   ) : (
                     <>
@@ -4891,6 +4896,10 @@ export function CodeCompanionShell() {
         .navi-cc-account {
           max-width: 600px;
           margin: 0 auto;
+        }
+
+        .navi-cc-account__auth-entry {
+          padding: 26px 0 8px;
         }
 
         .navi-cc-account__signin {

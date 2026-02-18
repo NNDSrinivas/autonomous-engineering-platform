@@ -109,6 +109,7 @@ interface SidebarPanelProps {
     role?: string;
   };
   onSignIn: () => void;
+  onSignUp: () => void;
   onSignOut: () => void;
   onExecuteMcpTool: (toolName: string, args: Record<string, unknown>, serverId?: string | number) => Promise<McpExecutionResult>;
   onOpenFullPanel?: () => void;
@@ -205,6 +206,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
   isAuthenticated,
   user,
   onSignIn,
+  onSignUp,
   onSignOut,
   onExecuteMcpTool,
   onOpenFullPanel,
@@ -411,6 +413,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
         isAuthenticated={isAuthenticated}
         user={user}
         onSignIn={onSignIn}
+        onSignUp={onSignUp}
         onSignOut={onSignOut}
         onOpenEnterpriseProjects={onOpenEnterpriseProjects}
       />

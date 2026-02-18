@@ -1731,6 +1731,49 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private resolveWebSignupUrl(): string {
+    const config = vscode.workspace.getConfiguration('aep');
+    const configuredWebAppUrl = (config.get<string>('navi.webAppUrl') || '').trim();
+    const fallbackSignup = 'https://app.navralabs.com/signup?source=vscode';
+
+    const buildSignupUrl = (base: string): string | null => {
+      try {
+        const parsed = new URL(base);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          return null;
+        }
+        const normalizedPath = parsed.pathname.replace(/\/+$/, '');
+        const hasSignupPath = normalizedPath.endsWith('/signup');
+        parsed.pathname = hasSignupPath ? normalizedPath : `${normalizedPath || ''}/signup`;
+        parsed.search = '';
+        parsed.hash = '';
+        parsed.searchParams.set('source', 'vscode');
+        return parsed.toString();
+      } catch {
+        return null;
+      }
+    };
+
+    const fromConfig = configuredWebAppUrl ? buildSignupUrl(configuredWebAppUrl) : null;
+    if (fromConfig) {
+      return fromConfig;
+    }
+
+    try {
+      const backendBase = new URL(this.getBackendBaseUrl());
+      if (backendBase.protocol === 'https:') {
+        const derived = buildSignupUrl(backendBase.origin);
+        if (derived) {
+          return derived;
+        }
+      }
+    } catch {
+      // Ignore parse errors and fall through to fallback URL.
+    }
+
+    return fallbackSignup;
+  }
+
   private async callBackendAPI(content: string, mode: string, model: string): Promise<void> {
     const runId = this.startActivityRun("Working", "Planning response...");
     try {
@@ -3167,6 +3210,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           case 'auth.signOut': {
             // Handle sign out request from webview
             await vscode.commands.executeCommand('aep.signOut');
+            break;
+          }
+
+          case 'auth.signUp': {
+            const signupUrl = this.resolveWebSignupUrl();
+            await vscode.env.openExternal(vscode.Uri.parse(signupUrl));
             break;
           }
 

@@ -23,6 +23,11 @@
           "default": "http://127.0.0.1:8787",
           "description": "Backend URL for NAVI Assistant API calls (base URL without path)"
         },
+        "aep.navi.webAppUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional NAVI web app base URL for signup/dashboard links. Example: https://app.navralabs.com"
+        },
         "aep.navi.orgId": {
           "type": "string",
           "default": "default",

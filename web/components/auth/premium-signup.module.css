@@ -1,0 +1,353 @@
+.shell {
+  position: relative;
+  width: min(1180px, calc(100vw - 2rem));
+  min-height: clamp(760px, 86vh, 920px);
+  margin: 0 auto;
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border) / 0.5);
+  background:
+    radial-gradient(120% 140% at 6% 8%, hsl(198 95% 60% / 0.18), transparent 54%),
+    radial-gradient(110% 110% at 92% 12%, hsl(225 85% 60% / 0.2), transparent 58%),
+    linear-gradient(160deg, hsl(218 38% 9%) 0%, hsl(220 33% 7%) 56%, hsl(218 28% 5%) 100%);
+  box-shadow: 0 26px 80px hsl(220 70% 2% / 0.5);
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+}
+
+.backdrop,
+.mesh,
+.grid {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+}
+
+.backdrop {
+  background:
+    radial-gradient(520px 280px at 30% 76%, hsl(196 95% 56% / 0.2), transparent 72%),
+    radial-gradient(440px 220px at 84% 34%, hsl(224 100% 64% / 0.2), transparent 74%);
+  filter: blur(12px);
+  animation: drift 12s ease-in-out infinite alternate;
+}
+
+.mesh {
+  background:
+    radial-gradient(circle at 18% 22%, hsl(189 95% 68% / 0.16), transparent 36%),
+    radial-gradient(circle at 78% 75%, hsl(221 85% 64% / 0.16), transparent 38%);
+  mix-blend-mode: screen;
+}
+
+.grid {
+  background-image: linear-gradient(hsl(0 0% 100% / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(0 0% 100% / 0.035) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 90%);
+}
+
+.hero {
+  position: relative;
+  z-index: 2;
+  padding: clamp(2.1rem, 4vw, 3.2rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.1rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: hsl(197 88% 74%);
+  font-size: 0.76rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-family: var(--font-auth-mono), "JetBrains Mono", monospace;
+}
+
+.heroTitle {
+  margin: 0;
+  max-width: 15ch;
+  color: hsl(210 20% 96%);
+  font-size: clamp(2.1rem, 4.4vw, 3.55rem);
+  line-height: 1.04;
+  font-weight: 650;
+  font-family: var(--font-auth-display), "Inter", sans-serif;
+  text-wrap: balance;
+}
+
+.heroSubtitle {
+  margin: 0;
+  max-width: 46ch;
+  color: hsl(214 19% 78%);
+  line-height: 1.55;
+  font-size: 1.02rem;
+}
+
+.statRow {
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.statCard {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.72rem 0.72rem;
+  border-radius: 12px;
+  border: 1px solid hsl(0 0% 100% / 0.1);
+  background: linear-gradient(
+    140deg,
+    hsl(216 36% 14% / 0.86),
+    hsl(217 33% 12% / 0.72)
+  );
+  color: hsl(208 24% 91%);
+  font-size: 0.8rem;
+  transform: translateZ(0);
+  transition: transform 220ms ease, border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.statCard:hover {
+  transform: translateY(-2px);
+  border-color: hsl(194 90% 66% / 0.42);
+  box-shadow: 0 12px 24px hsl(196 94% 52% / 0.14);
+}
+
+.formPanel {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: clamp(1.4rem, 3.2vw, 2.2rem);
+}
+
+.formCard {
+  width: min(470px, 100%);
+  max-height: calc(100% - 0.2rem);
+  overflow: auto;
+  border-radius: 22px;
+  padding: clamp(1.45rem, 2.8vw, 2rem);
+  border: 1px solid hsl(0 0% 100% / 0.14);
+  background: linear-gradient(
+    170deg,
+    hsl(220 22% 12% / 0.88) 0%,
+    hsl(221 20% 10% / 0.78) 100%
+  );
+  backdrop-filter: blur(10px);
+  box-shadow: 0 16px 52px hsl(222 70% 3% / 0.48);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.58rem;
+}
+
+.logoOrb {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  animation: logoCurrentGlow 3.2s ease-in-out infinite;
+}
+
+.logoOrb::before {
+  content: "";
+  position: absolute;
+  left: -76px;
+  right: -76px;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(194 100% 62% / 0.3) 24%,
+    hsl(224 100% 66% / 0.3) 76%,
+    transparent 100%
+  );
+  opacity: 0.82;
+  z-index: -2;
+}
+
+.currentPulse {
+  position: absolute;
+  top: 50%;
+  left: -72px;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: radial-gradient(circle, hsl(190 100% 90%), hsl(192 100% 60%));
+  box-shadow: 0 0 12px hsl(191 100% 60% / 0.75), 0 0 24px hsl(224 100% 66% / 0.6);
+  animation: currentPass 3.2s linear infinite;
+  z-index: -1;
+}
+
+.currentPulse::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 66px;
+  height: 2px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, hsl(190 100% 84% / 0), hsl(190 100% 78% / 0.72));
+}
+
+.logoImage {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: 8px;
+  filter: drop-shadow(0 6px 12px hsl(194 100% 52% / 0.25));
+}
+
+.logoFallback {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: hsl(215 22% 96%);
+  background: linear-gradient(135deg, hsl(195 88% 52%), hsl(222 95% 63%));
+  font-weight: 700;
+  font-size: 1.03rem;
+}
+
+.brandWordmark {
+  font-family: var(--font-auth-display), "Inter", sans-serif;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: hsl(210 20% 96%);
+}
+
+.formBrand {
+  margin-bottom: 0.9rem;
+}
+
+.formHeading h2 {
+  margin: 0;
+  color: hsl(210 21% 96%);
+  font-family: var(--font-auth-display), "Inter", sans-serif;
+  font-size: 1.65rem;
+  line-height: 1.08;
+}
+
+.formHeading p {
+  margin: 0.42rem 0 1.1rem;
+  color: hsl(215 16% 77%);
+  font-size: 0.94rem;
+}
+
+.signInPrompt {
+  margin: 1rem 0 0;
+  text-align: center;
+  color: hsl(215 15% 75%);
+  font-size: 0.88rem;
+}
+
+.signInLink {
+  color: hsl(192 95% 72%);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.signInLink:hover {
+  text-decoration: underline;
+}
+
+.finePrint {
+  margin: 0.95rem 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  color: hsl(210 17% 68%);
+  font-size: 0.76rem;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(0.6rem, -0.8rem, 0) scale(1.04);
+  }
+}
+
+@keyframes currentPass {
+  0%,
+  8% {
+    transform: translate(-6px, -50%);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate(88px, -50%);
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(180px, -50%);
+    opacity: 0;
+  }
+}
+
+@keyframes logoCurrentGlow {
+  0%,
+  28%,
+  100% {
+    filter: drop-shadow(0 4px 12px hsl(193 100% 55% / 0.22));
+  }
+  44%,
+  56% {
+    filter: drop-shadow(0 0 16px hsl(190 100% 72% / 0.8))
+      drop-shadow(0 0 30px hsl(224 100% 66% / 0.56));
+  }
+}
+
+@media (max-width: 1024px) {
+  .shell {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .hero {
+    padding-bottom: 1rem;
+  }
+
+  .heroTitle,
+  .heroSubtitle {
+    max-width: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: calc(100vw - 1rem);
+    border-radius: 18px;
+  }
+
+  .statRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .statCard,
+  .logoOrb,
+  .currentPulse {
+    animation: none !important;
+    transition: none !important;
+  }
+}

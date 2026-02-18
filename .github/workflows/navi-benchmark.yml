@@ -25,6 +25,12 @@ jobs:
           pip install -r requirements.txt
           pip install pytest requests
       - name: Run NAVI benchmark
+        env:
+          # Required so opentelemetry-proto 1.11.1 works alongside protobuf>=5.x.
+          # Remove once chromadb upgrades its opentelemetry-exporter pin.
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
+          # Point benchmark smoke-test tasks at the real staging environment.
+          STAGING_URL: https://staging.navralabs.com
         run: |
           python3 scripts/navi_benchmark.py
       - name: Commit scorecard

@@ -51,6 +51,16 @@
         "backend/tests/test_navi_api_integration.py",
         "-q"
       ]
+    },
+    {
+      "id": "staging_smoke",
+      "label": "Staging smoke",
+      "description": "Live health checks against https://staging.navralabs.com (skipped if STAGING_URL not set)",
+      "timeout_seconds": 60,
+      "pytest_args": [
+        "backend/tests/test_staging_smoke.py",
+        "-q"
+      ]
     }
   ]
 }

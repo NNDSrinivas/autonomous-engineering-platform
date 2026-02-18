@@ -24,7 +24,8 @@
         { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/OPENAI_API_KEY-Q8Oogb" },
         { "name": "ANTHROPIC_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/ANTHROPIC_API_KEY-vsaNRp" },
         { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/DATABASE_URL-oavgBR" },
-        { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/REDIS_URL-0nNkEj" }
+        { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/REDIS_URL-0nNkEj" },
+        { "name": "BUDGET_REDIS_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/REDIS_URL-0nNkEj" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

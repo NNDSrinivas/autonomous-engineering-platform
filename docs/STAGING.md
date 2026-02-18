@@ -25,7 +25,7 @@ The staging environment runs on AWS ECS Fargate and is the canonical integration
 | Frontend | React + Vite + nginx, ECS Fargate, `aep-frontend-staging:latest` |
 | Database | RDS PostgreSQL 15 (`aep-staging-db`) |
 | Cache | ElastiCache Redis 7.1 (`aep-staging-redis`) |
-| Budget enforcement | `BUDGET_ENFORCEMENT_MODE=strict` (Phase 4 live) |
+| Budget enforcement | `BUDGET_ENFORCEMENT_MODE=advisory` (flip to `strict` after soak) |
 | Secrets | All secrets in AWS Secrets Manager under `aep/staging/*` |
 
 ---

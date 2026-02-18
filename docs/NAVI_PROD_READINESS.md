@@ -3969,7 +3969,8 @@ redis-cli HGET budget:global:global:$(date -u +%Y-%m-%d) reserved
 ```
 
 ```promql
-# Gate 3: No enforcement-unavailable events in strict mode
+# Gate 3: No enforcement-unavailable events AFTER switching to strict mode
+# (staging starts in advisory mode; run this check only post-flip or in production)
 increase(aep_budget_reserve_total{status="unavailable"}[30m]) == 0
 
 # Gate 4: No critical overspend anomalies

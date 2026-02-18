@@ -6,7 +6,13 @@ FROM python:3.11-slim AS base
 # Prevent Python from buffering stdout/stderr (better logs)
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    # opentelemetry-proto <5.0 requires old-style .pb2 descriptors that break
+    # under the protobuf C extension (upb) when protobuf>=5.x is installed.
+    # Force pure-Python implementation so old .pb2 files work.
+    # Remove once chromadb upgrades opentelemetry-exporter-otlp-proto-grpc to
+    # a version whose opentelemetry-proto declares protobuf>=5 compatibility.
+    PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 # Set workdir
 WORKDIR /app

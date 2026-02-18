@@ -34,7 +34,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.18",
-    "diff": "^8.0.2",
+    "diff": "^8.0.3",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.23.24",
     "highlight.js": "^11.11.1",
@@ -48,7 +48,7 @@
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.1.1",
-    "react-router-dom": "^7.9.4",
+    "react-router-dom": "^7.12.0",
     "react-syntax-highlighter": "^16.1.0",
     "recharts": "^3.6.0",
     "rehype-highlight": "^7.0.2",
@@ -61,5 +61,11 @@
     "vis-network": "^10.0.2",
     "vite": "^6.4.1",
     "zustand": "^5.0.9"
+  },
+  "overrides": {
+    "qs": ">=6.14.2",
+    "lodash": ">=4.17.23",
+    "esbuild": ">=0.25.0",
+    "ajv": ">=8.18.0"
   }
 }

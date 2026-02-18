@@ -38,5 +38,13 @@
     "@radix-ui/react-scroll-area": "^1.2.10",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1"
+  },
+  "overrides": {
+    "eslint": {
+      "ajv": ">=8.18.0"
+    },
+    "@eslint/eslintrc": {
+      "ajv": ">=8.18.0"
+    }
   }
 }

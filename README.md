@@ -209,21 +209,27 @@ npm run compile
 #### Launch the extension host
 
 1. Open the repo root in VS Code
-2. Press **F5** — this reads `.vscode/launch.json` and opens a new **Extension Development Host** window with the extension loaded
+2. Create `.vscode/launch.json` if it doesn't exist and add:
 
-The `launch.json` configuration:
 ```json
 {
-  "name": "Launch Extension",
-  "type": "extensionHost",
-  "request": "launch",
-  "args": ["--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode-aep"]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode-aep"]
+    }
+  ]
 }
 ```
 
+3. Press **F5** — VS Code opens a new **Extension Development Host** window with the extension loaded.
+
 #### VS Code settings required
 
-Your `.vscode/settings.json` already contains these — verify they match your setup:
+Create `.vscode/settings.json` if it doesn't exist and add:
 
 ```json
 {

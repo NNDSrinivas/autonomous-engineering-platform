@@ -3919,16 +3919,15 @@ Run before every deploy to staging:
 npm run validate:budget-policy
 
 # Run unit + hardening tests
-pytest backend/tests/test_budget_manager.py \
-       backend/tests/test_budget_manager_hardening.py -q
+pytest backend/tests/test_budget_manager_hardening.py -q
 
 # Verify Redis reachable
 redis-cli -u $BUDGET_REDIS_URL ping   # → PONG
 redis-cli -u $REDIS_URL ping           # → PONG
 
 # Confirm startup log shows correct mode
-grep "Budget manager initialized" <(docker logs backend 2>&1)
-# Expected: mode=advisory env=staging
+grep "Budget manager ACTIVE" <(docker logs backend 2>&1)
+# Expected: Budget manager ACTIVE: mode=advisory env=staging redis=redis://...
 ```
 
 ---
@@ -3945,7 +3944,7 @@ Run the critical subset immediately after deploy:
 | Test 6: Strict + Redis down → 503 | Temporarily kill budget Redis, `BUDGET_ENFORCEMENT_MODE=strict` | HTTP 503 |
 | Test 8: TTL never -1 | `redis-cli TTL budget:global:global:<today>` | positive number, not -1 |
 
-Script: `scripts/smoke_budget.sh` — see Phase 4 design doc for full curl commands.
+Note: `scripts/smoke_budget.sh` does not exist yet. Run these tests manually using the curl commands in this section, or adapt the existing `scripts/smoke.sh` / `scripts/smoke-delivery.sh`.
 
 ---
 
@@ -4005,7 +4004,7 @@ Recommended unless hard budget enforcement is a contractual requirement from day
 #### Step 7: Production Verification Checklist (First Hour)
 
 - [ ] Hit `/api/navi/chat/stream/v2` happy path — normal 200 + SSE response
-- [ ] Startup log shows `mode=strict env=prod` (or `advisory` if canary)
+- [ ] Startup log shows `Budget manager ACTIVE: mode=strict env=prod redis=redis://...` (or `mode=advisory` if canary)
 - [ ] `redis-cli TTL budget:global:global:<today>` returns > 0 (not -1)
 - [ ] Prometheus scraping: `curl http://<host>/metrics | grep aep_budget`
 - [ ] 429 responses carry `"code": "BUDGET_EXCEEDED"` body

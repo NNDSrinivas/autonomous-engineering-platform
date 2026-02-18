@@ -136,7 +136,6 @@ docker-compose.yml
 Makefile
 playwright.config.ts
 pytest.ini
-alembic.ini
 
 # Test files
 test_*.py

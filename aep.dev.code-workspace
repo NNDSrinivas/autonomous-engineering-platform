@@ -1,0 +1,18 @@
+{
+    "folders": [
+        { "path": "." }
+    ],
+    "settings": {
+        "aep.navi.backendUrl": "http://127.0.0.1:8787",
+        "aep.navi.orgId": "default",
+        "aep.development.useReactDevServer": true
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-python.python",
+            "ms-python.black-formatter",
+            "dbaeumer.vscode-eslint",
+            "esbenp.prettier-vscode"
+        ]
+    }
+}

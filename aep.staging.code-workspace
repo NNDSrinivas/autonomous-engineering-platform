@@ -1,0 +1,18 @@
+{
+    "folders": [
+        { "path": "." }
+    ],
+    "settings": {
+        "aep.navi.backendUrl": "https://staging.navralabs.com",
+        "aep.navi.orgId": "default",
+        "aep.development.useReactDevServer": false
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-python.python",
+            "ms-python.black-formatter",
+            "dbaeumer.vscode-eslint",
+            "esbenp.prettier-vscode"
+        ]
+    }
+}

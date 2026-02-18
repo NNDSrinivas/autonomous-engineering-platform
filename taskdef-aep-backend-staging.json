@@ -1,0 +1,38 @@
+{
+  "family": "aep-backend-staging",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::625847798833:role/NavraLabsEcsTaskExecutionRole-Staging",
+  "containerDefinitions": [
+    {
+      "name": "aep-backend",
+      "image": "625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend:staging",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 8787, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "APP_ENV", "value": "staging" },
+        { "name": "BUDGET_ENFORCEMENT_MODE", "value": "strict" },
+        { "name": "CORS_ALLOW_ORIGINS", "value": "https://staging.navralabs.com" }
+      ],
+      "secrets": [
+        { "name": "AUDIT_ENCRYPTION_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/AUDIT_ENCRYPTION_KEY-1G8cnz" },
+        { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/OPENAI_API_KEY-Q8Oogb" },
+        { "name": "ANTHROPIC_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/ANTHROPIC_API_KEY-vsaNRp" },
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/DATABASE_URL-oavgBR" },
+        { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:625847798833:secret:aep/staging/REDIS_URL-0nNkEj" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/aep-backend-staging",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

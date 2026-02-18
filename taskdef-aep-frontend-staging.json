@@ -1,0 +1,27 @@
+{
+  "family": "aep-frontend-staging",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::625847798833:role/NavraLabsEcsTaskExecutionRole-Staging",
+  "containerDefinitions": [
+    {
+      "name": "aep-frontend",
+      "image": "625847798833.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend:staging",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 80, "protocol": "tcp" }
+      ],
+      "environment": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/aep-frontend-staging",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

@@ -4,9 +4,24 @@ name: Deploy NAVI to Staging (ECS)
 #   AWS ECS Fargate cluster: aep-staging
 #   URL: https://staging.navralabs.com
 #
+# ALB routing (staging.navralabs.com):
+#   /api/*  →  backend ECS service  (aep-backend-staging-svc,  port 8787)
+#   /*      →  frontend ECS service (aep-frontend-staging-svc, port 80)
+# The nginx /api/ proxy block in the frontend container is inactive in this
+# deployment — the ALB routes API traffic directly to the backend service,
+# so BACKEND_URL in the frontend task definition has no effect.
+#
+# Note: Staging has no benchmark gate — it receives every push to main for
+# rapid integration testing. Production (deploy.yml) is gated by the
+# nightly benchmark scorecard freshness check.
+#
+# ECS services (cluster: aep-staging):
+#   aep-backend-staging-svc
+#   aep-frontend-staging-svc
+#
 # Required GitHub Actions secrets (Settings → Environments → staging):
 #   AWS_ACCOUNT_ID        — 12-digit AWS account ID
-#   AWS_ACCESS_KEY_ID     — IAM key with ECS + ECR permissions
+#   AWS_ACCESS_KEY_ID     — IAM key with ECS + ECR push + ecs:UpdateService
 #   AWS_SECRET_ACCESS_KEY
 
 on:
@@ -30,6 +45,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -44,20 +62,29 @@ jobs:
                 ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
 
       - name: Build and push backend image
-        run: |
-          docker buildx build --platform linux/amd64 \
-            -t ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend:staging \
-            --push .
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-backend:staging
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build and push frontend image
-        run: |
-          docker buildx build --platform linux/amd64 \
-            --build-arg VITE_CORE_API=https://staging.navralabs.com \
-            --build-arg VITE_API_BASE_URL=https://staging.navralabs.com \
-            --build-arg VITE_NAVI_BACKEND_URL=https://staging.navralabs.com \
-            --build-arg NODE_ENV=production \
-            -t ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend:staging \
-            --push ./frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          platforms: linux/amd64
+          push: true
+          tags: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-frontend:staging
+          build-args: |
+            VITE_CORE_API=https://staging.navralabs.com
+            VITE_API_BASE_URL=https://staging.navralabs.com
+            VITE_NAVI_BACKEND_URL=https://staging.navralabs.com
+            NODE_ENV=production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Force ECS redeploy — backend
         run: |
@@ -89,13 +116,28 @@ jobs:
             --region us-east-1
 
       - name: Smoke test — verify staging is healthy
+        # --max-time 20 caps each curl attempt so the step cannot hang
+        # indefinitely if the service is unresponsive.
+        # NOTE: If smoke tests fail after ECS reports services as stable, the
+        # new image is running but unhealthy. Manual rollback:
+        #   aws ecs update-service --cluster aep-staging \
+        #     --service aep-backend-staging-svc \
+        #     --task-definition aep-backend-staging:<prev_revision> \
+        #     --region us-east-1
+        #   aws ecs update-service --cluster aep-staging \
+        #     --service aep-frontend-staging-svc \
+        #     --task-definition aep-frontend-staging:<prev_revision> \
+        #     --region us-east-1
+        #   aws ecs wait services-stable --cluster aep-staging \
+        #     --services aep-backend-staging-svc aep-frontend-staging-svc \
+        #     --region us-east-1
         run: |
           echo "GET https://staging.navralabs.com/health/live"
-          curl -fsS --retry 5 --retry-delay 10 \
+          curl -fsS --retry 5 --retry-delay 10 --max-time 20 \
             https://staging.navralabs.com/health/live
           echo ""
           echo "GET https://staging.navralabs.com/health/ready"
-          curl -fsS --retry 5 --retry-delay 10 \
+          curl -fsS --retry 5 --retry-delay 10 --max-time 20 \
             https://staging.navralabs.com/health/ready
           echo ""
           echo "Staging deploy complete and healthy."

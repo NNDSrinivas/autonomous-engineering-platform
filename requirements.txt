@@ -87,3 +87,4 @@ psutil>=5.9.0  # CPU/memory/process monitoring
 websockets>=11.0  # WebSocket connectivity verification
 pytest-asyncio>=0.23.0  # Async test support
 Pillow>=10.0.0  # For animated GIF creation in visual output handler
+requests>=2.31.0  # HTTP client used in staging smoke tests and benchmark

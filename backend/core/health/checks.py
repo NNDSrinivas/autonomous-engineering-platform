@@ -4,17 +4,25 @@ from typing import TypedDict
 import logging
 
 # Optional deps (best-effort)
+# Try both import paths: Docker runs from repo root (/app) so modules live under
+# backend.*; local dev may run from backend/ directly where core.* is the root.
 text = None
 get_engine = None
 try:
     from sqlalchemy import text
-    from core.db import get_engine
+    try:
+        from backend.core.db import get_engine  # Docker / repo-root PYTHONPATH
+    except ImportError:
+        from core.db import get_engine  # local dev with backend/ as root
 except ImportError:
     pass  # text and get_engine remain None
 
 cache = None
 try:
-    from infra.cache.redis_cache import cache
+    try:
+        from backend.infra.cache.redis_cache import cache  # Docker / repo-root PYTHONPATH
+    except ImportError:
+        from infra.cache.redis_cache import cache  # local dev with backend/ as root
 except ImportError:
     pass  # cache remains None
 

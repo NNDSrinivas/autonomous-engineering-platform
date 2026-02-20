@@ -125,9 +125,28 @@ def check_db() -> CheckResult:
 
 
 def check_redis() -> CheckResult:
+    """
+    Check Redis connectivity using the centralized client.
+
+    Self-heals from stale connections by resetting the pool on first failure.
+    """
     async def _ping():
+        # Try centralized Redis client (preferred)
+        try:
+            from backend.services.redis_client import get_redis, reset_redis
+            try:
+                await get_redis().ping()
+            except Exception:
+                # Self-healing: reset pool and retry once
+                await reset_redis()
+                await get_redis().ping()
+            return
+        except (ImportError, RuntimeError):
+            # Fallback to legacy cache if centralized client not initialized
+            pass
+
+        # Legacy fallback (deprecated - will be removed in Phase 2)
         if cache is None or getattr(cache, "_r", None) is None:
-            # lazy-init by attempting a GET on a nonsense key
             await cache.get("__health__")  # type: ignore
         r = getattr(cache, "_r", None)
         if r:

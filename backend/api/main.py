@@ -207,10 +207,26 @@ async def lifespan(app: FastAPI):
         core_settings
     )  # Validate production-specific settings for the active app configuration
     await on_startup()  # PR-29: Health system startup
+
+    # Initialize centralized Redis client for health checks
+    from backend.services.redis_client import init_redis
+    try:
+        await init_redis()
+    except Exception:
+        logger.warning("Redis client init failed (health checks will degrade)", exc_info=True)
+
     presence_lifecycle.start_cleanup_thread()
     yield
     # Shutdown: cleanup background services
     # presence_lifecycle.stop_cleanup_thread()
+
+    # Close Redis client cleanly
+    from backend.services.redis_client import close_redis
+    try:
+        await close_redis()
+    except Exception:
+        logger.warning("Redis client close failed", exc_info=True)
+
     try:
         result = on_shutdown()  # PR-29: Graceful shutdown
         if inspect.iscoroutine(result):

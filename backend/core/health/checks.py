@@ -4,19 +4,71 @@ from typing import TypedDict
 import logging
 
 # Optional deps (best-effort)
+# Try both import paths: Docker runs from repo root (/app) so modules live under
+# backend.*; local dev may run from backend/ directly where core.* is the root.
 text = None
 get_engine = None
 try:
     from sqlalchemy import text
-    from core.db import get_engine
-except ImportError:
-    pass  # text and get_engine remain None
+    try:
+        from backend.core.db import get_engine  # Docker / repo-root PYTHONPATH
+    except ImportError as e:
+        # Only fall back to alternate import path if backend.* module itself is missing.
+        # If ImportError is due to a transitive dependency or other problem, log and raise.
+        if isinstance(e, ModuleNotFoundError) and e.name in (
+            "backend.core.db",
+            "backend.core",
+            "backend",
+        ):
+            from core.db import get_engine  # local dev with backend/ as root
+        else:
+            logging.exception("Error importing get_engine from backend.core.db")
+            raise
+except ImportError as e:
+    # DB module not found at either location — treat as optional dependency
+    if isinstance(e, ModuleNotFoundError) and e.name in (
+        "core.db",
+        "core",
+        "sqlalchemy",
+    ):
+        logging.info(
+            "Database module not found; DB-dependent health checks are disabled."
+        )
+    else:
+        logging.exception("Error importing database dependencies")
+        raise
 
 cache = None
 try:
-    from infra.cache.redis_cache import cache
-except ImportError:
-    pass  # cache remains None
+    try:
+        from backend.infra.cache.redis_cache import cache  # Docker / repo-root PYTHONPATH
+    except ImportError as e:
+        # Only fall back to alternate import path if backend.* module itself is missing.
+        if isinstance(e, ModuleNotFoundError) and e.name in (
+            "backend.infra.cache.redis_cache",
+            "backend.infra.cache",
+            "backend.infra",
+            "backend",
+        ):
+            from infra.cache.redis_cache import cache  # local dev with backend/ as root
+        else:
+            logging.exception(
+                "Error importing Redis cache from backend.infra.cache.redis_cache"
+            )
+            raise
+except ImportError as e:
+    # Cache module not found at either location — treat as optional dependency
+    if isinstance(e, ModuleNotFoundError) and e.name in (
+        "infra.cache.redis_cache",
+        "infra.cache",
+        "infra",
+    ):
+        logging.info(
+            "Redis cache module not found; Redis-dependent health checks are disabled."
+        )
+    else:
+        logging.exception("Error importing Redis cache dependencies")
+        raise
 
 
 class CheckResult(TypedDict):

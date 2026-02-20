@@ -15,6 +15,21 @@ interface TokenResponse {
   token_type: string;
 }
 
+export type AuthSignInStatusState =
+  | "starting"
+  | "browser_opened"
+  | "waiting_for_approval"
+  | "success"
+  | "error";
+
+export interface AuthSignInStatus {
+  state: AuthSignInStatusState;
+  message: string;
+  userCode?: string;
+  verificationUri?: string;
+  recoverable?: boolean;
+}
+
 /**
  * Device Code Flow authentication service for VSCode extension.
  *
@@ -28,18 +43,62 @@ export class DeviceAuthService {
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
-    // Default to 8787 which is the standard AEP backend port
-    this.apiBaseUrl =
-      vscode.workspace.getConfiguration("aep").get("apiUrl") ||
-      "http://localhost:8787";
+    this.apiBaseUrl = this.resolveApiBaseUrl();
+  }
+
+  private resolveApiBaseUrl(): string {
+    const config = vscode.workspace.getConfiguration("aep");
+    const raw = (config.get<string>("navi.backendUrl") || "http://127.0.0.1:8787").trim();
+    if (!raw) {
+      return "http://127.0.0.1:8787";
+    }
+
+    try {
+      const parsed = new URL(raw);
+      parsed.pathname = parsed.pathname
+        .replace(/\/api\/navi\/chat\/?$/i, "")
+        .replace(/\/api\/chat\/respond\/?$/i, "")
+        .replace(/\/+$/, "");
+      parsed.search = "";
+      parsed.hash = "";
+      return parsed.toString().replace(/\/$/, "");
+    } catch {
+      return "http://127.0.0.1:8787";
+    }
+  }
+
+  private emitStatus(
+    status: AuthSignInStatus,
+    onStatus?: (status: AuthSignInStatus) => void
+  ): void {
+    if (onStatus) {
+      onStatus(status);
+    }
+  }
+
+  private getVerificationTarget(data: DeviceCodeResponse): string {
+    const target = (data.verification_uri_complete || data.verification_uri || "").trim();
+    if (!target) {
+      throw new Error("Sign-in verification URL is missing from backend response.");
+    }
+    return target;
   }
 
   /**
    * Start the device code login flow.
    */
-  async startLogin(): Promise<void> {
+  async startLogin(onStatus?: (status: AuthSignInStatus) => void): Promise<void> {
+    this.apiBaseUrl = this.resolveApiBaseUrl();
+
+    const emit = (status: AuthSignInStatus) => this.emitStatus(status, onStatus);
+    let terminalStatusEmitted = false;
+
     try {
-      // 1. Request device code from backend
+      emit({
+        state: "starting",
+        message: "Starting secure sign-in...",
+      });
+
       const response = await fetch(`${this.apiBaseUrl}/oauth/device/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -47,44 +106,85 @@ export class DeviceAuthService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to start auth: ${response.statusText}`);
+        let detail = "";
+        try {
+          detail = await response.text();
+        } catch {
+          detail = response.statusText;
+        }
+        throw new Error(`Failed to start sign-in (HTTP ${response.status}). ${detail || ""}`.trim());
       }
 
-      const data = await response.json() as DeviceCodeResponse;
+      const data = (await response.json()) as DeviceCodeResponse;
 
-      // 2. Show user code and prompt to open browser
-      const action = await vscode.window.showInformationMessage(
-        `To sign in, enter code: ${data.user_code}`,
-        { modal: true },
-        "Open Browser",
-        "Copy Code"
-      );
+      const verificationTarget = this.getVerificationTarget(data);
+      let browserOpened = false;
+      try {
+        await vscode.env.openExternal(vscode.Uri.parse(verificationTarget));
+        browserOpened = true;
+      } catch {
+        browserOpened = false;
+      }
 
-      if (action === "Open Browser") {
-        await vscode.env.openExternal(
-          vscode.Uri.parse(
-            data.verification_uri_complete || data.verification_uri
-          )
-        );
-      } else if (action === "Copy Code") {
-        await vscode.env.clipboard.writeText(data.user_code);
-        vscode.window.showInformationMessage(
-          `Code "${data.user_code}" copied to clipboard!`
-        );
-        await vscode.env.openExternal(
-          vscode.Uri.parse(data.verification_uri)
-        );
+      if (browserOpened) {
+        emit({
+          state: "browser_opened",
+          message: "Browser opened for NAVI authorization.",
+          userCode: data.user_code,
+          verificationUri: verificationTarget,
+        });
       } else {
-        // User cancelled
-        return;
+        emit({
+          state: "error",
+          message: "Could not open browser automatically. Use fallback actions to continue sign-in.",
+          userCode: data.user_code,
+          verificationUri: verificationTarget,
+          recoverable: true,
+        });
+
+        const action = await vscode.window.showWarningMessage(
+          "NAVI could not open your browser. You can retry opening it or copy the authorization code.",
+          "Open Browser",
+          "Copy Code",
+          "Cancel"
+        );
+
+        if (action === "Open Browser") {
+          await vscode.env.openExternal(vscode.Uri.parse(verificationTarget));
+        } else if (action === "Copy Code") {
+          await vscode.env.clipboard.writeText(data.user_code);
+          vscode.window.showInformationMessage("Device code copied. Open the verification page and authorize.");
+          await vscode.env.openExternal(vscode.Uri.parse(data.verification_uri));
+        } else {
+          throw new Error("Sign-in cancelled before browser authorization.");
+        }
       }
 
-      // 3. Poll for completion
-      await this.pollForToken(data.device_code, data.interval, data.expires_in);
+      emit({
+        state: "waiting_for_approval",
+        message: data.verification_uri_complete
+          ? "Waiting for browser authorization..."
+          : "Waiting for browser authorization. If prompted, enter the device code shown.",
+        userCode: data.user_code,
+        verificationUri: verificationTarget,
+      });
+
+      await this.pollForToken(data.device_code, data.interval, data.expires_in, emit);
     } catch (error) {
-      vscode.window.showErrorMessage(
-        `Authentication failed: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+      const message =
+        error instanceof Error ? error.message : "Authentication failed due to an unknown error.";
+
+      if (!/cancelled/i.test(message)) {
+        if (!terminalStatusEmitted) {
+          emit({
+            state: "error",
+            message,
+          });
+        }
+        vscode.window.showErrorMessage(`Authentication failed: ${message}`);
+      }
+
+      throw error;
     }
   }
 
@@ -94,7 +194,8 @@ export class DeviceAuthService {
   private async pollForToken(
     deviceCode: string,
     interval: number,
-    expiresIn: number
+    expiresIn: number,
+    emit: (status: AuthSignInStatus) => void
   ): Promise<void> {
     const maxAttempts = Math.floor(expiresIn / interval);
     let attempts = 0;
@@ -111,14 +212,15 @@ export class DeviceAuthService {
           });
 
           if (response.status === 200) {
-            // Success - got the token
-            const data = await response.json() as TokenResponse;
+            const data = (await response.json()) as TokenResponse;
             await this.storeToken(data.access_token, data.expires_in);
-            vscode.window.showInformationMessage(
-              "Successfully signed in to NAVI!"
-            );
 
-            // Notify webview of auth state change
+            emit({
+              state: "success",
+              message: "Successfully signed in to NAVI.",
+            });
+
+            vscode.window.showInformationMessage("Successfully signed in to NAVI.");
             this.notifyAuthStateChange(true);
             resolve();
             return;
@@ -134,35 +236,32 @@ export class DeviceAuthService {
             const errorCode = (maybeJson as { error_code?: string }).error_code;
             pendingFromBody = detail === "authorization_pending";
             errorText = JSON.stringify(maybeJson);
-            // Treat pending responses as non-fatal even if status was normalized by middleware.
-            if (pendingFromBody && !isPendingStatus) {
-              // Fall through to pending handling below.
-            } else if (errorCode && detail && !isPendingStatus) {
+            if (errorCode && detail && !isPendingStatus) {
               errorText = JSON.stringify({ detail, error_code: errorCode });
             }
-          } catch (error) {
-            // Non-JSON response; fall back to text.
+          } catch {
             errorText = await response.text();
           }
 
           if (isPendingStatus || pendingFromBody) {
-            // Authorization pending, continue polling
+            emit({
+              state: "waiting_for_approval",
+              message: "Waiting for browser authorization...",
+            });
             if (attempts < maxAttempts) {
               this.pollInterval = setTimeout(poll, interval * 1000);
             } else {
-              reject(new Error("Authentication timed out"));
+              reject(new Error("Authentication timed out while waiting for approval."));
             }
             return;
           }
 
-          // Other error
           reject(new Error(errorText || `HTTP ${response.status}`));
         } catch (error) {
           reject(error);
         }
       };
 
-      // Start polling
       poll();
     });
   }
@@ -182,7 +281,6 @@ export class DeviceAuthService {
   async getToken(): Promise<string | undefined> {
     const expiresAt = this.context.globalState.get<number>("aep.tokenExpiresAt");
     if (expiresAt && Date.now() > expiresAt) {
-      // Token expired, clear it
       await this.logout();
       return undefined;
     }
@@ -201,7 +299,6 @@ export class DeviceAuthService {
    * Log out the current user.
    */
   async logout(): Promise<void> {
-    // Clear polling if in progress
     if (this.pollInterval) {
       clearTimeout(this.pollInterval);
       this.pollInterval = null;
@@ -211,7 +308,6 @@ export class DeviceAuthService {
     await this.context.globalState.update("aep.tokenExpiresAt", undefined);
     vscode.window.showInformationMessage("Signed out of NAVI");
 
-    // Notify webview of auth state change
     this.notifyAuthStateChange(false);
   }
 
@@ -219,11 +315,7 @@ export class DeviceAuthService {
    * Notify the webview of auth state changes.
    */
   private notifyAuthStateChange(isAuthenticated: boolean): void {
-    // This will be picked up by the extension's webview message handler
-    vscode.commands.executeCommand(
-      "aep.notifyAuthStateChange",
-      isAuthenticated
-    );
+    vscode.commands.executeCommand("aep.notifyAuthStateChange", isAuthenticated);
   }
 
   /**
@@ -240,13 +332,10 @@ export class DeviceAuthService {
     if (!token) return null;
 
     try {
-      // Decode JWT payload (base64)
       const parts = token.split(".");
       if (parts.length !== 3) return null;
 
-      const payload = JSON.parse(
-        Buffer.from(parts[1], "base64").toString("utf-8")
-      );
+      const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
 
       return {
         sub: payload.sub,
@@ -258,16 +347,5 @@ export class DeviceAuthService {
     } catch {
       return null;
     }
-  }
-
-  /**
-   * Add authorization header to fetch options.
-   */
-  async buildAuthHeaders(): Promise<Record<string, string>> {
-    const token = await this.getToken();
-    if (token) {
-      return { Authorization: `Bearer ${token}` };
-    }
-    return {};
   }
 }

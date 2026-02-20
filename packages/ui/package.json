@@ -1,0 +1,6 @@
+{
+  "name": "@aep/ui",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared NAVI UI tokens and primitives"
+}

@@ -257,6 +257,7 @@ const CHAT_MODE_LABELS: Record<ChatMode, string> = {
 
 const AUTO_MODEL_ID = "auto/recommended";
 const DEFAULT_NAVI_MODE_ID = MODEL_REGISTRY.defaults.defaultModeId;
+const UNIFIED_THINKING_ACTIVITY_ID = "llm-thinking-unified";
 
 // Slash commands configuration
 interface SlashCommand {
@@ -4299,9 +4300,7 @@ export default function NaviChatPanel({
 
         // Update or create thinking activity with the streamed content
         setActivityEvents((prev) => {
-          const thinkingIdx = prev.findIndex(
-            (evt) => evt.kind === "thinking" && evt.status === "running"
-          );
+          const thinkingIdx = prev.findIndex((evt) => evt.id === UNIFIED_THINKING_ACTIVITY_ID);
 
           if (thinkingIdx >= 0) {
             // Append to existing thinking activity
@@ -4319,7 +4318,7 @@ export default function NaviChatPanel({
           return [
             ...prev,
             {
-              id: makeActivityId(),
+              id: UNIFIED_THINKING_ACTIVITY_ID,
               kind: "thinking" as const,
               label: "Thinking",
               detail: thinkingText.slice(-500),
@@ -6107,7 +6106,7 @@ export default function NaviChatPanel({
 
         // SKIP llm_call activities BUT show streaming status for LLM calls
         // Use a single unified activity ID for both llm_call and thinking
-        const unifiedThinkingId = 'llm-thinking-unified';
+        const unifiedThinkingId = UNIFIED_THINKING_ACTIVITY_ID;
 
         if (kind === 'llm_call') {
           // Show live LLM activity without clutter
@@ -6949,7 +6948,7 @@ export default function NaviChatPanel({
 
     // Create a SINGLE thinking activity - backend events will update/add more
     setActivityEvents([{
-      id: makeActivityId(),
+      id: UNIFIED_THINKING_ACTIVITY_ID,
       kind: "thinking" as const,
       label: activityLabel,
       detail: modelSelection.modelName ? `Using ${modelSelection.modelName}` : "",
@@ -8809,7 +8808,9 @@ export default function NaviChatPanel({
     ? activityEvents[activityEvents.length - 1]
     : null;
   const showTypingIndicator = sending && !showActivityStream;
-  const showFloatingStatus = sending && (hasStreamingMessage || hasRunningActivity);
+  // Keep floating status only as a last-resort empty-state indicator to avoid duplicate "Thinking..." UIs.
+  const showFloatingStatus =
+    sending && !hasStreamingMessage && hasRunningActivity && messages.length === 0;
 
   // Safety net: clear stuck sending if nothing is streaming or running
   useEffect(() => {
@@ -10176,6 +10177,27 @@ export default function NaviChatPanel({
                         }
                       }
 
+                      let preferredThinkingEvent: ActivityEvent | null = null;
+                      toolActivities.forEach((evt) => {
+                        if (evt.kind !== 'thinking') return;
+                        if (!preferredThinkingEvent) {
+                          preferredThinkingEvent = evt;
+                          return;
+                        }
+                        if (
+                          preferredThinkingEvent.status !== 'running' &&
+                          evt.status === 'running'
+                        ) {
+                          preferredThinkingEvent = evt;
+                          return;
+                        }
+                        const preferredTime = new Date(preferredThinkingEvent.timestamp).getTime();
+                        const nextTime = new Date(evt.timestamp).getTime();
+                        if (nextTime >= preferredTime) {
+                          preferredThinkingEvent = evt;
+                        }
+                      });
+
                       const filteredActivities = toolActivities.filter((evt) => {
                         if (evt.kind === 'command' || evt.kind === 'grep') {
                           const key = evt.detail || evt.id;
@@ -10184,6 +10206,9 @@ export default function NaviChatPanel({
                         if (evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create') {
                           const fileKey = evt.filePath || evt.detail || evt.id;
                           return seenFiles.get(fileKey) === evt;
+                        }
+                        if (evt.kind === 'thinking') {
+                          return preferredThinkingEvent === evt;
                         }
                         return true;
                       });
@@ -11008,17 +11033,6 @@ export default function NaviChatPanel({
                               {renderMessageContent(m)}
                             </div>
                           )}
-                          {/* Bottom processing indicator - shows when streaming and content exists */}
-                          {/* This tells user NAVI is still working after activities have appeared */}
-                          {m.isStreaming && (sending || isAnalyzing || hasRunningActivity) && (filteredActivities.length > 0 || narrativesToUse.length > 0) && (
-                            <div className="navi-processing-indicator">
-                              <span className="navi-thinking-label">
-                                {"Thinking...".split("").map((char, i) => (
-                                  <span key={i} className="navi-thinking-label-char">{char}</span>
-                                ))}
-                              </span>
-                            </div>
-                          )}
                         </div>
                       );
                     })()}
@@ -11757,6 +11771,14 @@ export default function NaviChatPanel({
               evt.kind === 'verification' ||
               evt.kind === 'fixing'
           );
+          const hasPendingAssistantBubble = messages.some(
+            (msg) =>
+              msg.role === "assistant" &&
+              (msg.isStreaming || (!msg.content || msg.content.trim() === ""))
+          );
+          const hasRunningThinkingActivity = activityEvents.some(
+            (evt) => evt.kind === "thinking" && evt.status === "running"
+          );
           // Show thinking indicator at bottom when:
           // 1. We are sending/streaming
           // 2. No real activities have started
@@ -11764,6 +11786,8 @@ export default function NaviChatPanel({
           const lastMessage = messages[messages.length - 1];
           const shouldShowBottomThinking = sending &&
             !hasRealActivities &&
+            !hasPendingAssistantBubble &&
+            !hasRunningThinkingActivity &&
             narrativeLines.length === 0 &&
             (!lastMessage?.content || lastMessage.content.trim() === '');
 

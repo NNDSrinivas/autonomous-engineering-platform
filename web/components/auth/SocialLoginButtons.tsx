@@ -51,13 +51,28 @@ function GoogleIcon({ className }: { className?: string }) {
 
 export function SocialLoginButtons({ mode = "login" }: SocialLoginButtonsProps) {
   const label = mode === "login" ? "Continue with" : "Sign up with";
+  const returnTo =
+    typeof window !== "undefined"
+      ? (() => {
+          const requested = new URLSearchParams(window.location.search).get("returnTo");
+          return requested && requested.startsWith("/") ? requested : "/app";
+        })()
+      : "/app";
 
   const handleGitHubLogin = () => {
-    window.location.href = `/api/auth/login?connection=github`;
+    const params = new URLSearchParams({
+      connection: "github",
+      returnTo,
+    });
+    window.location.href = `/api/auth/login?${params.toString()}`;
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = `/api/auth/login?connection=google-oauth2`;
+    const params = new URLSearchParams({
+      connection: "google-oauth2",
+      returnTo,
+    });
+    window.location.href = `/api/auth/login?${params.toString()}`;
   };
 
   return (

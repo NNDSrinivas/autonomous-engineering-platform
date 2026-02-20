@@ -87,8 +87,15 @@ interface OrgInfo {
   role: string;
 }
 
+interface AuthSignInStatus {
+  state: "starting" | "browser_opened" | "waiting_for_approval" | "success" | "error";
+  message: string;
+  userCode?: string;
+  verificationUri?: string;
+  recoverable?: boolean;
+}
+
 const NICKNAME_KEY = "aep.navi.nickname.v1";
-const AUTH_GATE_SKIP_KEY = "aep.navi.authGateSkipped.v1";
 const SELECTED_ORG_KEY = "aep.navi.selectedOrg.v1";
 
 const readNickname = () => {
@@ -97,15 +104,6 @@ const readNickname = () => {
     return window.localStorage.getItem(NICKNAME_KEY) || "";
   } catch {
     return "";
-  }
-};
-
-const readAuthGateSkipped = () => {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(AUTH_GATE_SKIP_KEY) === "1";
-  } catch {
-    return false;
   }
 };
 
@@ -596,7 +594,6 @@ export function CodeCompanionShell() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<UserInfo | undefined>(undefined);
   const [nickname, setNickname] = useState(readNickname());
-  const [authGateSkipped, setAuthGateSkipped] = useState(readAuthGateSkipped());
   const [orgOnboardingOpen, setOrgOnboardingOpen] = useState(false);
   const [orgs, setOrgs] = useState<OrgInfo[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState(readSelectedOrg());
@@ -617,6 +614,7 @@ export function CodeCompanionShell() {
   const [externalPanelRequest, setExternalPanelRequest] = useState<SidebarPanelType>(null);
   const [fullPanelOpen, setFullPanelOpen] = useState(false);
   const [fullPanelTab, setFullPanelTab] = useState<CommandCenterTab>('mcp');
+  const [authSignInStatus, setAuthSignInStatus] = useState<AuthSignInStatus | null>(null);
 
   // MCP Tools state
   const [mcpTools, setMcpTools] = useState<McpTool[]>([]);
@@ -672,7 +670,7 @@ export function CodeCompanionShell() {
       if (message.type === "auth.stateChange") {
         setIsAuthenticated(message.isAuthenticated);
         if (message.isAuthenticated) {
-          setAuthGateSkipped(false);
+          setAuthSignInStatus(null);
         }
         const currentConfig = (window as any).__AEP_CONFIG__ || {};
         if (message.isAuthenticated && message.authToken) {
@@ -687,6 +685,8 @@ export function CodeCompanionShell() {
             ...currentConfig,
             authToken: undefined,
           };
+          setHistoryOpen(false);
+          setActivityPanelOpen(false);
         }
         if (message.user) {
           setUser(message.user);
@@ -694,8 +694,20 @@ export function CodeCompanionShell() {
           setUser(undefined);
         }
       }
+      if (message.type === "auth.signIn.status") {
+        if (message && typeof message.message === "string" && typeof message.state === "string") {
+          setAuthSignInStatus({
+            state: message.state as AuthSignInStatus["state"],
+            message: message.message,
+            userCode: typeof message.userCode === "string" ? message.userCode : undefined,
+            verificationUri: typeof message.verificationUri === "string" ? message.verificationUri : undefined,
+            recoverable: Boolean(message.recoverable),
+          });
+        }
+      }
       if (message.type === "navi.sso.success" && message.token) {
         setIsAuthenticated(true);
+        setAuthSignInStatus(null);
         const currentConfig = (window as any).__AEP_CONFIG__ || {};
         (window as any).__AEP_CONFIG__ = {
           ...currentConfig,
@@ -715,19 +727,6 @@ export function CodeCompanionShell() {
       }
     });
     return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const handleSkip = (event: Event) => {
-      const custom = event as CustomEvent;
-      if (typeof custom.detail === "boolean") {
-        setAuthGateSkipped(custom.detail);
-      } else {
-        setAuthGateSkipped(readAuthGateSkipped());
-      }
-    };
-    window.addEventListener("navi.auth.skip", handleSkip);
-    return () => window.removeEventListener("navi.auth.skip", handleSkip);
   }, []);
 
   useEffect(() => {
@@ -757,6 +756,12 @@ export function CodeCompanionShell() {
     }
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!isAuthenticated && fullPanelOpen && fullPanelTab !== 'account') {
+      setFullPanelTab('account');
+    }
+  }, [isAuthenticated, fullPanelOpen, fullPanelTab]);
+
   // Keyboard handler: close "More" menu on Escape key
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -776,10 +781,15 @@ export function CodeCompanionShell() {
 
   // Handle sign in/out
   const handleSignIn = () => {
+    setAuthSignInStatus({
+      state: "starting",
+      message: "Starting secure sign-in...",
+    });
     postMessage({ type: "auth.signIn" });
   };
 
   const handleSignUp = () => {
+    setAuthSignInStatus(null);
     postMessage({ type: "auth.signUp" });
   };
 
@@ -977,18 +987,45 @@ export function CodeCompanionShell() {
     setHistoryOpen(false);
   }, []);
 
-  // Handle new chat
-  const handleNewChat = useCallback(() => {
-    postMessage({ type: "conversation.new" });
-    setHistoryOpen(false);
-  }, []);
-
-  const handleOpenChatSettings = useCallback(() => {
-    setChatSettingsTrigger((prev) => prev + 1);
+  const openAuthGate = useCallback(() => {
+    setFullPanelTab('account');
+    setFullPanelOpen(true);
     setHeaderMoreOpen(false);
     setUserMenuOpen(false);
     setHistoryOpen(false);
   }, []);
+
+  const openCommandCenterTab = useCallback((tab: CommandCenterTab) => {
+    if (!isAuthenticated && tab !== 'account') {
+      setFullPanelTab('account');
+    } else {
+      setFullPanelTab(tab);
+    }
+    setFullPanelOpen(true);
+    setHeaderMoreOpen(false);
+    setUserMenuOpen(false);
+  }, [isAuthenticated]);
+
+  // Handle new chat
+  const handleNewChat = useCallback(() => {
+    if (!isAuthenticated) {
+      openAuthGate();
+      return;
+    }
+    postMessage({ type: "conversation.new" });
+    setHistoryOpen(false);
+  }, [isAuthenticated, openAuthGate]);
+
+  const handleOpenChatSettings = useCallback(() => {
+    if (!isAuthenticated) {
+      openAuthGate();
+      return;
+    }
+    setChatSettingsTrigger((prev) => prev + 1);
+    setHeaderMoreOpen(false);
+    setUserMenuOpen(false);
+    setHistoryOpen(false);
+  }, [isAuthenticated, openAuthGate]);
 
   // Toggle theme
   const toggleTheme = () => {
@@ -1226,8 +1263,9 @@ export function CodeCompanionShell() {
               {/* New Chat Button - Animated Icon Only */}
               <button
                 className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-new-chat-btn"
-                title="Start New Chat"
+                title={isAuthenticated ? "Start New Chat" : "Sign in required"}
                 onClick={handleNewChat}
+                disabled={!isAuthenticated}
               >
                 <span className="navi-icon-glow" />
                 <PenSquare className="h-4 w-4 navi-new-chat-icon" />
@@ -1236,8 +1274,15 @@ export function CodeCompanionShell() {
               {/* History Button - Animated rewind effect */}
               <button
                 className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-history-btn"
-                title="Chat History"
-                onClick={() => setHistoryOpen(true)}
+                title={isAuthenticated ? "Chat History" : "Sign in required"}
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    openAuthGate();
+                    return;
+                  }
+                  setHistoryOpen(true);
+                }}
+                disabled={!isAuthenticated}
               >
                 <span className="navi-icon-glow" />
                 <Clock className="h-4 w-4 navi-history-icon" />
@@ -1245,8 +1290,9 @@ export function CodeCompanionShell() {
 
               <button
                 className="navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-settings-btn"
-                title="Chat Settings"
+                title={isAuthenticated ? "Chat Settings" : "Sign in required"}
                 onClick={handleOpenChatSettings}
+                disabled={!isAuthenticated}
               >
                 <span className="navi-icon-glow" />
                 <Settings className="h-4 w-4 navi-settings-icon" />
@@ -1292,9 +1338,7 @@ export function CodeCompanionShell() {
                       <button
                         className="navi-header-more-menu-item"
                         onClick={() => {
-                          setFullPanelTab('mcp');
-                          setFullPanelOpen(true);
-                          setHeaderMoreOpen(false);
+                          openCommandCenterTab('mcp');
                         }}
                       >
                         <Layers className="h-4 w-4" />
@@ -1321,9 +1365,7 @@ export function CodeCompanionShell() {
                           <button
                             className="navi-header-more-menu-item"
                             onClick={() => {
-                              setFullPanelTab('account');
-                              setFullPanelOpen(true);
-                              setHeaderMoreOpen(false);
+                              openCommandCenterTab('account');
                             }}
                           >
                             <User className="h-4 w-4" />
@@ -1341,9 +1383,7 @@ export function CodeCompanionShell() {
                           <button
                             className="navi-header-more-menu-item"
                             onClick={() => {
-                              setFullPanelTab('account');
-                              setFullPanelOpen(true);
-                              setHeaderMoreOpen(false);
+                              openCommandCenterTab('account');
                             }}
                           >
                             <User className="h-4 w-4" />
@@ -1487,66 +1527,104 @@ export function CodeCompanionShell() {
 
         {/* Main Content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          {/* Left Sidebar */}
-          <aside
-            className={`navi-sidebar transition-all duration-300 ease-in-out ${sidebarCollapsed ? "w-0 overflow-hidden" : "w-72"
-              }`}
-          >
-            {!sidebarCollapsed && (
-              <SidebarPanel
-                isAuthenticated={isAuthenticated}
-                user={user}
-                onSignIn={handleSignIn}
-                onSignUp={handleSignUp}
-                onSignOut={handleSignOut}
-                onExecuteMcpTool={handleExecuteMcpTool}
-                onOpenFullPanel={() => setFullPanelOpen(true)}
-                externalPanelRequest={externalPanelRequest}
-                onClearExternalPanelRequest={() => setExternalPanelRequest(null)}
-              />
-            )}
-          </aside>
-
-          {/* Main Chat Area */}
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-              <NaviChatPanel
-                activityPanelState={activityPanelState}
-                onOpenActivityForCommand={handleOpenActivityForCommand}
-                highlightCommandId={chatJumpCommandId}
-                openSettingsTrigger={chatSettingsTrigger}
-              />
-
-              {/* Activity Panel - Right Sidebar */}
-              {activityPanelOpen && activityPanelState.steps.length > 0 && (
-                <aside className="navi-activity-sidebar">
-                  <ActivityPanel
-                    steps={activityPanelState.steps}
-                    currentStep={activityPanelState.currentStep}
-                    highlightCommandId={activityJumpCommandId}
-                    onViewInChat={handleViewCommandInChat}
-                    onFileClick={(filePath) => {
-                      postMessage({ type: 'openFile', filePath });
-                    }}
-                    onViewHistory={() => setHistoryOpen(true)}
-                    onAcceptAll={() => {
-                      // TODO: wire up bulk accept flow
-                    }}
-                    onRejectAll={() => {
-                      // TODO: wire up bulk reject flow
-                    }}
+          {isAuthenticated ? (
+            <>
+              {/* Left Sidebar */}
+              <aside
+                className={`navi-sidebar transition-all duration-300 ease-in-out ${sidebarCollapsed ? "w-0 overflow-hidden" : "w-72"
+                  }`}
+              >
+                {!sidebarCollapsed && (
+                  <SidebarPanel
+                    isAuthenticated={isAuthenticated}
+                    user={user}
+                    onSignIn={handleSignIn}
+                    onSignUp={handleSignUp}
+                    onSignOut={handleSignOut}
+                    onExecuteMcpTool={handleExecuteMcpTool}
+                    onOpenFullPanel={() => setFullPanelOpen(true)}
+                    externalPanelRequest={externalPanelRequest}
+                    onClearExternalPanelRequest={() => setExternalPanelRequest(null)}
                   />
-                  <button
-                    className="navi-icon-btn navi-icon-btn--sm navi-activity-close"
-                    onClick={() => setActivityPanelOpen(false)}
-                    title="Close Activity Panel"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </aside>
-              )}
-            </div>
-          </main>
+                )}
+              </aside>
+
+              {/* Main Chat Area */}
+              <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+                  <NaviChatPanel
+                    activityPanelState={activityPanelState}
+                    onOpenActivityForCommand={handleOpenActivityForCommand}
+                    highlightCommandId={chatJumpCommandId}
+                    openSettingsTrigger={chatSettingsTrigger}
+                  />
+
+                  {/* Activity Panel - Right Sidebar */}
+                  {activityPanelOpen && activityPanelState.steps.length > 0 && (
+                    <aside className="navi-activity-sidebar">
+                      <ActivityPanel
+                        steps={activityPanelState.steps}
+                        currentStep={activityPanelState.currentStep}
+                        highlightCommandId={activityJumpCommandId}
+                        onViewInChat={handleViewCommandInChat}
+                        onFileClick={(filePath) => {
+                          postMessage({ type: 'openFile', filePath });
+                        }}
+                        onViewHistory={() => setHistoryOpen(true)}
+                        onAcceptAll={() => {
+                          // TODO: wire up bulk accept flow
+                        }}
+                        onRejectAll={() => {
+                          // TODO: wire up bulk reject flow
+                        }}
+                      />
+                      <button
+                        className="navi-icon-btn navi-icon-btn--sm navi-activity-close"
+                        onClick={() => setActivityPanelOpen(false)}
+                        title="Close Activity Panel"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </aside>
+                  )}
+                </div>
+              </main>
+            </>
+          ) : (
+            <main className="navi-auth-wall" aria-label="Authentication required">
+              <div className="navi-auth-wall__layout">
+                <section className="navi-auth-wall__trust-rail" aria-label="Why sign in">
+                  <h3>Sign in to unlock the NAVI workspace</h3>
+                  <p>
+                    Chat, MCP tools, integrations, and rules are available only after authentication.
+                  </p>
+                  <ul className="navi-auth-wall__trust-list">
+                    <li>
+                      <Shield className="h-4 w-4" />
+                      <span>Secure browser authorization with enterprise identity controls.</span>
+                    </li>
+                    <li>
+                      <Lock className="h-4 w-4" />
+                      <span>Session tokens are stored in VS Code secrets, not in the webview.</span>
+                    </li>
+                    <li>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>One sign-in unlocks your full NAVI environment.</span>
+                    </li>
+                  </ul>
+                </section>
+                <div className="navi-auth-wall__entry">
+                  <PremiumAuthEntry
+                    onSignIn={handleSignIn}
+                    onSignUp={handleSignUp}
+                    title="Continue with NAVI account"
+                    subtitle="Sign in uses secure device authorization. Sign up opens NAVI in your browser."
+                    signInStatus={authSignInStatus}
+                  />
+                </div>
+              </div>
+            </main>
+          )}
         </div>
       </div>
 
@@ -1587,6 +1665,8 @@ export function CodeCompanionShell() {
               <button
                 className={`navi-full-panel__tab ${fullPanelTab === 'mcp' ? 'is-active' : ''}`}
                 onClick={() => setFullPanelTab('mcp')}
+                disabled={!isAuthenticated}
+                title={!isAuthenticated ? "Sign in required" : "MCP Tools"}
               >
                 <Settings className="h-4 w-4" />
                 MCP Tools
@@ -1594,6 +1674,8 @@ export function CodeCompanionShell() {
               <button
                 className={`navi-full-panel__tab ${fullPanelTab === 'integrations' ? 'is-active' : ''}`}
                 onClick={() => setFullPanelTab('integrations')}
+                disabled={!isAuthenticated}
+                title={!isAuthenticated ? "Sign in required" : "Integrations"}
               >
                 <Link className="h-4 w-4" />
                 Integrations
@@ -1601,6 +1683,8 @@ export function CodeCompanionShell() {
               <button
                 className={`navi-full-panel__tab ${fullPanelTab === 'rules' ? 'is-active' : ''}`}
                 onClick={() => setFullPanelTab('rules')}
+                disabled={!isAuthenticated}
+                title={!isAuthenticated ? "Sign in required" : "NAVI Rules"}
               >
                 <Shield className="h-4 w-4" />
                 NAVI Rules
@@ -2102,16 +2186,39 @@ export function CodeCompanionShell() {
 
               {/* Account Tab */}
               {fullPanelTab === 'account' && (
-                <div className="navi-cc-account">
+                <div className={`navi-cc-account ${!isAuthenticated ? 'navi-cc-account--unauth' : ''}`}>
                   {!isAuthenticated ? (
-                    <div className="navi-cc-account__auth-entry">
-                      <PremiumAuthEntry
-                        variant="compact"
-                        onSignIn={handleSignIn}
-                        onSignUp={handleSignUp}
-                        title="Continue with NAVI account"
-                        subtitle="Use sign in to continue existing sessions or sign up to create a new NAVI workspace."
-                      />
+                    <div className="navi-cc-account__unauth-layout">
+                      <section className="navi-cc-account__trust-rail" aria-label="NAVI enterprise trust highlights">
+                        <h3>Enterprise-grade account access</h3>
+                        <p>
+                          NAVI keeps your engineering workflow secure, auditable, and ready for production teams.
+                        </p>
+                        <ul className="navi-cc-account__trust-list">
+                          <li>
+                            <Shield className="h-4 w-4" />
+                            <span>Secure browser authorization with scoped access.</span>
+                          </li>
+                          <li>
+                            <Lock className="h-4 w-4" />
+                            <span>Tokens stay in VS Code secrets storage.</span>
+                          </li>
+                          <li>
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span>Sign in once and continue seamlessly across sessions.</span>
+                          </li>
+                        </ul>
+                      </section>
+                      <div className="navi-cc-account__auth-entry">
+                        <PremiumAuthEntry
+                          variant="compact"
+                          onSignIn={handleSignIn}
+                          onSignUp={handleSignUp}
+                          title="Continue with NAVI account"
+                          subtitle="Sign in uses secure device authorization. Sign up opens NAVI in your browser."
+                          signInStatus={authSignInStatus}
+                        />
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -3732,6 +3839,20 @@ export function CodeCompanionShell() {
           color: hsl(var(--foreground));
         }
 
+        .navi-full-panel__tab:disabled {
+          opacity: 0.48;
+          cursor: not-allowed;
+          color: hsl(var(--muted-foreground));
+          background: transparent;
+          border-color: transparent;
+          box-shadow: none;
+        }
+
+        .navi-full-panel__tab:disabled:hover {
+          background: transparent;
+          color: hsl(var(--muted-foreground));
+        }
+
         .navi-full-panel__tab.is-active {
           background: hsl(var(--secondary) / 0.6);
           color: hsl(var(--foreground));
@@ -3748,10 +3869,27 @@ export function CodeCompanionShell() {
           filter: drop-shadow(0 6px 12px hsl(var(--primary) / 0.2));
         }
 
+        .navi-full-panel__tab:disabled svg,
+        .navi-full-panel__tab:disabled:hover svg {
+          transform: none;
+          filter: none;
+        }
+
         .navi-full-panel__content {
           flex: 1;
           overflow-y: auto;
-          padding: 24px;
+          padding: 20px;
+        }
+
+        .navi-icon-btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+          transform: none !important;
+          box-shadow: none !important;
+        }
+
+        .navi-icon-btn:disabled .navi-icon-glow {
+          opacity: 0;
         }
 
         .navi-full-panel__section-header {
@@ -4893,63 +5031,181 @@ export function CodeCompanionShell() {
         }
 
         /* ===== ACCOUNT TAB ===== */
+        .navi-auth-wall {
+          width: 100%;
+          height: 100%;
+          padding: clamp(18px, 2vw, 28px);
+          display: flex;
+          align-items: stretch;
+          justify-content: center;
+          overflow-y: auto;
+          background:
+            radial-gradient(110% 95% at 18% 6%, hsl(191 98% 63% / 0.12), transparent 54%),
+            radial-gradient(95% 100% at 86% 4%, hsl(229 100% 66% / 0.11), transparent 56%),
+            linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+        }
+
+        .navi-auth-wall__layout {
+          width: min(1240px, 100%);
+          min-height: 100%;
+          display: grid;
+          grid-template-columns: minmax(320px, 1.08fr) minmax(360px, 0.92fr);
+          gap: clamp(14px, 1.8vw, 22px);
+        }
+
+        .navi-auth-wall__trust-rail {
+          border: 1px solid hsl(var(--border) / 0.62);
+          border-radius: 16px;
+          padding: clamp(22px, 2.5vw, 34px);
+          background:
+            radial-gradient(132% 120% at 15% 7%, hsl(191 98% 63% / 0.16), transparent 58%),
+            radial-gradient(126% 112% at 86% 9%, hsl(229 100% 66% / 0.16), transparent 60%),
+            linear-gradient(165deg, hsl(222 28% 12% / 0.96), hsl(220 24% 9% / 0.94));
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.05);
+        }
+
+        .navi-auth-wall__trust-rail h3 {
+          margin: 0;
+          font-size: clamp(1.22rem, 2.5vw, 1.8rem);
+          line-height: 1.2;
+          color: hsl(var(--foreground));
+        }
+
+        .navi-auth-wall__trust-rail p {
+          margin: 0.75rem 0 0;
+          font-size: 0.95rem;
+          color: hsl(var(--muted-foreground));
+          line-height: 1.58;
+          max-width: 64ch;
+        }
+
+        .navi-auth-wall__trust-list {
+          list-style: none;
+          margin: 1.3rem 0 0;
+          padding: 0;
+          display: grid;
+          gap: 0.88rem;
+        }
+
+        .navi-auth-wall__trust-list li {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.62rem;
+          color: hsl(var(--foreground));
+          font-size: 0.9rem;
+          line-height: 1.45;
+        }
+
+        .navi-auth-wall__trust-list svg {
+          margin-top: 0.08rem;
+          color: hsl(192 100% 68%);
+          flex-shrink: 0;
+        }
+
+        .navi-auth-wall__entry {
+          min-height: 100%;
+          display: flex;
+          align-items: stretch;
+        }
+
+        .navi-auth-wall__entry > .premium-auth-entry {
+          width: 100%;
+          min-height: 100%;
+        }
+
         .navi-cc-account {
-          max-width: 600px;
+          width: min(100%, 1140px);
+          max-width: none;
           margin: 0 auto;
+          min-height: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .navi-cc-account--unauth {
+          display: flex;
+          align-items: stretch;
+          flex: 1;
+        }
+
+        .navi-cc-account__unauth-layout {
+          width: 100%;
+          min-height: max(520px, 100%);
+          height: 100%;
+          flex: 1;
+          display: grid;
+          grid-template-columns: minmax(280px, 1.08fr) minmax(360px, 0.92fr);
+          gap: 14px;
+        }
+
+        .navi-cc-account__trust-rail {
+          border: 1px solid hsl(var(--border) / 0.6);
+          border-radius: 16px;
+          padding: clamp(18px, 2.1vw, 28px);
+          background:
+            radial-gradient(120% 120% at 14% 6%, hsl(192 95% 60% / 0.14), transparent 52%),
+            radial-gradient(150% 140% at 84% 8%, hsl(228 90% 62% / 0.16), transparent 58%),
+            linear-gradient(165deg, hsl(220 24% 13% / 0.96), hsl(220 24% 9% / 0.92));
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.05);
+        }
+
+        .navi-cc-account__trust-rail h3 {
+          margin: 0;
+          font-size: clamp(1.06rem, 2.2vw, 1.28rem);
+          line-height: 1.22;
+          color: hsl(var(--foreground));
+        }
+
+        .navi-cc-account__trust-rail p {
+          margin: 0.6rem 0 0;
+          font-size: 0.93rem;
+          color: hsl(var(--muted-foreground));
+          line-height: 1.55;
+        }
+
+        .navi-cc-account__trust-list {
+          list-style: none;
+          margin: 1rem 0 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 0.62rem;
+        }
+
+        .navi-cc-account__trust-list li {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.56rem;
+          color: hsl(var(--foreground));
+          font-size: 0.83rem;
+          line-height: 1.45;
+        }
+
+        .navi-cc-account__trust-list svg {
+          margin-top: 0.12rem;
+          color: hsl(190 96% 64%);
+          flex-shrink: 0;
         }
 
         .navi-cc-account__auth-entry {
-          padding: 26px 0 8px;
-        }
-
-        .navi-cc-account__signin {
+          width: 100%;
           display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-          padding: 60px 40px;
+          align-items: stretch;
+          min-width: 0;
         }
 
-        .navi-cc-account__signin-icon {
-          width: 80px;
-          height: 80px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
-          border-radius: 20px;
-          margin-bottom: 24px;
-          color: white;
-        }
-
-        .navi-cc-account__signin h3 {
-          margin: 0 0 8px;
-          font-size: 20px;
-          font-weight: 600;
-        }
-
-        .navi-cc-account__signin p {
-          margin: 0 0 24px;
-          font-size: 14px;
-          color: hsl(var(--muted-foreground));
-          line-height: 1.5;
-        }
-
-        .navi-cc-account__signin-btn {
-          padding: 14px 40px;
-          background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
-          border: none;
-          border-radius: 12px;
-          color: white;
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .navi-cc-account__signin-btn:hover {
-          box-shadow: 0 8px 24px hsl(var(--primary) / 0.4);
-          transform: translateY(-2px);
+        .navi-cc-account__auth-entry > .premium-auth-entry {
+          width: 100%;
+          min-height: 100%;
+          max-width: 460px;
+          margin-left: auto;
         }
 
         .navi-cc-account__profile {
@@ -5219,6 +5475,31 @@ export function CodeCompanionShell() {
         .navi-cc-account__signout:hover {
           background: hsl(var(--destructive) / 0.15);
           border-color: hsl(var(--destructive) / 0.4);
+        }
+
+        @media (max-width: 1100px) {
+          .navi-auth-wall__layout {
+            grid-template-columns: 1fr;
+          }
+
+          .navi-auth-wall__trust-rail {
+            min-height: 0;
+          }
+
+          .navi-cc-account__unauth-layout {
+            grid-template-columns: 1fr;
+            min-height: auto;
+            gap: 12px;
+          }
+
+          .navi-cc-account__trust-rail {
+            min-height: 0;
+          }
+
+          .navi-cc-account__auth-entry > .premium-auth-entry {
+            max-width: none;
+            margin-left: 0;
+          }
         }
 
         /* Spin animation */

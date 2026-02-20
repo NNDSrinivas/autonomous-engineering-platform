@@ -1,20 +1,12 @@
 import React from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSession } from "@auth0/nextjs-auth0";
-import { User, Settings, LogOut } from "lucide-react";
+import { User, LogOut } from "lucide-react";
 
-export default async function DashboardLayout({
+export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession();
-
-  if (!session?.user) {
-    redirect("/login");
-  }
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -34,18 +26,10 @@ export default async function DashboardLayout({
               href="/profile"
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              {session.user.picture ? (
-                <img
-                  src={session.user.picture}
-                  alt={session.user.name || "User"}
-                  className="h-8 w-8 rounded-full border border-border"
-                />
-              ) : (
-                <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center">
-                  <User className="h-4 w-4" />
-                </div>
-              )}
-              <span className="hidden sm:inline">{session.user.name}</span>
+              <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center">
+                <User className="h-4 w-4" />
+              </div>
+              <span className="hidden sm:inline">Profile</span>
             </Link>
 
             <a

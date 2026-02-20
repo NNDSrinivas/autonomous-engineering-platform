@@ -48,9 +48,17 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
         await onSubmit(data);
       } else {
         // Default behavior: redirect to Auth0 with username-password connection
+        const requestedReturnTo = new URLSearchParams(window.location.search).get(
+          "returnTo"
+        );
+        const returnTo =
+          requestedReturnTo && requestedReturnTo.startsWith("/")
+            ? requestedReturnTo
+            : "/app";
         const params = new URLSearchParams({
           connection: "Username-Password-Authentication",
           login_hint: data.email,
+          returnTo,
         });
         window.location.href = `/api/auth/login?${params.toString()}`;
       }

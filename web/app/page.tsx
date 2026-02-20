@@ -1,12 +1,8 @@
 import Link from "next/link";
-import { getSession } from "@auth0/nextjs-auth0";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles, Code, Zap } from "lucide-react";
 
-export default async function HomePage() {
-  const session = await getSession();
-  const isAuthenticated = !!session?.user;
-
+export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -20,34 +16,15 @@ export default async function HomePage() {
           </Link>
 
           <div className="flex items-center gap-4">
-            {isAuthenticated ? (
-              <>
-                <Link
-                  href="/profile"
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Profile
-                </Link>
-                <a
-                  href="/api/auth/logout"
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Sign Out
-                </a>
-              </>
-            ) : (
-              <>
-                <Link
-                  href="/login"
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Sign In
-                </Link>
-                <Button asChild size="sm">
-                  <Link href="/signup">Get Started</Link>
-                </Button>
-              </>
-            )}
+            <Link
+              href="/login"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Sign In
+            </Link>
+            <Button asChild size="sm">
+              <Link href="/signup">Get Started</Link>
+            </Button>
           </div>
         </div>
       </header>
@@ -75,26 +52,15 @@ export default async function HomePage() {
 
           {/* CTA */}
           <div className="flex items-center justify-center gap-4">
-            {isAuthenticated ? (
-              <Button asChild size="lg" className="group">
-                <Link href="/profile">
-                  Go to Dashboard
-                  <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
-              </Button>
-            ) : (
-              <>
-                <Button asChild size="lg" className="group">
-                  <Link href="/signup">
-                    Start Free
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" size="lg">
-                  <Link href="/login">Sign In</Link>
-                </Button>
-              </>
-            )}
+            <Button asChild size="lg" className="group">
+              <Link href="/signup">
+                Start Free
+                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <Link href="/login">Sign In</Link>
+            </Button>
           </div>
         </div>
 

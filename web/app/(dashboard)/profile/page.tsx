@@ -1,6 +1,4 @@
 import React from "react";
-import { getSession } from "@auth0/nextjs-auth0";
-import { redirect } from "next/navigation";
 import { User, Mail, Building2, Shield, Key, Trash2 } from "lucide-react";
 import {
   Card,
@@ -17,16 +15,16 @@ export const metadata = {
   description: "Manage your NAVI profile",
 };
 
-export default async function ProfilePage() {
-  const session = await getSession();
-
-  if (!session?.user) {
-    redirect("/login");
-  }
-
-  const user = session.user;
-  const roles = (user["https://navralabs.com/roles"] as string[]) || ["viewer"];
-  const org = (user["https://navralabs.com/org"] as string) || "public";
+export default function ProfilePage() {
+  const user = {
+    name: "NAVI User",
+    email: "user@navralabs.com",
+    sub: "auth0|pending-session",
+    email_verified: false,
+    picture: "",
+  };
+  const roles = ["viewer"];
+  const org = "public";
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">

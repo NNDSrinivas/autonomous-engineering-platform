@@ -209,7 +209,12 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
         {/* Content */}
         <div className="navi-overlay-content">
           {!isAuthenticated ? (
-            <PremiumAuthEntry onSignIn={onSignIn} onSignUp={onSignUp} />
+            <PremiumAuthEntry
+              variant="compact"
+              onSignIn={onSignIn}
+              onSignUp={onSignUp}
+              subtitle="Sign in uses secure device authorization. Sign up opens NAVI in your browser."
+            />
           ) : (
             <>
               {/* User Profile Card */}

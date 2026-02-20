@@ -26,7 +26,7 @@
         "aep.navi.webAppUrl": {
           "type": "string",
           "default": "",
-          "description": "Optional NAVI web app base URL for signup/dashboard links. Example: https://app.navralabs.com"
+          "description": "Optional NAVI web app base URL for signup/dashboard links. Example: https://navralabs.com"
         },
         "aep.navi.orgId": {
           "type": "string",

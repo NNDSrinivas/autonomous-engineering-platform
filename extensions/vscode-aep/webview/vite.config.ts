@@ -8,7 +8,10 @@ export default defineConfig({
   base: "",
   server: {
     fs: {
-      allow: [resolve(__dirname, "../../../shared")],
+      allow: [
+        resolve(__dirname, "../../../shared"),
+        resolve(__dirname, "../../../.."),
+      ],
     },
   },
   resolve: {

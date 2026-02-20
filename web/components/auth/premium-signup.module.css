@@ -149,7 +149,7 @@
   position: relative;
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: 999px;
   display: grid;
   place-items: center;
   isolation: isolate;
@@ -167,11 +167,12 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    hsl(194 100% 62% / 0.3) 24%,
-    hsl(224 100% 66% / 0.3) 76%,
+    hsl(194 100% 62% / 0.36) 24%,
+    hsl(224 100% 66% / 0.36) 66%,
+    hsl(304 100% 64% / 0.34) 76%,
     transparent 100%
   );
-  opacity: 0.82;
+  opacity: 0.76;
   z-index: -2;
 }
 
@@ -183,8 +184,11 @@
   height: 8px;
   transform: translateY(-50%);
   border-radius: 999px;
-  background: radial-gradient(circle, hsl(190 100% 90%), hsl(192 100% 60%));
-  box-shadow: 0 0 12px hsl(191 100% 60% / 0.75), 0 0 24px hsl(224 100% 66% / 0.6);
+  background: radial-gradient(circle, #f4ffff 0%, #42e2ff 52%, #f400ff 100%);
+  box-shadow:
+    0 0 12px hsl(191 100% 60% / 0.84),
+    0 0 24px hsl(224 100% 66% / 0.66),
+    0 0 34px hsl(304 100% 64% / 0.56);
   animation: currentPass 3.2s linear infinite;
   z-index: -1;
 }
@@ -197,25 +201,31 @@
   width: 66px;
   height: 2px;
   transform: translateY(-50%);
-  background: linear-gradient(90deg, hsl(190 100% 84% / 0), hsl(190 100% 78% / 0.72));
+  background: linear-gradient(
+    90deg,
+    hsl(190 100% 84% / 0),
+    hsl(190 100% 78% / 0.72) 60%,
+    hsl(304 100% 68% / 0.64) 100%
+  );
 }
 
 .logoImage {
   width: 34px;
   height: 34px;
   object-fit: contain;
-  border-radius: 8px;
-  filter: drop-shadow(0 6px 12px hsl(194 100% 52% / 0.25));
+  border-radius: 999px;
+  filter: brightness(0.9) saturate(1.08) drop-shadow(0 6px 12px hsl(194 100% 52% / 0.22));
+  animation: logoCoreFlash 3.2s ease-in-out infinite;
 }
 
 .logoFallback {
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: 999px;
   display: grid;
   place-items: center;
   color: hsl(215 22% 96%);
-  background: linear-gradient(135deg, hsl(195 88% 52%), hsl(222 95% 63%));
+  background: radial-gradient(circle at 24% 18%, #39f5ff, #2476ff 55%, #da11ff 100%);
   font-weight: 700;
   font-size: 1.03rem;
 }
@@ -289,6 +299,10 @@
   15% {
     opacity: 1;
   }
+  47%,
+  53% {
+    opacity: 1;
+  }
   50% {
     transform: translate(88px, -50%);
     opacity: 1;
@@ -304,14 +318,32 @@
 
 @keyframes logoCurrentGlow {
   0%,
-  28%,
+  30%,
   100% {
-    filter: drop-shadow(0 4px 12px hsl(193 100% 55% / 0.22));
+    filter: drop-shadow(0 4px 10px hsl(193 100% 55% / 0.2));
   }
+  46%,
+  54% {
+    filter:
+      drop-shadow(0 0 18px hsl(190 100% 72% / 0.86))
+      drop-shadow(0 0 30px hsl(224 100% 66% / 0.62))
+      drop-shadow(0 0 36px hsl(304 100% 64% / 0.54));
+  }
+}
+
+@keyframes logoCoreFlash {
+  0%,
   44%,
-  56% {
-    filter: drop-shadow(0 0 16px hsl(190 100% 72% / 0.8))
-      drop-shadow(0 0 30px hsl(224 100% 66% / 0.56));
+  100% {
+    filter: brightness(0.9) saturate(1.08) drop-shadow(0 6px 12px hsl(194 100% 52% / 0.22));
+  }
+  46%,
+  54% {
+    filter:
+      brightness(1.38)
+      saturate(1.48)
+      drop-shadow(0 0 14px hsl(190 100% 74% / 0.9))
+      drop-shadow(0 0 26px hsl(304 100% 66% / 0.68));
   }
 }
 
@@ -345,6 +377,7 @@
 @media (prefers-reduced-motion: reduce) {
   .backdrop,
   .statCard,
+  .logoImage,
   .logoOrb,
   .currentPulse {
     animation: none !important;

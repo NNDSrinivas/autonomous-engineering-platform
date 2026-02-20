@@ -12,6 +12,11 @@ export default defineConfig({
   server: {
     port: 3007,
     host: true,
+    fs: {
+      allow: [
+        path.resolve(__dirname, '..'),
+      ],
+    },
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',

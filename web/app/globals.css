@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import "../../packages/ui/src/tokens.css";
 
 @tailwind base;
 @tailwind components;
@@ -6,6 +6,8 @@
 
 @layer base {
   :root {
+    --font-auth-display: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-auth-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     --background: 220 15% 8%;
     --foreground: 220 10% 92%;
 
@@ -119,11 +121,11 @@
 
 @layer utilities {
   .font-mono {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-auth-mono);
   }
 
   .font-sans {
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-auth-display);
   }
 
   .glow-primary {

@@ -85,22 +85,21 @@ def test_health_ready_returns_200_when_db_configured(client):
     )
 
 
-def test_health_ready_includes_self_db_redis_checks(client):
+def test_health_ready_includes_required_checks(client):
     """
-    /health/ready should include self, db, and redis checks.
+    /health/ready should include at minimum self and db checks.
 
-    Redis may be optional (cache=None is allowed), but all three check
-    names should be present in the response.
+    Redis check is optional (may not be present if cache import fails
+    or REDIS_URL is not set). This test verifies the mandatory checks
+    are included without requiring redis to be configured.
     """
     response = client.get("/health/ready")
     data = response.json()
 
     check_names = {check["name"] for check in data["checks"]}
-    assert "self" in check_names
-    assert "db" in check_names
-    # Redis check may fail (no REDIS_URL in test env) but should be present
-    # If redis import fails entirely, it won't be in checks at all
-    # So we just verify self and db are there
+    assert "self" in check_names, "self check is mandatory for readiness"
+    assert "db" in check_names, "db check is mandatory when DATABASE_URL is set"
+    # Redis check is optional - not asserted here
 
 
 def test_health_startup_mirrors_ready(client):

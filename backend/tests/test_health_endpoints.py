@@ -5,7 +5,6 @@ Ensures health checks work correctly when dependencies are configured.
 Prevents regression of import path issues that cause silent failures.
 """
 
-import os
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,12 +14,15 @@ def client():
     """
     Create test client for health endpoint integration tests.
 
-    Assumes DATABASE_URL is already set in the test environment (via pytest
-    config or CI). The backend.core.config.settings singleton is loaded during
-    test collection, so modifying os.environ here won't affect it.
+    The database engine URL is resolved by settings at test collection time
+    (either from DATABASE_URL in the environment or from the pytest-time
+    SQLite fallback used by Settings.sqlalchemy_url). The
+    backend.core.config.settings singleton is loaded during test collection,
+    so modifying os.environ here won't affect it.
 
-    If DATABASE_URL is not set, the db health check will gracefully report
-    "db not configured" (get_engine=None from failed import).
+    A "db not configured" response from the DB health check indicates that
+    the DB-related imports failed (e.g., get_engine/text is None due to an
+    import path issue), not that DATABASE_URL is missing.
     """
     from backend.api.main import app
 
@@ -40,17 +42,17 @@ def test_health_live_returns_200(client):
     assert any(check["name"] == "self" for check in data["checks"])
 
 
-def test_health_ready_returns_200_when_db_configured(client):
+def test_health_ready_succeeds_with_normal_imports(client):
     """
-    /health/ready should return 200 when DATABASE_URL is set.
+    /health/ready should return 200 in normal pytest configuration.
 
-    Regression test for import path bug: checks.py imported from core.db
-    instead of backend.core.db, causing get_engine to be None in Docker.
-    This test runs with DATABASE_URL set (like CI/staging) and verifies
-    the DB check succeeds (not \"db not configured\").
+    Regression test for import path bug: checks.py originally imported from
+    core.db instead of backend.core.db, causing get_engine to be None in
+    Docker/pytest (where PYTHONPATH is repo root, not backend/ subdir).
+    This test verifies the DB check succeeds with proper import paths.
 
-    If this test fails with 503 and \"db not configured\", the import
-    path fallback logic in checks.py is broken again.
+    If this test fails with 503 and "db not configured", the import path
+    fallback logic in checks.py is broken again (get_engine/text are None).
     """
     response = client.get("/health/ready")
 

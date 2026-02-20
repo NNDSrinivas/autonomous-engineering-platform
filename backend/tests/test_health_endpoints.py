@@ -13,27 +13,18 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """
-    Create test client with DATABASE_URL set.
+    Create test client for health endpoint integration tests.
 
-    This simulates the CI/Docker environment where DATABASE_URL is available
-    and the health check imports should succeed (backend.core.db path).
+    Assumes DATABASE_URL is already set in the test environment (via pytest
+    config or CI). The backend.core.config.settings singleton is loaded during
+    test collection, so modifying os.environ here won't affect it.
+
+    If DATABASE_URL is not set, the db health check will gracefully report
+    "db not configured" (get_engine=None from failed import).
     """
-    # Ensure DATABASE_URL is set for these tests
-    # Use SQLite in-memory for fast testing
-    original_db_url = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+    from backend.api.main import app
 
-    try:
-        # Import after setting env var so settings picks it up
-        from backend.api.main import app
-
-        yield TestClient(app)
-    finally:
-        # Restore original DATABASE_URL
-        if original_db_url is not None:
-            os.environ["DATABASE_URL"] = original_db_url
-        else:
-            os.environ.pop("DATABASE_URL", None)
+    yield TestClient(app)
 
 
 def test_health_live_returns_200(client):
@@ -87,19 +78,20 @@ def test_health_ready_returns_200_when_db_configured(client):
 
 def test_health_ready_includes_required_checks(client):
     """
-    /health/ready should include at minimum self and db checks.
+    /health/ready should include self, db, and redis checks.
 
-    Redis check is optional (may not be present if cache import fails
-    or REDIS_URL is not set). This test verifies the mandatory checks
-    are included without requiring redis to be configured.
+    All three checks are always present in the response (readiness_payload
+    always appends them). Individual checks may report ok=false if the
+    dependency is not configured (e.g., REDIS_URL not set), but the check
+    name will still appear. This test only verifies check presence, not status.
     """
     response = client.get("/health/ready")
     data = response.json()
 
     check_names = {check["name"] for check in data["checks"]}
     assert "self" in check_names, "self check is mandatory for readiness"
-    assert "db" in check_names, "db check is mandatory when DATABASE_URL is set"
-    # Redis check is optional - not asserted here
+    assert "db" in check_names, "db check is mandatory for readiness"
+    assert "redis" in check_names, "redis check is always included (may report ok=false)"
 
 
 def test_health_startup_mirrors_ready(client):
@@ -107,9 +99,22 @@ def test_health_startup_mirrors_ready(client):
     /health/startup should behave identically to /health/ready.
 
     Some platforms (Kubernetes) use separate startup probes.
+    Compares stable fields (status code, ok flag, check names) and ignores
+    latency_ms which naturally varies between calls.
     """
     ready_response = client.get("/health/ready")
     startup_response = client.get("/health/startup")
 
+    # Status codes should match
     assert startup_response.status_code == ready_response.status_code
-    assert startup_response.json() == ready_response.json()
+
+    ready_data = ready_response.json()
+    startup_data = startup_response.json()
+
+    # Top-level ok flag should be the same
+    assert startup_data.get("ok") == ready_data.get("ok")
+
+    # Both endpoints should expose the same set of checks (by name)
+    ready_check_names = {check["name"] for check in ready_data.get("checks", [])}
+    startup_check_names = {check["name"] for check in startup_data.get("checks", [])}
+    assert startup_check_names == ready_check_names

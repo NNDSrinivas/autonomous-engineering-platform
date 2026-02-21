@@ -119,7 +119,12 @@ jobs:
           # Update image URI to new digest
           NEW_IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}@${{ steps.image-digest.outputs.DIGEST }}"
 
-          # Remove read-only fields
+          # Remove read-only fields from DescribeTaskDefinition output before re-registering.
+          # These fields are managed by ECS and must NOT be sent to register-task-definition:
+          #   - taskDefinitionArn, revision, status, requiresAttributes, compatibilities,
+          #     registeredAt, registeredBy
+          # NOTE: If AWS adds new read-only fields, update this list. See:
+          #   https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RegisterTaskDefinition.html
           jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
             task-definition.json > task-definition-clean.json
 
@@ -185,6 +190,12 @@ jobs:
                 # Verify critical checks are healthy
                 DB_OK=$(echo "$RESPONSE" | jq -r '[.checks[] | select(.name == "db")] | .[0].ok // false')
                 REDIS_OK=$(echo "$RESPONSE" | jq -r '[.checks[] | select(.name == "redis")] | .[0].ok // false')
+
+                # Validate jq parsing succeeded (non-empty output)
+                if [ -z "$DB_OK" ] || [ -z "$REDIS_OK" ]; then
+                  echo "::error::Failed to parse health check response"
+                  exit 1
+                fi
 
                 if [ "$DB_OK" != "true" ]; then
                   echo "::error::DB health check failed: $DB_OK"
@@ -256,7 +267,7 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Rollback on failure
-        if: failure() && steps.deploy.outcome == 'success'
+        if: failure() && (steps.deploy.outcome == 'success' || steps.wait-stable.outcome == 'failure')
         run: |
           echo "::error::Deployment failed, rolling back to ${{ steps.download-task-def.outputs.CURRENT_REVISION }}"
 

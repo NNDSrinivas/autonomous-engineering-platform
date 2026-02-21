@@ -54,7 +54,9 @@ Purpose: One-page verification checklist before DNS cutover to production
   - [ ] Master password stored in Secrets Manager
 - [ ] Redis provisioned
   - [ ] ElastiCache Redis OR managed provider: _____________
-  - [ ] Multi-AZ: Yes / No
+  - [ ] Instance type: _____________ (e.g., cache.t4g.micro)
+  - [ ] Multi-AZ: Yes / No (document risk if No)
+  - [ ] Cluster mode enabled: Yes / No
   - [ ] Auth token enabled: Yes
   - [ ] Security group attached
   - [ ] Connection string stored in Secrets Manager

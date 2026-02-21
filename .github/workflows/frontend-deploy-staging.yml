@@ -239,7 +239,7 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Rollback on failure
-        if: failure() && steps.deploy.outcome == 'success'
+        if: failure() && (steps.deploy.outcome == 'success' || steps.wait-stable.outcome == 'failure')
         run: |
           echo "::error::Deployment failed, rolling back to ${{ steps.download-task-def.outputs.CURRENT_REVISION }}"
 

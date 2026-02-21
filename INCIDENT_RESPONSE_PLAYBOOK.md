@@ -88,7 +88,7 @@ Is /health/ready failing?
 aws ecs update-service \
   --cluster aep-staging \
   --service aep-backend-staging-svc \
-  --task-definition aep-backend-staging:10  # previous revision
+  --task-definition aep-backend-staging:<PREVIOUS_REVISION>  # e.g., N-1 from deployment logs
 ```
 
 **Option B: Restart Tasks** (Redis transport closed)

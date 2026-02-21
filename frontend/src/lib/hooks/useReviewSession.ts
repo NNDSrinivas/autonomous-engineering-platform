@@ -132,9 +132,11 @@ export function useReviewSession(): ReviewSession {
 
             const result = await response.json();
 
-            if (result.success && result.changes_made) {
-                // Refresh the review results after successful fix
-                await fetchReviewDiffs();
+            if (result.success) {
+                // Refresh the review results after successful fix (even if no changes)
+                if (result.changes_made) {
+                    await fetchReviewDiffs();
+                }
                 return true;
             } else {
                 setError(result.error || 'Auto-fix failed');

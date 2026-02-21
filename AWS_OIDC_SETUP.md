@@ -149,6 +149,11 @@ The role needs permissions to:
         "arn:aws:ecs:us-east-1:625847798833:task-definition/aep-backend-staging:*",
         "arn:aws:ecs:us-east-1:625847798833:task-definition/aep-frontend-staging:*"
       ]
+      // Note: The wildcard (:*) is intentional and necessary. Each deployment
+      // creates a new task definition revision with an incremented number
+      // (e.g., aep-backend-staging:1, aep-backend-staging:2, etc.). The
+      // wildcard allows the workflow to register new revisions without
+      // knowing the exact revision number in advance.
     },
     {
       "Sid": "ECSServiceAccess",

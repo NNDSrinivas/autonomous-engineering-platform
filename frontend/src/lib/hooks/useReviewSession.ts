@@ -90,13 +90,14 @@ export function useReviewSession(): ReviewSession {
                 setIsLoading(false);
             };
 
-            // Close connection after 30 seconds max
+            // Close connection after 3 minutes max (code analysis can take time)
             setTimeout(() => {
                 if (eventSource.readyState !== EventSource.CLOSED) {
                     eventSource.close();
+                    setError('Analysis timed out - please try again');
                     setIsLoading(false);
                 }
-            }, 30000);
+            }, 180000);
 
         } catch (err) {
             console.error('Error starting analysis:', err);
@@ -172,6 +173,7 @@ function generateFixId(issueTitle: string): string {
  */
 function getCurrentWorkspaceRoot(): string {
     // In a real VS Code extension, this would come from the webview API
-    // For now, return a placeholder
-    return (window as any).workspaceRoot || process.cwd?.() || '.';
+    // For now, return a placeholder suitable for browser contexts
+    // process.cwd() doesn't exist in browser, so only use window.workspaceRoot
+    return (window as any).workspaceRoot || '.';
 }

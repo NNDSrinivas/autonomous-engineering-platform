@@ -7,6 +7,10 @@ on:
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-deploy-staging.yml'
+    paths-ignore:
+      - 'frontend/**/*.test.ts'
+      - 'frontend/**/*.spec.ts'
+      - 'frontend/**/*.md'
 
 env:
   AWS_REGION: us-east-1

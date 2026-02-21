@@ -63,10 +63,8 @@ This role will be assumed by GitHub Actions to deploy to ECS.
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:YOUR_GITHUB_ORG/autonomous-engineering-platform:*"
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:YOUR_GITHUB_ORG/autonomous-engineering-platform:environment:staging"
         }
       }
     }

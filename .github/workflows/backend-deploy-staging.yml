@@ -15,6 +15,9 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/backend-deploy-staging.yml'
+    paths-ignore:
+      - 'backend/tests/**'
+      - 'backend/**/*.md'
 
 env:
   AWS_REGION: us-east-1

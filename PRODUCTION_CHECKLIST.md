@@ -1,6 +1,6 @@
 # AEP Production Go-Live Checklist
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 Purpose: One-page verification checklist before DNS cutover to production
 
 ---

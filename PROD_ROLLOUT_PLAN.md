@@ -1,6 +1,6 @@
 # Production Rollout Plan (AEP on AWS)
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 Goal: replicate staging architecture into Production account with production-grade networking, security, and deployment controls.
 
 ## 0) Principles

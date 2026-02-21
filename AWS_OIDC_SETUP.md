@@ -1,6 +1,6 @@
 # AWS OIDC Setup for GitHub Actions
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 Purpose: Enable GitHub Actions to deploy to AWS without long-lived credentials
 
 ---

@@ -1,5 +1,13 @@
 name: Deploy Backend to Staging
 
+# Automated backend deployment using OIDC (no long-lived AWS credentials)
+# Triggers on push to main when backend files change
+#
+# Required GitHub Actions secrets (Settings → Environments → staging):
+#   AWS_ROLE_ARN_STAGING - IAM role ARN for OIDC federation
+#     Example: arn:aws:iam::625847798833:role/GitHubActionsDeployerStaging
+#     See AWS_OIDC_SETUP.md for configuration instructions
+
 on:
   push:
     branches:

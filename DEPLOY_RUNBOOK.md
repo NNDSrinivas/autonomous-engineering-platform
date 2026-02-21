@@ -1,6 +1,6 @@
 # AEP Deployment Runbook
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 Applies to: Staging + Production ECS Fargate deployments
 
 ---

@@ -1,6 +1,6 @@
 # AEP Staging Architecture (AWS)
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 Account: Staging (625847798833)
 Region: us-east-1
 Primary URL: https://staging.navralabs.com

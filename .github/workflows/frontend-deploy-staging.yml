@@ -64,6 +64,11 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:staging
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.IMAGE_TAG }}
+          build-args: |
+            VITE_CORE_API=https://staging.navralabs.com
+            VITE_API_BASE_URL=https://staging.navralabs.com
+            VITE_NAVI_BACKEND_URL=https://staging.navralabs.com
+            NODE_ENV=production
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |

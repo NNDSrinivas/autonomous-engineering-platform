@@ -1,0 +1,268 @@
+name: Deploy Frontend to Staging
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/src/**'
+      - 'frontend/public/**'
+      - 'frontend/index.html'
+      - 'frontend/vite.config.ts'
+      - 'frontend/tsconfig*.json'
+      - 'frontend/package*.json'
+      - 'frontend/Dockerfile'
+      - '.github/workflows/frontend-deploy-staging.yml'
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: navralabs/aep-frontend
+  ECS_CLUSTER: aep-staging
+  ECS_SERVICE: aep-frontend-staging-svc
+  ECS_TASK_DEFINITION_FAMILY: aep-frontend-staging
+  HEALTH_CHECK_URL: https://staging.navralabs.com/
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
+concurrency:
+  # Frontend and backend use separate concurrency groups
+  # Simultaneous frontend/backend deployments to staging are acceptable
+  group: deploy-staging-frontend
+  cancel-in-progress: true  # Cancel older deployments to deploy latest code faster
+
+jobs:
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging  # GitHub environment for staging-specific secrets/vars
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Frontend-Deploy
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata for Docker
+        id: meta
+        run: |
+          echo "IMAGE_TAG=staging-${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:staging
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.IMAGE_TAG }}
+          build-args: |
+            VITE_CORE_API=https://staging.navralabs.com
+            VITE_API_BASE_URL=https://staging.navralabs.com
+            VITE_NAVI_BACKEND_URL=https://staging.navralabs.com
+            NODE_ENV=production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.BUILD_DATE }}
+
+      - name: Get image digest
+        id: image-digest
+        run: |
+          DIGEST=$(aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-ids imageTag=staging \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+          echo "DIGEST=$DIGEST" >> $GITHUB_OUTPUT
+          echo "::notice::Image digest: $DIGEST"
+
+      - name: Download current task definition
+        id: download-task-def
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_TASK_DEFINITION_FAMILY }} \
+            --query 'taskDefinition' \
+            > task-definition.json
+
+          # Record current revision for rollback
+          CURRENT_REVISION=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' \
+            --output text | cut -d'/' -f2)
+          echo "CURRENT_REVISION=$CURRENT_REVISION" >> $GITHUB_OUTPUT
+          echo "::notice::Current task revision: $CURRENT_REVISION"
+
+      - name: Update task definition with new image
+        id: task-def
+        run: |
+          # Update image URI to new digest
+          NEW_IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}@${{ steps.image-digest.outputs.DIGEST }}"
+
+          # Remove read-only fields
+          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+            task-definition.json > task-definition-clean.json
+
+          # Update container image
+          jq --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE' \
+            task-definition-clean.json > task-definition-updated.json
+
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-updated.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          NEW_REVISION=$(echo $NEW_TASK_DEF_ARN | cut -d'/' -f2)
+          echo "NEW_REVISION=$NEW_REVISION" >> $GITHUB_OUTPUT
+          echo "::notice::New task revision: $NEW_REVISION"
+
+      - name: Deploy to ECS
+        id: deploy
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.task-def.outputs.NEW_REVISION }} \
+            --force-new-deployment \
+            > /dev/null
+
+          echo "::notice::Deployment initiated for ${{ steps.task-def.outputs.NEW_REVISION }}"
+
+      - name: Wait for service stability
+        id: wait-stable
+        timeout-minutes: 10
+        run: |
+          echo "Waiting for service to reach stable state..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }}
+
+          echo "::notice::Service is stable"
+
+      - name: Verify deployment health
+        id: health-check
+        timeout-minutes: 5
+        run: |
+          echo "Checking health endpoint: ${{ env.HEALTH_CHECK_URL }}"
+
+          # Retry health check for up to 5 minutes
+          MAX_ATTEMPTS=30
+          ATTEMPT=1
+
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.HEALTH_CHECK_URL }} || echo "000")
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "::notice::Health check passed (HTTP $HTTP_CODE)"
+
+              # Verify HTML content is returned
+              RESPONSE=$(curl -s ${{ env.HEALTH_CHECK_URL }})
+              if echo "$RESPONSE" | grep -q "<!DOCTYPE html>" || echo "$RESPONSE" | grep -q "<html"; then
+                echo "::notice::Frontend is serving HTML correctly"
+                exit 0
+              else
+                echo "::warning::Frontend returned 200 but no HTML detected"
+              fi
+            else
+              echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: HTTP $HTTP_CODE (waiting 10s...)"
+            fi
+
+            ATTEMPT=$((ATTEMPT + 1))
+            sleep 10
+          done
+
+          echo "::error::Health check failed after $MAX_ATTEMPTS attempts"
+          exit 1
+
+      - name: Check ALB target health
+        if: success()
+        run: |
+          # Get target group ARN
+          TG_ARN=$(aws elbv2 describe-target-groups \
+            --names aep-staging-tg-frontend \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text)
+
+          # Check target health
+          UNHEALTHY=$(aws elbv2 describe-target-health \
+            --target-group-arn $TG_ARN \
+            --query 'TargetHealthDescriptions[?TargetHealth.State!=`healthy`]' \
+            --output json)
+
+          if [ "$UNHEALTHY" != "[]" ]; then
+            echo "::warning::Some targets are unhealthy:"
+            echo "$UNHEALTHY" | jq .
+          else
+            echo "::notice::All ALB targets are healthy"
+          fi
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "## Deployment Successful :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: ${{ env.ECS_CLUSTER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service**: ${{ env.ECS_SERVICE }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Previous Revision**: ${{ steps.download-task-def.outputs.CURRENT_REVISION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **New Revision**: ${{ steps.task-def.outputs.NEW_REVISION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image Digest**: \`${{ steps.image-digest.outputs.DIGEST }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health Check**: ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Rollback Command" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "aws ecs update-service \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --cluster ${{ env.ECS_CLUSTER }} \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --service ${{ env.ECS_SERVICE }} \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --task-definition ${{ steps.download-task-def.outputs.CURRENT_REVISION }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Rollback on failure
+        if: failure() && (steps.deploy.outcome == 'success' || steps.wait-stable.outcome == 'failure')
+        run: |
+          echo "::error::Deployment failed, rolling back to ${{ steps.download-task-def.outputs.CURRENT_REVISION }}"
+
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.download-task-def.outputs.CURRENT_REVISION }} \
+            > /dev/null
+
+          echo "::notice::Rollback initiated"
+
+          # Wait for rollback to stabilize
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} || true
+
+          echo "::notice::Rollback complete"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "## Deployment Failed :x:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The deployment was automatically rolled back to ${{ steps.download-task-def.outputs.CURRENT_REVISION }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY

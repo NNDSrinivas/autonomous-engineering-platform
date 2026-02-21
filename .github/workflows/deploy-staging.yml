@@ -37,10 +37,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 40
-    # Skip automated benchmark scorecard commits — no new code to deploy
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      !contains(github.event.head_commit.message, 'chore: update NAVI benchmark scorecard')
+    # DISABLED: Replaced by OIDC-based workflows (backend-deploy-staging.yml, frontend-deploy-staging.yml)
+    # This workflow uses long-lived AWS access keys (less secure). The new workflows use OIDC.
+    # Re-enable by changing 'if: false' back to the original condition if needed.
+    if: false
 
     steps:
       - uses: actions/checkout@v4

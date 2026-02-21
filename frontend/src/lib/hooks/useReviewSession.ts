@@ -36,14 +36,23 @@ export function useReviewSession(): ReviewSession {
 
         try {
             // Connect to the NAVI SSE endpoint for real-time analysis
-            const eventSource = new EventSource('/api/navi/analyze-changes');
+            // Note: EventSource doesn't support custom headers, relies on cookie-based auth
+            // For token auth, append as query param (less secure but necessary for SSE)
+            const authToken = typeof window !== 'undefined' ? window.localStorage.getItem('authToken') : null;
+            const sseUrl = authToken
+                ? `/api/navi/analyze-changes?token=${encodeURIComponent(authToken)}`
+                : '/api/navi/analyze-changes';
+            const eventSource = new EventSource(sseUrl);
 
             eventSource.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
 
                     if (data.type === 'review' && data.payload) {
-                        const reviewData = JSON.parse(data.payload);
+                        // Handle both string and object payloads from backend
+                        const reviewData = typeof data.payload === 'string'
+                            ? JSON.parse(data.payload)
+                            : data.payload;
 
                         // Transform backend data to match frontend interface
                         const transformedFiles: ReviewFile[] = reviewData.files.map((file: any) => ({

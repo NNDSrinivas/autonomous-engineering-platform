@@ -25,6 +25,8 @@ permissions:
   contents: read
 
 concurrency:
+  # Frontend and backend use separate concurrency groups
+  # Simultaneous frontend/backend deployments to staging are acceptable
   group: deploy-staging-frontend
   cancel-in-progress: false
 

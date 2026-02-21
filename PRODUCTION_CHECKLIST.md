@@ -192,12 +192,13 @@ Run against ALB DNS (before DNS cutover):
 
 - [ ] API test:
   ```bash
-  curl http://<alb-dns>/api/health/ready
-  # Expected: 200, JSON
+  curl https://app.navralabs.com/health/ready
+  # Expected: 200, JSON with .ok == true
   ```
 - [ ] Model routing test (if applicable):
   ```bash
-  curl -X POST http://<alb-dns>/api/v1/chat \
+  # IMPORTANT: Always use HTTPS when sending Authorization headers
+  curl -X POST https://app.navralabs.com/api/v1/chat \
     -H "Authorization: Bearer <test-token>" \
     -H "Content-Type: application/json" \
     -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "test"}]}'

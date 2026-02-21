@@ -72,7 +72,7 @@ This role will be assumed by GitHub Actions to deploy to ECS.
 }
 ```
 
-**IMPORTANT**: Replace `YOUR_GITHUB_ORG` with your actual GitHub org/user (e.g., `NNDSrinivas` or `mounikakapa`).
+**IMPORTANT**: In this example, `YOUR_GITHUB_ORG` is a placeholder. The actual `github-actions-trust-policy.json` file in this repo uses `mounikakapa`. **Update both this example AND the JSON file** with your actual GitHub org/user (e.g., `NNDSrinivas` or `mounikakapa`) and keep them in sync.
 
 **Create the role**:
 
@@ -107,17 +107,22 @@ The role needs permissions to:
 - Describe ALB target groups (for health checks)
 - Read CloudWatch logs (optional, for debugging)
 
-**Permissions Policy** (`github-actions-permissions.json`):
+**Permissions Policy** (see `github-actions-permissions.json` for the actual implementation):
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ECRPushAccess",
+      "Sid": "ECRGetAuthToken",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRAccess",
       "Effect": "Allow",
       "Action": [
-        "ecr:GetAuthorizationToken",
         "ecr:BatchCheckLayerAvailability",
         "ecr:GetDownloadUrlForLayer",
         "ecr:BatchGetImage",
@@ -125,36 +130,52 @@ The role needs permissions to:
         "ecr:InitiateLayerUpload",
         "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload",
-        "ecr:DescribeImages"
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories"
       ],
-      "Resource": "*"
+      "Resource": [
+        "arn:aws:ecr:us-east-1:625847798833:repository/navralabs/aep-backend",
+        "arn:aws:ecr:us-east-1:625847798833:repository/navralabs/aep-frontend"
+      ]
     },
     {
-      "Sid": "ECSDeployAccess",
+      "Sid": "ECSTaskDefinitionAccess",
       "Effect": "Allow",
       "Action": [
         "ecs:DescribeTaskDefinition",
-        "ecs:RegisterTaskDefinition",
+        "ecs:RegisterTaskDefinition"
+      ],
+      "Resource": [
+        "arn:aws:ecs:us-east-1:625847798833:task-definition/aep-backend-staging:*",
+        "arn:aws:ecs:us-east-1:625847798833:task-definition/aep-frontend-staging:*"
+      ]
+    },
+    {
+      "Sid": "ECSServiceAccess",
+      "Effect": "Allow",
+      "Action": [
         "ecs:DescribeServices",
         "ecs:UpdateService",
         "ecs:ListTasks",
         "ecs:DescribeTasks"
       ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "ecs:cluster": "arn:aws:ecs:us-east-1:625847798833:cluster/aep-staging"
-        }
-      }
+      "Resource": [
+        "arn:aws:ecs:us-east-1:625847798833:service/aep-staging/aep-backend-staging-svc",
+        "arn:aws:ecs:us-east-1:625847798833:service/aep-staging/aep-frontend-staging-svc"
+      ]
     },
     {
-      "Sid": "PassRoleToECS",
+      "Sid": "PassOnlyEcsExecutionRole",
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
-        "arn:aws:iam::625847798833:role/ecsTaskExecutionRole",
-        "arn:aws:iam::625847798833:role/aep-backend-task-role"
-      ]
+        "arn:aws:iam::625847798833:role/NavraLabsEcsTaskExecutionRole-Staging"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
+      }
     },
     {
       "Sid": "ALBHealthCheckAccess",
@@ -273,7 +294,7 @@ jobs:
 # Get current trust policy
 aws iam get-role --role-name GitHubActionsDeployerStaging --query 'Role.AssumeRolePolicyDocument'
 
-# Update the StringLike condition:
+# Update the StringEquals condition:
 "token.actions.githubusercontent.com:sub": "repo:YOUR_ORG/autonomous-engineering-platform:*"
 ```
 

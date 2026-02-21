@@ -169,11 +169,22 @@ function generateFixId(issueTitle: string): string {
 }
 
 /**
- * Get the current workspace root - this would be provided by VS Code extension
+ * Get the current workspace root.
+ *
+ * In a VS Code webview context, the extension is expected to inject a
+ * `workspaceRoot` property on the `window` object. In a regular browser
+ * context or when that property is not set, this returns an empty string
+ * to indicate that no workspace root is available.
  */
 function getCurrentWorkspaceRoot(): string {
-    // In a real VS Code extension, this would come from the webview API
-    // For now, return a placeholder suitable for browser contexts
-    // process.cwd() doesn't exist in browser, so only use window.workspaceRoot
-    return (window as any).workspaceRoot || '.';
+    // Guard against non-browser / non-webview environments (e.g. SSR)
+    if (typeof window === 'undefined') {
+        return '';
+    }
+    const root = (window as any).workspaceRoot;
+    if (typeof root === 'string' && root.trim() !== '') {
+        return root;
+    }
+    // No workspace root is available in this context
+    return '';
 }

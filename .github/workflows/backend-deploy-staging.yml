@@ -161,15 +161,18 @@ jobs:
             if [ "$HTTP_CODE" = "200" ]; then
               echo "::notice::Health check passed (HTTP $HTTP_CODE)"
 
-              # Verify JSON response includes expected fields
+              # Verify JSON response - .ok is true only if all checks (self, db, redis) pass
               RESPONSE=$(curl -s ${{ env.HEALTH_CHECK_URL }})
               echo "Health response: $RESPONSE"
 
-              if echo "$RESPONSE" | jq -e '.ok == true and .db == "ok" and .redis == "ok"' > /dev/null; then
-                echo "::notice::All health checks passed (db + redis)"
+              if echo "$RESPONSE" | jq -e '.ok == true' > /dev/null; then
+                # Optionally verify specific checks exist in the checks array
+                DB_OK=$(echo "$RESPONSE" | jq -r '[.checks[] | select(.name == "db")] | .[0].ok // false')
+                REDIS_OK=$(echo "$RESPONSE" | jq -r '[.checks[] | select(.name == "redis")] | .[0].ok // false')
+                echo "::notice::All health checks passed (db=$DB_OK, redis=$REDIS_OK)"
                 exit 0
               else
-                echo "::warning::Health check returned 200 but components not healthy"
+                echo "::warning::Health check returned 200 but .ok is not true"
               fi
             else
               echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: HTTP $HTTP_CODE (waiting 10s...)"

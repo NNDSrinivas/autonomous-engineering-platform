@@ -108,11 +108,21 @@ export function useReviewSession(): ReviewSession {
 
     const applyAutoFix = useCallback(async (path: string, fixId: string): Promise<boolean> => {
         try {
+            // Use the same auth mechanism as SSE connection
+            const authToken = typeof window !== 'undefined' ? window.localStorage.getItem('authToken') : null;
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+            };
+
+            // Add authorization header if token exists
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
             const response = await fetch('/api/navi/auto-fix', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers,
+                credentials: 'include', // Include cookies for cookie-based auth
                 body: JSON.stringify({
                     path,
                     fixes: [fixId],

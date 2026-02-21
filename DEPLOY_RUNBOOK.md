@@ -35,8 +35,8 @@ export ECR_REPO=navralabs/aep-backend
 docker buildx build \
   --platform linux/amd64 \
   -t ${ECR_REPO}:${ENV} \
-  -f backend/Dockerfile \
-  backend/
+  -f ./Dockerfile \
+  .
 
 # Login to ECR
 aws ecr get-login-password --region ${AWS_REGION} \

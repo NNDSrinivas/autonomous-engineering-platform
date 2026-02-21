@@ -157,34 +157,20 @@ export function useReviewSession(): ReviewSession {
 }
 
 /**
- * Generate a fixId based on the issue title.
+ * Generate a fallback fixId when the backend does not provide one.
  *
- * Returns fix IDs that match the backend's expected format:
- * 'add_import', 'fix_syntax', 'add_type_hints', etc.
+ * The frontend does not attempt to infer specific fix types from issue
+ * titles, because doing so is brittle and couples UI logic to backend
+ * conventions. Instead, we always return a generic identifier that the
+ * backend is expected to understand.
+ *
+ * TODO: Have the backend provide the correct fixId in the issue payload
+ * to eliminate the need for frontend inference entirely.
  */
 function generateFixId(issueTitle: string | undefined): string {
-    // Handle undefined or null titles
-    if (!issueTitle) {
-        return 'generic_fix';
-    }
-
-    const title = issueTitle.toLowerCase();
-
-    if (title.includes('import') || title.includes('organize')) {
-        return 'add_import';
-    } else if (title.includes('syntax') || title.includes('parse')) {
-        return 'fix_syntax';
-    } else if (title.includes('type annotation') || title.includes('typing') || title.includes('type hint')) {
-        return 'add_type_hints';
-    } else if (title.includes('error handling') || title.includes('try-catch')) {
-        return 'add_error_handling';
-    } else if (title.includes('performance') || title.includes('optimization')) {
-        return 'optimize_performance';
-    } else if (title.includes('security') || title.includes('vulnerability')) {
-        return 'fix_security';
-    }
-
-    // Default fallback
+    // Parameter kept for backwards compatibility and potential future use.
+    void issueTitle;
+    // Single, stable fallback fix identifier.
     return 'generic_fix';
 }
 

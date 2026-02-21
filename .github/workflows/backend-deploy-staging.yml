@@ -36,7 +36,7 @@ permissions:
 
 concurrency:
   group: deploy-staging-backend
-  cancel-in-progress: false
+  cancel-in-progress: true  # Cancel older deployments to deploy latest code faster
 
 jobs:
   deploy:
@@ -182,9 +182,20 @@ jobs:
               echo "Health response: $RESPONSE"
 
               if echo "$RESPONSE" | jq -e '.ok == true' > /dev/null; then
-                # Optionally verify specific checks exist in the checks array
+                # Verify critical checks are healthy
                 DB_OK=$(echo "$RESPONSE" | jq -r '[.checks[] | select(.name == "db")] | .[0].ok // false')
                 REDIS_OK=$(echo "$RESPONSE" | jq -r '[.checks[] | select(.name == "redis")] | .[0].ok // false')
+
+                if [ "$DB_OK" != "true" ]; then
+                  echo "::error::DB health check failed: $DB_OK"
+                  exit 1
+                fi
+
+                if [ "$REDIS_OK" != "true" ]; then
+                  echo "::error::Redis health check failed: $REDIS_OK"
+                  exit 1
+                fi
+
                 echo "::notice::All health checks passed (db=$DB_OK, redis=$REDIS_OK)"
                 exit 0
               else

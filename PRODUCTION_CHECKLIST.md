@@ -192,17 +192,19 @@ Run against ALB DNS (before DNS cutover):
 
 - [ ] API test:
   ```bash
-  curl https://app.navralabs.com/health/ready
+  # Get ALB DNS: aws elbv2 describe-load-balancers --names aep-prod-alb --query 'LoadBalancers[0].DNSName' --output text
+  curl http://<alb-dns>/health/ready
   # Expected: 200, JSON with .ok == true
   ```
 - [ ] Model routing test (if applicable):
   ```bash
-  # IMPORTANT: Always use HTTPS when sending Authorization headers
-  curl -X POST https://app.navralabs.com/api/v1/chat \
-    -H "Authorization: Bearer <test-token>" \
+  # IMPORTANT: Use HTTP for ALB DNS (before HTTPS/DNS cutover)
+  # Get ALB DNS: aws elbv2 describe-load-balancers --names aep-prod-alb --query 'LoadBalancers[0].DNSName' --output text
+  curl -X POST http://<alb-dns>/api/v1/chat \
     -H "Content-Type: application/json" \
     -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "test"}]}'
   # Expected: 200 or 401 (auth required)
+  # Note: Do not send Authorization headers over HTTP; wait for HTTPS cutover
   ```
 - [ ] Budget enforcement test:
   - [ ] Verify tier limits are respected

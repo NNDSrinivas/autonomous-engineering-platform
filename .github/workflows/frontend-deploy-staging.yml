@@ -30,7 +30,7 @@ concurrency:
   # Frontend and backend use separate concurrency groups
   # Simultaneous frontend/backend deployments to staging are acceptable
   group: deploy-staging-frontend
-  cancel-in-progress: false
+  cancel-in-progress: true  # Cancel older deployments to deploy latest code faster
 
 jobs:
   deploy:

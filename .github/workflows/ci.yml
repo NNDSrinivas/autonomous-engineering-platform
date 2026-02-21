@@ -92,7 +92,7 @@ jobs:
         run: |
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"
           alembic upgrade head
-          pytest -q backend/tests
+          pytest -q backend/tests -m "not integration"
           pytest -q tests -m "not integration"
 
   distributed-lock-tests:

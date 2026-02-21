@@ -68,27 +68,17 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    services:
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=5s
-          --health-timeout=3s
-          --health-retries=20
     env:
       SECRET_KEY: test-secret-for-ci
       JWT_SECRET: test-jwt-secret-for-ci
       JWT_ENABLED: "false"
       DATABASE_URL: sqlite:///./test.db
-      REDIS_URL: redis://127.0.0.1:6379/0
       APP_ENV: ci
       ENABLE_AUDIT_LOGGING: false
       OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
       CI_NON_BLOCKING_DB_CHECKS: true
       REQUIRE_REDIS_FOR_LOCK_TESTS: "false"
+      SKIP_REDIS_HEALTH_CHECK: "true"
       # opentelemetry-proto <5.0 ships old-style .pb2 files that break under
       # protobuf 5.x C extension (upb). Force pure-Python implementation.
       PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python

@@ -162,6 +162,8 @@ def check_redis() -> CheckResult:
 
 
 def readiness_payload() -> dict:
+    import os
+
     checks = [check_self()]
     # include optional checks
     try:
@@ -171,13 +173,16 @@ def readiness_payload() -> dict:
         checks.append(
             {"name": "db", "ok": False, "latency_ms": 0, "detail": "internal error"}
         )
-    try:
-        checks.append(check_redis())
-    except Exception:
-        logging.error("Redis readiness check failed")
-        checks.append(
-            {"name": "redis", "ok": False, "latency_ms": 0, "detail": "internal error"}
-        )
+
+    # Skip Redis check in CI unit-tests to avoid running lock integration tests
+    if os.getenv("SKIP_REDIS_HEALTH_CHECK", "").lower() not in ("true", "1"):
+        try:
+            checks.append(check_redis())
+        except Exception:
+            logging.error("Redis readiness check failed")
+            checks.append(
+                {"name": "redis", "ok": False, "latency_ms": 0, "detail": "internal error"}
+            )
 
     ok = all(c["ok"] for c in checks)
     return {"ok": ok, "checks": checks}

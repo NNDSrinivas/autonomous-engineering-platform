@@ -147,7 +147,7 @@ export function useReviewSession(): ReviewSession {
 }
 
 /**
- * Generate a fixId based on the issue title and file path
+ * Generate a fixId based on the issue title.
  */
 function generateFixId(issueTitle: string): string {
     const title = issueTitle.toLowerCase();

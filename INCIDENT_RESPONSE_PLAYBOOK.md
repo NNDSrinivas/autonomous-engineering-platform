@@ -420,7 +420,13 @@ Update ALB default action to return 503 with maintenance message while investiga
    # Rotate each secret (use file to avoid shell history)
    SECRET_FILE="$(mktemp)"
    chmod 600 "$SECRET_FILE"
-   echo -n "new-key" > "$SECRET_FILE"
+
+   # Read the new secret securely (not echoed, not in shell history)
+   printf 'Enter new secret value: ' >&2
+   IFS= read -r -s NEW_SECRET
+   printf '\n' >&2
+   printf '%s' "$NEW_SECRET" > "$SECRET_FILE"
+   unset NEW_SECRET
 
    aws secretsmanager update-secret \
      --secret-id aep/staging/OPENAI_API_KEY \

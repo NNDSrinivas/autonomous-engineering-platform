@@ -232,7 +232,13 @@ When rotating secrets (API keys, encryption keys, DB passwords):
 # Store the new secret in a secure temporary file (avoids shell history)
 SECRET_FILE="$(mktemp)"
 chmod 600 "$SECRET_FILE"
-echo -n "new-key-value" > "$SECRET_FILE"
+
+# Read the new secret securely (not echoed, not stored in shell history)
+printf 'Enter new secret value: ' >&2
+IFS= read -r -s NEW_SECRET
+printf '\n' >&2
+printf '%s' "$NEW_SECRET" > "$SECRET_FILE"
+unset NEW_SECRET
 
 # Update the secret from the file
 aws secretsmanager update-secret \

@@ -72,7 +72,7 @@ This role will be assumed by GitHub Actions to deploy to ECS.
 }
 ```
 
-**IMPORTANT**: In this example, `YOUR_GITHUB_ORG` is a placeholder. The actual `github-actions-trust-policy.json` file in this repo uses `mounikakapa`. **Update both this example AND the JSON file** with your actual GitHub org/user (e.g., `NNDSrinivas` or `mounikakapa`) and keep them in sync.
+**IMPORTANT**: In this example, `YOUR_GITHUB_ORG` is a placeholder. Replace it with your actual GitHub org/user. For this repo, use `NNDSrinivas`. **Update both this example AND `github-actions-trust-policy.json`** to match your repo owner and keep them in sync.
 
 **Create the role**:
 

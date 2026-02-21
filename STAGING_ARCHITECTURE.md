@@ -96,7 +96,7 @@ Secrets Manager (staging):
 Non-sensitive env vars (plaintext in task def):
 - `APP_ENV=staging`
 - `BUDGET_ENFORCEMENT_MODE=strict` (or equivalent)
-- `CORS_ALLOW_ORIGINS=https://staging.navralabs.com`
+- `CORS_ORIGINS=https://staging.navralabs.com`
 
 ## 7) Health Endpoints
 

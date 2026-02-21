@@ -14,9 +14,7 @@ env:
   ECS_CLUSTER: aep-staging
   ECS_SERVICE: aep-frontend-staging-svc
   ECS_TASK_DEFINITION_FAMILY: aep-frontend-staging
-  CONTAINER_NAME: aep-frontend
   HEALTH_CHECK_URL: https://staging.navralabs.com/
-  HEALTH_CHECK_TIMEOUT: 300  # 5 minutes
 
 permissions:
   id-token: write  # Required for OIDC

@@ -96,7 +96,7 @@ Purpose: One-page verification checklist before DNS cutover to production
   - [ ] Environment variables:
     - [ ] `APP_ENV=production`
     - [ ] `BUDGET_ENFORCEMENT_MODE=strict`
-    - [ ] `CORS_ALLOW_ORIGINS=https://app.navralabs.com`
+    - [ ] `CORS_ORIGINS=https://app.navralabs.com`
   - [ ] Secrets: **All** from Secrets Manager (no plaintext)
   - [ ] CPU: _____ (e.g., 512)
   - [ ] Memory: _____ (e.g., 1024)
@@ -152,7 +152,7 @@ Purpose: One-page verification checklist before DNS cutover to production
 - [ ] Backend readiness endpoint:
   ```bash
   curl http://<alb-dns>/health/ready
-  # Expected: {"ok": true, "self": "ok", "db": "ok", "redis": "ok"}
+  # Expected: {"ok": true, "checks": [{"name": "self", "ok": true}, {"name": "db", "ok": true}, {"name": "redis", "ok": true}]}
   ```
 - [ ] Frontend loads:
   ```bash

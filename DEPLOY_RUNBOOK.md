@@ -130,9 +130,11 @@ curl https://staging.navralabs.com/health/ready
 # Expected:
 # {
 #   "ok": true,
-#   "self": "ok",
-#   "db": "ok",
-#   "redis": "ok"
+#   "checks": [
+#     {"name": "self", "ok": true, "latency_ms": 0, "detail": "ok"},
+#     {"name": "db", "ok": true, "latency_ms": 1, "detail": "ok"},
+#     {"name": "redis", "ok": true, "latency_ms": 2, "detail": "ok"}
+#   ]
 # }
 ```
 
@@ -227,9 +229,18 @@ When rotating secrets (API keys, encryption keys, DB passwords):
 ### Step 5.1 — Update Secrets Manager
 
 ```bash
+# Store the new secret in a secure temporary file (avoids shell history)
+SECRET_FILE="$(mktemp)"
+chmod 600 "$SECRET_FILE"
+echo -n "new-key-value" > "$SECRET_FILE"
+
+# Update the secret from the file
 aws secretsmanager update-secret \
   --secret-id aep/staging/OPENAI_API_KEY \
-  --secret-string "new-key-value"
+  --secret-string "file://$SECRET_FILE"
+
+# Clean up
+rm -f "$SECRET_FILE"
 ```
 
 ### Step 5.2 — Force New Deployment

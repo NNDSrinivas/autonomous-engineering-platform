@@ -417,10 +417,16 @@ Update ALB default action to return 503 with maintenance message while investiga
 
 1. **Rotate all secrets immediately**:
    ```bash
-   # Rotate each secret
+   # Rotate each secret (use file to avoid shell history)
+   SECRET_FILE="$(mktemp)"
+   chmod 600 "$SECRET_FILE"
+   echo -n "new-key" > "$SECRET_FILE"
+
    aws secretsmanager update-secret \
      --secret-id aep/staging/OPENAI_API_KEY \
-     --secret-string "new-key"
+     --secret-string "file://$SECRET_FILE"
+
+   rm -f "$SECRET_FILE"
 
    # Force tasks to restart and pick up new secrets
    aws ecs update-service \

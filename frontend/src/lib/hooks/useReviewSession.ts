@@ -148,24 +148,34 @@ export function useReviewSession(): ReviewSession {
 
 /**
  * Generate a fixId based on the issue title.
+ *
+ * Returns fix IDs that match the backend's expected format:
+ * 'add_import', 'fix_syntax', 'add_type_hints', etc.
  */
-function generateFixId(issueTitle: string): string {
+function generateFixId(issueTitle: string | undefined): string {
+    // Handle undefined or null titles
+    if (!issueTitle) {
+        return 'generic_fix';
+    }
+
     const title = issueTitle.toLowerCase();
 
-    if (title.includes('error handling') || title.includes('try-catch')) {
-        return 'add-error-handling';
-    } else if (title.includes('type annotation') || title.includes('typing')) {
-        return 'add-type-annotations';
-    } else if (title.includes('import') || title.includes('organize')) {
-        return 'fix-imports';
+    if (title.includes('import') || title.includes('organize')) {
+        return 'add_import';
+    } else if (title.includes('syntax') || title.includes('parse')) {
+        return 'fix_syntax';
+    } else if (title.includes('type annotation') || title.includes('typing') || title.includes('type hint')) {
+        return 'add_type_hints';
+    } else if (title.includes('error handling') || title.includes('try-catch')) {
+        return 'add_error_handling';
     } else if (title.includes('performance') || title.includes('optimization')) {
-        return 'optimize-performance';
+        return 'optimize_performance';
     } else if (title.includes('security') || title.includes('vulnerability')) {
-        return 'fix-security';
+        return 'fix_security';
     }
 
     // Default fallback
-    return 'generic-fix';
+    return 'generic_fix';
 }
 
 /**

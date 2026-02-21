@@ -256,7 +256,8 @@ jobs:
           integration_pattern = re.compile(r'pytest\.mark\.integration')
 
           # Only include files that actually have integration-marked tests
-          all_files = sorted(glob.glob("tests/test_*.py"))
+          # Include both tests/ and backend/tests/ directories
+          all_files = sorted(glob.glob("tests/test_*.py") + glob.glob("backend/tests/test_*.py"))
           integration_files = []
           for f in all_files:
               try:

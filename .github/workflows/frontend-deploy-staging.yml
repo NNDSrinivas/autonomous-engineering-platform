@@ -5,12 +5,14 @@ on:
     branches:
       - main
     paths:
-      - 'frontend/**'
+      - 'frontend/src/**'
+      - 'frontend/public/**'
+      - 'frontend/index.html'
+      - 'frontend/vite.config.ts'
+      - 'frontend/tsconfig*.json'
+      - 'frontend/package*.json'
+      - 'frontend/Dockerfile'
       - '.github/workflows/frontend-deploy-staging.yml'
-    paths-ignore:
-      - 'frontend/**/*.test.ts'
-      - 'frontend/**/*.spec.ts'
-      - 'frontend/**/*.md'
 
 env:
   AWS_REGION: us-east-1

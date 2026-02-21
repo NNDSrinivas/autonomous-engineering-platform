@@ -162,50 +162,22 @@ def check_redis() -> CheckResult:
 
 
 def readiness_payload() -> dict:
-    import os
-
     checks = [check_self()]
     # include optional checks
     try:
         checks.append(check_db())
     except Exception:
-        logging.error("DB readiness check failed")
+        logging.exception("DB readiness check failed")
         checks.append(
             {"name": "db", "ok": False, "latency_ms": 0, "detail": "internal error"}
         )
-
-    # Skip the Redis readiness ping in CI/unit-test environments where Redis is not
-    # provisioned, but always include a "redis" check entry to keep the payload
-    # shape stable. Restrict skipping to CI/test-like environments so prod/staging
-    # don't silently mask real Redis outages on /health/ready.
-    skip_raw = os.getenv("SKIP_REDIS_HEALTH_CHECK", "")
-    skip_redis = skip_raw.strip().lower() in ("true", "1")
-    ci_env = os.getenv("CI", "").strip().lower() in ("true", "1")
-    app_env = os.getenv("APP_ENV", "").strip().lower()
-    should_skip_redis = skip_redis and (ci_env or app_env == "ci")
-
-    if should_skip_redis:
+    try:
+        checks.append(check_redis())
+    except Exception:
+        logging.exception("Redis readiness check failed")
         checks.append(
-            {
-                "name": "redis",
-                "ok": True,
-                "latency_ms": 0,
-                "detail": "skipped via SKIP_REDIS_HEALTH_CHECK",
-            }
+            {"name": "redis", "ok": False, "latency_ms": 0, "detail": "internal error"}
         )
-    else:
-        try:
-            checks.append(check_redis())
-        except Exception:
-            logging.exception("Redis readiness check failed")
-            checks.append(
-                {
-                    "name": "redis",
-                    "ok": False,
-                    "latency_ms": 0,
-                    "detail": "internal error",
-                }
-            )
 
     ok = all(c["ok"] for c in checks)
     return {"ok": ok, "checks": checks}

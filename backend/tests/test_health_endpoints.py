@@ -42,14 +42,15 @@ def test_health_live_returns_200(client):
     assert any(check["name"] == "self" for check in data["checks"])
 
 
+@pytest.mark.integration
 def test_health_ready_succeeds_with_normal_imports(client):
     """
-    /health/ready should return 200 in normal pytest configuration.
+    /health/ready should return 200 when Redis is available (integration test).
 
     Regression test for import path bug: checks.py originally imported from
     core.db instead of backend.core.db, causing get_engine to be None in
     Docker/pytest (where PYTHONPATH is repo root, not backend/ subdir).
-    This test verifies the DB check succeeds with proper import paths.
+    This test verifies the DB and Redis checks succeed with proper import paths.
 
     If this test fails with 503 and "db not configured", the import path
     fallback logic in checks.py is broken again (get_engine/text are None).
@@ -78,9 +79,10 @@ def test_health_ready_succeeds_with_normal_imports(client):
     )
 
 
+@pytest.mark.integration
 def test_health_ready_includes_required_checks(client):
     """
-    /health/ready should include self, db, and redis checks.
+    /health/ready should include self, db, and redis checks (integration test).
 
     All three checks are always present in the response (readiness_payload
     always appends them). Individual checks may report ok=false if the
@@ -96,9 +98,10 @@ def test_health_ready_includes_required_checks(client):
     assert "redis" in check_names, "redis check is always included (may report ok=false)"
 
 
+@pytest.mark.integration
 def test_health_startup_mirrors_ready(client):
     """
-    /health/startup should behave identically to /health/ready.
+    /health/startup should behave identically to /health/ready (integration test).
 
     Some platforms (Kubernetes) use separate startup probes.
     Compares stable fields (status code, ok flag, check names) and ignores

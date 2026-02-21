@@ -74,12 +74,10 @@ jobs:
       JWT_ENABLED: "false"
       DATABASE_URL: sqlite:///./test.db
       APP_ENV: ci
-      CI: "true"
       ENABLE_AUDIT_LOGGING: false
       OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
       CI_NON_BLOCKING_DB_CHECKS: true
       REQUIRE_REDIS_FOR_LOCK_TESTS: "false"
-      SKIP_REDIS_HEALTH_CHECK: "true"
       # opentelemetry-proto <5.0 ships old-style .pb2 files that break under
       # protobuf 5.x C extension (upb). Force pure-Python implementation.
       PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python

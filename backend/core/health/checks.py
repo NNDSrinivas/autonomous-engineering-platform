@@ -174,9 +174,10 @@ def readiness_payload() -> dict:
             {"name": "db", "ok": False, "latency_ms": 0, "detail": "internal error"}
         )
 
-    # Skip Redis check in CI unit-tests to avoid running lock integration tests,
-    # but always include a "redis" check entry to keep the payload shape stable.
-    # Restrict skipping to CI environments so prod/staging don't silently mask Redis outages.
+    # Skip the Redis readiness ping in CI/unit-test environments where Redis is not
+    # provisioned, but always include a "redis" check entry to keep the payload
+    # shape stable. Restrict skipping to CI/test-like environments so prod/staging
+    # don't silently mask real Redis outages on /health/ready.
     skip_raw = os.getenv("SKIP_REDIS_HEALTH_CHECK", "")
     skip_redis = skip_raw.strip().lower() in ("true", "1")
     ci_env = os.getenv("CI", "").strip().lower() in ("true", "1")
@@ -196,7 +197,7 @@ def readiness_payload() -> dict:
         try:
             checks.append(check_redis())
         except Exception:
-            logging.error("Redis readiness check failed")
+            logging.exception("Redis readiness check failed")
             checks.append(
                 {
                     "name": "redis",

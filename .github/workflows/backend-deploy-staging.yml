@@ -20,6 +20,10 @@ permissions:
   id-token: write  # Required for OIDC
   contents: read
 
+concurrency:
+  group: deploy-staging-backend
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to Staging

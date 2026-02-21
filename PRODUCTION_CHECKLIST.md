@@ -281,7 +281,7 @@ Run against ALB DNS (before DNS cutover):
   ```
 - [ ] API responds:
   ```bash
-  curl https://app.navralabs.com/api/health/ready
+  curl https://app.navralabs.com/health/ready
   # Expected: 200, JSON
   ```
 - [ ] HTTPS enforced:

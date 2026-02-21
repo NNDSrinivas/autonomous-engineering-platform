@@ -2,10 +2,15 @@
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "ECRGetAuthToken",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
       "Sid": "ECRAccess",
       "Effect": "Allow",
       "Action": [
-        "ecr:GetAuthorizationToken",
         "ecr:BatchCheckLayerAvailability",
         "ecr:GetDownloadUrlForLayer",
         "ecr:BatchGetImage",
@@ -16,7 +21,10 @@
         "ecr:DescribeImages",
         "ecr:DescribeRepositories"
       ],
-      "Resource": "*"
+      "Resource": [
+        "arn:aws:ecr:us-east-1:625847798833:repository/navralabs/aep-backend",
+        "arn:aws:ecr:us-east-1:625847798833:repository/navralabs/aep-frontend"
+      ]
     },
     {
       "Sid": "ECSTaskDefinitionAccess",
@@ -25,7 +33,10 @@
         "ecs:DescribeTaskDefinition",
         "ecs:RegisterTaskDefinition"
       ],
-      "Resource": "*"
+      "Resource": [
+        "arn:aws:ecs:us-east-1:625847798833:task-definition/aep-backend-staging:*",
+        "arn:aws:ecs:us-east-1:625847798833:task-definition/aep-frontend-staging:*"
+      ]
     },
     {
       "Sid": "ECSServiceAccess",

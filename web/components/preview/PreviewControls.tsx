@@ -26,6 +26,8 @@ export function PreviewControls({
   onToggleVisibility,
   visible,
 }: PreviewControlsProps) {
+  // Phase 1: Device size selector is visual-only (UI feedback)
+  // Phase 2: Will implement actual iframe resizing with width constraints
   const [deviceSize, setDeviceSize] = useState<DeviceSize>('desktop');
   const [copied, setCopied] = useState(false);
 

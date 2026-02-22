@@ -3,9 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from datetime import datetime
 from typing import Optional
-import uuid
 
 from backend.core.db import get_db
 from backend.core.auth.deps import get_current_user_optional
@@ -17,39 +15,57 @@ def _current_user_id(user) -> str:
     return getattr(user, "user_id", None) or "default_user"
 
 
-def _get_or_create_user(db: Session, auth0_sub: str, email: Optional[str] = None, display_name: Optional[str] = None) -> int:
+def _get_or_create_user(
+    db: Session,
+    auth0_sub: str,
+    email: Optional[str] = None,
+    display_name: Optional[str] = None,
+) -> int:
     """
     Get or create user from Auth0 sub (maps to users.sub column).
     Returns integer user_id for use with navi_conversations.
     """
     # Check if user exists
-    result = db.execute(
-        text("SELECT id, org_id FROM users WHERE sub = :sub"),
-        {"sub": auth0_sub}
-    ).mappings().first()
+    result = (
+        db.execute(
+            text("SELECT id, org_id FROM users WHERE sub = :sub"), {"sub": auth0_sub}
+        )
+        .mappings()
+        .first()
+    )
 
     if result:
         return result["id"]
 
     # User doesn't exist, need to create
     # First ensure default org exists
-    org_result = db.execute(
-        text("SELECT id FROM organizations WHERE org_key = :org_key"),
-        {"org_key": "default"}
-    ).mappings().first()
+    org_result = (
+        db.execute(
+            text("SELECT id FROM organizations WHERE org_key = :org_key"),
+            {"org_key": "default"},
+        )
+        .mappings()
+        .first()
+    )
 
     if org_result:
         org_id = org_result["id"]
     else:
         # Create default org
-        org_create = db.execute(
-            text("""
+        org_create = (
+            db.execute(
+                text(
+                    """
                 INSERT INTO organizations (org_key, name)
                 VALUES (:org_key, :name)
                 RETURNING id
-            """),
-            {"org_key": "default", "name": "Default Organization"}
-        ).mappings().first()
+            """
+                ),
+                {"org_key": "default", "name": "Default Organization"},
+            )
+            .mappings()
+            .first()
+        )
         org_id = org_create["id"]
         db.commit()
 
@@ -57,19 +73,25 @@ def _get_or_create_user(db: Session, auth0_sub: str, email: Optional[str] = None
     user_email = email or f"{auth0_sub.replace('|', '-')}@navralabs.com"
     user_name = display_name or auth0_sub.split("|")[-1]
 
-    user_result = db.execute(
-        text("""
+    user_result = (
+        db.execute(
+            text(
+                """
             INSERT INTO users (sub, email, display_name, org_id)
             VALUES (:sub, :email, :display_name, :org_id)
             RETURNING id
-        """),
-        {
-            "sub": auth0_sub,
-            "email": user_email,
-            "display_name": user_name,
-            "org_id": org_id
-        }
-    ).mappings().first()
+        """
+            ),
+            {
+                "sub": auth0_sub,
+                "email": user_email,
+                "display_name": user_name,
+                "org_id": org_id,
+            },
+        )
+        .mappings()
+        .first()
+    )
 
     db.commit()
     return user_result["id"]
@@ -156,10 +178,14 @@ def create_session(
     internal_user_id = _get_or_create_user(db, auth0_sub)
 
     # Get user's org_id
-    org_result = db.execute(
-        text("SELECT org_id FROM users WHERE id = :user_id"),
-        {"user_id": internal_user_id}
-    ).mappings().first()
+    org_result = (
+        db.execute(
+            text("SELECT org_id FROM users WHERE id = :user_id"),
+            {"user_id": internal_user_id},
+        )
+        .mappings()
+        .first()
+    )
 
     org_id = org_result["org_id"]
 
@@ -177,7 +203,7 @@ def create_session(
             "user_id": internal_user_id,
             "org_id": org_id,
             "title": title or "New Chat",
-            "workspace_path": workspace_path
+            "workspace_path": workspace_path,
         },
     )
     db.commit()
@@ -396,12 +422,16 @@ def get_messages(
     internal_user_id = _get_or_create_user(db, auth0_sub)
 
     # Verify user owns this conversation
-    conversation = db.execute(
-        text(
-            "SELECT id FROM navi_conversations WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
-        ),
-        {"sid": session_id, "user_id": internal_user_id},
-    ).mappings().first()
+    conversation = (
+        db.execute(
+            text(
+                "SELECT id FROM navi_conversations WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
+            ),
+            {"sid": session_id, "user_id": internal_user_id},
+        )
+        .mappings()
+        .first()
+    )
 
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")

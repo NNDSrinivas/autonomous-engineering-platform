@@ -457,17 +457,13 @@ async def start_device_code_flow(
         )
 
         # Base verification URI points to web app for integrated signup/login flow
-        # Fallback to backend's standalone HTML page if web app URL not configured
-        web_app_url = getattr(settings, "web_app_base_url", None) or "http://localhost:3030"
-        backend_url = settings.public_base_url or "http://localhost:8787"
+        web_app_url = (
+            getattr(settings, "web_app_base_url", None) or "http://localhost:3030"
+        )
 
         # Prefer web app's device authorization page for better UX
         verification_uri = f"{web_app_url}/device/authorize"
         verification_uri_complete = f"{verification_uri}?user_code={user_code}"
-
-        # For backwards compatibility, also support direct backend verification
-        # (useful for headless/CLI scenarios)
-        backend_verification_uri = f"{backend_url}/oauth/device/verify"
 
         _audit_event(
             db,

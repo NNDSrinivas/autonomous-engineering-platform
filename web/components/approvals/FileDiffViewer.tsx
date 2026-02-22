@@ -25,33 +25,38 @@ export interface FileDiffViewerProps {
 function generateUnifiedDiff(fileDiff: FileDiff): string {
   const { oldPath = 'file', newPath = 'file', oldContent = '', newContent, type } = fileDiff;
 
+  // Use diff library for all cases to ensure consistent, valid unified diff format
   if (type === 'add') {
-    // New file - all lines are additions
-    const lines = newContent.split('\n');
-    const diffText = lines.map((line, i) => `+${line}`).join('\n');
-    return `--- /dev/null
-+++ b/${newPath}
-@@ -0,0 +1,${lines.length} @@
-${diffText}`;
+    // New file - generate patch from empty string to new content
+    const patch = diffLib.createPatch(
+      newPath,
+      '',
+      newContent,
+      '',
+      ''
+    );
+    return patch;
   }
 
   if (type === 'delete') {
-    // Deleted file - all lines are deletions
-    const lines = oldContent.split('\n');
-    const diffText = lines.map((line) => `-${line}`).join('\n');
-    return `--- a/${oldPath}
-+++ /dev/null
-@@ -1,${lines.length} +0,0 @@
-${diffText}`;
+    // Deleted file - generate patch from old content to empty string
+    const patch = diffLib.createPatch(
+      oldPath,
+      oldContent,
+      '',
+      '',
+      ''
+    );
+    return patch;
   }
 
-  // Modified file - use diff library
+  // Modified file
   const patch = diffLib.createPatch(
     newPath,
     oldContent,
     newContent,
-    'before',
-    'after'
+    '',
+    ''
   );
 
   return patch;

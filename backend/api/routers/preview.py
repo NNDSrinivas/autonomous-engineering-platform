@@ -27,7 +27,7 @@ class StorePreviewRequest(BaseModel):
     """Request to store static preview content."""
 
     content: str
-    content_type: Literal["html", "markdown"] = "html"
+    content_type: Literal["html"] = "html"  # Phase 1: HTML only. Phase 2: Add "markdown"
 
 
 class StorePreviewResponse(BaseModel):

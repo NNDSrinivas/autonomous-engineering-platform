@@ -36,8 +36,17 @@ export default function ChatsPage() {
   const handleRefreshPreview = () => {
     // Select the preview iframe specifically (not any iframe on the page)
     const iframe = document.querySelector('iframe[title="Preview"]') as HTMLIFrameElement;
-    if (iframe && iframe.src) {
+    if (!iframe) return;
+
+    // For src-based previews, reload the src
+    if (iframe.src) {
       iframe.src = iframe.src;
+    }
+    // For srcDoc-based previews (Phase 1), force reload by re-setting srcDoc
+    else if (preview.html) {
+      const currentHtml = preview.html;
+      preview.setPreviewHtml('');
+      setTimeout(() => preview.setPreviewHtml(currentHtml), 0);
     }
   };
 

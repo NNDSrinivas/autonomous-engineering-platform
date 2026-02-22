@@ -1,7 +1,6 @@
 import { handleAuth, handleLogin, handleCallback, handleLogout } from "@auth0/nextjs-auth0";
-import { NextRequest, NextResponse } from "next/server";
 import { Session } from "@auth0/nextjs-auth0";
-import { NextApiRequest, NextApiResponse } from "next";
+import { NextRequest, NextApiRequest } from "next";
 
 export const GET = handleAuth({
   login: handleLogin((req) => {

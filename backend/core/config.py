@@ -200,6 +200,7 @@ class Settings(BaseSettings):
     # Platform Configuration
     debug: bool = False
     environment: str = "development"
+    prometheus_enabled: bool = False  # Enable Prometheus metrics endpoint
     # Security keys: Override via environment variables in production
     secret_key: str = "dev-secret-change-in-production"
     jwt_secret: str = "dev-jwt-secret-change-in-production"
@@ -213,7 +214,9 @@ class Settings(BaseSettings):
 
     # API Configuration
     api_v1_prefix: str = "/api"
+    api_base_url: Optional[str] = None  # API base URL for external references
     public_base_url: Optional[str] = None  # External base URL for OAuth callbacks
+    web_app_base_url: Optional[str] = None  # Web app URL for device authorization pages
 
     # Auth0 Configuration
     auth0_domain: Optional[str] = None
@@ -221,6 +224,8 @@ class Settings(BaseSettings):
     auth0_client_secret: Optional[str] = None
     auth0_audience: Optional[str] = None
     auth0_algorithm: str = "RS256"
+    auth0_issuer_base_url: Optional[str] = None  # Auth0 issuer URL (e.g., https://your-tenant.auth0.com)
+    auth0_action_secret: Optional[str] = None  # Secret for Auth0 Actions webhook authentication
 
     # AEP JWT Session Management
     aep_jwt_secret: Optional[str] = None

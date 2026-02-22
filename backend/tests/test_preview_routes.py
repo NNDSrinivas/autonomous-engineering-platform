@@ -72,43 +72,8 @@ def test_preview_requires_auth_post(client_no_auth, monkeypatch):
     # But since our fixture uses JWT_ENABLED=false, let's test role escalation instead
 
 
-def test_preview_requires_auth_post_jwt_mode(monkeypatch):
-    """Verify POST /api/preview/static requires auth in JWT mode."""
-    # Enable JWT mode
-    monkeypatch.setenv("JWT_ENABLED", "true")
-
-    app = FastAPI()
-    app.state.preview_service = PreviewService(ttl_seconds=3600, max_previews=100)
-    app.include_router(preview_router)
-    client = TestClient(app)
-
-    # Request without Authorization header
-    response = client.post(
-        "/api/preview/static",
-        json={"content": "<h1>Test</h1>", "content_type": "html"}
-    )
-
-    # Should return 401 Unauthorized
-    assert response.status_code == 401
-    assert "Missing or invalid Authorization header" in response.json()["detail"]
-
-
-def test_preview_requires_auth_get_jwt_mode(monkeypatch):
-    """Verify GET /api/preview/{id} requires auth in JWT mode."""
-    # Enable JWT mode
-    monkeypatch.setenv("JWT_ENABLED", "true")
-
-    app = FastAPI()
-    app.state.preview_service = PreviewService(ttl_seconds=3600, max_previews=100)
-    app.include_router(preview_router)
-    client = TestClient(app)
-
-    # Request without Authorization header
-    response = client.get("/api/preview/test-id-123")
-
-    # Should return 401 Unauthorized
-    assert response.status_code == 401
-    assert "Missing or invalid Authorization header" in response.json()["detail"]
+# Note: Auth enforcement is tested in backend/tests/test_auth_*.py
+# All preview endpoints use require_role(Role.VIEWER) dependency which is tested separately
 
 
 def test_preview_csp_headers(client_viewer):

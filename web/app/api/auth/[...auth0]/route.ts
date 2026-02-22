@@ -2,36 +2,41 @@ import { handleAuth, handleLogin, handleCallback, handleLogout } from "@auth0/ne
 import { Session } from "@auth0/nextjs-auth0";
 import type { NextRequest } from "next/server";
 import type { NextApiRequest } from "next";
+import { validateReturnTo } from "@/lib/auth/validation";
 
 /**
- * Validate returnTo parameter to prevent open redirect attacks.
- * Only allows same-origin paths starting with a single "/".
- * Rejects protocol-relative URLs like "//evil.com".
+ * Type guard to check if request is NextRequest (App Router)
  */
-function validateReturnTo(returnTo: string | null, defaultPath: string): string {
-  if (!returnTo) return defaultPath;
+function isNextRequest(req: NextRequest | NextApiRequest): req is NextRequest {
+  return 'nextUrl' in req && typeof req.nextUrl === 'object';
+}
 
-  // Must start with "/" but NOT "//" (reject protocol-relative URLs)
-  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) {
-    return defaultPath;
+/**
+ * Extract search params from either request type
+ */
+function getSearchParams(req: NextRequest | NextApiRequest): URLSearchParams {
+  if (isNextRequest(req)) {
+    return req.nextUrl.searchParams;
   }
 
-  // Additional safety: ensure it's a valid path
-  try {
-    new URL(returnTo, "http://localhost");
-    return returnTo;
-  } catch {
-    return defaultPath;
+  // For NextApiRequest, construct URLSearchParams from query object
+  const params = new URLSearchParams();
+  if (req.query) {
+    Object.entries(req.query).forEach(([key, value]) => {
+      if (typeof value === 'string') {
+        params.set(key, value);
+      } else if (Array.isArray(value)) {
+        value.forEach(v => params.append(key, v));
+      }
+    });
   }
+  return params;
 }
 
 export const GET = handleAuth({
   login: handleLogin((req) => {
     // Get connection from query params for direct social login
-    // Handle both NextRequest (App Router) and NextApiRequest (Pages Router)
-    const searchParams = 'nextUrl' in req
-      ? req.nextUrl.searchParams
-      : new URLSearchParams(req.url?.split('?')[1] || '');
+    const searchParams = getSearchParams(req);
 
     const connection = searchParams.get("connection");
     const returnToParam = searchParams.get("returnTo");

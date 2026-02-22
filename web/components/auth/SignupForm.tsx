@@ -14,6 +14,7 @@ import {
   PasswordStrengthMeter,
   getPasswordRequirements,
 } from "./PasswordStrengthMeter";
+import { validateReturnTo } from "@/lib/auth/validation";
 
 const signupSchema = z
   .object({
@@ -42,28 +43,6 @@ type SignupFormData = z.infer<typeof signupSchema>;
 
 interface SignupFormProps {
   onSubmit?: (data: SignupFormData) => Promise<void>;
-}
-
-/**
- * Validate returnTo parameter to prevent open redirect attacks.
- * Only allows same-origin paths starting with a single "/".
- * Rejects protocol-relative URLs like "//evil.com".
- */
-function validateReturnTo(returnTo: string | null): string {
-  if (!returnTo) return "/app";
-
-  // Must start with "/" but NOT "//" (reject protocol-relative URLs)
-  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) {
-    return "/app";
-  }
-
-  // Additional safety: ensure it's a valid path
-  try {
-    new URL(returnTo, "http://localhost");
-    return returnTo;
-  } catch {
-    return "/app";
-  }
 }
 
 export function SignupForm({ onSubmit }: SignupFormProps) {

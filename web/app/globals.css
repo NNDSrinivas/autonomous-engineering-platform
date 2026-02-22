@@ -6,8 +6,8 @@
 
 @layer base {
   :root {
-    --font-auth-display: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    --font-auth-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --font-auth-display: var(--font-inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif);
+    --font-auth-mono: var(--font-jetbrains-mono, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
     --background: 220 15% 8%;
     --foreground: 220 10% 92%;
 

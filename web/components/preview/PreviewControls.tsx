@@ -50,14 +50,19 @@ export function PreviewControls({
   };
 
   const handleCopyUrl = async () => {
-    if (previewUrl) {
-      try {
-        await navigator.clipboard.writeText(window.location.origin + previewUrl);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch (err) {
-        console.error('Failed to copy URL:', err);
-      }
+    if (!previewUrl) return;
+
+    try {
+      // Build absolute URL correctly - handle both relative and absolute URLs
+      const absoluteUrl = previewUrl.startsWith('/')
+        ? window.location.origin + previewUrl
+        : previewUrl;
+
+      await navigator.clipboard.writeText(absoluteUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy URL:', err);
     }
   };
 

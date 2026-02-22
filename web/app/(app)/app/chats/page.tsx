@@ -200,15 +200,17 @@ export default function ChatsPage() {
                 </h2>
                 <p className="text-xs text-muted-foreground">Chat with NAVI</p>
               </div>
-              {/* TEMP: Test Preview Button (remove after Phase 2) */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleTestPreview}
-                className="text-xs"
-              >
-                🧪 Test Preview
-              </Button>
+              {/* TEMP: Test Preview Button (dev-only, remove after Phase 2 SSE integration) */}
+              {process.env.NODE_ENV === 'development' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestPreview}
+                  className="text-xs"
+                >
+                  🧪 Test Preview
+                </Button>
+              )}
             </div>
 
             {/* Messages */}

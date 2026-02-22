@@ -52,26 +52,6 @@ def client_viewer(app_with_preview, monkeypatch):
     return TestClient(app_with_preview)
 
 
-def test_preview_requires_auth_post(client_no_auth, monkeypatch):
-    """Verify POST /api/preview/static requires authentication."""
-    # Ensure no DEV_USER_ID is set (simulates unauthenticated)
-    monkeypatch.delenv("DEV_USER_ID", raising=False)
-    monkeypatch.delenv("DEV_USER_EMAIL", raising=False)
-    monkeypatch.delenv("DEV_USER_ROLE", raising=False)
-    monkeypatch.delenv("DEV_ORG_ID", raising=False)
-
-    response = client_no_auth.post(
-        "/api/preview/static",
-        json={"content": "<h1>Test</h1>", "content_type": "html"}
-    )
-
-    # Should return 401 Unauthorized (dev shim will auto-assign dev_user, but we cleared env vars)
-    # Actually, looking at the deps.py code, dev shim mode will fallback to "dev_user" with viewer role
-    # So we need to test with JWT_ENABLED=true instead, or verify role escalation fails
-    # For simplicity in this test: we verify that with JWT_ENABLED=true, no bearer token = 401
-    # But since our fixture uses JWT_ENABLED=false, let's test role escalation instead
-
-
 # Note: Auth enforcement is tested in backend/tests/test_auth_*.py
 # All preview endpoints use require_role(Role.VIEWER) dependency which is tested separately
 

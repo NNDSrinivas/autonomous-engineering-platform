@@ -33,7 +33,7 @@ export function PreviewControls({
 
   const handleOpenNewTab = () => {
     if (previewUrl) {
-      window.open(previewUrl, '_blank');
+      window.open(previewUrl, '_blank', 'noopener,noreferrer');
     }
   };
 

@@ -32,9 +32,21 @@ export function PreviewControls({
   const [copied, setCopied] = useState(false);
 
   const handleOpenNewTab = () => {
-    if (previewUrl) {
-      window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    if (!previewUrl) return;
+
+    // Validate URL to prevent javascript: or data: schemes
+    if (previewUrl.startsWith('javascript:') || previewUrl.startsWith('data:')) {
+      console.error('Invalid preview URL scheme');
+      return;
     }
+
+    // Only allow http, https, or relative paths
+    if (!previewUrl.startsWith('/') && !previewUrl.startsWith('http://') && !previewUrl.startsWith('https://')) {
+      console.error('Preview URL must be relative or use http/https');
+      return;
+    }
+
+    window.open(previewUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleCopyUrl = async () => {

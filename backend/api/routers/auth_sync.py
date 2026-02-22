@@ -66,6 +66,8 @@ async def sync_user_from_auth0(
             User.auth0_user_id == payload.auth0_user_id
         ).first()
 
+        is_new_user = user is None
+
         if user:
             # Update existing user
             user.email = payload.email
@@ -97,7 +99,7 @@ async def sync_user_from_auth0(
         return {
             "success": True,
             "user_id": str(user.id),
-            "is_new_user": user.created_at == user.updated_at
+            "is_new_user": is_new_user
         }
 
     except Exception as e:

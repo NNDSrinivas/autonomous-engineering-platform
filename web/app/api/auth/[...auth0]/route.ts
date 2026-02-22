@@ -1,17 +1,31 @@
 import { handleAuth, handleLogin, handleCallback, handleLogout } from "@auth0/nextjs-auth0";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Session } from "@auth0/nextjs-auth0";
+import { NextApiRequest, NextApiResponse } from "next";
 
 export const GET = handleAuth({
-  login: handleLogin({
-    authorizationParams: {
-      audience: process.env.AUTH0_AUDIENCE,
-      scope: "openid profile email offline_access",
-    },
+  login: handleLogin((req) => {
+    // Get connection from query params for direct social login
+    // Handle both NextRequest (App Router) and NextApiRequest (Pages Router)
+    const searchParams = 'nextUrl' in req
+      ? req.nextUrl.searchParams
+      : new URLSearchParams(req.url?.split('?')[1] || '');
+
+    const connection = searchParams.get("connection");
+    const returnTo = searchParams.get("returnTo") || "/app/chats";
+
+    return {
+      authorizationParams: {
+        audience: process.env.AUTH0_AUDIENCE,
+        scope: "openid profile email offline_access",
+        ...(connection && { connection }),
+      },
+      returnTo,
+    };
   }),
   callback: handleCallback({
     afterCallback: async (
-      _req: NextRequest,
+      _req: NextRequest | NextApiRequest,
       session: Session
     ): Promise<Session> => {
       // Sync user to backend database after successful authentication

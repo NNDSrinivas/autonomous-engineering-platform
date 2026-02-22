@@ -37,7 +37,9 @@ class PreviewService:
         self.ttl_seconds = ttl_seconds
         self.max_previews = max_previews
         self._store: Dict[str, PreviewContent] = {}
-        logger.info(f"PreviewService initialized (TTL={ttl_seconds}s, max={max_previews})")
+        logger.info(
+            f"PreviewService initialized (TTL={ttl_seconds}s, max={max_previews})"
+        )
 
     async def store(self, content: str, content_type: str = "html") -> str:
         """

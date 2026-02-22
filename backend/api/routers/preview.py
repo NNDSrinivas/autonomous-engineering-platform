@@ -56,10 +56,7 @@ async def store_static_preview(
     # Get PreviewService singleton from app state
     preview_service = getattr(request.app.state, "preview_service", None)
     if not preview_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Preview service not initialized"
-        )
+        raise HTTPException(status_code=503, detail="Preview service not initialized")
 
     preview_id = await preview_service.store(
         content=body.content,
@@ -93,10 +90,7 @@ async def get_preview(
     # Get PreviewService singleton from app state
     preview_service = getattr(request.app.state, "preview_service", None)
     if not preview_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Preview service not initialized"
-        )
+        raise HTTPException(status_code=503, detail="Preview service not initialized")
 
     preview = await preview_service.get(preview_id)
 
@@ -137,10 +131,7 @@ async def delete_preview(
     # Get PreviewService singleton from app state
     preview_service = getattr(request.app.state, "preview_service", None)
     if not preview_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Preview service not initialized"
-        )
+        raise HTTPException(status_code=503, detail="Preview service not initialized")
 
     success = await preview_service.delete(preview_id)
 

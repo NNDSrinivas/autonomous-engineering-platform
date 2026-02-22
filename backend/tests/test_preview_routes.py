@@ -6,14 +6,11 @@ Tests:
 - Store/retrieve/delete workflow
 """
 
-import os
-
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api.routers.preview import router as preview_router
-from backend.core.auth.models import Role
 from backend.services.preview.preview_service import PreviewService
 
 
@@ -61,7 +58,7 @@ def test_preview_csp_headers(client_viewer):
     # Store a preview first
     store_response = client_viewer.post(
         "/api/preview/static",
-        json={"content": "<h1>Test CSP</h1>", "content_type": "html"}
+        json={"content": "<h1>Test CSP</h1>", "content_type": "html"},
     )
     assert store_response.status_code == 200
     preview_id = store_response.json()["preview_id"]
@@ -80,7 +77,7 @@ def test_preview_csp_headers(client_viewer):
 
     # Verify critical CSP directives
     assert "default-src 'none'" in csp  # Deny all by default
-    assert "script-src 'none'" in csp   # NO scripts (critical for static HTML)
+    assert "script-src 'none'" in csp  # NO scripts (critical for static HTML)
     assert "connect-src 'none'" in csp  # NO network calls (prevent data exfil)
     assert "style-src 'unsafe-inline'" in csp  # Allow inline styles
     assert "img-src data: https:" in csp  # Allow images
@@ -101,8 +98,8 @@ def test_preview_store_retrieve_delete_workflow(client_viewer):
         "/api/preview/static",
         json={
             "content": "<h1>Workflow Test</h1><p>Full lifecycle test.</p>",
-            "content_type": "html"
-        }
+            "content_type": "html",
+        },
     )
     assert store_response.status_code == 200
     store_data = store_response.json()

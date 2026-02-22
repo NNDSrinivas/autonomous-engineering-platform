@@ -8,7 +8,6 @@ Tests:
 """
 
 import asyncio
-import time
 
 import pytest
 
@@ -72,7 +71,9 @@ async def test_preview_expiration():
     service = PreviewService(ttl_seconds=1, max_previews=100)
 
     # Store a preview
-    preview_id = await service.store(content="<h1>Expires Soon</h1>", content_type="html")
+    preview_id = await service.store(
+        content="<h1>Expires Soon</h1>", content_type="html"
+    )
 
     # Verify it exists immediately
     preview = await service.get(preview_id)

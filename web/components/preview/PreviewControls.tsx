@@ -34,19 +34,27 @@ export function PreviewControls({
   const handleOpenNewTab = () => {
     if (!previewUrl) return;
 
-    // Validate URL to prevent javascript: or data: schemes
-    if (previewUrl.startsWith('javascript:') || previewUrl.startsWith('data:')) {
-      console.error('Invalid preview URL scheme');
+    // Validate URL using allowlist approach - only allow safe schemes
+    // Relative paths (starting with /) are safe
+    if (previewUrl.startsWith('/')) {
+      window.open(previewUrl, '_blank', 'noopener,noreferrer');
       return;
     }
 
-    // Only allow http, https, or relative paths
-    if (!previewUrl.startsWith('/') && !previewUrl.startsWith('http://') && !previewUrl.startsWith('https://')) {
-      console.error('Preview URL must be relative or use http/https');
-      return;
-    }
+    // For absolute URLs, parse and validate the protocol
+    try {
+      const url = new URL(previewUrl);
+      const allowedProtocols = ['http:', 'https:'];
 
-    window.open(previewUrl, '_blank', 'noopener,noreferrer');
+      if (!allowedProtocols.includes(url.protocol)) {
+        console.error('Preview URL must use http or https protocol');
+        return;
+      }
+
+      window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Invalid preview URL:', err);
+    }
   };
 
   const handleCopyUrl = async () => {

@@ -1,8 +1,18 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles, Code, Zap } from "lucide-react";
+import { getSession } from "@auth0/nextjs-auth0";
+import { redirect } from "next/navigation";
 
-export default function HomePage() {
+export default async function HomePage() {
+  // Check if user is authenticated
+  const session = await getSession();
+
+  // Redirect authenticated users to the app
+  if (session?.user) {
+    redirect("/app");
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}

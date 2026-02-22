@@ -1,11 +1,12 @@
 import React from "react";
 import Link from "next/link";
-import { LayoutDashboard, MessageSquare, FolderKanban, Settings, Sparkles } from "lucide-react";
+import { LayoutDashboard, MessageSquare, FolderKanban, Settings, Sparkles, User } from "lucide-react";
 
 const appNav = [
   { href: "/app", label: "Overview", icon: LayoutDashboard },
   { href: "/app/chats", label: "Chats", icon: MessageSquare },
   { href: "/app/projects", label: "Projects", icon: FolderKanban },
+  { href: "/app/profile", label: "Profile", icon: User },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 
@@ -58,9 +59,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <p className="text-sm text-muted-foreground">Authenticated workspace shell</p>
               </div>
               <div className="flex items-center gap-3">
-                <Link href="/profile" className="text-sm text-muted-foreground transition hover:text-foreground">
-                  Profile
-                </Link>
                 <a
                   href="/api/auth/logout"
                   className="inline-flex items-center rounded-md border border-border bg-secondary/30 px-3 py-1.5 text-sm transition hover:bg-secondary/55"

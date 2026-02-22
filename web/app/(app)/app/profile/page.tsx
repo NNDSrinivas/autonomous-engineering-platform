@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import { User, Mail, Building2, Shield, Key, Trash2 } from "lucide-react";
 import {
   Card,
@@ -9,22 +11,40 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-
-export const metadata = {
-  title: "Profile | NAVI",
-  description: "Manage your NAVI profile",
-};
+import { useUser } from "@auth0/nextjs-auth0/client";
 
 export default function ProfilePage() {
-  const user = {
-    name: "NAVI User",
-    email: "user@navralabs.com",
-    sub: "auth0|pending-session",
-    email_verified: false,
-    picture: "",
-  };
-  const roles = ["viewer"];
-  const org = "public";
+  const { user, error, isLoading } = useUser();
+
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-muted-foreground">Loading profile...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-destructive">Error loading profile: {error.message}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    // Redirect to login if not authenticated
+    window.location.href = "/api/auth/login";
+    return null;
+  }
+
+  // Extract roles and org from custom claims
+  const roles = (user["https://navralabs.com/roles"] as string[]) || ["viewer"];
+  const org = (user["https://navralabs.com/org"] as string) || "public";
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">

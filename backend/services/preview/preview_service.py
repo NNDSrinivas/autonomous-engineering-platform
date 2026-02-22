@@ -89,28 +89,38 @@ class PreviewService:
 
         # Check expiration
         if time.time() > preview.expires_at:
-            del self._store[preview_id]
-            logger.info(f"Preview {preview_id} expired")
+            try:
+                del self._store[preview_id]
+                logger.info(f"Preview {preview_id} expired")
+            except KeyError:
+                # Preview may have been deleted concurrently by another request
+                pass
             return None
 
         return preview
 
     async def delete(self, preview_id: str) -> bool:
         """Delete preview by ID."""
-        if preview_id in self._store:
+        try:
             del self._store[preview_id]
             logger.info(f"Deleted preview {preview_id}")
             return True
-        return False
+        except KeyError:
+            # Preview doesn't exist or was already deleted
+            return False
 
     def _cleanup_oldest(self):
         """Remove oldest preview to make space."""
         if not self._store:
             return
 
-        oldest_id = min(self._store.keys(), key=lambda k: self._store[k].created_at)
-        del self._store[oldest_id]
-        logger.info(f"Cleaned up oldest preview {oldest_id}")
+        try:
+            oldest_id = min(self._store.keys(), key=lambda k: self._store[k].created_at)
+            del self._store[oldest_id]
+            logger.info(f"Cleaned up oldest preview {oldest_id}")
+        except (ValueError, KeyError):
+            # Store became empty or oldest entry was deleted concurrently
+            pass
 
 
 # Global singleton instance

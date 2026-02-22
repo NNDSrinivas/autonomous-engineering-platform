@@ -78,6 +78,7 @@ interface UserInfo {
   picture?: string;
   org?: string;
   role?: string;
+  sub?: string;
 }
 
 interface OrgInfo {
@@ -148,11 +149,17 @@ const decodeJwtUser = (token?: string | null): UserInfo | undefined => {
   if (parts.length !== 3) return undefined;
   try {
     const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const preferredName =
+      payload.name ||
+      payload.preferred_username ||
+      payload.nickname ||
+      [payload.given_name, payload.family_name].filter(Boolean).join(" ").trim();
     return {
       email: payload.email,
-      name: payload.name,
+      name: preferredName || undefined,
       org: payload.org || payload.org_id,
       role: payload.role,
+      sub: payload.sub,
     };
   } catch {
     return undefined;
@@ -162,6 +169,36 @@ const decodeJwtUser = (token?: string | null): UserInfo | undefined => {
 const firstName = (name?: string) => {
   if (!name) return "";
   return name.split(" ")[0]?.trim() || "";
+};
+
+const formatNameFromEmail = (email?: string) => {
+  if (!email) return "";
+  const [local] = email.split("@");
+  if (!local) return "";
+  return local
+    .replace(/[._-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part: string) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const resolveUserName = (user?: UserInfo) => {
+  const rawName = user?.name?.trim();
+  if (rawName && rawName.toLowerCase() !== "user") {
+    return rawName;
+  }
+  const emailName = formatNameFromEmail(user?.email);
+  if (emailName) return emailName;
+  return "NAVI User";
+};
+
+const normalizeUserInfo = (user?: UserInfo): UserInfo | undefined => {
+  if (!user) return undefined;
+  return {
+    ...user,
+    name: resolveUserName(user),
+  };
 };
 
 type SidebarPanelType = 'mcp' | 'connectors' | 'account' | 'rules' | null;
@@ -689,7 +726,7 @@ export function CodeCompanionShell() {
           setActivityPanelOpen(false);
         }
         if (message.user) {
-          setUser(message.user);
+          setUser(normalizeUserInfo(message.user));
         } else {
           setUser(undefined);
         }
@@ -715,7 +752,7 @@ export function CodeCompanionShell() {
         };
         const tokenUser = message.user || decodeJwtUser(message.token);
         if (tokenUser) {
-          setUser(tokenUser);
+          setUser(normalizeUserInfo(tokenUser));
         }
       }
       // Handle panel.openOverlay from extension
@@ -742,7 +779,7 @@ export function CodeCompanionShell() {
         };
         const tokenUser = msg.user || decodeJwtUser(msg.token);
         if (tokenUser) {
-          setUser(tokenUser);
+          setUser(normalizeUserInfo(tokenUser));
         }
       }
     };
@@ -811,9 +848,9 @@ export function CodeCompanionShell() {
 
   const displayName =
     nickname ||
-    firstName(user?.name) ||
+    firstName(resolveUserName(user)) ||
     user?.email?.split("@")[0] ||
-    "User";
+    "NAVI User";
 
   const applySelectedOrg = (org: OrgInfo | undefined) => {
     if (!org) return;
@@ -1193,23 +1230,21 @@ export function CodeCompanionShell() {
 
   // Get user initials
   const getInitials = (name?: string, email?: string): string => {
-    if (name) {
-      const parts = name
+    const resolvedName = resolveUserName({ name, email });
+    if (resolvedName) {
+      const parts = resolvedName
         .trim()
         .split(/\s+/)
         .filter(Boolean);
       if (parts.length === 1) {
-        return parts[0][0]?.toUpperCase() || 'NA';
+        return (parts[0][0] || "N").toUpperCase();
       }
       const first = parts[0][0] || '';
       const last = parts[parts.length - 1][0] || '';
       const initials = `${first}${last}`.toUpperCase();
-      return initials || 'NA';
+      return initials || "NU";
     }
-    if (email) {
-      return email[0].toUpperCase();
-    }
-    return 'NA';
+    return "NU";
   };
 
   return (
@@ -1298,7 +1333,21 @@ export function CodeCompanionShell() {
                 <Settings className="h-4 w-4 navi-settings-icon" />
               </button>
 
-              {/* Activity button removed */}
+              <button
+                className={`navi-icon-btn navi-icon-btn--lg navi-header-icon-btn navi-animated-icon navi-activity-btn ${activityPanelOpen ? 'is-active' : ''}`}
+                title={isAuthenticated ? "Activity" : "Sign in required"}
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    openAuthGate();
+                    return;
+                  }
+                  setActivityPanelOpen((prev) => !prev);
+                }}
+                disabled={!isAuthenticated}
+              >
+                <span className="navi-icon-glow" />
+                <Activity className="h-4 w-4 navi-activity-icon" />
+              </button>
 
               {/* More Menu - Notifications, Theme, Activity, Help */}
               <div className="navi-header-more-anchor">
@@ -1317,16 +1366,6 @@ export function CodeCompanionShell() {
                   <span className="navi-icon-glow" />
                   <MoreHorizontal className="h-4 w-4 navi-more-icon" />
                 </button>
-
-                {isAuthenticated && (
-                  <div
-                    className="navi-auth-initials"
-                    title={`Signed in as ${displayName}`}
-                    aria-label={`Signed in as ${displayName}`}
-                  >
-                    {getInitials(user?.name, user?.email)}
-                  </div>
-                )}
 
                 {headerMoreOpen && (
                   <>
@@ -1365,6 +1404,7 @@ export function CodeCompanionShell() {
                           <button
                             className="navi-header-more-menu-item"
                             onClick={() => {
+                              setAccountTab('preferences');
                               openCommandCenterTab('account');
                             }}
                           >
@@ -1383,6 +1423,7 @@ export function CodeCompanionShell() {
                           <button
                             className="navi-header-more-menu-item"
                             onClick={() => {
+                              setAccountTab('profile');
                               openCommandCenterTab('account');
                             }}
                           >

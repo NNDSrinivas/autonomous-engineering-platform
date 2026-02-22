@@ -39,11 +39,11 @@ class User(Base):
     )  # active, canceled, past_due
 
     # Metadata
-    user_metadata = Column(JSON, default={}, nullable=False)  # User-editable
-    app_metadata = Column(JSON, default={}, nullable=False)   # System-managed
+    user_metadata = Column(JSON, default=dict, nullable=False)  # User-editable
+    app_metadata = Column(JSON, default=dict, nullable=False)   # System-managed
 
     # Settings
-    preferences = Column(JSON, default={}, nullable=False)
+    preferences = Column(JSON, default=dict, nullable=False)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -46,10 +46,9 @@ def verify_jwt_token(token: str) -> dict:
 
     try:
         # Get Auth0 domain and audience
-        auth0_domain = getattr(settings, "auth0_issuer_base_url", "").replace(
-            "https://", ""
-        )
-        auth0_audience = getattr(settings, "auth0_audience", "")
+        auth0_issuer_base_url = getattr(settings, "auth0_issuer_base_url", "") or ""
+        auth0_domain = auth0_issuer_base_url.replace("https://", "")
+        auth0_audience = getattr(settings, "auth0_audience", "") or ""
 
         if not auth0_domain or not auth0_audience:
             raise UnauthorizedException("Auth0 not configured")

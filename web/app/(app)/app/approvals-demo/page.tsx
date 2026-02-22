@@ -5,7 +5,7 @@
  * Demonstrates the action approval system with examples
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { ApprovalPanel } from '@/components/approvals/ApprovalPanel';
 import { FileDiffViewer } from '@/components/approvals/FileDiffViewer';
 import { CommandExecutionPanel } from '@/components/approvals/CommandExecutionPanel';
@@ -63,7 +63,7 @@ export default function ApprovalsDemoPage() {
   const handleAddCommandApproval = () => {
     const approval = createCommandApproval(
       'npm install react-query',
-      '/Users/mounikakapa/dev/project',
+      '/path/to/project',
       'Install React Query for data fetching'
     );
     addAction(approval);
@@ -72,7 +72,7 @@ export default function ApprovalsDemoPage() {
   const handleAddHighRiskCommand = () => {
     const approval = createCommandApproval(
       'git push origin main --force',
-      '/Users/mounikakapa/dev/project',
+      '/path/to/project',
       'Force push to main branch'
     );
     addAction(approval);
@@ -193,7 +193,7 @@ export default function ApprovalsDemoPage() {
           <CommandExecutionPanel
             execution={{
               command: 'npm test',
-              workingDirectory: '/Users/mounikakapa/dev/project',
+              workingDirectory: '/path/to/project',
               description: 'Run test suite',
               status: 'success',
               stdout: 'PASS  src/components/Button.test.tsx\n  ✓ renders correctly (23ms)\n  ✓ handles click events (5ms)\n\nTest Suites: 1 passed, 1 total\nTests:       2 passed, 2 total\nTime:        2.456s',

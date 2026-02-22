@@ -23,6 +23,28 @@ interface LoginFormProps {
   onSubmit?: (data: LoginFormData) => Promise<void>;
 }
 
+/**
+ * Validate returnTo parameter to prevent open redirect attacks.
+ * Only allows same-origin paths starting with a single "/".
+ * Rejects protocol-relative URLs like "//evil.com".
+ */
+function validateReturnTo(returnTo: string | null): string {
+  if (!returnTo) return "/app";
+
+  // Must start with "/" but NOT "//" (reject protocol-relative URLs)
+  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) {
+    return "/app";
+  }
+
+  // Additional safety: ensure it's a valid path
+  try {
+    new URL(returnTo, "http://localhost");
+    return returnTo;
+  } catch {
+    return "/app";
+  }
+}
+
 export function LoginForm({ onSubmit }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -48,13 +70,8 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
         await onSubmit(data);
       } else {
         // Default behavior: redirect to Auth0 with username-password connection
-        const requestedReturnTo = new URLSearchParams(window.location.search).get(
-          "returnTo"
-        );
-        const returnTo =
-          requestedReturnTo && requestedReturnTo.startsWith("/")
-            ? requestedReturnTo
-            : "/app";
+        const requestedReturnTo = new URLSearchParams(window.location.search).get("returnTo");
+        const returnTo = validateReturnTo(requestedReturnTo);
         const params = new URLSearchParams({
           connection: "Username-Password-Authentication",
           login_hint: data.email,

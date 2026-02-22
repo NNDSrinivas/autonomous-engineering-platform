@@ -49,14 +49,33 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
+/**
+ * Validate returnTo parameter to prevent open redirect attacks.
+ * Only allows same-origin paths starting with a single "/".
+ * Rejects protocol-relative URLs like "//evil.com".
+ */
+function validateReturnTo(returnTo: string | null): string {
+  if (!returnTo) return "/app";
+
+  // Must start with "/" but NOT "//" (reject protocol-relative URLs)
+  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) {
+    return "/app";
+  }
+
+  // Additional safety: ensure it's a valid path
+  try {
+    new URL(returnTo, "http://localhost");
+    return returnTo;
+  } catch {
+    return "/app";
+  }
+}
+
 export function SocialLoginButtons({ mode = "login" }: SocialLoginButtonsProps) {
   const label = mode === "login" ? "Continue with" : "Sign up with";
   const returnTo =
     typeof window !== "undefined"
-      ? (() => {
-          const requested = new URLSearchParams(window.location.search).get("returnTo");
-          return requested && requested.startsWith("/") ? requested : "/app";
-        })()
+      ? validateReturnTo(new URLSearchParams(window.location.search).get("returnTo"))
       : "/app";
 
   const handleGitHubLogin = () => {

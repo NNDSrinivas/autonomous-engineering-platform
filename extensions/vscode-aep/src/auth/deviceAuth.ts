@@ -90,8 +90,14 @@ export class DeviceAuthService {
   async startLogin(onStatus?: (status: AuthSignInStatus) => void): Promise<void> {
     this.apiBaseUrl = this.resolveApiBaseUrl();
 
-    const emit = (status: AuthSignInStatus) => this.emitStatus(status, onStatus);
     let terminalStatusEmitted = false;
+    const emit = (status: AuthSignInStatus) => {
+      // Mark when a terminal status (success, error) has been emitted
+      if (status.state === "success" || status.state === "error") {
+        terminalStatusEmitted = true;
+      }
+      this.emitStatus(status, onStatus);
+    };
 
     try {
       emit({
@@ -199,6 +205,8 @@ export class DeviceAuthService {
   ): Promise<void> {
     const maxAttempts = Math.floor(expiresIn / interval);
     let attempts = 0;
+    let lastEmitTime = 0;
+    const EMIT_THROTTLE_MS = 10000; // Only emit waiting status every 10 seconds
 
     return new Promise((resolve, reject) => {
       const poll = async () => {
@@ -244,10 +252,16 @@ export class DeviceAuthService {
           }
 
           if (isPendingStatus || pendingFromBody) {
-            emit({
-              state: "waiting_for_approval",
-              message: "Waiting for browser authorization...",
-            });
+            // Throttle "waiting_for_approval" emissions to avoid spamming webview
+            const now = Date.now();
+            if (attempts === 1 || now - lastEmitTime >= EMIT_THROTTLE_MS) {
+              emit({
+                state: "waiting_for_approval",
+                message: "Waiting for browser authorization...",
+              });
+              lastEmitTime = now;
+            }
+
             if (attempts < maxAttempts) {
               this.pollInterval = setTimeout(poll, interval * 1000);
             } else {

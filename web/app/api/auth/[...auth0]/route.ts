@@ -1,7 +1,29 @@
 import { handleAuth, handleLogin, handleCallback, handleLogout } from "@auth0/nextjs-auth0";
 import { Session } from "@auth0/nextjs-auth0";
-import { NextRequest } from "next/server";
-import { NextApiRequest } from "next";
+import type { NextRequest } from "next/server";
+import type { NextApiRequest } from "next";
+
+/**
+ * Validate returnTo parameter to prevent open redirect attacks.
+ * Only allows same-origin paths starting with a single "/".
+ * Rejects protocol-relative URLs like "//evil.com".
+ */
+function validateReturnTo(returnTo: string | null, defaultPath: string): string {
+  if (!returnTo) return defaultPath;
+
+  // Must start with "/" but NOT "//" (reject protocol-relative URLs)
+  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) {
+    return defaultPath;
+  }
+
+  // Additional safety: ensure it's a valid path
+  try {
+    new URL(returnTo, "http://localhost");
+    return returnTo;
+  } catch {
+    return defaultPath;
+  }
+}
 
 export const GET = handleAuth({
   login: handleLogin((req) => {
@@ -12,11 +34,8 @@ export const GET = handleAuth({
       : new URLSearchParams(req.url?.split('?')[1] || '');
 
     const connection = searchParams.get("connection");
-    // Validate returnTo parameter to prevent open redirect vulnerability
     const returnToParam = searchParams.get("returnTo");
-    const returnTo = (returnToParam && returnToParam.startsWith("/"))
-      ? returnToParam
-      : "/app/chats";
+    const returnTo = validateReturnTo(returnToParam, "/app/chats");
 
     return {
       authorizationParams: {

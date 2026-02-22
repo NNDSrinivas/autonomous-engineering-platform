@@ -73,6 +73,7 @@ from .routers.policy import router as policy_router
 from .routers.audit import router as audit_router
 from .change import router as change_router
 from .chat import router as chat_router
+from .routers.chat_sessions import router as chat_sessions_router  # Chat session management
 from .routers.autonomous_coding import (
     router as autonomous_coding_router,
 )  # Project scaffolding + autonomous coding
@@ -147,6 +148,7 @@ from ..ci_api import router as ci_api_router  # CI Failure Analysis API
 
 # VS Code Extension API endpoints
 from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
+from .routers.preview import router as preview_router  # Phase 1: Loveable-style live preview
 from backend.core.auth0 import AUTH0_CLIENT_ID
 
 # Conditionally import in-memory OAuth device router for development mode
@@ -208,6 +210,16 @@ async def lifespan(app: FastAPI):
     )  # Validate production-specific settings for the active app configuration
     await on_startup()  # PR-29: Health system startup
     presence_lifecycle.start_cleanup_thread()
+
+    # Initialize PreviewService singleton (Phase 1: Loveable-style live preview)
+    from backend.services.preview.preview_service import PreviewService
+
+    app.state.preview_service = PreviewService(
+        ttl_seconds=3600,  # 1 hour TTL
+        max_previews=100  # Max 100 concurrent previews
+    )
+    logger.info("PreviewService initialized (TTL=3600s, max=100)")
+
     yield
     # Shutdown: cleanup background services
     # presence_lifecycle.stop_cleanup_thread()
@@ -501,6 +513,7 @@ app.include_router(deliver_router)
 app.include_router(policy_router)
 app.include_router(change_router)
 app.include_router(chat_router)  # Enhanced conversational interface
+app.include_router(chat_sessions_router)  # Chat session management (list, create, delete)
 # DISABLED: navi_chat_router was taking precedence over navi_router, preventing deep analysis
 # The navi_router from navi.py uses the full agent_loop with project overview and deep analysis
 # app.include_router(navi_chat_router)  # Diff-aware Navi chat - DISABLED, use navi_router instead
@@ -568,6 +581,7 @@ app.include_router(review_stream_router)  # SSE streaming for code reviews
 app.include_router(
     real_review_stream_router, prefix="/api"
 )  # Real git-based review streaming
+app.include_router(preview_router)  # Phase 1: Loveable-style live preview (static HTML)
 # Test and debug endpoints - only enabled in development
 if (
     os.getenv("DEBUG", "false").lower() == "true"

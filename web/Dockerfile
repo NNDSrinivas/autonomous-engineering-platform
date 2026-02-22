@@ -22,5 +22,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
+# Run as non-root user for security
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3030
 CMD ["node", "server.js"]

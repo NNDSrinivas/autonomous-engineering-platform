@@ -77,7 +77,8 @@ export default function ChatsPage() {
       `;
 
       // Store in backend (for testing the API)
-      await fetch('http://localhost:8787/api/preview/static', {
+      const backendUrl = process.env.NEXT_PUBLIC_AEP_CORE || 'http://localhost:8787';
+      await fetch(`${backendUrl}/api/preview/static`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -4,154 +4,133 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime
+from typing import Optional
+import uuid
 
 from backend.core.db import get_db
 from backend.core.auth.deps import get_current_user_optional
 
 router = APIRouter(prefix="/api/chat/sessions", tags=["chat_sessions"])
 
-_SCHEMA_READY = False
-
-
-def _ensure_schema(db: Session) -> None:
-    """
-    Ensure chat_session has archived, deleted_at, starred columns.
-    Works on SQLite and Postgres by checking pragma / information_schema.
-    """
-    global _SCHEMA_READY
-    if _SCHEMA_READY:
-        return
-    try:
-        # Detect existing columns
-        existing = set()
-        try:
-            # SQLite pragma
-            rows = db.execute(text("PRAGMA table_info(chat_session)")).fetchall()
-            for r in rows:
-                existing.add(str(r[1]))
-        except Exception:
-            # Postgres
-            rows = db.execute(
-                text(
-                    "SELECT column_name FROM information_schema.columns WHERE table_name='chat_session'"
-                )
-            ).fetchall()
-            for r in rows:
-                existing.add(str(r[0]))
-
-        def add_column(sql: str):
-            try:
-                db.execute(text(sql))
-                db.commit()
-            except Exception:
-                db.rollback()
-
-        # Dialect-specific defaults/types
-        dialect = getattr(getattr(db, "bind", None), "dialect", None)
-        dialect_name = getattr(dialect, "name", "") if dialect else ""
-        is_sqlite = dialect_name == "sqlite"
-
-        if "archived" not in existing:
-            add_column("ALTER TABLE chat_session ADD COLUMN archived TIMESTAMP")
-        if "deleted_at" not in existing:
-            add_column("ALTER TABLE chat_session ADD COLUMN deleted_at TIMESTAMP")
-        if "starred" not in existing:
-            if is_sqlite:
-                add_column(
-                    "ALTER TABLE chat_session ADD COLUMN starred INTEGER DEFAULT 0"
-                )
-            else:
-                add_column(
-                    "ALTER TABLE chat_session ADD COLUMN starred BOOLEAN DEFAULT FALSE"
-                )
-    finally:
-        _SCHEMA_READY = True
-
 
 def _current_user_id(user) -> str:
     return getattr(user, "user_id", None) or "default_user"
 
 
-def _extract_org_context_for_sessions(user_id: str) -> list[str]:
-    """Extract all possible org_id values to search for chat sessions."""
-    org_ids = []
+def _get_or_create_user(db: Session, auth0_sub: str, email: Optional[str] = None, display_name: Optional[str] = None) -> int:
+    """
+    Get or create user from Auth0 sub (maps to users.sub column).
+    Returns integer user_id for use with navi_conversations.
+    """
+    # Check if user exists
+    result = db.execute(
+        text("SELECT id, org_id FROM users WHERE sub = :sub"),
+        {"sub": auth0_sub}
+    ).mappings().first()
 
-    # 1. Most common: VS Code extension default
-    org_ids.append("org_vscode_extension")
+    if result:
+        return result["id"]
 
-    # 2. Workspace-based org_ids (multiple possible workspace paths)
-    try:
-        import hashlib
+    # User doesn't exist, need to create
+    # First ensure default org exists
+    org_result = db.execute(
+        text("SELECT id FROM organizations WHERE org_key = :org_key"),
+        {"org_key": "default"}
+    ).mappings().first()
 
-        workspace_path = "/Users/mounikakapa/Desktop/Personal Projects/autonomous-engineering-platform"
-        workspace_hash = hashlib.md5(workspace_path.encode()).hexdigest()[:12]
-        org_ids.append(f"org_workspace_{workspace_hash}")
+    if org_result:
+        org_id = org_result["id"]
+    else:
+        # Create default org
+        org_create = db.execute(
+            text("""
+                INSERT INTO organizations (org_key, name)
+                VALUES (:org_key, :name)
+                RETURNING id
+            """),
+            {"org_key": "default", "name": "Default Organization"}
+        ).mappings().first()
+        org_id = org_create["id"]
+        db.commit()
 
-        # Also try shorter hash (in case algorithm changed)
-        workspace_hash_short = hashlib.md5(workspace_path.encode()).hexdigest()[:8]
-        org_ids.append(f"org_workspace_{workspace_hash_short}")
+    # Create user
+    user_email = email or f"{auth0_sub.replace('|', '-')}@navralabs.com"
+    user_name = display_name or auth0_sub.split("|")[-1]
 
-        # Platform-based ID (aep = autonomous engineering platform)
-        platform_hash = hashlib.md5(
-            "autonomous-engineering-platform".encode()
-        ).hexdigest()[:16]
-        org_ids.append(f"org_aep_platform_{platform_hash}")
-    except Exception:
-        pass
+    user_result = db.execute(
+        text("""
+            INSERT INTO users (sub, email, display_name, org_id)
+            VALUES (:sub, :email, :display_name, :org_id)
+            RETURNING id
+        """),
+        {
+            "sub": auth0_sub,
+            "email": user_email,
+            "display_name": user_name,
+            "org_id": org_id
+        }
+    ).mappings().first()
 
-    # 3. User-based org_id (both hashed and direct user_id)
-    try:
-        # Direct user_id format (what navi.py actually creates)
-        org_ids.append(f"org_user_{user_id}")
-
-        # Hashed format (legacy)
-        import hashlib
-
-        user_hash = hashlib.md5(user_id.encode()).hexdigest()[:8]
-        org_ids.append(f"org_user_{user_hash}")
-    except Exception:
-        pass
-
-    # 4. Legacy values found in database
-    org_ids.extend(["dev_org", None])  # None for very old records
-
-    return org_ids
+    db.commit()
+    return user_result["id"]
 
 
 @router.get("")
 def list_sessions(
-    user_id: str | None = None,  # Allow explicit user_id parameter
+    user_id: str | None = None,  # Allow explicit user_id parameter (Auth0 sub)
     include_archived: bool = False,
     include_deleted: bool = False,
     include_starred: bool = True,
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    _ensure_schema(db)
-    actual_user_id = user_id or _current_user_id(user)
+    """
+    List chat sessions from navi_conversations table (shared with VSCode extension).
+    This provides unified chat history across web and VSCode.
+    """
+    auth0_sub = user_id or _current_user_id(user)
+
+    # Get or create user (maps Auth0 sub to integer user_id)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
+    # Query navi_conversations with status filtering
+    # status can be: 'active', 'completed', 'archived'
+    status_filter = []
+    if not include_archived:
+        status_filter.append("nc.status != 'archived'")
+    if not include_deleted:
+        # Assuming 'deleted' status or we could add deleted_at column
+        status_filter.append("nc.status != 'deleted'")
+
+    status_where = " AND " + " AND ".join(status_filter) if status_filter else ""
 
     rows = (
         db.execute(
             text(
-                """
-                SELECT cs.id, cs.title, cs.created_at, cs.updated_at, cs.archived, cs.deleted_at, cs.starred,
-                       (SELECT message FROM chat_history ch WHERE ch.session_id = cs.id ORDER BY ch.created_at DESC LIMIT 1) as last_message,
-                       (SELECT role FROM chat_history ch WHERE ch.session_id = cs.id ORDER BY ch.created_at DESC LIMIT 1) as last_role,
-                       cs.user_id
-                FROM chat_session cs
-                WHERE cs.user_id = :user_id
-                  AND (:include_archived OR cs.archived IS NULL)
-                  AND (:include_deleted OR cs.deleted_at IS NULL)
-                  AND (:include_starred OR cs.starred IS NULL OR cs.starred = TRUE)
-                ORDER BY cs.updated_at DESC
+                f"""
+                SELECT
+                    nc.id,
+                    nc.title,
+                    nc.created_at,
+                    nc.updated_at,
+                    nc.status,
+                    nc.is_pinned,
+                    nc.is_starred,
+                    nc.workspace_path,
+                    (SELECT content FROM navi_messages nm
+                     WHERE nm.conversation_id = nc.id
+                     ORDER BY nm.created_at DESC LIMIT 1) as last_message,
+                    (SELECT role FROM navi_messages nm
+                     WHERE nm.conversation_id = nc.id
+                     ORDER BY nm.created_at DESC LIMIT 1) as last_role,
+                    (SELECT COUNT(*) FROM navi_messages nm
+                     WHERE nm.conversation_id = nc.id) as message_count
+                FROM navi_conversations nc
+                WHERE nc.user_id = :user_id {status_where}
+                ORDER BY nc.updated_at DESC
                 """
             ),
-            {
-                "user_id": actual_user_id,
-                "include_archived": include_archived,
-                "include_deleted": include_deleted,
-                "include_starred": include_starred,
-            },
+            {"user_id": internal_user_id},
         )
         .mappings()
         .all()
@@ -163,25 +142,43 @@ def list_sessions(
 @router.post("")
 def create_session(
     title: str = "",
+    workspace_path: str = None,
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    _ensure_schema(db)
-    # Use default org_id for VS Code extension compatibility
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
-    dialect = getattr(getattr(db, "bind", None), "dialect", None)
-    dialect_name = getattr(dialect, "name", "") if dialect else ""
-    now_sql = "CURRENT_TIMESTAMP" if dialect_name == "sqlite" else "NOW()"
+    """
+    Create new chat session in navi_conversations (shared with VSCode extension).
+    Returns UUID-based conversation ID.
+    """
+    auth0_sub = _current_user_id(user)
+
+    # Get or create user (returns integer user_id and org_id)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
+    # Get user's org_id
+    org_result = db.execute(
+        text("SELECT org_id FROM users WHERE id = :user_id"),
+        {"user_id": internal_user_id}
+    ).mappings().first()
+
+    org_id = org_result["org_id"]
+
+    # Create conversation in navi_conversations table
     result = db.execute(
         text(
-            f"""
-            INSERT INTO chat_session (org_id, user_id, title, created_at, updated_at)
-            VALUES (:org_id, :user_id, :title, {now_sql}, {now_sql})
-            RETURNING id, title, created_at, updated_at
+            """
+            INSERT INTO navi_conversations
+            (id, user_id, org_id, title, workspace_path, status, is_pinned, is_starred, created_at, updated_at)
+            VALUES (gen_random_uuid(), :user_id, :org_id, :title, :workspace_path, 'active', false, false, NOW(), NOW())
+            RETURNING id, title, created_at, updated_at, status, workspace_path
             """
         ),
-        {"org_id": org_id, "user_id": user_id, "title": title or "New session"},
+        {
+            "user_id": internal_user_id,
+            "org_id": org_id,
+            "title": title or "New Chat",
+            "workspace_path": workspace_path
+        },
     )
     db.commit()
     row = result.mappings().first()
@@ -190,23 +187,24 @@ def create_session(
 
 @router.delete("/{session_id}")
 def delete_session(
-    session_id: int,
+    session_id: str,  # UUID string
     user_id: str | None = None,
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    _ensure_schema(db)
-    # Use default org_id for VS Code extension compatibility
-    user_id = user_id or _current_user_id(user)
-    # Soft delete: mark deleted_at; retain for up to 30 days
-    dialect = getattr(getattr(db, "bind", None), "dialect", None)
-    dialect_name = getattr(dialect, "name", "") if dialect else ""
-    now_sql = "CURRENT_TIMESTAMP" if dialect_name == "sqlite" else "NOW()"
+    """
+    Soft delete conversation by setting status to 'deleted'.
+    Uses navi_conversations table.
+    """
+    auth0_sub = user_id or _current_user_id(user)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
+    # Soft delete: change status to 'deleted'
     db.execute(
         text(
-            f"UPDATE chat_session SET deleted_at = {now_sql} WHERE id = :sid AND user_id = :user_id"
+            "UPDATE navi_conversations SET status = 'deleted', updated_at = NOW() WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
         ),
-        {"sid": session_id, "user_id": user_id},
+        {"sid": session_id, "user_id": internal_user_id},
     )
     db.commit()
     return {"deleted": True, "soft": True}
@@ -214,21 +212,20 @@ def delete_session(
 
 @router.post("/{session_id}/archive")
 def archive_session(
-    session_id: int,
+    session_id: str,  # UUID
     user_id: str | None = None,
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    _ensure_schema(db)
-    user_id = user_id or _current_user_id(user)
-    dialect = getattr(getattr(db, "bind", None), "dialect", None)
-    dialect_name = getattr(dialect, "name", "") if dialect else ""
-    now_sql = "CURRENT_TIMESTAMP" if dialect_name == "sqlite" else "NOW()"
+    """Archive conversation by setting status to 'archived'."""
+    auth0_sub = user_id or _current_user_id(user)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
     db.execute(
         text(
-            f"UPDATE chat_session SET archived = {now_sql} WHERE id = :sid AND user_id = :user_id"
+            "UPDATE navi_conversations SET status = 'archived', updated_at = NOW() WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
         ),
-        {"sid": session_id, "user_id": user_id},
+        {"sid": session_id, "user_id": internal_user_id},
     )
     db.commit()
     return {"archived": True}
@@ -236,18 +233,20 @@ def archive_session(
 
 @router.post("/{session_id}/unarchive")
 def unarchive_session(
-    session_id: int,
+    session_id: str,  # UUID
     user_id: str | None = None,
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    _ensure_schema(db)
-    user_id = user_id or _current_user_id(user)
+    """Unarchive conversation by setting status back to 'active'."""
+    auth0_sub = user_id or _current_user_id(user)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
     db.execute(
         text(
-            "UPDATE chat_session SET archived = NULL WHERE id = :sid AND user_id = :user_id"
+            "UPDATE navi_conversations SET status = 'active', updated_at = NOW() WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
         ),
-        {"sid": session_id, "user_id": user_id},
+        {"sid": session_id, "user_id": internal_user_id},
     )
     db.commit()
     return {"archived": False}
@@ -255,46 +254,43 @@ def unarchive_session(
 
 @router.post("/{session_id}/restore")
 def restore_session(
-    session_id: int,
+    session_id: str,  # UUID
     user_id: str | None = None,
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
     """
-    Restore a soft-deleted session within a 30-day retention window.
+    Restore a soft-deleted conversation by setting status back to 'active'.
     """
-    _ensure_schema(db)
-    user_id = user_id or _current_user_id(user)
+    auth0_sub = user_id or _current_user_id(user)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
 
-    # Only allow restore within 30 days
+    # Check if conversation exists and is deleted
     row = (
         db.execute(
             text(
                 """
-            SELECT deleted_at FROM chat_session
-            WHERE id = :sid AND user_id = :user_id
+            SELECT status, updated_at FROM navi_conversations
+            WHERE id = CAST(:sid AS uuid) AND user_id = :user_id
             """
             ),
-            {"sid": session_id, "user_id": user_id},
+            {"sid": session_id, "user_id": internal_user_id},
         )
         .mappings()
         .first()
     )
 
-    if not row or not row.get("deleted_at"):
-        raise HTTPException(status_code=404, detail="Session not found or not deleted")
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
 
-    deleted_at = row["deleted_at"]
-    from datetime import timezone, timedelta
-
-    if deleted_at < datetime.now(timezone.utc) - timedelta(days=30):
-        raise HTTPException(status_code=410, detail="Restore window expired (>30 days)")
+    if row["status"] != "deleted":
+        raise HTTPException(status_code=400, detail="Session is not deleted")
 
     db.execute(
         text(
-            "UPDATE chat_session SET deleted_at = NULL WHERE id = :sid AND user_id = :user_id"
+            "UPDATE navi_conversations SET status = 'active', updated_at = NOW() WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
         ),
-        {"sid": session_id, "user_id": user_id},
+        {"sid": session_id, "user_id": internal_user_id},
     )
     db.commit()
     return {"restored": True}
@@ -302,18 +298,20 @@ def restore_session(
 
 @router.post("/{session_id}/star")
 def star_session(
-    session_id: int,
+    session_id: str,  # UUID
     user_id: str | None = None,
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    _ensure_schema(db)
-    user_id = user_id or _current_user_id(user)
+    """Star conversation (set is_starred = true)."""
+    auth0_sub = user_id or _current_user_id(user)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
     db.execute(
         text(
-            "UPDATE chat_session SET starred = TRUE WHERE id = :sid AND user_id = :user_id"
+            "UPDATE navi_conversations SET is_starred = TRUE, updated_at = NOW() WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
         ),
-        {"sid": session_id, "user_id": user_id},
+        {"sid": session_id, "user_id": internal_user_id},
     )
     db.commit()
     return {"starred": True}
@@ -321,18 +319,114 @@ def star_session(
 
 @router.post("/{session_id}/unstar")
 def unstar_session(
-    session_id: int,
+    session_id: str,  # UUID
     user_id: str | None = None,
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    _ensure_schema(db)
-    user_id = user_id or _current_user_id(user)
+    """Unstar conversation (set is_starred = false)."""
+    auth0_sub = user_id or _current_user_id(user)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
     db.execute(
         text(
-            "UPDATE chat_session SET starred = FALSE WHERE id = :sid AND user_id = :user_id"
+            "UPDATE navi_conversations SET is_starred = FALSE, updated_at = NOW() WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
         ),
-        {"sid": session_id, "user_id": user_id},
+        {"sid": session_id, "user_id": internal_user_id},
     )
     db.commit()
     return {"starred": False}
+
+
+@router.post("/{session_id}/pin")
+def pin_session(
+    session_id: str,  # UUID
+    user_id: str | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_optional),
+):
+    """Pin conversation (set is_pinned = true)."""
+    auth0_sub = user_id or _current_user_id(user)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
+    db.execute(
+        text(
+            "UPDATE navi_conversations SET is_pinned = TRUE, updated_at = NOW() WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
+        ),
+        {"sid": session_id, "user_id": internal_user_id},
+    )
+    db.commit()
+    return {"pinned": True}
+
+
+@router.post("/{session_id}/unpin")
+def unpin_session(
+    session_id: str,  # UUID
+    user_id: str | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_optional),
+):
+    """Unpin conversation (set is_pinned = false)."""
+    auth0_sub = user_id or _current_user_id(user)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
+    db.execute(
+        text(
+            "UPDATE navi_conversations SET is_pinned = FALSE, updated_at = NOW() WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
+        ),
+        {"sid": session_id, "user_id": internal_user_id},
+    )
+    db.commit()
+    return {"pinned": False}
+
+
+@router.get("/{session_id}/messages")
+def get_messages(
+    session_id: str,  # UUID
+    user_id: str | None = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_optional),
+):
+    """
+    Get messages for a conversation.
+    Returns messages from navi_messages table.
+    """
+    auth0_sub = user_id or _current_user_id(user)
+    internal_user_id = _get_or_create_user(db, auth0_sub)
+
+    # Verify user owns this conversation
+    conversation = db.execute(
+        text(
+            "SELECT id FROM navi_conversations WHERE id = CAST(:sid AS uuid) AND user_id = :user_id"
+        ),
+        {"sid": session_id, "user_id": internal_user_id},
+    ).mappings().first()
+
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Get messages
+    rows = (
+        db.execute(
+            text(
+                """
+                SELECT
+                    id,
+                    role,
+                    content,
+                    created_at,
+                    message_metadata
+                FROM navi_messages
+                WHERE conversation_id = CAST(:sid AS uuid)
+                ORDER BY created_at ASC
+                LIMIT :limit
+                """
+            ),
+            {"sid": session_id, "limit": limit},
+        )
+        .mappings()
+        .all()
+    )
+
+    return {"items": [dict(r) for r in rows]}

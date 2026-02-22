@@ -34,7 +34,8 @@ export default function ChatsPage() {
 
   // Handle iframe refresh
   const handleRefreshPreview = () => {
-    const iframe = document.querySelector('iframe');
+    // Select the preview iframe specifically (not any iframe on the page)
+    const iframe = document.querySelector('iframe[title="Preview"]') as HTMLIFrameElement;
     if (iframe && iframe.src) {
       iframe.src = iframe.src;
     }

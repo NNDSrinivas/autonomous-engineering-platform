@@ -12,7 +12,11 @@ export const GET = handleAuth({
       : new URLSearchParams(req.url?.split('?')[1] || '');
 
     const connection = searchParams.get("connection");
-    const returnTo = searchParams.get("returnTo") || "/app/chats";
+    // Validate returnTo parameter to prevent open redirect vulnerability
+    const returnToParam = searchParams.get("returnTo");
+    const returnTo = (returnToParam && returnToParam.startsWith("/"))
+      ? returnToParam
+      : "/app/chats";
 
     return {
       authorizationParams: {

@@ -33,12 +33,21 @@ class PreviewService:
     Later: Swap to Redis/S3 with same interface
     """
 
+    # Maximum content size per preview (1MB) to prevent memory exhaustion
+    MAX_CONTENT_SIZE = 1 * 1024 * 1024  # 1MB
+
     def __init__(self, ttl_seconds: int = 3600, max_previews: int = 100):
         self.ttl_seconds = ttl_seconds
         self.max_previews = max_previews
         self._store: Dict[str, PreviewContent] = {}
         logger.info(
             f"PreviewService initialized (TTL={ttl_seconds}s, max={max_previews})"
+        )
+        logger.warning(
+            "PreviewService is using an in-memory store. This storage is process-local "
+            "and not suitable for multi-worker deployments. Run the application with a "
+            "single worker (uvicorn --workers 1) or switch to a shared backend "
+            "(e.g., Redis/S3) for previews."
         )
 
     async def store(self, content: str, content_type: str = "html") -> str:
@@ -51,7 +60,18 @@ class PreviewService:
 
         Returns:
             preview_id: Unique preview identifier
+
+        Raises:
+            ValueError: If content exceeds maximum size limit
         """
+        # Validate content size
+        content_size = len(content.encode("utf-8"))
+        if content_size > self.MAX_CONTENT_SIZE:
+            raise ValueError(
+                f"Preview content size ({content_size} bytes) exceeds maximum "
+                f"allowed size ({self.MAX_CONTENT_SIZE} bytes)"
+            )
+
         # Cleanup if at capacity
         if len(self._store) >= self.max_previews:
             self._cleanup_oldest()

@@ -5,6 +5,7 @@ Phase 1: In-memory storage (MVP)
 Phase 2+: Redis/S3 backend (swap implementation, same interface)
 """
 
+import asyncio
 import logging
 import time
 import uuid
@@ -40,6 +41,7 @@ class PreviewService:
         self.ttl_seconds = ttl_seconds
         self.max_previews = max_previews
         self._store: Dict[str, PreviewContent] = {}
+        self._lock = asyncio.Lock()  # Protect against concurrent access
         logger.info(
             f"PreviewService initialized (TTL={ttl_seconds}s, max={max_previews})"
         )
@@ -72,25 +74,26 @@ class PreviewService:
                 f"allowed size ({self.MAX_CONTENT_SIZE} bytes)"
             )
 
-        # Cleanup if at capacity
-        if len(self._store) >= self.max_previews:
-            self._cleanup_oldest()
+        async with self._lock:
+            # Cleanup if at capacity (protected by lock to prevent race conditions)
+            if len(self._store) >= self.max_previews:
+                self._cleanup_oldest()
 
-        preview_id = str(uuid.uuid4())
-        now = time.time()
+            preview_id = str(uuid.uuid4())
+            now = time.time()
 
-        preview = PreviewContent(
-            preview_id=preview_id,
-            content=content,
-            content_type=content_type,
-            created_at=now,
-            expires_at=now + self.ttl_seconds,
-        )
+            preview = PreviewContent(
+                preview_id=preview_id,
+                content=content,
+                content_type=content_type,
+                created_at=now,
+                expires_at=now + self.ttl_seconds,
+            )
 
-        self._store[preview_id] = preview
-        logger.info(f"Stored preview {preview_id} ({len(content)} chars)")
+            self._store[preview_id] = preview
+            logger.info(f"Stored preview {preview_id} ({len(content)} chars)")
 
-        return preview_id
+            return preview_id
 
     async def get(self, preview_id: str) -> Optional[PreviewContent]:
         """
@@ -102,35 +105,42 @@ class PreviewService:
         Returns:
             PreviewContent or None if not found/expired
         """
-        preview = self._store.get(preview_id)
+        async with self._lock:
+            preview = self._store.get(preview_id)
 
-        if not preview:
-            return None
+            if not preview:
+                return None
 
-        # Check expiration
-        if time.time() > preview.expires_at:
-            try:
-                del self._store[preview_id]
-                logger.info(f"Preview {preview_id} expired")
-            except KeyError:
-                # Preview may have been deleted concurrently by another request
-                pass
-            return None
+            # Check expiration (protected by lock to prevent race conditions)
+            if time.time() > preview.expires_at:
+                try:
+                    del self._store[preview_id]
+                    logger.info(f"Preview {preview_id} expired")
+                except KeyError:
+                    # Should not happen since we hold the lock, but safe to catch
+                    pass
+                return None
 
-        return preview
+            return preview
 
     async def delete(self, preview_id: str) -> bool:
-        """Delete preview by ID."""
-        try:
-            del self._store[preview_id]
-            logger.info(f"Deleted preview {preview_id}")
-            return True
-        except KeyError:
-            # Preview doesn't exist or was already deleted
-            return False
+        """Delete preview by ID (protected by lock)."""
+        async with self._lock:
+            try:
+                del self._store[preview_id]
+                logger.info(f"Deleted preview {preview_id}")
+                return True
+            except KeyError:
+                # Preview doesn't exist or was already deleted
+                return False
 
     def _cleanup_oldest(self):
-        """Remove oldest preview to make space."""
+        """
+        Remove oldest preview to make space.
+
+        NOTE: This method should only be called while holding self._lock
+        to prevent race conditions.
+        """
         if not self._store:
             return
 
@@ -139,7 +149,7 @@ class PreviewService:
             del self._store[oldest_id]
             logger.info(f"Cleaned up oldest preview {oldest_id}")
         except (ValueError, KeyError):
-            # Store became empty or oldest entry was deleted concurrently
+            # Store is empty or key disappeared (should not happen with lock, but safe to catch)
             pass
 
 

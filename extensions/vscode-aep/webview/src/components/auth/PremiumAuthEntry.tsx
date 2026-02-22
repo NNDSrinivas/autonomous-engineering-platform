@@ -2,8 +2,6 @@ import React, { useState } from "react";
 import naviLogo from "../../assets/navi-logo.svg";
 import "./PremiumAuthEntry.css";
 
-type EntryMode = "signin" | "signup";
-
 interface PremiumSignInStatus {
   state: "starting" | "browser_opened" | "waiting_for_approval" | "success" | "error";
   message: string;
@@ -29,25 +27,8 @@ export function PremiumAuthEntry({
   onSignUp,
   signInStatus,
 }: PremiumAuthEntryProps) {
-  const [mode, setMode] = useState<EntryMode>("signin");
   const [logoFailed, setLogoFailed] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-
-  const handlePrimary = () => {
-    if (mode === "signin") {
-      onSignIn();
-      return;
-    }
-    onSignUp();
-  };
-
-  const handleSecondary = () => {
-    if (mode === "signin") {
-      onSignUp();
-      return;
-    }
-    onSignIn();
-  };
 
   const openExternal = (url: string) => {
     if (!url) return;
@@ -69,8 +50,7 @@ export function PremiumAuthEntry({
     }
   };
 
-  const isSignInMode = mode === "signin";
-  const showStatus = isSignInMode && signInStatus && signInStatus.message;
+  const showStatus = signInStatus && signInStatus.message;
   const statusClass = showStatus ? `is-${signInStatus.state}` : "";
 
   return (
@@ -99,43 +79,17 @@ export function PremiumAuthEntry({
       </div>
 
       <div className="premium-auth-entry__controls">
-        <div className="premium-auth-entry__switch" role="tablist" aria-label="Auth mode">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "signin"}
-            className={mode === "signin" ? "active" : ""}
-            onClick={() => setMode("signin")}
-          >
+        <div className="premium-auth-entry__actions">
+          <button type="button" className="premium-auth-entry__btn primary" onClick={onSignIn}>
             Sign in
           </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "signup"}
-            className={mode === "signup" ? "active" : ""}
-            onClick={() => setMode("signup")}
-          >
+          <button type="button" className="premium-auth-entry__btn secondary" onClick={onSignUp}>
             Sign up
           </button>
         </div>
-
-        <div className="premium-auth-entry__actions">
-          <button type="button" className="premium-auth-entry__btn primary" onClick={handlePrimary}>
-            {mode === "signin" ? "Continue to Sign in" : "Create account on web"}
-          </button>
-          <button
-            type="button"
-            className="premium-auth-entry__btn secondary"
-            onClick={handleSecondary}
-          >
-            {mode === "signin" ? "Need an account?" : "Already have one?"}
-          </button>
-        </div>
         <p className="premium-auth-entry__mode-note">
-          {isSignInMode
-            ? "Sign in uses secure browser authorization and returns to VS Code automatically."
-            : "Sign up opens navralabs.com/signup in your external browser."}
+          Sign in uses secure browser authorization and returns to VS Code. Sign up opens
+          navralabs.com/signup in your external browser.
         </p>
 
         {showStatus && (

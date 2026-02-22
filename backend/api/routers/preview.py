@@ -98,19 +98,23 @@ async def get_preview(
         raise HTTPException(status_code=404, detail="Preview not found or expired")
 
     # Return HTML with restrictive security headers
-    # Goal: HTML can render styles/images, but NO scripts and cannot exfiltrate data
+    # Goal: HTML can render styles/images, but NO scripts and limited exfiltration
+    # NOTE: CSS-based exfiltration via background-image is still possible with 'unsafe-inline'
+    # This is an accepted risk for Phase 1 static previews. Phase 2 will use nonce-based CSP.
     return HTMLResponse(
         content=preview.content,
         headers={
             # Restrictive CSP: default deny, allow only safe inline styles/images
             "Content-Security-Policy": (
                 "default-src 'none'; "
-                "style-src 'unsafe-inline'; "
+                "style-src 'unsafe-inline'; "  # Allows inline styles but enables CSS exfiltration risk
                 "img-src data: https:; "
                 "font-src data: https:; "
                 "script-src 'none'; "
-                "connect-src 'none'; "
-                "frame-ancestors 'self';"
+                "connect-src 'none'; "  # Prevents fetch/XHR but not CSS background-image
+                "frame-ancestors 'self'; "
+                "base-uri 'none'; "  # Prevent <base> tag injection
+                "form-action 'none';"  # Prevent form submissions
             ),
             # Additional security headers
             "Cross-Origin-Resource-Policy": "same-site",

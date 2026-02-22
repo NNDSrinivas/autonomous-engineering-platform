@@ -9,9 +9,13 @@
  *
  * Security:
  * - srcDoc: sandbox="" (no permissions - most restrictive)
- * - src: sandbox="allow-scripts allow-forms" (backend CSP provides script protection)
- * - NO allow-same-origin (prevents XSS data exfiltration)
- * - referrerPolicy="no-referrer"
+ * - src: sandbox="allow-scripts allow-forms" (allows scripts but limited access)
+ *   WARNING: Scripts can execute but cannot access parent context
+ *   - NO allow-same-origin = scripts cannot access DOM storage, cookies, or make CORS requests
+ *   - Backend CSP provides additional protection but is NOT guaranteed for all src URLs
+ *   - This breaks most interactive previews but prevents data exfiltration
+ *   - Phase 2 will require explicit user approval for interactive previews
+ * - referrerPolicy="no-referrer" (prevents leaking origin in requests)
  */
 
 import React, { useState } from 'react';
@@ -65,7 +69,9 @@ export function PreviewFrame({ src, srcDoc, className = '' }: PreviewFrameProps)
       <iframe
         src={src}
         srcDoc={srcDoc}
-        sandbox={src ? "allow-scripts allow-forms" : ""}  // Phase 1: srcDoc = no scripts. Phase 2: src with backend CSP = allow scripts
+        // Phase 1: srcDoc = no scripts (most restrictive)
+        // Phase 2: src = allow scripts but NO same-origin (prevents DOM/storage access)
+        sandbox={src ? "allow-scripts allow-forms" : ""}
         referrerPolicy="no-referrer"
         className="w-full h-full border-0"
         onLoad={handleLoad}

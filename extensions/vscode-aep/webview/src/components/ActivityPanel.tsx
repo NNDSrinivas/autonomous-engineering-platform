@@ -197,6 +197,11 @@ export function ActivityPanel({
 
       {/* Steps list */}
       <div className="flex-1 overflow-y-auto">
+        {steps.length === 0 && (
+          <div className="activity-empty-card m-4 rounded-lg p-3 text-xs">
+            No activity yet. Start a task to populate execution history.
+          </div>
+        )}
         {steps.map((step, index) => {
           const isExpanded = expandedSteps.has(step.id);
           const isCurrent = index === currentStep;

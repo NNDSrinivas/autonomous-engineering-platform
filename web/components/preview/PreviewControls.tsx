@@ -34,20 +34,26 @@ export function PreviewControls({
   const handleOpenNewTab = () => {
     if (!previewUrl) return;
 
-    // Validate URL using allowlist approach - only allow safe schemes
+    // Validate URL using allowlist approach - only allow safe schemes and same-origin
     // Relative paths (starting with /) are safe
     if (previewUrl.startsWith('/')) {
       window.open(previewUrl, '_blank', 'noopener,noreferrer');
       return;
     }
 
-    // For absolute URLs, parse and validate the protocol
+    // For absolute URLs, parse and validate the protocol AND hostname
     try {
       const url = new URL(previewUrl);
       const allowedProtocols = ['http:', 'https:'];
 
       if (!allowedProtocols.includes(url.protocol)) {
         console.error('Preview URL must use http or https protocol');
+        return;
+      }
+
+      // Only allow same-origin URLs (prevent open redirect to arbitrary domains)
+      if (url.origin !== window.location.origin) {
+        console.error('Preview URL must be same-origin (relative paths only)');
         return;
       }
 

@@ -1601,7 +1601,7 @@ export function CodeCompanionShell() {
                   />
 
                   {/* Activity Panel - Right Sidebar */}
-                  {activityPanelOpen && activityPanelState.steps.length > 0 && (
+                  {activityPanelOpen && isAuthenticated && (
                     <aside className="navi-activity-sidebar">
                       <ActivityPanel
                         steps={activityPanelState.steps}
@@ -2266,15 +2266,15 @@ export function CodeCompanionShell() {
                       {/* Profile Card */}
                       <div className="navi-cc-account__profile">
                         {user?.picture ? (
-                          <img src={user.picture} alt={user.name || 'User'} className="navi-cc-account__avatar" />
+                          <img src={user.picture} alt={displayName} className="navi-cc-account__avatar" />
                         ) : (
                           <div className="navi-cc-account__avatar-placeholder">
                             {getInitials(user?.name, user?.email)}
                           </div>
                         )}
                         <div className="navi-cc-account__info">
-                          <span className="navi-cc-account__name">{user?.name || 'User'}</span>
-                          <span className="navi-cc-account__email">{user?.email}</span>
+                          <span className="navi-cc-account__name">{displayName}</span>
+                          <span className="navi-cc-account__email">{user?.email || 'Signed in with NAVI Identity'}</span>
                           {user?.org && (
                             <span className="navi-cc-account__org">{user.org} {user.role && `• ${user.role}`}</span>
                           )}
@@ -2307,22 +2307,26 @@ export function CodeCompanionShell() {
                       <div className="navi-cc-account__content">
                         {accountTab === 'profile' && (
                           <div className="navi-cc-profile">
-                            <div className="navi-cc-profile__stats">
-                              <div className="navi-cc-stat">
-                                <span className="navi-cc-stat__value">42</span>
-                                <span className="navi-cc-stat__label">Conversations</span>
+                            <div className="navi-cc-profile__details">
+                              <div className="navi-cc-profile__detail">
+                                <span className="navi-cc-profile__detail-label">Display name</span>
+                                <span className="navi-cc-profile__detail-value">{displayName}</span>
                               </div>
-                              <div className="navi-cc-stat">
-                                <span className="navi-cc-stat__value">156</span>
-                                <span className="navi-cc-stat__label">Commands</span>
+                              <div className="navi-cc-profile__detail">
+                                <span className="navi-cc-profile__detail-label">Email</span>
+                                <span className="navi-cc-profile__detail-value">{user?.email || "Not provided"}</span>
                               </div>
-                              <div className="navi-cc-stat">
-                                <span className="navi-cc-stat__value">89%</span>
-                                <span className="navi-cc-stat__label">Success Rate</span>
+                              <div className="navi-cc-profile__detail">
+                                <span className="navi-cc-profile__detail-label">Organization</span>
+                                <span className="navi-cc-profile__detail-value">{user?.org || "Not selected"}</span>
+                              </div>
+                              <div className="navi-cc-profile__detail">
+                                <span className="navi-cc-profile__detail-label">Role</span>
+                                <span className="navi-cc-profile__detail-value">{user?.role || "Member"}</span>
                               </div>
                             </div>
                             <div className="navi-cc-profile__actions">
-                              <button><BarChart3 className="h-4 w-4" /> View Activity</button>
+                              <button onClick={() => setActivityPanelOpen(true)}><BarChart3 className="h-4 w-4" /> View Activity</button>
                               <button><ExternalLink className="h-4 w-4" /> Export Data</button>
                             </div>
                           </div>
@@ -2714,25 +2718,6 @@ export function CodeCompanionShell() {
 
         .navi-header-more-anchor {
           position: static;
-        }
-
-        .navi-auth-initials {
-          position: absolute;
-          right: -6px;
-          top: -6px;
-          width: 20px;
-          height: 20px;
-          border-radius: 999px;
-          background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
-          color: white;
-          font-size: 10px;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 10px hsl(var(--primary) / 0.35);
-          border: 2px solid hsl(var(--background));
-          pointer-events: none;
         }
 
         .navi-header-more-dropdown {
@@ -3536,6 +3521,16 @@ export function CodeCompanionShell() {
 
         .navi-settings-btn:active .navi-settings-icon {
           transform: rotate(180deg);
+        }
+
+        .navi-activity-btn.is-active {
+          border-color: hsl(var(--primary) / 0.55);
+          background: hsl(var(--primary) / 0.16);
+          box-shadow: 0 0 0 1px hsl(var(--primary) / 0.22) inset;
+        }
+
+        .navi-activity-btn.is-active .navi-activity-icon {
+          color: hsl(var(--primary));
         }
 
         /* ===== SIGN IN BUTTON V3 - Modern Glassy ===== */
@@ -5349,33 +5344,37 @@ export function CodeCompanionShell() {
           min-height: 200px;
         }
 
-        .navi-cc-profile__stats {
+        .navi-cc-profile__details {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 16px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
           margin-bottom: 20px;
         }
 
-        .navi-cc-stat {
-          text-align: center;
-          padding: 20px 16px;
+        .navi-cc-profile__detail {
+          padding: 12px;
           background: hsl(var(--card));
           border: 1px solid hsl(var(--border));
           border-radius: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          min-height: 72px;
         }
 
-        .navi-cc-stat__value {
+        .navi-cc-profile__detail-label {
           display: block;
-          font-size: 28px;
-          font-weight: 700;
-          color: hsl(var(--primary));
-        }
-
-        .navi-cc-stat__label {
-          display: block;
-          font-size: 12px;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
           color: hsl(var(--muted-foreground));
-          margin-top: 4px;
+        }
+
+        .navi-cc-profile__detail-value {
+          display: block;
+          font-size: 14px;
+          font-weight: 600;
+          color: hsl(var(--foreground));
         }
 
         .navi-cc-profile__actions {
@@ -5407,6 +5406,12 @@ export function CodeCompanionShell() {
 
         .navi-cc-profile__actions button svg {
           color: hsl(var(--primary));
+        }
+
+        @media (max-width: 920px) {
+          .navi-cc-profile__details {
+            grid-template-columns: 1fr;
+          }
         }
 
         .navi-cc-prefs {

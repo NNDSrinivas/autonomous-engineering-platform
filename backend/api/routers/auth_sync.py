@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from typing import Optional
 import logging
+import secrets
 
 from backend.core.config import get_settings
 from backend.database.session import get_db
@@ -29,7 +30,11 @@ class UserSyncPayload(BaseModel):
 
 
 def verify_action_secret(x_auth0_action_secret: str = Header(...)):
-    """Verify request is coming from Auth0 Action."""
+    """
+    Verify request is coming from Auth0 Action.
+
+    Uses constant-time comparison to prevent timing attacks.
+    """
     expected_secret = getattr(settings, "auth0_action_secret", None)
 
     if not expected_secret:
@@ -38,7 +43,8 @@ def verify_action_secret(x_auth0_action_secret: str = Header(...)):
             detail="AUTH0_ACTION_SECRET not configured"
         )
 
-    if x_auth0_action_secret != expected_secret:
+    # Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(x_auth0_action_secret, expected_secret):
         raise HTTPException(
             status_code=401,
             detail="Invalid action secret"

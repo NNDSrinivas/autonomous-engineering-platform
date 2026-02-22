@@ -34,6 +34,17 @@ def verify_action_secret(x_auth0_action_secret: str = Header(...)):
     Verify request is coming from Auth0 Action.
 
     Uses constant-time comparison to prevent timing attacks.
+
+    Args:
+        x_auth0_action_secret: Secret header from Auth0 Action
+
+    Returns:
+        True if secret is valid
+
+    Raises:
+        HTTPException: 422 if header is missing (FastAPI validation)
+        HTTPException: 401 if secret is invalid
+        HTTPException: 500 if AUTH0_ACTION_SECRET not configured
     """
     expected_secret = getattr(settings, "auth0_action_secret", None)
 
@@ -67,10 +78,11 @@ async def sync_user_from_auth0(
     """
 
     try:
-        # Check if user exists
+        # Use SELECT FOR UPDATE to prevent race conditions with concurrent login events
+        # This locks the row during the transaction, preventing duplicate user creation
         user = db.query(User).filter(
             User.auth0_user_id == payload.auth0_user_id
-        ).first()
+        ).with_for_update().first()
 
         is_new_user = user is None
 
@@ -85,7 +97,7 @@ async def sync_user_from_auth0(
             logger.info(f"Updated user: {payload.auth0_user_id}")
 
         else:
-            # Create new user
+            # Create new user (protected by transaction lock)
             user = User(
                 auth0_user_id=payload.auth0_user_id,
                 email=payload.email,

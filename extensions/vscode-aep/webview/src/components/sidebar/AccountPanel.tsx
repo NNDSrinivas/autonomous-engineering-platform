@@ -179,16 +179,34 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
     }
   };
 
-  const getInitials = (name?: string, email?: string): string => {
-    if (name) {
-      const parts = name.split(' ');
-      return parts.map(p => p[0]).join('').toUpperCase().slice(0, 2);
-    }
+  const resolveDisplayName = (name?: string, email?: string) => {
+    const trimmed = name?.trim();
+    if (trimmed && trimmed.toLowerCase() !== 'user') return trimmed;
     if (email) {
-      return email[0].toUpperCase();
+      const [local] = email.split('@');
+      if (local) {
+        return local
+          .replace(/[._-]+/g, ' ')
+          .split(' ')
+          .filter(Boolean)
+          .map(part => part[0].toUpperCase() + part.slice(1))
+          .join(' ');
+      }
     }
-    return '?';
+    return 'NAVI User';
   };
+
+  const getInitials = (name?: string, email?: string): string => {
+    const display = resolveDisplayName(name, email);
+    if (display) {
+      const parts = display.split(' ').filter(Boolean);
+      if (parts.length === 1) return (parts[0][0] || 'N').toUpperCase();
+      return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase() || 'NU';
+    }
+    return 'NU';
+  };
+
+  const displayName = resolveDisplayName(user?.name, user?.email);
 
   if (!isOpen) return null;
 
@@ -222,7 +240,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
                 {user?.picture ? (
                   <img
                     src={user.picture}
-                    alt={user.name || 'User'}
+                    alt={displayName}
                     className="account-profile-avatar"
                   />
                 ) : (
@@ -231,8 +249,8 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
                   </div>
                 )}
                 <div className="account-profile-info">
-                  <span className="account-profile-name">{user?.name || 'User'}</span>
-                  <span className="account-profile-email">{user?.email}</span>
+                  <span className="account-profile-name">{displayName}</span>
+                  <span className="account-profile-email">{user?.email || 'Signed in with NAVI Identity'}</span>
                   {user?.org && (
                     <span className="account-profile-org">
                       <BuildingIcon />
@@ -270,18 +288,22 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
               <div className="account-tab-content">
                 {activeTab === 'profile' && (
                   <div className="profile-tab">
-                    <div className="profile-stats">
-                      <div className="stat-card">
-                        <span className="stat-value">42</span>
-                        <span className="stat-label">Conversations</span>
+                    <div className="profile-details">
+                      <div className="profile-detail-card">
+                        <span className="profile-detail-label">Display name</span>
+                        <span className="profile-detail-value">{displayName}</span>
                       </div>
-                      <div className="stat-card">
-                        <span className="stat-value">156</span>
-                        <span className="stat-label">Commands</span>
+                      <div className="profile-detail-card">
+                        <span className="profile-detail-label">Email</span>
+                        <span className="profile-detail-value">{user?.email || 'Not provided'}</span>
                       </div>
-                      <div className="stat-card">
-                        <span className="stat-value">89%</span>
-                        <span className="stat-label">Success Rate</span>
+                      <div className="profile-detail-card">
+                        <span className="profile-detail-label">Organization</span>
+                        <span className="profile-detail-value">{user?.org || 'Not selected'}</span>
+                      </div>
+                      <div className="profile-detail-card">
+                        <span className="profile-detail-label">Role</span>
+                        <span className="profile-detail-value">{user?.role || 'Member'}</span>
                       </div>
                     </div>
 
@@ -749,32 +771,36 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
           gap: 16px;
         }
 
-        .profile-stats {
+        .profile-details {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 12px;
         }
 
-        .stat-card {
-          text-align: center;
+        .profile-detail-card {
           padding: 16px 12px;
           background: hsl(var(--secondary) / 0.3);
           border: 1px solid hsl(var(--border));
           border-radius: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          min-height: 68px;
         }
 
-        .stat-value {
-          display: block;
-          font-size: 24px;
-          font-weight: 700;
-          color: hsl(var(--primary));
-        }
-
-        .stat-label {
+        .profile-detail-label {
           display: block;
           font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
           color: hsl(var(--muted-foreground));
-          margin-top: 4px;
+        }
+
+        .profile-detail-value {
+          display: block;
+          font-size: 14px;
+          font-weight: 600;
+          color: hsl(var(--foreground));
         }
 
         .profile-actions {

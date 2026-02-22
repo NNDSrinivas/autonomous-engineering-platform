@@ -35,6 +35,12 @@ export function PreviewControls({
     if (!previewUrl) return;
 
     // Validate URL using allowlist approach - only allow safe schemes and same-origin
+    // Reject protocol-relative URLs first (e.g., "//evil.com")
+    if (previewUrl.startsWith('//')) {
+      console.error('Protocol-relative URLs are not allowed');
+      return;
+    }
+
     // Relative paths (starting with /) are safe
     if (previewUrl.startsWith('/')) {
       window.open(previewUrl, '_blank', 'noopener,noreferrer');

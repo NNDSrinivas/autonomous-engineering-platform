@@ -198,6 +198,7 @@
 .premium-auth-entry__actions {
   display: flex;
   gap: 0.52rem;
+  margin-bottom: 0.12rem;
 }
 
 .premium-auth-entry__mode-note {
@@ -304,6 +305,10 @@
 
 .premium-auth-entry.compact .premium-auth-entry__wordmark {
   font-size: 0.92rem;
+}
+
+.premium-auth-entry.compact .premium-auth-entry__current-pulse {
+  display: none;
 }
 
 .premium-auth-entry.compact .premium-auth-entry__subtitle {

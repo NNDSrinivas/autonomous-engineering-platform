@@ -35,10 +35,17 @@ export function validateReturnTo(returnTo: string | null, defaultPath: string = 
   // Additional safety: ensure it's a valid path when parsed as URL
   try {
     const url = new URL(returnTo, "http://localhost");
+
+    // Reject URLs with query params or hash fragments (security: prevent parameter injection)
+    if (url.search || url.hash) {
+      return defaultPath;
+    }
+
     // Verify the pathname matches the input (prevents clever bypasses)
     if (url.pathname !== returnTo) {
       return defaultPath;
     }
+
     return returnTo;
   } catch {
     return defaultPath;

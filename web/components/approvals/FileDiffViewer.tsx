@@ -25,13 +25,23 @@ export interface FileDiffViewerProps {
 function generateUnifiedDiff(fileDiff: FileDiff): string {
   const { oldPath = 'file', newPath = 'file', oldContent = '', newContent, type } = fileDiff;
 
+  // Ensure content has consistent newline handling
+  // diffLib expects content to end with newline for proper patch generation
+  const normalizeContent = (content: string) => {
+    if (!content) return '';
+    return content.endsWith('\n') ? content : content + '\n';
+  };
+
+  const normalizedOldContent = normalizeContent(oldContent);
+  const normalizedNewContent = normalizeContent(newContent);
+
   // Use diff library for all cases to ensure consistent, valid unified diff format
   if (type === 'add') {
     // New file - generate patch from empty string to new content
     const patch = diffLib.createPatch(
       newPath,
       '',
-      newContent,
+      normalizedNewContent,
       '',
       ''
     );
@@ -42,7 +52,7 @@ function generateUnifiedDiff(fileDiff: FileDiff): string {
     // Deleted file - generate patch from old content to empty string
     const patch = diffLib.createPatch(
       oldPath,
-      oldContent,
+      normalizedOldContent,
       '',
       '',
       ''
@@ -53,8 +63,8 @@ function generateUnifiedDiff(fileDiff: FileDiff): string {
   // Modified file
   const patch = diffLib.createPatch(
     newPath,
-    oldContent,
-    newContent,
+    normalizedOldContent,
+    normalizedNewContent,
     '',
     ''
   );
@@ -66,9 +76,21 @@ function FileDiffItem({ fileDiff }: { fileDiff: FileDiff }) {
   const diffText = useMemo(() => generateUnifiedDiff(fileDiff), [fileDiff]);
   const files = useMemo(() => {
     try {
-      return parseDiff(diffText);
+      const parsed = parseDiff(diffText);
+      // Validate that parsed result has expected structure
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        if (typeof window !== 'undefined') {
+          console.warn('parseDiff returned empty or invalid result');
+        }
+        return [];
+      }
+      return parsed;
     } catch (error) {
-      console.error('Error parsing diff:', error);
+      // Only log errors in browser, not during SSR build
+      if (typeof window !== 'undefined') {
+        console.error('Error parsing diff:', error);
+        console.debug('Diff text that failed to parse:', diffText);
+      }
       return [];
     }
   }, [diffText]);

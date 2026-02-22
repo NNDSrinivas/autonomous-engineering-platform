@@ -2,13 +2,15 @@
  * PreviewFrame - Iframe wrapper for preview content
  *
  * Supports:
- * - Static HTML via srcDoc
- * - URLs via src
+ * - Static HTML via srcDoc (Phase 1)
+ * - URLs via src (Phase 2+)
  * - Loading states
  * - Error handling
  *
  * Security:
- * - sandbox="allow-scripts" (NO allow-same-origin for XSS protection)
+ * - srcDoc: sandbox="" (no permissions - most restrictive)
+ * - src: sandbox="allow-scripts allow-forms" (backend CSP provides script protection)
+ * - NO allow-same-origin (prevents XSS data exfiltration)
  * - referrerPolicy="no-referrer"
  */
 
@@ -63,7 +65,7 @@ export function PreviewFrame({ src, srcDoc, className = '' }: PreviewFrameProps)
       <iframe
         src={src}
         srcDoc={srcDoc}
-        sandbox="allow-scripts"  // NO allow-same-origin for security (prevents XSS data exfiltration)
+        sandbox={src ? "allow-scripts allow-forms" : ""}  // Phase 1: srcDoc = no scripts. Phase 2: src with backend CSP = allow scripts
         referrerPolicy="no-referrer"
         className="w-full h-full border-0"
         onLoad={handleLoad}

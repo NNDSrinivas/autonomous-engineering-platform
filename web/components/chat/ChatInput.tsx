@@ -29,9 +29,7 @@ export function ChatInput() {
     _cancelStream,
   } = useChatStore();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const submitMessage = async () => {
     if (!input.trim() || isStreaming) return;
 
     await sendMessage(input.trim());
@@ -43,10 +41,15 @@ export function ChatInput() {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitMessage();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      submitMessage();
     }
   };
 

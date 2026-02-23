@@ -13,8 +13,11 @@ export default defineConfig({
     port: 3007,
     host: true,
     fs: {
+      // Only allow access to specific directories, not entire repo
       allow: [
-        path.resolve(__dirname, '..'),
+        path.resolve(__dirname, '../packages'),
+        path.resolve(__dirname, '../shared'),
+        path.resolve(__dirname, './'),
       ],
     },
     headers: {

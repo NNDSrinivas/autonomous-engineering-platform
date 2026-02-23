@@ -212,13 +212,23 @@ async def lifespan(app: FastAPI):
     presence_lifecycle.start_cleanup_thread()
 
     # Initialize PreviewService singleton (Phase 1: Loveable-style live preview)
-    from backend.services.preview.preview_service import PreviewService
+    # Only enable in single-worker deployments (in-memory storage doesn't support multi-worker)
+    if os.getenv("PREVIEW_SERVICE_IN_MEMORY_ENABLED", "false").lower() == "true":
+        from backend.services.preview.preview_service import PreviewService
 
-    app.state.preview_service = PreviewService(
-        ttl_seconds=3600,  # 1 hour TTL
-        max_previews=100  # Max 100 concurrent previews
-    )
-    logger.info("PreviewService initialized (TTL=3600s, max=100)")
+        app.state.preview_service = PreviewService(
+            ttl_seconds=3600,  # 1 hour TTL
+            max_previews=100  # Max 100 concurrent previews
+        )
+        logger.info("PreviewService initialized (TTL=3600s, max=100)")
+        logger.warning(
+            "PreviewService using in-memory storage. Only use with single-worker deployments "
+            "(uvicorn --workers 1). For multi-worker environments, disable this feature flag "
+            "and implement a shared backend (Redis/S3)."
+        )
+    else:
+        app.state.preview_service = None
+        logger.info("PreviewService disabled (set PREVIEW_SERVICE_IN_MEMORY_ENABLED=true to enable)")
 
     yield
     # Shutdown: cleanup background services

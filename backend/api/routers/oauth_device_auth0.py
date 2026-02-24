@@ -106,20 +106,20 @@ async def _fetch_jwks() -> dict:
         return r.json()
 
 
-async def _get_jwks() -> dict:
+async def _get_jwks(force_refresh: bool = False) -> dict:
     """Fetch JWKS from Auth0 custom domain with TTL cache and lock protection."""
     global _JWKS_CACHE, _JWKS_CACHE_AT
     now = time.time()
 
-    # Fast path: cache is valid
-    if _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
+    # Fast path: cache is valid (skip if force_refresh requested)
+    if not force_refresh and _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
         return _JWKS_CACHE
 
     # Slow path: refresh cache with lock to prevent thundering herd
     async with _JWKS_LOCK:
         # Re-check after acquiring lock (another request may have refreshed)
         now = time.time()
-        if _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
+        if not force_refresh and _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
             return _JWKS_CACHE
 
         try:
@@ -138,7 +138,7 @@ async def _get_jwks() -> dict:
             )
 
 
-async def _get_rsa_public_key(id_token: str):
+async def _get_rsa_public_key(id_token: str) -> RSAAlgorithm:
     """Get the RSA public key from JWKS that matches the token's kid."""
     try:
         headers = jwt.get_unverified_header(id_token)
@@ -157,9 +157,7 @@ async def _get_rsa_public_key(id_token: str):
             return RSAAlgorithm.from_jwk(key)
 
     # Force refresh once in case of key rotation, then retry
-    global _JWKS_CACHE
-    _JWKS_CACHE = None
-    jwks = await _get_jwks()
+    jwks = await _get_jwks(force_refresh=True)
     for key in jwks.get("keys", []):
         if key.get("kid") == kid:
             return RSAAlgorithm.from_jwk(key)
@@ -197,6 +195,27 @@ async def verify_auth0_id_token(id_token: str) -> dict:
             status_code=401,
             detail=_error_detail("invalid_token", f"ID token verification failed: {e}"),
         )
+
+
+def _get_client_ip(request: Request) -> str:
+    """
+    Extract client IP address, checking proxy headers first.
+
+    Checks X-Forwarded-For and X-Real-IP headers (set by ALB/nginx)
+    before falling back to request.client.host.
+    """
+    # Check X-Forwarded-For (comma-separated list, first is client)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+
+    # Check X-Real-IP (nginx)
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+
+    # Fallback to direct connection IP
+    return request.client.host if request.client else "unknown"
 
 
 def _rate_limit_refresh(ip: str, limit: int = 20) -> None:
@@ -369,7 +388,7 @@ async def refresh(body: RefreshIn, request: Request):
     _validate_auth0_settings()
 
     # Rate limit refresh attempts per IP (20/min)
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     _rate_limit_refresh(client_ip)
 
     try:

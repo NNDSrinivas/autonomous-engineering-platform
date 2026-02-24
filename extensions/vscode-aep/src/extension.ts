@@ -8733,11 +8733,13 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     let hasSeenBackgroundLifecycleEvent = false;
     let usedBackgroundJobForRequest = false;
     const normalizedModeId = String(modeId || this._currentModeId || '').toLowerCase();
-    const isAgentModeSelected =
-      normalizedModeId === 'agent' ||
-      normalizedModeId === 'chat-only' ||
-      normalizedModeId.endsWith('/agent') ||
-      normalizedModeId.includes('agent');
+    const isAgentModeSelected = normalizedModeId === 'agent';
+    const isChatOnlySelected = normalizedModeId === 'chat-only';
+
+    // Safety: chat-only must never execute tools or autonomous flow
+    if (isChatOnlySelected) {
+      console.log('[AEP] 🚫 Chat-only mode: tool execution and autonomous routing disabled');
+    }
 
     try {
       console.log('🎯 Smart routing (CHAT-ONLY) called with text:', text);
@@ -8762,7 +8764,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const config = vscode.workspace.getConfiguration('aep.navi');
       const baseTimeoutMs = config.get<number>('requestTimeout') || DEFAULT_REQUEST_TIMEOUT_MS;
       // Check if this is an action request early to set appropriate timeout
-      const isActionRequestEarly = isAgentModeSelected || this.shouldUseAutonomousAgent(text);
+      // Chat-only mode never uses autonomous agent
+      const isActionRequestEarly = !isChatOnlySelected && (isAgentModeSelected || this.shouldUseAutonomousAgent(text));
       // Use longer timeout for autonomous operations (30 min) vs regular chat (5 min)
       // Autonomous operations can involve many tool calls, iterations, error fixing, builds, and verification cycles
       const naviConfigEarly = vscode.workspace.getConfiguration('aep.navi');
@@ -8889,8 +8892,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       // 🎯 AUTO-DETECT: Use autonomous agent for action requests
       // This enables NAVI to act like Cline/Copilot/Claude Code - automatically executing and fixing
-      const isActionRequest = this.shouldUseAutonomousAgent(text);
-      const useAutonomous = !useEnterprise && (isAgentModeSelected || forceAutonomous || isActionRequest);
+      // Chat-only mode NEVER uses autonomous agent (safety boundary)
+      const isActionRequest = !isChatOnlySelected && this.shouldUseAutonomousAgent(text);
+      const useAutonomous = !isChatOnlySelected && !useEnterprise && (isAgentModeSelected || forceAutonomous || isActionRequest);
       const resumeBackgroundJob = this.shouldResumeBackgroundJob(text);
       const reattachBackgroundJob = this.shouldReattachBackgroundJob(text);
       const useBackgroundJob = this.shouldUseBackgroundJob(text, useEnterprise) || reattachBackgroundJob;

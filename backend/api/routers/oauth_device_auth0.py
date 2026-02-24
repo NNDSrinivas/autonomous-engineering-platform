@@ -55,40 +55,34 @@ def _auth0_response_error(response: httpx.Response) -> dict[str, str]:
 
 
 def _validate_auth0_settings() -> None:
-    if not AUTH0_CLIENT_ID:
-        raise HTTPException(
-            status_code=503,
-            detail=_error_detail(
-                "auth0_configuration_error",
-                "AUTH0_CLIENT_ID is not configured on the backend.",
-                "Set AUTH0_CLIENT_ID in environment and restart backend.",
-            ),
-        )
-    if not AUTH0_AUDIENCE:
-        raise HTTPException(
-            status_code=503,
-            detail=_error_detail(
-                "auth0_configuration_error",
-                "AUTH0_AUDIENCE is not configured on the backend.",
-                "Set AUTH0_AUDIENCE in environment and restart backend.",
-            ),
-        )
+    """Validate Auth0 configuration required for device flow."""
+    missing = []
+
     if not AUTH0_DOMAIN:
-        raise HTTPException(
-            status_code=503,
-            detail=_error_detail(
-                "auth0_configuration_error",
-                "AUTH0_DOMAIN is not configured on the backend.",
-                "Set AUTH0_DOMAIN in environment and restart backend.",
-            ),
-        )
-    if "://" in AUTH0_DOMAIN:
+        missing.append("AUTH0_DOMAIN")
+    elif "://" in AUTH0_DOMAIN:
         raise HTTPException(
             status_code=503,
             detail=_error_detail(
                 "auth0_configuration_error",
                 f"AUTH0_DOMAIN must be a bare host, got '{AUTH0_DOMAIN}'.",
                 "Use a value like 'tenant.us.auth0.com' (without https://).",
+            ),
+        )
+
+    if not AUTH0_DEVICE_CLIENT_ID:
+        missing.append("AUTH0_DEVICE_CLIENT_ID")
+
+    if not AUTH0_AUDIENCE:
+        missing.append("AUTH0_AUDIENCE")
+
+    if missing:
+        raise HTTPException(
+            status_code=503,
+            detail=_error_detail(
+                "auth0_configuration_error",
+                "Auth0 device flow is not configured on the backend.",
+                f"Missing required settings: {', '.join(missing)}. Set these in environment and restart backend.",
             ),
         )
 

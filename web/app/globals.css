@@ -132,6 +132,20 @@
   .animate-fade-in-up {
     animation: fade-in-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
+
+  /* Fix for apostrophe/quote rendering issues in prose */
+  .prose {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Ensure proper spacing for all quote characters */
+  .prose p,
+  .prose li {
+    word-spacing: normal;
+    letter-spacing: normal;
+  }
 }
 
 @layer utilities {

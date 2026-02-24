@@ -6718,6 +6718,7 @@ async def navi_chat_stream(
         db, user_id, org_id
     )
     auto_execute_mode = mode in (
+        "agent",  # Web app agent mode
         "agent-full-access",
         "agent_full_access",
         "full-access",

@@ -17,6 +17,7 @@ import {
   Loader2,
   AlertCircle,
   Zap,
+  Flag,
 } from 'lucide-react';
 
 export interface ExecutionPlanStep {
@@ -64,6 +65,7 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
   const currentStep = steps.find((s) => s.status === 'running');
   const allCompleted = completedCount === steps.length && steps.length > 0;
   const hasError = errorCount > 0;
+  const markerPosition = steps.length > 0 ? Math.max(0, Math.min(progressPercent, 100)) : 0;
 
   // Handle toggle - support both controlled and uncontrolled modes
   const handleToggle = () => {
@@ -131,13 +133,29 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
     };
   }, [steps, autoCollapseMs, isExpanded, allCompleted, hasError, isControlled, onToggle]);
 
+  const derivePrimaryStepText = (step: ExecutionPlanStep): string => {
+    const title = (step.title || '').trim();
+    const detail = (step.detail || '').trim();
+    if (!detail) return title;
+
+    // Some upstream plan titles arrive clipped (e.g. "setup" -> "setu").
+    // When that pattern is detected, promote detail as the primary readable step label.
+    const titleLikelyTruncated =
+      title.length >= 20 &&
+      title.length <= 48 &&
+      !/[.!?:)]$/.test(title) &&
+      detail.length > title.length + 6;
+
+    return titleLikelyTruncated ? detail : title;
+  };
+
   // Determine header display text
   const headerText = allCompleted
     ? 'All steps completed'
     : hasError
     ? `Error at step ${steps.findIndex((s) => s.status === 'error') + 1}`
     : currentStep
-    ? currentStep.title
+    ? derivePrimaryStepText(currentStep)
     : 'Execution Plan';
 
   return (
@@ -187,12 +205,32 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
           className={`navi-plan-progress-fill ${hasError ? 'has-error' : ''}`}
           style={{ width: `${progressPercent}%` }}
         />
+        <span
+          className={`navi-plan-progress-marker ${isExecuting ? 'is-running' : ''} ${allCompleted ? 'is-complete' : ''} ${hasError ? 'has-error' : ''}`}
+          style={{ left: `calc(${markerPosition}% - 6px)` }}
+          aria-hidden="true"
+        />
+        <span
+          className={`navi-plan-progress-finish ${allCompleted ? 'is-complete' : ''} ${hasError ? 'has-error' : ''}`}
+          aria-hidden="true"
+          title={allCompleted ? 'Execution completed' : 'Finish line'}
+        >
+          <Flag className="h-3.5 w-3.5" />
+        </span>
       </div>
 
       {/* Step List */}
       {isExpanded && (
         <div className="navi-plan-steps">
-          {steps.map((step, idx) => (
+          {steps.map((step, idx) => {
+            const primaryTitle = derivePrimaryStepText(step);
+            const detailText = (step.detail || '').trim();
+            const showDetail =
+              detailText.length > 0 &&
+              detailText !== (step.title || '').trim() &&
+              detailText !== primaryTitle;
+
+            return (
             <div
               key={`${planId}-step-${idx}`}
               className={`navi-plan-step navi-plan-step--${step.status}`}
@@ -202,7 +240,7 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
                   <Check className="h-3.5 w-3.5" />
                 )}
                 {step.status === 'running' && (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span className="navi-plan-running-wave" aria-hidden="true" />
                 )}
                 {step.status === 'error' && (
                   <AlertCircle className="h-3.5 w-3.5" />
@@ -210,9 +248,9 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
                 {step.status === 'pending' && <span>{step.index}</span>}
               </span>
               <div className="navi-plan-step-content">
-                <div className="navi-plan-step-title">{step.title}</div>
-                {step.detail && step.detail.trim() !== step.title.trim() && (
-                  <div className="navi-plan-step-detail">{step.detail}</div>
+                <div className="navi-plan-step-title" title={primaryTitle}>{primaryTitle}</div>
+                {showDetail && (
+                  <div className="navi-plan-step-detail">{detailText}</div>
                 )}
                 {step.output && (
                   <div className="navi-plan-step-output">{step.output}</div>
@@ -222,7 +260,8 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

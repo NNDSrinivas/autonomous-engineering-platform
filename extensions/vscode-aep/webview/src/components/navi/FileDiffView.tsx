@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, Check, FileCode } from 'lucide-react';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-jsx';
+import 'prismjs/components/prism-tsx';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-go';
+import 'prismjs/components/prism-rust';
 
 export interface DiffLine {
   type: 'addition' | 'deletion' | 'context';
@@ -47,6 +56,14 @@ const getFileName = (path: string): string => {
   return path.split('/').pop() || path;
 };
 
+const escapeHtml = (text: string): string =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
 export const FileDiffView: React.FC<FileDiffViewProps> = ({
   diff,
   defaultExpanded = false,
@@ -87,6 +104,24 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
                      operation === 'delete' ? 'Deleted file' :
                      'Edited file';
   const fileName = getFileName(diff.path);
+  const languageClass = getLanguageClass(diff.path);
+
+  const highlightLine = (content: string): string => {
+    const raw = content || '';
+    if (!raw) return '&nbsp;';
+
+    const grammar =
+      Prism.languages[languageClass] ||
+      Prism.languages.tsx ||
+      Prism.languages.typescript ||
+      Prism.languages.javascript;
+
+    try {
+      return Prism.highlight(raw, grammar, languageClass);
+    } catch {
+      return escapeHtml(raw);
+    }
+  };
   const collapsedPrefix = operation === 'create'
     ? 'Created'
     : operation === 'delete'
@@ -162,7 +197,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
 
       {/* Diff content */}
       {isOpen && (
-        <div className={`fdv-content fdv-lang-${getLanguageClass(diff.path)}`}>
+        <div className={`fdv-content fdv-lang-${languageClass}`}>
           {diff.lines.length === 0 && (
             <div className="fdv-empty">
               {operation === 'create' ? 'New file (no diff)' : 'No diff available'}
@@ -183,7 +218,10 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
                 {line.type === 'addition' ? '+' : line.type === 'deletion' ? '-' : ' '}
               </span>
               <span className="fdv-line-content">
-                <code>{line.content || ' '}</code>
+                <code
+                  className={`language-${languageClass}`}
+                  dangerouslySetInnerHTML={{ __html: highlightLine(line.content) }}
+                />
               </span>
             </div>
           ))}
@@ -456,6 +494,76 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           border-radius: 0;
           display: block;
           white-space: pre;
+          tab-size: 2;
+          -webkit-font-smoothing: antialiased;
+        }
+
+        /* VS Code-like token colors in diff panel */
+        .fdv-line-content code .token.comment,
+        .fdv-line-content code .token.prolog,
+        .fdv-line-content code .token.doctype,
+        .fdv-line-content code .token.cdata {
+          color: #718096 !important;
+          font-style: italic;
+        }
+
+        .fdv-line-content code .token.punctuation {
+          color: #a0aec0 !important;
+        }
+
+        .fdv-line-content code .token.property,
+        .fdv-line-content code .token.tag,
+        .fdv-line-content code .token.constant,
+        .fdv-line-content code .token.symbol,
+        .fdv-line-content code .token.deleted {
+          color: #fca5a5 !important;
+        }
+
+        .fdv-line-content code .token.boolean,
+        .fdv-line-content code .token.number {
+          color: #fbbf24 !important;
+        }
+
+        .fdv-line-content code .token.selector,
+        .fdv-line-content code .token.attr-name,
+        .fdv-line-content code .token.string,
+        .fdv-line-content code .token.char,
+        .fdv-line-content code .token.builtin,
+        .fdv-line-content code .token.inserted {
+          color: #86efac !important;
+        }
+
+        .fdv-line-content code .token.operator,
+        .fdv-line-content code .token.entity,
+        .fdv-line-content code .token.url,
+        .fdv-line-content code .language-css .token.string,
+        .fdv-line-content code .style .token.string {
+          color: #67e8f9 !important;
+        }
+
+        .fdv-line-content code .token.atrule,
+        .fdv-line-content code .token.attr-value,
+        .fdv-line-content code .token.keyword {
+          color: #c4b5fd !important;
+        }
+
+        .fdv-line-content code .token.function,
+        .fdv-line-content code .token.class-name {
+          color: #93c5fd !important;
+        }
+
+        .fdv-line-content code .token.regex,
+        .fdv-line-content code .token.important,
+        .fdv-line-content code .token.variable {
+          color: #f9a8d4 !important;
+        }
+
+        /* Shell/bash specific tokens */
+        .fdv-line-content code .token.shebang,
+        .fdv-line-content code .token.assign-left,
+        .fdv-line-content code .token.environment,
+        .fdv-line-content code .token.parameter {
+          color: #93c5fd !important;
         }
 
         .fdv-empty {
@@ -466,6 +574,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
 
         .fdv-line--addition .fdv-line-content code {
           background: transparent !important;
+          color: #d1fae5;
         }
 
         .fdv-line--deletion .fdv-line-content code {

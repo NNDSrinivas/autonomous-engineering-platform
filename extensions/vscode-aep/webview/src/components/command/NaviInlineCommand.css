@@ -237,10 +237,12 @@
   line-height: 1.5;
   color: var(--nic-text-dim);
   overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 200px;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+  max-height: 260px;
   overflow-y: auto;
+  tab-size: 2;
 }
 
 .nic-output pre::-webkit-scrollbar {

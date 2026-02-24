@@ -65,8 +65,7 @@ export const NaviInlineCommand: React.FC<NaviInlineCommandProps> = ({
   const formatOutput = () => {
     if (!output) return status === 'running' ? 'Executing...' : 'No output';
     const cleaned = stripEchoedCommand(output, command);
-    const lines = cleaned.split('\n').filter(l => l.trim());
-    return lines.slice(-12).join('\n') || 'No output';
+    return cleaned.trim() || 'No output';
   };
 
   return (

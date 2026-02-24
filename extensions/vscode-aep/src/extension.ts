@@ -8287,13 +8287,16 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     // prefer chat-only to avoid unnecessary autonomous decomposition/execution.
     const assessmentShape =
       lowerMessage.includes('?') || /^(is|are|can|should|what|why|how)\b/i.test(lowerMessage);
-    const explicitActionVerb = /\b(implement|fix|refactor|add|build|write|test|run)\b/i.test(lowerMessage);
+    const explicitActionVerb = /\b(implement|fix|refactor|add|build|write|test|run|start|stop|restart|verify|check|execute|open|install|configure|debug|deploy)\b/i.test(lowerMessage);
+    const hasCommandIntent = /\b(curl|lsof|npm|pnpm|yarn|node|python|pip|docker|kubectl|systemctl|service|git|ps|kill|tail|grep|rg|find|ls)\b/i.test(
+      lowerMessage
+    );
     const hasFilePathOrDebugContext =
       /((?:^|[\s(])[./~]?[a-z0-9_@-]+(?:\/[a-z0-9_@.\-]+)+(?:\.[a-z0-9]+)?(?:$|[\s)])|\b[a-z0-9_.-]+\.(js|ts|tsx|jsx|py|go|rs|java|json|ya?ml|md|css|html|sql)\b|\b(diff|patch|stack\s*trace|traceback|exception|error:\s|at\s+\S+:\d+:\d+)\b)/i.test(
         lowerMessage
       );
 
-    if (assessmentShape && !explicitActionVerb && !hasFilePathOrDebugContext) {
+    if (assessmentShape && !explicitActionVerb && !hasCommandIntent && !hasFilePathOrDebugContext) {
       console.log('[AEP] 📖 Assessment-only question detected - using regular chat');
       return false;
     }
@@ -8568,29 +8571,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
   private normalizeStreamedContent(content: string): string {
     if (!content) return content;
-    const shortWordKeep = new Set([
-      'a', 'i', 'an', 'as', 'at', 'be', 'by', 'do', 'go', 'if', 'in', 'is', 'it', 'my',
-      'no', 'of', 'on', 'or', 'to', 'up', 'us', 'we',
-    ]);
     return content
       // Contractions split across chunks: "can ’ t" -> "can’t"
       .replace(/([A-Za-z])\s+([’'])\s+([A-Za-z])/g, '$1$2$3')
-      // Join split tokens that commonly appear in streamed BPE output: "Pr isma" -> "Prisma"
-      .replace(/\b([A-Za-z]{1,2})\s+([A-Za-z]{2,})\b/g, (_match, left: string, right: string) => {
-        const leftLower = left.toLowerCase();
-        // Keep natural short words ("to verify", "in prod", "or build").
-        if (shortWordKeep.has(leftLower)) return `${left} ${right}`;
-        // Keep acronym + word boundaries ("DB operations").
-        if (/^[A-Z]{2}$/.test(left) && /^[a-z]/.test(right)) return `${left} ${right}`;
-        return `${left}${right}`;
-      })
-      // Join trailing short fragments for split words: "Verc el" -> "Vercel"
-      .replace(/\b([A-Z][a-z]{2,})\s+([a-z]{1,2})\b/g, (_match, left: string, right: string) => {
-        if (['id', 'ip', 'io', 'ui', 'ux'].includes(right.toLowerCase())) return `${left} ${right}`;
-        return `${left}${right}`;
-      })
-      // Fix acronym splits: "C ORS" -> "CORS"
-      .replace(/\b([A-Z])\s+([A-Z]{2,})\b/g, '$1$2')
       // Remove extra space before punctuation.
       .replace(/\s+([,.;:!?])/g, '$1')
       // Tighten common bracket spacing artifacts.
@@ -8749,6 +8732,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     let hasSeenToolCalls = false;
     let hasSeenBackgroundLifecycleEvent = false;
     let usedBackgroundJobForRequest = false;
+    const normalizedModeId = String(modeId || this._currentModeId || '').toLowerCase();
+    const isAgentModeSelected =
+      normalizedModeId === 'agent' ||
+      normalizedModeId === 'chat-only' ||
+      normalizedModeId.endsWith('/agent') ||
+      normalizedModeId.includes('agent');
 
     try {
       console.log('🎯 Smart routing (CHAT-ONLY) called with text:', text);
@@ -8773,7 +8762,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const config = vscode.workspace.getConfiguration('aep.navi');
       const baseTimeoutMs = config.get<number>('requestTimeout') || DEFAULT_REQUEST_TIMEOUT_MS;
       // Check if this is an action request early to set appropriate timeout
-      const isActionRequestEarly = this.shouldUseAutonomousAgent(text);
+      const isActionRequestEarly = isAgentModeSelected || this.shouldUseAutonomousAgent(text);
       // Use longer timeout for autonomous operations (30 min) vs regular chat (5 min)
       // Autonomous operations can involve many tool calls, iterations, error fixing, builds, and verification cycles
       const naviConfigEarly = vscode.workspace.getConfiguration('aep.navi');
@@ -8901,7 +8890,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // 🎯 AUTO-DETECT: Use autonomous agent for action requests
       // This enables NAVI to act like Cline/Copilot/Claude Code - automatically executing and fixing
       const isActionRequest = this.shouldUseAutonomousAgent(text);
-      const useAutonomous = !useEnterprise && (forceAutonomous || isActionRequest);
+      const useAutonomous = !useEnterprise && (isAgentModeSelected || forceAutonomous || isActionRequest);
       const resumeBackgroundJob = this.shouldResumeBackgroundJob(text);
       const reattachBackgroundJob = this.shouldReattachBackgroundJob(text);
       const useBackgroundJob = this.shouldUseBackgroundJob(text, useEnterprise) || reattachBackgroundJob;
@@ -8914,6 +8903,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       }
       if (isActionRequest && !forceAutonomous && !useEnterprise) {
         console.log('[AEP] 🤖 Auto-detected action request - using Autonomous mode for end-to-end execution');
+      }
+      if (isAgentModeSelected && !useEnterprise) {
+        console.log('[AEP] 🤖 Agent mode selected - forcing Autonomous mode for command-capable execution');
       }
 
       let streamUrl: string;
@@ -9038,6 +9030,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       console.log(`[AEP] 📡 Streaming URL: ${streamUrl}`);
       console.log(`[AEP] 🏢 Is enterprise request: ${isEnterpriseRequest}`);
       console.log(`[AEP] 🎯 Is action request: ${isActionRequest}`);
+      console.log(`[AEP] 🧭 Is agent mode selected: ${isAgentModeSelected}`);
       console.log(`[AEP] 🤖 Using autonomous: ${useAutonomous}`);
       console.log(`[AEP] 🏢 Using enterprise: ${useEnterprise}`);
       console.log(`[AEP] 🧵 Using background job: ${useBackgroundJob}`);

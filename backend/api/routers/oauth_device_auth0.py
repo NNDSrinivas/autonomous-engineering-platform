@@ -16,7 +16,6 @@ from backend.core.auth0 import (
     DEVICE_CODE_URL,
     TOKEN_URL,
     USERINFO_URL,
-    AUTH0_CLIENT_ID,
     AUTH0_DEVICE_CLIENT_ID,
     AUTH0_AUDIENCE,
     AUTH0_ISSUER,

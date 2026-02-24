@@ -308,6 +308,7 @@ export class DeviceAuthService {
 
     let attempts = 0;
     let lastEmitTime = 0;
+    let currentInterval = actualInterval;  // Track current interval (increases on slow_down)
     const EMIT_THROTTLE_MS = 10000; // Only emit waiting status every 10 seconds
 
     return new Promise((resolve, reject) => {
@@ -338,6 +339,7 @@ export class DeviceAuthService {
 
           const isPendingStatus = response.status === 428;
           let pendingFromBody = false;
+          let isSlowDown = false;
           let errorText = "";
 
           try {
@@ -346,7 +348,8 @@ export class DeviceAuthService {
             const errorCode = (maybeJson as { error_code?: string }).error_code;
             // Backend returns detail as object: {"error": "authorization_pending", ...}
             const authError = typeof detail === "object" ? detail?.error : detail;
-            pendingFromBody = authError === "authorization_pending" || authError === "slow_down";
+            isSlowDown = authError === "slow_down";
+            pendingFromBody = authError === "authorization_pending" || isSlowDown;
             errorText = JSON.stringify(maybeJson);
             if (errorCode && detail && !isPendingStatus) {
               errorText = JSON.stringify({ detail, error_code: errorCode });
@@ -356,6 +359,12 @@ export class DeviceAuthService {
           }
 
           if (isPendingStatus || pendingFromBody) {
+            // Per RFC 8628: slow_down requires increasing polling interval
+            if (isSlowDown) {
+              currentInterval = Math.min(currentInterval + 5, 30);  // +5s per RFC, cap at 30s
+              console.log(`[AEP] Received slow_down, increasing interval to ${currentInterval}s`);
+            }
+
             // Throttle "waiting_for_approval" emissions to avoid spamming webview
             const now = Date.now();
             if (attempts === 1 || now - lastEmitTime >= EMIT_THROTTLE_MS) {
@@ -367,7 +376,7 @@ export class DeviceAuthService {
             }
 
             if (attempts < maxAttempts) {
-              this.pollInterval = setTimeout(poll, actualInterval * 1000);
+              this.pollInterval = setTimeout(poll, currentInterval * 1000);
             } else {
               reject(new Error(`Authentication timed out after ${actualExpiresIn}s while waiting for approval.`));
             }

@@ -12,7 +12,6 @@ import pytest
 from pydantic import ValidationError
 
 from backend.core.config import Settings, _reset_env_cache
-import os
 
 
 def test_production_requires_jwt_enabled(monkeypatch):
@@ -23,7 +22,7 @@ def test_production_requires_jwt_enabled(monkeypatch):
     monkeypatch.setenv("VSCODE_AUTH_REQUIRED", "true")
     _reset_env_cache()
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         Settings()
 
     assert "JWT_ENABLED must be true in production environment" in str(exc_info.value)
@@ -37,7 +36,7 @@ def test_production_forbids_dev_auth_bypass(monkeypatch):
     monkeypatch.setenv("VSCODE_AUTH_REQUIRED", "true")
     _reset_env_cache()
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         Settings()
 
     assert "ALLOW_DEV_AUTH_BYPASS must be false in production environment" in str(
@@ -53,7 +52,7 @@ def test_production_requires_vscode_auth(monkeypatch):
     monkeypatch.setenv("VSCODE_AUTH_REQUIRED", "false")
     _reset_env_cache()
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         Settings()
 
     assert "VSCODE_AUTH_REQUIRED must be true in production environment" in str(
@@ -69,7 +68,7 @@ def test_production_multiple_violations_all_reported(monkeypatch):
     monkeypatch.setenv("VSCODE_AUTH_REQUIRED", "false")
     _reset_env_cache()
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         Settings()
 
     error_msg = str(exc_info.value)
@@ -103,7 +102,7 @@ def test_staging_requires_jwt_enabled(monkeypatch):
     monkeypatch.setenv("VSCODE_AUTH_REQUIRED", "true")
     _reset_env_cache()
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         Settings()
 
     assert "JWT_ENABLED must be true in staging environment" in str(exc_info.value)

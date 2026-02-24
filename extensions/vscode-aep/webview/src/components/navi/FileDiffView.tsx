@@ -106,6 +106,10 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
   const fileName = getFileName(diff.path);
   const languageClass = getLanguageClass(diff.path);
 
+  // Disable Prism highlighting for very large diffs to prevent webview freezes
+  const HIGHLIGHT_MAX_LINES = 800;
+  const shouldHighlight = diff.lines.length <= HIGHLIGHT_MAX_LINES;
+
   const highlightLine = (content: string): string => {
     const raw = content || '';
     if (!raw) return '&nbsp;';
@@ -228,7 +232,9 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
               <span className="fdv-line-content">
                 <code
                   className={`language-${languageClass}`}
-                  dangerouslySetInnerHTML={{ __html: highlightLine(line.content) }}
+                  dangerouslySetInnerHTML={{
+                    __html: shouldHighlight ? highlightLine(line.content) : escapeHtml(line.content)
+                  }}
                 />
               </span>
             </div>

@@ -118,7 +118,15 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
 
     try {
       return Prism.highlight(raw, grammar, languageClass);
-    } catch {
+    } catch (error) {
+      // Log Prism failures in dev without exposing sensitive diff content
+      if (import.meta.env.MODE !== 'production') {
+        console.error('Prism.highlight failed in FileDiffView.highlightLine', {
+          language: languageClass,
+          contentLength: raw?.length ?? 0,
+          error,
+        });
+      }
       return escapeHtml(raw);
     }
   };

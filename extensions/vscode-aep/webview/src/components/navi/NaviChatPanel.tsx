@@ -6260,8 +6260,8 @@ export default function NaviChatPanel({
       console.warn("[NaviChatPanel] Unhandled message type:", msg.type);
     });
 
-    // Signal that the webview (and consent handlers) are ready to receive messages
-    vscodeApi.postMessage({ type: "webview.ready", source: "NaviChatPanel" });
+    // Signal that the chat panel (and consent handlers) are ready
+    vscodeApi.postMessage({ type: "navi.chat.ready", source: "NaviChatPanel" });
 
     // Return cleanup function
     return () => {

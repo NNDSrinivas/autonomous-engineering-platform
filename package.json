@@ -28,6 +28,7 @@
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@types/node": "^25.2.3",
+    "rollup": "^4.59.0",
     "tsx": "^4.21.0",
     "vitest": "^4.0.18"
   },

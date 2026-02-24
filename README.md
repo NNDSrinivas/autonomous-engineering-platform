@@ -189,6 +189,18 @@ cd frontend && npm run dev
 
 Vite starts on **http://localhost:3007** (configured in `frontend/vite.config.ts`; auto-increments to 3008/3009/etc. if 3007 is taken — the terminal output shows the actual URL).
 
+### Step 7b — Start web app (Next.js, canonical browser auth/app surface)
+
+```bash
+cd web && npm run dev
+```
+
+Next.js starts on **http://localhost:3030**.
+
+Use this for:
+- `/signup`, `/login` auth pages
+- `/app` authenticated browser shell
+
 ---
 
 ### Step 8 — VS Code Extension (optional, for extension development)
@@ -258,10 +270,19 @@ Create `.vscode/settings.json` if it doesn't exist and add:
 |---------|-----|------------|
 | Backend API | http://localhost:8787 | `./start_backend_dev.sh` |
 | Frontend | http://localhost:3007 | `cd frontend && npm run dev` |
+| Web App (Next.js) | http://localhost:3030 | `cd web && npm run dev` |
 | Prometheus | http://localhost:9090 | `./scripts/run_grafana_local.sh` |
 | Grafana | http://localhost:3001 | `./scripts/run_grafana_local.sh` |
 | PostgreSQL | localhost:5432 | `docker compose up -d` |
 | Redis | localhost:6379 | `docker compose up -d` |
+
+### Runtime ownership
+
+- `web/`: canonical browser app (`navralabs.com`) for signup/login and authenticated `/app` shell.
+- `frontend/`: Vite-based workbench used for extension/local development flows.
+- `extensions/vscode-aep/webview/`: bundled VS Code webview UI.
+
+During transition, extension browser handoff links are resolved by `aep.navi.webAppUrl` first, then fallback to canonical `https://navralabs.com`.
 
 ---
 
@@ -289,8 +310,11 @@ docker rm grafana navi-prometheus
 source aep-venv/bin/activate
 python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8787 --workers 4
 
-# Frontend
+# Frontend workbench
 cd frontend && npm run build && npm run preview
+
+# Canonical browser web app
+cd web && npm run build && npm run start
 ```
 
 ---
@@ -312,8 +336,12 @@ These are the most frequent issues new developers run into:
 The repo has `aep-venv/` (what `start_backend_dev.sh` uses). If VSCode shows import errors, point it at the right interpreter:
 `Ctrl+Shift+P` → **Python: Select Interpreter** → choose `./aep-venv/bin/python`
 
-**5. Frontend shows a different port than 3007**
-Vite is configured to start on **3007** (`frontend/vite.config.ts`) and auto-increments to 3008/3009/etc. if that port is taken. Always read the **actual URL from the terminal output** after `npm run dev`. If the VS Code extension can't connect, verify `aep.navi.backendUrl` in `.vscode/settings.json` is pointing at the right port.
+**5. Frontend/web ports are different**
+This repo intentionally runs two browser UIs in dev:
+- `frontend/` (Vite) on **3007** for extension/workbench development.
+- `web/` (Next.js) on **3030** for canonical browser auth/app routes (`/signup`, `/app`).
+
+Vite can auto-increment to 3008/3009 if 3007 is taken, so always use the URL printed in terminal output.
 
 **6. Extension blank panel after F5**
 The backend and the Vite dev server (Step 6 + 7) must both be running before launching the extension host. Also ensure you ran `npm run compile` in `extensions/vscode-aep/` first.

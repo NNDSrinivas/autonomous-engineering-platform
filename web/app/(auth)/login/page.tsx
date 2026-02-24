@@ -1,7 +1,5 @@
 import React from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSession } from "@auth0/nextjs-auth0";
 import {
   AuthCard,
   AuthHeader,
@@ -17,13 +15,7 @@ export const metadata = {
   description: "Sign in to your NAVI account",
 };
 
-export default async function LoginPage() {
-  // Redirect to home if already logged in
-  const session = await getSession();
-  if (session?.user) {
-    redirect("/");
-  }
-
+export default function LoginPage() {
   return (
     <AuthCard>
       <AuthHeader

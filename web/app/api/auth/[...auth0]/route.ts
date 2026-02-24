@@ -1,13 +1,25 @@
 import { handleAuth, handleLogin, handleCallback, handleLogout } from "@auth0/nextjs-auth0";
-import { NextRequest } from "next/server";
 import { Session } from "@auth0/nextjs-auth0";
+import type { NextRequest } from "next/server";
+import { validateReturnTo } from "@/lib/auth/validation";
 
 export const GET = handleAuth({
-  login: handleLogin({
-    authorizationParams: {
-      audience: process.env.AUTH0_AUDIENCE,
-      scope: "openid profile email offline_access",
-    },
+  login: handleLogin((req: NextRequest) => {
+    // Get connection from query params for direct social login
+    const searchParams = req.nextUrl.searchParams;
+
+    const connection = searchParams.get("connection");
+    const returnToParam = searchParams.get("returnTo");
+    const returnTo = validateReturnTo(returnToParam, "/app/chats");
+
+    return {
+      authorizationParams: {
+        audience: process.env.AUTH0_AUDIENCE,
+        scope: "openid profile email offline_access",
+        ...(connection && { connection }),
+      },
+      returnTo,
+    };
   }),
   callback: handleCallback({
     afterCallback: async (

@@ -456,9 +456,13 @@ async def start_device_code_flow(
             },
         )
 
-        # Base verification URI (defaults to local backend when not configured)
-        base_root = settings.public_base_url or "http://localhost:8787"
-        verification_uri = f"{base_root}/oauth/device/verify"
+        # Base verification URI points to web app for integrated signup/login flow
+        web_app_url = (
+            getattr(settings, "web_app_base_url", None) or "http://localhost:3030"
+        )
+
+        # Prefer web app's device authorization page for better UX
+        verification_uri = f"{web_app_url}/device/authorize"
         verification_uri_complete = f"{verification_uri}?user_code={user_code}"
 
         _audit_event(

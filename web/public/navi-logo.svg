@@ -1,0 +1,45 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="naviOrbCore" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(40 32) rotate(37) scale(88)">
+      <stop offset="0" stop-color="#6EFDFF"/>
+      <stop offset="0.46" stop-color="#2B73FF"/>
+      <stop offset="1" stop-color="#7500E8"/>
+    </radialGradient>
+    <radialGradient id="naviOrbShade" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(80 94) rotate(-136) scale(76)">
+      <stop offset="0" stop-color="#FF2CD6" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#1E2ABF" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#060C2D" stop-opacity="0.72"/>
+    </radialGradient>
+    <linearGradient id="naviOrbRim" x1="16" y1="20" x2="100" y2="106" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#83FDFF"/>
+      <stop offset="0.56" stop-color="#4A78FF"/>
+      <stop offset="1" stop-color="#FF32DA"/>
+    </linearGradient>
+    <linearGradient id="naviGlyphGrad" x1="35" y1="36" x2="86" y2="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D2FFFF"/>
+      <stop offset="0.45" stop-color="#89E9FF"/>
+      <stop offset="1" stop-color="#FBA4FF"/>
+    </linearGradient>
+    <filter id="naviGlyphGlow" x="20" y="20" width="80" height="80" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="1.1" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="60" cy="60" r="48" fill="url(#naviOrbCore)"/>
+  <circle cx="60" cy="60" r="48" fill="url(#naviOrbShade)"/>
+  <circle cx="60" cy="60" r="46.8" stroke="url(#naviOrbRim)" stroke-width="2.4"/>
+
+  <g filter="url(#naviGlyphGlow)">
+    <path
+      d="M38.2 86.2V40.9C38.2 38 40.5 35.7 43.4 35.7C45 35.7 46.5 36.4 47.5 37.6L72.6 67.1V40.2C72.6 37.1 75.1 34.6 78.2 34.6C81.3 34.6 83.8 37.1 83.8 40.2V80.1C83.8 85 79.8 89 74.9 89C72.3 89 69.9 87.9 68.2 85.9L49.4 63.9V86.2C49.4 89.3 46.9 91.8 43.8 91.8C40.7 91.8 38.2 89.3 38.2 86.2Z"
+      fill="url(#naviGlyphGrad)"
+      stroke="rgba(180,245,255,0.86)"
+      stroke-width="1.4"
+      stroke-linejoin="round"
+    />
+  </g>
+</svg>

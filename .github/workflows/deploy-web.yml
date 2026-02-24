@@ -1,0 +1,74 @@
+name: Deploy NAVI Web App (Next.js)
+
+# Canonical browser app for navralabs.com.
+# This workflow is guarded by WEB_NEXT_ACTIVE and can coexist with the current
+# frontend deployment during transition.
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-web:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 40
+    if: vars.WEB_NEXT_ACTIVE == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region us-east-1 \
+            | docker login --username AWS --password-stdin \
+                ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web
+          platforms: linux/amd64
+          push: true
+          tags: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-web:prod
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Force ECS redeploy — web
+        run: |
+          aws ecs update-service \
+            --cluster aep-production \
+            --service aep-web-production-svc \
+            --force-new-deployment \
+            --region us-east-1
+
+      - name: Wait for ECS service to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster aep-production \
+            --services aep-web-production-svc \
+            --region us-east-1
+
+      - name: Smoke test — verify web app routes
+        run: |
+          echo "GET https://navralabs.com/signup"
+          curl -fsS --retry 5 --retry-delay 8 --max-time 20 \
+            https://navralabs.com/signup >/dev/null
+          echo "GET https://navralabs.com/app"
+          curl -fsS --retry 5 --retry-delay 8 --max-time 20 \
+            https://navralabs.com/app >/dev/null
+          echo "NAVI web app deploy complete."

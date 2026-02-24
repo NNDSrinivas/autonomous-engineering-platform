@@ -8,7 +8,10 @@ export default defineConfig({
   base: "",
   server: {
     fs: {
-      allow: [resolve(__dirname, "../../../shared")],
+      // Only allow access to shared directory, not the entire repo root
+      allow: [
+        resolve(__dirname, "../../../shared"),
+      ],
     },
   },
   resolve: {

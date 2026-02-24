@@ -38,7 +38,7 @@ import { GitService } from './services/GitService';
 import { TaskService } from './services/TaskService';
 import { createDefaultActionRegistry, ActionRegistry } from './actions';
 import type { ActivityEvent } from './types/activity';
-import { DeviceAuthService } from './auth/deviceAuth';
+import { DeviceAuthService, AuthSignInStatus } from './auth/deviceAuth';
 import { buildUndoRestoreMetadataFromSnapshot } from './undoMetadata';
 
 const exec = util.promisify(child_process.exec);
@@ -937,9 +937,21 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // Register auth commands
+  const emitSignInStatus = (status: AuthSignInStatus) => {
+    provider.postToWebview({
+      type: 'auth.signIn.status',
+      ...status,
+      timestamp: new Date().toISOString(),
+    });
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.signIn', async () => {
-      await globalAuthService?.startLogin();
+      try {
+        await globalAuthService?.startLogin(emitSignInStatus);
+      } catch (error) {
+        console.warn('[AEP] Sign-in flow finished with error:', error);
+      }
       cachedAuthToken = await globalAuthService?.getToken();
       await vscode.commands.executeCommand('aep.notifyAuthStateChange', Boolean(cachedAuthToken));
     })
@@ -1729,6 +1741,89 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       console.log('[AEP] getBackendBaseUrl - URL parse failed, returning default');
       return 'http://127.0.0.1:8787';
     }
+  }
+
+  private buildWebAppUrl(
+    base: string,
+    routePath: string,
+    query: Record<string, string> = {}
+  ): string | null {
+    try {
+      const parsed = new URL(base);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return null;
+      }
+
+      const normalizedBasePath = parsed.pathname.replace(/\/+$/, '');
+      const normalizedRoute = routePath.startsWith('/') ? routePath : `/${routePath}`;
+      parsed.pathname = `${normalizedBasePath}${normalizedRoute}` || normalizedRoute;
+      parsed.search = '';
+      parsed.hash = '';
+
+      Object.entries(query).forEach(([key, value]) => {
+        parsed.searchParams.set(key, value);
+      });
+
+      return parsed.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveWebAppBaseUrl(): string {
+    const config = vscode.workspace.getConfiguration('aep');
+    const configuredWebAppUrl = (config.get<string>('navi.webAppUrl') || '').trim();
+    const fallbackBase = 'https://navralabs.com';
+
+    const normalizeBase = (input: string): string | null => {
+      try {
+        const parsed = new URL(input);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          return null;
+        }
+        parsed.pathname = parsed.pathname
+          .replace(/\/+$/, '')
+          .replace(/\/(signup|login|app)$/i, '');
+        parsed.search = '';
+        parsed.hash = '';
+        return parsed.toString().replace(/\/$/, '');
+      } catch {
+        return null;
+      }
+    };
+
+    const fromConfig = configuredWebAppUrl ? normalizeBase(configuredWebAppUrl) : null;
+    if (fromConfig) {
+      return fromConfig;
+    }
+
+    try {
+      const backendBase = new URL(this.getBackendBaseUrl());
+      if (backendBase.protocol === 'https:') {
+        const derived = normalizeBase(backendBase.origin);
+        if (derived) {
+          return derived;
+        }
+      }
+    } catch {
+      // Ignore parse errors and fall through to fallback URL.
+    }
+
+    return fallbackBase;
+  }
+
+  private resolveWebSignupUrl(): string {
+    const signup = this.buildWebAppUrl(this.resolveWebAppBaseUrl(), '/signup', {
+      source: 'vscode',
+    });
+    return signup ?? 'https://navralabs.com/signup?source=vscode';
+  }
+
+  private resolveWebDashboardUrl(): string {
+    const dashboard = this.buildWebAppUrl(this.resolveWebAppBaseUrl(), '/app', {
+      source: 'vscode',
+    });
+    return dashboard ?? 'https://navralabs.com/app?source=vscode';
   }
 
   private async callBackendAPI(content: string, mode: string, model: string): Promise<void> {
@@ -3170,10 +3265,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             break;
           }
 
+          case 'auth.signUp': {
+            const signupUrl = this.resolveWebSignupUrl();
+            await vscode.env.openExternal(vscode.Uri.parse(signupUrl));
+            break;
+          }
+
           case 'enterprise.openDashboard': {
-            // Open enterprise projects dashboard in web app
-            const webAppUrl = vscode.workspace.getConfiguration('aep').get<string>('webAppUrl') || 'http://localhost:3000';
-            const dashboardUrl = `${webAppUrl}/enterprise/projects`;
+            // Open authenticated web app dashboard in external browser
+            const dashboardUrl = this.resolveWebDashboardUrl();
             await vscode.env.openExternal(vscode.Uri.parse(dashboardUrl));
             break;
           }

@@ -1,0 +1,58 @@
+:root {
+  --brand-cyan: 190 95% 50%;
+  --brand-blue: 215 95% 55%;
+  --brand-violet: 270 90% 60%;
+  --brand-magenta: 305 90% 60%;
+
+  --bg: 220 28% 6%;
+  --bg-2: 220 26% 8%;
+  --panel: 220 24% 10%;
+  --panel-2: 220 22% 12%;
+  --border: 220 18% 18%;
+  --text: 210 20% 96%;
+  --muted: 215 14% 72%;
+  --subtle: 215 12% 56%;
+
+  --success: 145 70% 45%;
+  --warning: 38 90% 55%;
+  --danger: 0 80% 58%;
+  --info: 205 90% 55%;
+
+  --r-xs: 10px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+
+  --font-sans: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 30px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 1px 0 rgba(255, 255, 255, 0.05), 0 18px 60px rgba(0, 0, 0, 0.55);
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+
+  --g-brand:
+    radial-gradient(1200px 600px at 30% 15%, hsla(var(--brand-cyan) / 0.18), transparent 55%),
+    radial-gradient(900px 500px at 70% 30%, hsla(var(--brand-violet) / 0.14), transparent 60%);
+}
+
+[data-platform="vscode"] {
+  --bg: 220 20% 7%;
+  --panel: 220 18% 11%;
+  --border: 220 14% 18%;
+}

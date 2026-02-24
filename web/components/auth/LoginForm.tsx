@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { validateReturnTo } from "@/lib/auth/validation";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -48,9 +49,12 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
         await onSubmit(data);
       } else {
         // Default behavior: redirect to Auth0 with username-password connection
+        const requestedReturnTo = new URLSearchParams(window.location.search).get("returnTo");
+        const returnTo = validateReturnTo(requestedReturnTo);
         const params = new URLSearchParams({
           connection: "Username-Password-Authentication",
           login_hint: data.email,
+          returnTo,
         });
         window.location.href = `/api/auth/login?${params.toString()}`;
       }

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import "../../packages/ui/src/tokens.css";
 
 @tailwind base;
 @tailwind components;
@@ -6,6 +6,8 @@
 
 @layer base {
   :root {
+    --font-auth-display: var(--font-inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif);
+    --font-auth-mono: var(--font-jetbrains-mono, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
     --background: 220 15% 8%;
     --foreground: 220 10% 92%;
 
@@ -115,15 +117,30 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-muted-foreground/30;
   }
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
 }
 
 @layer utilities {
   .font-mono {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-auth-mono);
   }
 
   .font-sans {
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-auth-display);
   }
 
   .glow-primary {
@@ -171,5 +188,27 @@
   .hover-lift:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 30px hsl(var(--primary) / 0.15);
+  }
+
+  /* Chat-specific utilities */
+  .chat-input-glow {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.25);
+  }
+
+  .chat-container {
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border) / 0.6);
+  }
+
+  /* Smooth height transitions for auto-resize */
+  .textarea-smooth {
+    transition: height 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Enhanced glass effect */
+  .glass-strong {
+    background: hsl(var(--card) / 0.95);
+    backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid hsl(var(--border) / 0.5);
   }
 }

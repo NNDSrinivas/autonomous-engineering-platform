@@ -13,6 +13,7 @@ The staging environment runs on AWS ECS Fargate and is the canonical integration
 | **Web App** | https://staging.navralabs.com |
 | **API base** | https://staging.navralabs.com/api |
 | **Health check** | https://staging.navralabs.com/health/live |
+| **Canonical production web domain** | https://navralabs.com |
 | **AWS region** | `us-east-1` |
 | **ECS cluster** | `aep-staging` |
 | **CloudWatch logs** | `/ecs/aep-backend-staging`, `/ecs/aep-frontend-staging` |
@@ -23,6 +24,7 @@ The staging environment runs on AWS ECS Fargate and is the canonical integration
 |---|---|
 | Backend | FastAPI + Uvicorn, ECS Fargate, `aep-backend-staging:latest` |
 | Frontend | React + Vite + nginx, ECS Fargate, `aep-frontend-staging:latest` |
+| Web (transition target) | Next.js standalone container (`web/`) for canonical browser auth/app routes |
 | Database | RDS PostgreSQL 15 (`aep-staging-db`) |
 | Cache | ElastiCache Redis 7.1 (`aep-staging-redis`) |
 | Budget enforcement | `BUDGET_ENFORCEMENT_MODE=advisory` (flip to `strict` after soak) |
@@ -52,6 +54,10 @@ File → Open Workspace from File → aep.staging.code-workspace
 
 The NAVI extension immediately connects to staging — no manual settings change needed.
 
+For browser handoff links (`Sign up`, `Open dashboard`) from the extension host:
+- default canonical target is `https://navralabs.com`
+- use `aep.navi.webAppUrl` to explicitly target staging during transition (for example `https://staging.navralabs.com`)
+
 > **Limitation:** The `.code-workspace` file only exists in this repo. If you open a different project in VS Code, the file won't be there. See the options below for using staging from any project.
 
 > **No repo access?** Ask the team for the `navi-assistant-staging-<version>.vsix` file and install it with:
@@ -79,7 +85,8 @@ Add to `.vscode/settings.json` in the other project:
 
 ```json
 {
-  "aep.navi.backendUrl": "https://staging.navralabs.com"
+  "aep.navi.backendUrl": "https://staging.navralabs.com",
+  "aep.navi.webAppUrl": "https://staging.navralabs.com"
 }
 ```
 
@@ -136,6 +143,16 @@ docker buildx build --platform linux/amd64 \
   --push ./frontend
 ```
 
+### Build and push web (Next.js, canonical browser app transition)
+
+```bash
+docker buildx build --platform linux/amd64 \
+  -t $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/navralabs/aep-web:staging \
+  --push ./web
+```
+
+Use `aep.navi.webAppUrl` in extension settings to point browser handoff to the environment where this web image is deployed during transition.
+
 ### Force redeploy ECS services
 
 ```bash
@@ -176,7 +193,7 @@ Once a Microsoft publisher account is created at https://marketplace.visualstudi
 2. Build and publish:
 
 ```bash
-# Production extension (connects to app.navralabs.com)
+# Production extension (connects to navralabs.com)
 cd extensions/vscode-aep
 npx @vscode/vsce publish --pat <token>
 

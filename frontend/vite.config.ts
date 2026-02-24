@@ -12,6 +12,14 @@ export default defineConfig({
   server: {
     port: 3007,
     host: true,
+    fs: {
+      // Only allow access to specific directories, not entire repo
+      allow: [
+        path.resolve(__dirname, '../packages'),
+        path.resolve(__dirname, '../shared'),
+        path.resolve(__dirname, './'),
+      ],
+    },
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',

@@ -1,3 +1,4 @@
+@import "../../../../packages/ui/src/tokens.css";
 @import './styles/futuristic.css';
 
 @tailwind base;

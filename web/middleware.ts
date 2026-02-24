@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { getSession } from "@auth0/nextjs-auth0/edge";
 
 // Paths that require authentication
-const protectedPaths = ["/profile", "/settings", "/dashboard"];
+const protectedPaths = ["/app", "/profile", "/settings", "/dashboard"];
 
 // Paths that should redirect authenticated users away
 const authPaths = ["/login", "/signup", "/forgot-password"];
@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
 
     // Redirect authenticated users away from auth pages
     if (isAuthPath && isAuthenticated) {
-      return NextResponse.redirect(new URL("/", request.url));
+      return NextResponse.redirect(new URL("/app", request.url));
     }
 
     return res;
@@ -46,8 +46,13 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/app",
+    "/app/:path*",
+    "/profile",
     "/profile/:path*",
+    "/settings",
     "/settings/:path*",
+    "/dashboard",
     "/dashboard/:path*",
     "/login",
     "/signup",

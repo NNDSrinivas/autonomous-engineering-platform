@@ -6,16 +6,9 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
-      {/* Background gradient effect */}
-      <div className="fixed inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5 pointer-events-none" />
-
-      {/* Glow effects */}
-      <div className="fixed top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="fixed bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Content */}
-      <div className="relative z-10">
+    <div className="relative min-h-screen overflow-hidden bg-background px-2 py-3 sm:px-4 sm:py-6">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_18%,hsl(192_96%_60%/.12),transparent_48%),radial-gradient(circle_at_85%_14%,hsl(222_95%_63%/.16),transparent_58%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(220_32%_5%)_100%)]" />
+      <div className="relative z-10 flex min-h-screen items-center justify-center">
         {children}
       </div>
     </div>

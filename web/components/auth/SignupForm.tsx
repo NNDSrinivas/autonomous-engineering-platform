@@ -14,6 +14,7 @@ import {
   PasswordStrengthMeter,
   getPasswordRequirements,
 } from "./PasswordStrengthMeter";
+import { validateReturnTo } from "@/lib/auth/validation";
 
 const signupSchema = z
   .object({
@@ -74,9 +75,12 @@ export function SignupForm({ onSubmit }: SignupFormProps) {
         await onSubmit(data);
       } else {
         // Default behavior: redirect to Auth0 signup
+        const requestedReturnTo = new URLSearchParams(window.location.search).get("returnTo");
+        const returnTo = validateReturnTo(requestedReturnTo);
         const params = new URLSearchParams({
           screen_hint: "signup",
           login_hint: data.email,
+          returnTo,
         });
         window.location.href = `/api/auth/login?${params.toString()}`;
       }

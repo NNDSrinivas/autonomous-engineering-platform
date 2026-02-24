@@ -90,6 +90,7 @@ def _validate_auth0_settings() -> None:
 # JWKS cache with TTL for Auth0 ID token verification
 _JWKS_CACHE: dict | None = None
 _JWKS_CACHE_AT: float = 0.0
+_JWKS_CACHE_DOMAIN: str | None = None  # Track which domain the cache is for
 _JWKS_TTL_SECONDS = 3600  # 1 hour
 _JWKS_LOCK = asyncio.Lock()
 AUTH0_JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
@@ -108,8 +109,14 @@ async def _fetch_jwks() -> dict:
 
 async def _get_jwks(force_refresh: bool = False) -> dict:
     """Fetch JWKS from Auth0 custom domain with TTL cache and lock protection."""
-    global _JWKS_CACHE, _JWKS_CACHE_AT
+    global _JWKS_CACHE, _JWKS_CACHE_AT, _JWKS_CACHE_DOMAIN
     now = time.time()
+
+    # Invalidate cache if AUTH0_DOMAIN changed (e.g., test environment switching)
+    if _JWKS_CACHE_DOMAIN != AUTH0_DOMAIN:
+        _JWKS_CACHE = None
+        _JWKS_CACHE_DOMAIN = AUTH0_DOMAIN
+        logger.info(f"JWKS cache invalidated due to domain change: {_JWKS_CACHE_DOMAIN}")
 
     # Fast path: cache is valid (skip if force_refresh requested)
     if not force_refresh and _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
@@ -117,6 +124,12 @@ async def _get_jwks(force_refresh: bool = False) -> dict:
 
     # Slow path: refresh cache with lock to prevent thundering herd
     async with _JWKS_LOCK:
+        # Re-check domain after acquiring lock (in case of concurrent domain change)
+        if _JWKS_CACHE_DOMAIN != AUTH0_DOMAIN:
+            _JWKS_CACHE = None
+            _JWKS_CACHE_DOMAIN = AUTH0_DOMAIN
+            logger.info(f"JWKS cache invalidated due to domain change: {_JWKS_CACHE_DOMAIN}")
+
         # Re-check after acquiring lock (another request may have refreshed)
         now = time.time()
         if not force_refresh and _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
@@ -125,6 +138,7 @@ async def _get_jwks(force_refresh: bool = False) -> dict:
         try:
             _JWKS_CACHE = await _fetch_jwks()
             _JWKS_CACHE_AT = now
+            _JWKS_CACHE_DOMAIN = AUTH0_DOMAIN
             return _JWKS_CACHE
         except Exception as e:
             logger.error(f"Failed to fetch JWKS from {AUTH0_JWKS_URL}: {e}")

@@ -3226,6 +3226,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       try {
         switch (msg.type) {
           case 'webview.ready': {
+            // Idempotent guard - only initialize once
+            if (this._webviewReady) {
+              console.log('[AEP] Webview already initialized, ignoring duplicate ready signal');
+              break;
+            }
+
             // Shell component is mounted - webview is ready to receive messages
             this._webviewReady = true;
             this.flushPendingConsentMessages();

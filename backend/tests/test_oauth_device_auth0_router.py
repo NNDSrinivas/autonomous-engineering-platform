@@ -88,8 +88,8 @@ def test_refresh_success_with_token_rotation(monkeypatch):
 
     monkeypatch.setattr(httpx.AsyncClient, "post", _mock_post)
 
-    # Mock JWT verification
-    def _mock_verify(id_token: str):  # type: ignore[no-untyped-def]
+    # Mock JWT verification (must be async now)
+    async def _mock_verify(id_token: str):  # type: ignore[no-untyped-def]
         return {
             "sub": "auth0|test-user-123",
             "email": "test@example.com",
@@ -133,7 +133,7 @@ def test_refresh_success_without_token_rotation(monkeypatch):
 
     monkeypatch.setattr(httpx.AsyncClient, "post", _mock_post)
 
-    def _mock_verify(id_token: str):  # type: ignore[no-untyped-def]
+    async def _mock_verify(id_token: str):  # type: ignore[no-untyped-def]
         return {
             "sub": "auth0|test-user-123",
             "email": "test@example.com",
@@ -260,8 +260,8 @@ def test_refresh_fails_when_sub_claim_missing(monkeypatch):
 
     monkeypatch.setattr(httpx.AsyncClient, "post", _mock_post)
 
-    # Mock JWT verification returning claims without sub
-    def _mock_verify(id_token: str):  # type: ignore[no-untyped-def]
+    # Mock JWT verification returning claims without sub (must be async now)
+    async def _mock_verify(id_token: str):  # type: ignore[no-untyped-def]
         return {
             # Missing sub!
             "email": "test@example.com",

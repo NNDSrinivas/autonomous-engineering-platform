@@ -1,14 +1,15 @@
 from __future__ import annotations
+import asyncio
 import logging
 import time
-import requests
 from jwt.algorithms import RSAAlgorithm
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 import httpx
 import jwt
+from cachetools import TTLCache
 
 from backend.core.auth0 import (
     AUTH0_DOMAIN,
@@ -91,19 +92,41 @@ def _validate_auth0_settings() -> None:
 _JWKS_CACHE: dict | None = None
 _JWKS_CACHE_AT: float = 0.0
 _JWKS_TTL_SECONDS = 3600  # 1 hour
+_JWKS_LOCK = asyncio.Lock()
 AUTH0_JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 
+# Rate limiting for refresh endpoint (per-IP, 60s window)
+_REFRESH_LIMIT = TTLCache(maxsize=5000, ttl=60)
 
-def _get_jwks() -> dict:
-    """Fetch JWKS from Auth0 custom domain with TTL cache."""
+
+async def _fetch_jwks() -> dict:
+    """Fetch JWKS from Auth0 using async HTTP client."""
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        r = await client.get(AUTH0_JWKS_URL)
+        r.raise_for_status()
+        return r.json()
+
+
+async def _get_jwks() -> dict:
+    """Fetch JWKS from Auth0 custom domain with TTL cache and lock protection."""
     global _JWKS_CACHE, _JWKS_CACHE_AT
     now = time.time()
-    if _JWKS_CACHE is None or (now - _JWKS_CACHE_AT) > _JWKS_TTL_SECONDS:
+
+    # Fast path: cache is valid
+    if _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
+        return _JWKS_CACHE
+
+    # Slow path: refresh cache with lock to prevent thundering herd
+    async with _JWKS_LOCK:
+        # Re-check after acquiring lock (another request may have refreshed)
+        now = time.time()
+        if _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
+            return _JWKS_CACHE
+
         try:
-            resp = requests.get(AUTH0_JWKS_URL, timeout=5)
-            resp.raise_for_status()
-            _JWKS_CACHE = resp.json()
+            _JWKS_CACHE = await _fetch_jwks()
             _JWKS_CACHE_AT = now
+            return _JWKS_CACHE
         except Exception as e:
             logger.error(f"Failed to fetch JWKS from {AUTH0_JWKS_URL}: {e}")
             raise HTTPException(
@@ -114,10 +137,9 @@ def _get_jwks() -> dict:
                     "Check AUTH0_DOMAIN / network access.",
                 ),
             )
-    return _JWKS_CACHE
 
 
-def _get_rsa_public_key(id_token: str):
+async def _get_rsa_public_key(id_token: str):
     """Get the RSA public key from JWKS that matches the token's kid."""
     try:
         headers = jwt.get_unverified_header(id_token)
@@ -130,7 +152,7 @@ def _get_rsa_public_key(id_token: str):
             detail=_error_detail("invalid_token", "Malformed ID token header"),
         )
 
-    jwks = _get_jwks()
+    jwks = await _get_jwks()
     for key in jwks.get("keys", []):
         if key.get("kid") == kid:
             return RSAAlgorithm.from_jwk(key)
@@ -138,7 +160,7 @@ def _get_rsa_public_key(id_token: str):
     # Force refresh once in case of key rotation, then retry
     global _JWKS_CACHE
     _JWKS_CACHE = None
-    jwks = _get_jwks()
+    jwks = await _get_jwks()
     for key in jwks.get("keys", []):
         if key.get("kid") == kid:
             return RSAAlgorithm.from_jwk(key)
@@ -149,14 +171,14 @@ def _get_rsa_public_key(id_token: str):
     )
 
 
-def verify_auth0_id_token(id_token: str) -> dict:
+async def verify_auth0_id_token(id_token: str) -> dict:
     """
     Verify Auth0 ID token signature and claims using custom domain JWKS.
 
     Returns decoded claims if valid.
     Raises HTTPException if verification fails.
     """
-    public_key = _get_rsa_public_key(id_token)
+    public_key = await _get_rsa_public_key(id_token)
     try:
         return jwt.decode(
             id_token,
@@ -175,6 +197,21 @@ def verify_auth0_id_token(id_token: str) -> dict:
         raise HTTPException(
             status_code=401,
             detail=_error_detail("invalid_token", f"ID token verification failed: {e}"),
+        )
+
+
+def _rate_limit_refresh(ip: str, limit: int = 20) -> None:
+    """Rate limit refresh attempts per IP (20 requests per 60s window)."""
+    count = _REFRESH_LIMIT.get(ip, 0) + 1
+    _REFRESH_LIMIT[ip] = count
+    if count > limit:
+        raise HTTPException(
+            status_code=429,
+            detail=_error_detail(
+                "rate_limited",
+                "Too many refresh attempts. Please try again later.",
+                "Wait 60 seconds before retrying.",
+            ),
         )
 
 
@@ -274,7 +311,7 @@ async def poll(body: PollIn):
     # Prefer id_token for profile; otherwise /userinfo
     sub = email = name = None
     if "id_token" in j:
-        claims = verify_auth0_id_token(j["id_token"])
+        claims = await verify_auth0_id_token(j["id_token"])
         sub, email, name = claims.get("sub"), claims.get("email"), claims.get("name")
     if not sub:
         try:
@@ -320,7 +357,7 @@ async def poll(body: PollIn):
 
 
 @router.post("/refresh", response_model=TokenOut)
-async def refresh(body: RefreshIn):
+async def refresh(body: RefreshIn, request: Request):
     """
     Refresh an expired AEP session using Auth0 refresh token.
 
@@ -331,6 +368,10 @@ async def refresh(body: RefreshIn):
     4. Returns new refresh_token if Auth0 rotated it
     """
     _validate_auth0_settings()
+
+    # Rate limit refresh attempts per IP (20/min)
+    client_ip = request.client.host if request.client else "unknown"
+    _rate_limit_refresh(client_ip)
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as http:
@@ -376,7 +417,7 @@ async def refresh(body: RefreshIn):
             ),
         )
 
-    claims = verify_auth0_id_token(j["id_token"])
+    claims = await verify_auth0_id_token(j["id_token"])
     sub = claims.get("sub")
     email = claims.get("email")
     name = claims.get("name")

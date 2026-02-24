@@ -1359,7 +1359,8 @@ const derivePreview = (messages: ChatMessage[]) => {
   return truncateText(firstLine, 120);
 };
 
-const MAX_COMMAND_OUTPUT = 80000;
+// Conservative limit to prevent webview performance issues while allowing most command outputs
+const MAX_COMMAND_OUTPUT = 40000;
 
 const appendWithLimit = (current: string, next: string, limit: number) => {
   const combined = current + next;

@@ -16,19 +16,25 @@ function ActivateContent() {
   const activateUrl = `${AUTH0_DOMAIN}/activate`;
 
   const handleContinue = () => {
-    const code = userCode || manualCode;
+    const code = (userCode || manualCode).trim();
     if (code) {
-      window.location.href = `${activateUrl}?user_code=${code}`;
+      // URL-encode the user code to handle special characters
+      window.location.href = `${activateUrl}?user_code=${encodeURIComponent(code)}`;
     } else {
       window.location.href = activateUrl;
     }
   };
 
-  const copyCode = () => {
+  const copyCode = async () => {
     if (userCode) {
-      navigator.clipboard.writeText(userCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        await navigator.clipboard.writeText(userCode);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy code:', err);
+        // Fallback: could show an error message to user
+      }
     }
   };
 

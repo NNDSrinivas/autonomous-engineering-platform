@@ -9,8 +9,8 @@ export const GET = handleAuth({
     // Get connection from query params for direct social login
     const searchParams = (req as NextRequest).nextUrl?.searchParams;
 
-    const connection = searchParams.get("connection");
-    const returnToParam = searchParams.get("returnTo");
+    const connection = searchParams?.get("connection") || null;
+    const returnToParam = searchParams?.get("returnTo") || null;
     const returnTo = validateReturnTo(returnToParam, "/app/chats");
 
     return {

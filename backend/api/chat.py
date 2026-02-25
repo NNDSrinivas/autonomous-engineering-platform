@@ -138,12 +138,12 @@ def _get_openai_config() -> Tuple[Optional[str], str, str]:
     )
     base_url = (
         getattr(settings, "OPENAI_BASE_URL", None)
-        or os.environ.get("OPENAI_BASE_URL")
+        or os.environ.get('OPENAI_BASE_URL')
         or "https://api.openai.com/v1"
     )
     model = (
         getattr(settings, "OPENAI_MODEL", None)
-        or os.environ.get("OPENAI_MODEL")
+        or os.environ.get('OPENAI_MODEL')
         or "gpt-3.5-turbo"
     )
     return api_key, base_url.rstrip("/"), model
@@ -597,7 +597,7 @@ MODEL_RECOMMENDATIONS: Dict[str, Dict[str, str]] = MODEL_RECOMMENDATIONS_BY_PROV
 
 def _get_model_recommendations() -> Dict[str, Dict[str, str]]:
     """Get model recommendations based on DEFAULT_LLM_PROVIDER environment variable"""
-    default_provider = os.environ.get("DEFAULT_LLM_PROVIDER", "openai").lower()
+    default_provider = os.environ.get('DEFAULT_LLM_PROVIDER', "openai").lower()
     return MODEL_RECOMMENDATIONS_BY_PROVIDER.get(
         default_provider, MODEL_RECOMMENDATIONS_BY_PROVIDER["openai"]
     )
@@ -718,7 +718,7 @@ def _resolve_llm_selection(
     mode = (requested_mode or "").strip() or "agent"
 
     # Get default provider from environment
-    default_provider = os.environ.get("DEFAULT_LLM_PROVIDER", "openai").lower()
+    default_provider = os.environ.get('DEFAULT_LLM_PROVIDER', "openai").lower()
 
     if raw_model.lower() in AUTO_MODEL_IDS:
         task_type = _detect_task_type(message)
@@ -728,10 +728,10 @@ def _resolve_llm_selection(
         requested_model_id = raw_model or "auto/recommended"
         recommended_model_id = rec["model_id"]
         alias = MODEL_ALIASES.get(recommended_model_id, {})
-        provider = alias.get("provider") or recommended_model_id.split("/")[0]
-        resolved_model = alias.get("model") or recommended_model_id.split("/", 1)[-1]
+        provider = alias.get('provider') or recommended_model_id.split("/")[0]
+        resolved_model = alias.get('model') or recommended_model_id.split("/", 1)[-1]
         resolved_model_id = f"{provider}/{resolved_model}"
-        resolved_model_name = alias.get("label") or _humanize_model_name(
+        resolved_model_name = alias.get('label') or _humanize_model_name(
             recommended_model_id
         )
         logger.info(
@@ -740,7 +740,7 @@ def _resolve_llm_selection(
         return {
             "source": "auto",
             "task_type": task_type,
-            "reason": rec.get("reason"),
+            "reason": rec.get('reason'),
             "requested_model": requested_model_id,
             "requested_model_name": "Auto (Recommended)",
             "resolved_model": resolved_model,
@@ -751,9 +751,9 @@ def _resolve_llm_selection(
         }
 
     alias = MODEL_ALIASES.get(raw_model, {})
-    provider = alias.get("provider")
-    resolved_model = alias.get("model")
-    resolved_model_name = alias.get("label")
+    provider = alias.get('provider')
+    resolved_model = alias.get('model')
+    resolved_model_name = alias.get('label')
 
     if not provider:
         if "/" in raw_model:
@@ -767,7 +767,7 @@ def _resolve_llm_selection(
         f"{provider}/{resolved_model}" if provider and resolved_model else raw_model
     )
     resolved_model_name = resolved_model_name or _humanize_model_name(resolved_model_id)
-    requested_model_name = alias.get("label") or _humanize_model_name(raw_model)
+    requested_model_name = alias.get('label') or _humanize_model_name(raw_model)
 
     return {
         "source": "manual",
@@ -920,8 +920,8 @@ def _normalize_conversation_history(
     normalized: List[Dict[str, Any]] = []
     for msg in history:
         if isinstance(msg, dict):
-            role = msg.get("type") or msg.get("role", "user")
-            content = msg.get("content", "")
+            role = msg.get('type') or msg.get('role', "user")
+            content = msg.get('content', "")
         else:
             role = getattr(msg, "type", getattr(msg, "role", "user"))
             content = getattr(msg, "content", "")
@@ -951,12 +951,12 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
             request.provider,
         )
         # Safe mode extraction with type checking
-        mode_value = llm_context.get("mode", "agent")
+        mode_value = llm_context.get('mode', "agent")
         mode = str(mode_value).lower() if mode_value is not None else "agent"
-        llm_provider = llm_context.get("provider") or os.environ.get(
+        llm_provider = llm_context.get('provider') or os.environ.get(
             "DEFAULT_LLM_PROVIDER", "openai"
         )
-        llm_model = llm_context.get("resolved_model") or None
+        llm_model = llm_context.get('resolved_model') or None
 
         logger.info(
             f"[NAVI Stream] Mode: {mode}, Provider: {llm_provider}, Model: {llm_model}"
@@ -1036,7 +1036,7 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
             provider = (
                 request.provider
                 or llm_provider
-                or os.environ.get("DEFAULT_LLM_PROVIDER", "anthropic")
+                or os.environ.get('DEFAULT_LLM_PROVIDER', "anthropic")
             )
             model = request.model or llm_model
 
@@ -1081,8 +1081,8 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
                             yield f"data: {json.dumps({'content': event.data})}\n\n"
 
                         elif event.type == AgentEventType.TOOL_CALL:
-                            tool_name = event.data.get("name", "unknown")
-                            tool_args = event.data.get("arguments", {})
+                            tool_name = event.data.get('name', "unknown")
+                            tool_args = event.data.get('arguments', {})
 
                             kind = "command"
                             label = tool_name
@@ -1091,33 +1091,33 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
                             if tool_name == "read_file":
                                 kind = "read"
                                 label = "Reading"
-                                detail = tool_args.get("path", "")
+                                detail = tool_args.get('path', "")
                             elif tool_name == "write_file":
                                 kind = "create"
                                 label = "Creating"
-                                detail = tool_args.get("path", "")
+                                detail = tool_args.get('path', "")
                             elif tool_name == "edit_file":
                                 kind = "edit"
                                 label = "Editing"
-                                detail = tool_args.get("path", "")
+                                detail = tool_args.get('path', "")
                             elif tool_name == "run_command":
                                 kind = "command"
                                 label = "Running"
-                                detail = tool_args.get("command", "")
+                                detail = tool_args.get('command', "")
                             elif tool_name == "search_files":
                                 kind = "search"
                                 label = "Searching"
-                                detail = tool_args.get("pattern", "")
+                                detail = tool_args.get('pattern', "")
                             elif tool_name == "list_directory":
                                 kind = "read"
                                 label = "Listing"
-                                detail = tool_args.get("path", "")
+                                detail = tool_args.get('path', "")
 
                             yield f"data: {json.dumps({'activity': {'kind': kind, 'label': label, 'detail': detail, 'status': 'running'}})}\n\n"
 
                         elif event.type == AgentEventType.TOOL_RESULT:
                             result = event.data
-                            success = result.get("success", False)
+                            success = result.get('success', False)
                             status = "done" if success else "error"
                             yield f"data: {json.dumps({'activity': {'kind': 'tool_result', 'label': 'Result', 'detail': result.get('output', '')[:200], 'status': status}})}\n\n"
 
@@ -1168,13 +1168,13 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
             for att in request.attachments:
                 # Support both Pydantic model attributes and dict .get()
                 att_kind = getattr(att, "kind", None) or (
-                    att.get("kind") if isinstance(att, dict) else None
+                    att.get('kind') if isinstance(att, dict) else None
                 )
                 att_content = getattr(att, "content", None) or (
-                    att.get("content") if isinstance(att, dict) else None
+                    att.get('content') if isinstance(att, dict) else None
                 )
                 att_path = getattr(att, "path", None) or (
-                    att.get("path") if isinstance(att, dict) else None
+                    att.get('path') if isinstance(att, dict) else None
                 )
 
                 if att_kind in ("file", "code") and att_content:
@@ -1202,15 +1202,15 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
                 actual_message = request.message
                 last_error = getattr(request, "last_action_error", None)
                 if last_error and isinstance(last_error, dict):
-                    error_msg = last_error.get("errorMessage", "Unknown error")
-                    error_details = last_error.get("errorDetails", "")
-                    failed_action = last_error.get("action", {})
-                    failed_path = failed_action.get("filePath", "unknown path")
-                    exit_code = last_error.get("exitCode")
+                    error_msg = last_error.get('errorMessage', "Unknown error")
+                    error_details = last_error.get('errorDetails', "")
+                    failed_action = last_error.get('action', {})
+                    failed_path = failed_action.get('filePath', "unknown path")
+                    exit_code = last_error.get('exitCode')
                     command_output = (
-                        last_error.get("commandOutput")
-                        or last_error.get("stderr")
-                        or last_error.get("stdout")
+                        last_error.get('commandOutput')
+                        or last_error.get('stderr')
+                        or last_error.get('stdout')
                         or ""
                     )
                     command_output = command_output.strip()[:4000]
@@ -1224,7 +1224,7 @@ Command output:
 ```
 {command_output or "No output captured"}
 ```
-Failed action type: {failed_action.get("type", "unknown")}
+Failed action type: {failed_action.get('type', "unknown")}
 Failed file path: {failed_path}
 
 Please debug this issue and continue with the original task. The user's new message is:
@@ -1270,8 +1270,8 @@ Please debug this issue and continue with the original task. The user's new mess
                     if "activity" in event:
                         activity = event["activity"]
                         # Track files read to avoid duplicates
-                        if activity.get("kind") == "file_read":
-                            files_read_live.append(activity.get("detail", ""))
+                        if activity.get('kind') == "file_read":
+                            files_read_live.append(activity.get('detail', ""))
                         yield f"data: {json.dumps({'activity': activity})}\n\n"
 
                     # Stream thinking content in real-time (LLM inner monologue)
@@ -1305,9 +1305,9 @@ Please debug this issue and continue with the original task. The user's new mess
                     )
 
                     # Emit activity: files to create/modify
-                    files_created = navi_result.get("files_created", [])
-                    files_modified = navi_result.get("files_modified", [])
-                    file_edits = navi_result.get("file_edits", [])
+                    files_created = navi_result.get('files_created', [])
+                    files_modified = navi_result.get('files_modified', [])
+                    file_edits = navi_result.get('file_edits', [])
 
                     for file_path in files_created:
                         yield f"data: {json.dumps({'activity': {'kind': 'create', 'label': 'Creating', 'detail': file_path, 'status': 'done'}})}\n\n"
@@ -1334,23 +1334,23 @@ Please debug this issue and continue with the original task. The user's new mess
                     actions = []
 
                     # First, include any proposed actions from the result (e.g., command proposals)
-                    proposed_actions = navi_result.get("actions", [])
+                    proposed_actions = navi_result.get('actions', [])
                     for action in proposed_actions:
                         actions.append(action)
 
                     # Then, add file edits as editFile actions
                     for edit in file_edits:
                         # Backend uses 'filePath', not 'path'
-                        file_path_value = edit.get("filePath") or edit.get("path")
+                        file_path_value = edit.get('filePath') or edit.get('path')
                         if file_path_value:
                             actions.append(
                                 {
-                                    "type": edit.get("type", "editFile"),
+                                    "type": edit.get('type', "editFile"),
                                     "filePath": file_path_value,
-                                    "content": edit.get("content"),
-                                    "diff": edit.get("diff"),
-                                    "additions": edit.get("additions"),
-                                    "deletions": edit.get("deletions"),
+                                    "content": edit.get('content'),
+                                    "diff": edit.get('diff'),
+                                    "additions": edit.get('additions'),
+                                    "deletions": edit.get('deletions'),
                                 }
                             )
                         else:
@@ -1360,16 +1360,16 @@ Please debug this issue and continue with the original task. The user's new mess
 
                     # Only add files_created that aren't already in file_edits
                     existing_paths = {
-                        a.get("filePath") for a in actions if a.get("filePath")
+                        a.get('filePath') for a in actions if a.get('filePath')
                     }
                     for file_path in files_created:
                         if file_path not in existing_paths:
                             # Find content for this file in file_edits
                             content = None
                             for edit in file_edits:
-                                edit_path = edit.get("filePath") or edit.get("path")
+                                edit_path = edit.get('filePath') or edit.get('path')
                                 if edit_path == file_path:
-                                    content = edit.get("content")
+                                    content = edit.get('content')
                                     break
                             if content:
                                 actions.append(
@@ -1385,10 +1385,10 @@ Please debug this issue and continue with the original task. The user's new mess
                             f"[NAVI STREAM] Sending {len(actions)} actions: {[a.get('type') for a in actions]}"
                         )
                         # Emit narrative before actions for interleaved display
-                        action_types = [a.get("type") for a in actions]
+                        action_types = [a.get('type') for a in actions]
                         if "runCommand" in action_types:
                             cmd_count = sum(
-                                1 for a in actions if a.get("type") == "runCommand"
+                                1 for a in actions if a.get('type') == "runCommand"
                             )
                             plural = "s" if cmd_count > 1 else ""
                             narrative = f"Now I'll run {cmd_count} command{plural} to complete this task."
@@ -1397,7 +1397,7 @@ Please debug this issue and continue with the original task. The user's new mess
                             file_count = sum(
                                 1
                                 for a in actions
-                                if a.get("type") in ["editFile", "createFile"]
+                                if a.get('type') in ["editFile", "createFile"]
                             )
                             plural = "s" if file_count > 1 else ""
                             narrative = f"Making changes to {file_count} file{plural}."
@@ -1405,7 +1405,7 @@ Please debug this issue and continue with the original task. The user's new mess
                         yield f"data: {json.dumps({'actions': actions})}\n\n"
 
                     # Include next_steps if available
-                    next_steps = navi_result.get("next_steps", [])
+                    next_steps = navi_result.get('next_steps', [])
                     if next_steps:
                         yield f"data: {json.dumps({'next_steps': next_steps})}\n\n"
 
@@ -1492,13 +1492,13 @@ async def navi_chat(
             for att in request.attachments:
                 # Support both Pydantic model attributes and dict .get()
                 att_kind = getattr(att, "kind", None) or (
-                    att.get("kind") if isinstance(att, dict) else None
+                    att.get('kind') if isinstance(att, dict) else None
                 )
                 att_content = getattr(att, "content", None) or (
-                    att.get("content") if isinstance(att, dict) else None
+                    att.get('content') if isinstance(att, dict) else None
                 )
                 att_path = getattr(att, "path", None) or (
-                    att.get("path") if isinstance(att, dict) else None
+                    att.get('path') if isinstance(att, dict) else None
                 )
 
                 if att_kind in ("file", "code") and att_content:
@@ -1519,10 +1519,10 @@ async def navi_chat(
             request.mode,
             request.provider,
         )
-        llm_provider = llm_context.get("provider") or os.environ.get(
+        llm_provider = llm_context.get('provider') or os.environ.get(
             "DEFAULT_LLM_PROVIDER", "openai"
         )
-        llm_model = llm_context.get("resolved_model") or None
+        llm_model = llm_context.get('resolved_model') or None
 
         # Call the new LLM-first NAVI brain with full context
         conversation_history = _normalize_conversation_history(
@@ -1550,49 +1550,49 @@ async def navi_chat(
         )
 
         # Build response content from NAVI brain result
-        response_content = navi_result.get("message", "Task completed successfully.")
+        response_content = navi_result.get('message', "Task completed successfully.")
 
         # Add warnings if any (safety features)
-        if navi_result.get("warnings"):
+        if navi_result.get('warnings'):
             response_content += "\n\n**⚠️ Warnings:**\n"
-            for warning in navi_result["warnings"]:
+            for warning in navi_result['warnings']:
                 response_content += f"- {warning}\n"
 
         # Add helpful context about files to be created (not yet - user needs to click Apply)
-        if navi_result.get("files_created"):
+        if navi_result.get('files_created'):
             response_content += "\n\n**Files to create** (click Apply to create):\n"
-            for file_path in navi_result["files_created"]:
+            for file_path in navi_result['files_created']:
                 response_content += f"- {file_path}\n"
 
         # Add helpful context about files to be modified (not yet - user needs to click Apply)
-        if navi_result.get("files_modified"):
+        if navi_result.get('files_modified'):
             response_content += "\n\n**Files to modify** (click Apply to apply fix):\n"
-            for file_path in navi_result["files_modified"]:
+            for file_path in navi_result['files_modified']:
                 response_content += f"- {file_path}\n"
 
         # Add helpful context about commands to run (not yet - user needs to click Apply)
-        if navi_result.get("commands_run"):
+        if navi_result.get('commands_run'):
             response_content += "\n\n**Commands to run** (click Apply to execute):\n"
-            for command in navi_result["commands_run"]:
+            for command in navi_result['commands_run']:
                 response_content += f"- `{command}`\n"
 
         # Add next steps suggestions if provided by LLM
-        if navi_result.get("next_steps"):
+        if navi_result.get('next_steps'):
             response_content += "\n\n**Suggested next steps:**\n"
-            for step in navi_result["next_steps"]:
+            for step in navi_result['next_steps']:
                 response_content += f"- {step}\n"
 
         # Convert NAVI's file edits, commands and VS Code commands into actions array
         actions = []
 
         # Add file edits as editFile actions (these are actual code changes for VS Code to apply)
-        file_edits = navi_result.get("file_edits", [])
+        file_edits = navi_result.get('file_edits', [])
         logger.info(
             f"[Chat API] Building actions - file_edits: {len(file_edits)}, commands_run: {navi_result.get('commands_run', [])}, vscode_commands: {len(navi_result.get('vscode_commands', []))}"
         )
         for file_edit in file_edits:
             workspace_root = request.workspace_root or ""
-            file_path = file_edit.get("filePath", "")
+            file_path = file_edit.get('filePath', "")
             # Convert to absolute path
             if file_path and not os.path.isabs(file_path):
                 file_path = os.path.join(workspace_root, file_path)
@@ -1600,13 +1600,13 @@ async def navi_chat(
                 {
                     "type": "editFile",
                     "filePath": file_path,
-                    "content": file_edit.get("content", ""),
-                    "operation": file_edit.get("operation", "modify"),
+                    "content": file_edit.get('content', ""),
+                    "operation": file_edit.get('operation', "modify"),
                 }
             )
 
         # Add shell commands as runCommand actions
-        commands_run = navi_result.get("commands_run", [])
+        commands_run = navi_result.get('commands_run', [])
         for command in commands_run:
             actions.append(
                 {
@@ -1617,15 +1617,15 @@ async def navi_chat(
             )
 
         # Add VS Code commands as vscode_command actions (only if no file edits - avoid duplicate "open file" actions)
-        vscode_commands = navi_result.get("vscode_commands", [])
+        vscode_commands = navi_result.get('vscode_commands', [])
         for vscode_cmd in vscode_commands:
             # Skip vscode.open if we already have file edits (redundant)
-            if vscode_cmd.get("command") == "vscode.open" and file_edits:
+            if vscode_cmd.get('command') == "vscode.open" and file_edits:
                 continue
 
             # Convert relative paths to absolute paths for vscode.open command
-            args = vscode_cmd.get("args", [])
-            if vscode_cmd.get("command") == "vscode.open" and args:
+            args = vscode_cmd.get('args', [])
+            if vscode_cmd.get('command') == "vscode.open" and args:
                 workspace_root = request.workspace_root or ""
                 # Make first arg absolute if it's a relative path
                 if args[0] and not os.path.isabs(args[0]):
@@ -1634,7 +1634,7 @@ async def navi_chat(
             actions.append(
                 {
                     "type": "vscode_command",
-                    "command": vscode_cmd.get("command"),
+                    "command": vscode_cmd.get('command'),
                     "args": args,
                 }
             )
@@ -1644,33 +1644,33 @@ async def navi_chat(
         )
 
         # Return actions if we have any
-        if actions or navi_result.get("success"):
+        if actions or navi_result.get('success'):
             return _attach_llm_context(
                 ChatResponse(
                     content=response_content,
                     actions=actions,
-                    thinking_steps=navi_result.get("thinking_steps"),
-                    files_read=navi_result.get("files_read"),
-                    project_type=navi_result.get("project_type"),
-                    framework=navi_result.get("framework"),
-                    warnings=navi_result.get("warnings"),
-                    next_steps=navi_result.get("next_steps"),
+                    thinking_steps=navi_result.get('thinking_steps'),
+                    files_read=navi_result.get('files_read'),
+                    project_type=navi_result.get('project_type'),
+                    framework=navi_result.get('framework'),
+                    warnings=navi_result.get('warnings'),
+                    next_steps=navi_result.get('next_steps'),
                 ),
                 llm_context,
             )
 
         # If successful but no VS Code commands, just return the message
-        if navi_result.get("success"):
+        if navi_result.get('success'):
             return _attach_llm_context(
                 ChatResponse(
                     content=response_content,
                     actions=[],
-                    thinking_steps=navi_result.get("thinking_steps"),
-                    files_read=navi_result.get("files_read"),
-                    project_type=navi_result.get("project_type"),
-                    framework=navi_result.get("framework"),
-                    warnings=navi_result.get("warnings"),
-                    next_steps=navi_result.get("next_steps"),
+                    thinking_steps=navi_result.get('thinking_steps'),
+                    files_read=navi_result.get('files_read'),
+                    project_type=navi_result.get('project_type'),
+                    framework=navi_result.get('framework'),
+                    warnings=navi_result.get('warnings'),
+                    next_steps=navi_result.get('next_steps'),
                 ),
                 llm_context,
             )
@@ -1834,11 +1834,11 @@ I'll automatically detect the best tech stack based on your description (Next.js
 
         # Check if this is a confirmation for project creation
         # IMPORTANT: This must be checked BEFORE autonomous coding approval to avoid conflicts
-        if request.state and request.state.get("project_creation"):
+        if request.state and request.state.get('project_creation'):
             logger.info(f"Processing project creation confirmation: {message}")
-            project_name = request.state.get("project_name")
-            description = request.state.get("description")
-            parent_dir = request.state.get("parent_dir")
+            project_name = request.state.get('project_name')
+            description = request.state.get('description')
+            parent_dir = request.state.get('parent_dir')
 
             # Check if user is confirming or providing a different path
             if message_lower in [
@@ -1885,33 +1885,33 @@ I'll automatically detect the best tech stack based on your description (Next.js
 
                     result = response.json()
 
-                    if result["success"]:
+                    if result['success']:
                         return _attach_llm_context(
                             ChatResponse(
                                 content=f"""✅ **Project created successfully!**
 
-📁 **Location**: `{result["project_path"]}`
-🎯 **Type**: {result["project_type"]}
+📁 **Location**: `{result['project_path']}`
+🎯 **Type**: {result['project_type']}
 
 **Commands executed**:
 ```bash
-{chr(10).join(result["commands_run"])}
+{chr(10).join(result['commands_run'])}
 ```
 
-{result["message"]}
+{result['message']}
 
 I'll now open this project in VSCode for you. Once it opens, I can help you customize it further!
 """,
                                 agentRun={
                                     "mode": "project_created",
-                                    "project_path": result["project_path"],
+                                    "project_path": result['project_path'],
                                     "open_in_vscode": True,
                                 },
                                 state={
                                     "recent_project": {
-                                        "path": result["project_path"],
+                                        "path": result['project_path'],
                                         "name": project_name,
-                                        "type": result["project_type"],
+                                        "type": result['project_type'],
                                         "description": description,
                                     },
                                     "context": "project_created",
@@ -1929,9 +1929,9 @@ I'll now open this project in VSCode for you. Once it opens, I can help you cust
                             ChatResponse(
                                 content=f"""❌ **Failed to create project**
 
-{result["message"]}
+{result['message']}
 
-Error: {result.get("error", "Unknown error")}
+Error: {result.get('error', "Unknown error")}
 
 Would you like to try a different location or project name?
 """,
@@ -1940,7 +1940,7 @@ Would you like to try a different location or project name?
                                     "project_name": project_name,
                                     "description": description,
                                     "parent_dir": parent_dir,
-                                    "error": result.get("error", "Unknown error"),
+                                    "error": result.get('error', "Unknown error"),
                                 },
                                 suggestions=[
                                     "Try different location",
@@ -2010,14 +2010,14 @@ Would you like to try again with different settings?
         if (
             (is_approval or is_bulk_approval)
             and request.state
-            and request.state.get("autonomous_coding")
+            and request.state.get('autonomous_coding')
         ):
             logger.error("=== ENTERING EXECUTION BLOCK ===")
             try:
-                task_id = request.state.get("task_id")
+                task_id = request.state.get('task_id')
                 if not task_id:
                     raise ValueError("Missing task_id in request state")
-                current_step_index = request.state.get("current_step", 0)
+                current_step_index = request.state.get('current_step', 0)
                 logger.error(f"Task ID: {task_id}, Current Step: {current_step_index}")
 
                 # Use the shared engine instance from autonomous_coding router
@@ -2025,7 +2025,7 @@ Would you like to try again with different settings?
                 from backend.api.routers.autonomous_coding import _coding_engines
 
                 # Get the shared engine instance that has our tasks
-                workspace_id = request.state.get("workspace_id", "default")
+                workspace_id = request.state.get('workspace_id', "default")
                 coding_engine = _coding_engines.get(workspace_id)
 
                 if not coding_engine:
@@ -2091,7 +2091,7 @@ Would you like to try again with different settings?
                             task_id=task_id, step_id=current_step.id, user_approved=True
                         )
 
-                        if result["status"] == "completed":
+                        if result['status'] == "completed":
                             completed_steps.append((step_index, current_step, result))
                         else:
                             failed_step = (step_index, current_step, result)
@@ -2333,13 +2333,13 @@ Would you like to try again with different settings?
 
         # 🏗️ CHECK FOR FOLLOW-UP REQUESTS ON RECENTLY CREATED PROJECT OR FAILED PROJECT
         if request.state and (
-            request.state.get("recent_project")
-            or request.state.get("project_creation_failed")
+            request.state.get('recent_project')
+            or request.state.get('project_creation_failed')
         ):
             # Handle failed project creation - user might want to open existing or try again
-            if request.state.get("project_creation_failed"):
-                failed_project_name = request.state.get("project_name", "")
-                parent_dir = request.state.get("parent_dir", "")
+            if request.state.get('project_creation_failed'):
+                failed_project_name = request.state.get('project_name', "")
+                parent_dir = request.state.get('parent_dir', "")
 
                 # Check if user wants to open the existing project
                 open_keywords = ["open", "show", "navigate", "go to", "switch to"]
@@ -2364,7 +2364,7 @@ Opening in a new VSCode window...""",
                                     "path": project_path,
                                     "name": failed_project_name,
                                     "type": "existing",
-                                    "description": request.state.get("description", ""),
+                                    "description": request.state.get('description', ""),
                                 },
                                 "context": "opened_existing",
                             },
@@ -2383,7 +2383,7 @@ Would you like to create it at a different location?""",
                             suggestions=["Try different location", "Cancel"],
                         )
 
-            recent_project = request.state.get("recent_project")
+            recent_project = request.state.get('recent_project')
             if not recent_project:
                 # No recent project context, continue
                 pass
@@ -2595,8 +2595,8 @@ What would you like to work on?""",
                     workspace_memories = [
                         m
                         for m in previous_memories
-                        if m.get("scope") == workspace_root
-                        and m.get("similarity", 0) > 0.8
+                        if m.get('scope') == workspace_root
+                        and m.get('similarity', 0) > 0.8
                     ]
 
                     if workspace_memories:
@@ -2605,10 +2605,10 @@ What would you like to work on?""",
                         return ChatResponse(
                             content=f"""✅ **I already implemented something similar!**
 
-I previously worked on: **{latest_memory.get("title", "this task")}**
+I previously worked on: **{latest_memory.get('title', "this task")}**
 
 **What I implemented:**
-{latest_memory.get("content", "Previous implementation details")}
+{latest_memory.get('content', "Previous implementation details")}
 
 **Options:**
 - If you want me to enhance or modify what's already there, please specify what changes you'd like
@@ -2897,8 +2897,8 @@ I'll implement this in **{len(steps)} step{"s" if len(steps) != 1 else ""}**:
                 bullets = []
                 seen = set()
                 for mem in memories:
-                    title = mem.get("title") or mem.get("scope") or mem.get("category")
-                    summary = (mem.get("content") or "").split("\n")[0][:180]
+                    title = mem.get('title') or mem.get('scope') or mem.get('category')
+                    summary = (mem.get('content') or "").split("\n")[0][:180]
                     key = (title or "", summary)
                     if key in seen:
                         continue
@@ -3004,7 +3004,7 @@ async def generate_proactive_suggestions(
     try:
         suggestions = []
 
-        if request.context.get("recentChanges"):
+        if request.context.get('recentChanges'):
             suggestions.extend(
                 [
                     "I notice recent changes in multiple files. Would you like me to check for conflicts?",
@@ -3012,7 +3012,7 @@ async def generate_proactive_suggestions(
                 ]
             )
 
-        if request.context.get("currentFiles"):
+        if request.context.get('currentFiles'):
             suggestions.extend(
                 [
                     "The current files look like they might need testing. Want me to help with that?",
@@ -3020,7 +3020,7 @@ async def generate_proactive_suggestions(
                 ]
             )
 
-        if request.context.get("activeTask"):
+        if request.context.get('activeTask'):
             suggestions.extend(
                 [
                     "Your current task might overlap with team work. Want to check?",
@@ -3196,7 +3196,7 @@ def _get_worst_severity(issues: List[Dict[str, Any]]) -> str:
     priority = {"none": 0, "info": 1, "warning": 2, "error": 3}
     worst = "none"
     for issue in issues:
-        sev = issue.get("severity", "info")
+        sev = issue.get('severity', "info")
         if priority.get(sev, 0) > priority.get(worst, 0):
             worst = sev
     return worst
@@ -3209,8 +3209,8 @@ def _format_issues_markdown(issues: List[Dict[str, Any]]) -> str:
 
     bullets = []
     for issue in issues:
-        severity = issue.get("severity", "info").upper()
-        message = issue.get("message", "Unknown issue")
+        severity = issue.get('severity', "info").upper()
+        message = issue.get('message', "Unknown issue")
         bullets.append(f"- **{severity}**: {message}")
 
     return "\n".join(bullets)
@@ -3410,7 +3410,7 @@ async def _handle_diff_review(request: NaviChatRequest) -> ChatResponse:
     if hasattr(request, "workspace_root") and request.workspace_root:
         workspace_root = request.workspace_root
     elif request.teamContext and isinstance(request.teamContext, dict):
-        workspace_root = request.teamContext.get("workspace_root")
+        workspace_root = request.teamContext.get('workspace_root')
 
     # Read content of new files
     new_file_contents: Dict[str, str] = {}
@@ -3601,7 +3601,7 @@ async def _call_llm_for_review(
         )
         resp.raise_for_status()
         data = resp.json()
-        content = (data.get("choices", [{}])[0].get("message", {}) or {}).get(
+        content = (data.get('choices', [{}])[0].get('message', {}) or {}).get(
             "content", ""
         )
 
@@ -3683,7 +3683,7 @@ async def _merge_partial_reviews(
         )
         resp.raise_for_status()
         data = resp.json()
-        content = (data.get("choices", [{}])[0].get("message", {}) or {}).get(
+        content = (data.get('choices', [{}])[0].get('message', {}) or {}).get(
             "content", ""
         )
 
@@ -3857,21 +3857,21 @@ async def _handle_task_query(
             from backend.core.db import get_engine
             from sqlalchemy.orm import sessionmaker
 
-            user_id = os.environ.get("DEV_USER_ID", "default_user")
+            user_id = os.environ.get('DEV_USER_ID', "default_user")
             engine = get_engine()
             SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
             with SessionLocal() as db:
                 memory_rows = list_jira_tasks_for_user(db, user_id, limit=20)
                 for row in memory_rows:
-                    tags = row.get("tags", {})
+                    tags = row.get('tags', {})
                     tasks.append(
                         {
-                            "jira_key": tags.get("key", row.get("scope", "")),
-                            "title": row.get("title", ""),
-                            "status": tags.get("status", "Unknown"),
-                            "scope": row.get("scope", ""),
-                            "updated_at": row.get("updated_at", ""),
+                            "jira_key": tags.get('key', row.get('scope', "")),
+                            "title": row.get('title', ""),
+                            "status": tags.get('status', "Unknown"),
+                            "scope": row.get('scope', ""),
+                            "updated_at": row.get('updated_at', ""),
                         }
                     )
         except Exception as e:
@@ -3890,7 +3890,7 @@ async def _handle_task_query(
 
         content = f"You have {len(tasks)} assigned tasks.\n\n�� **Your JIRA Tasks:**\n"
         for task in tasks[:5]:
-            status = task.get("status")
+            status = task.get('status')
             status_emoji = (
                 "🔄"
                 if status == "In Progress"
@@ -3900,8 +3900,8 @@ async def _handle_task_query(
                 if status == "Done"
                 else "📌"
             )
-            jira_key = task.get("jira_key", "")
-            title = task.get("title", "").replace(f"[Jira] {jira_key}: ", "")
+            jira_key = task.get('jira_key', "")
+            title = task.get('title', "").replace(f"[Jira] {jira_key}: ", "")
             content += (
                 f"{status_emoji} **{jira_key}**: {title} ({status or 'Unknown'})\n"
             )
@@ -3940,7 +3940,7 @@ async def _handle_team_query(
             response = await client.get(f"{api_base}/api/activity/recent")
             if response.status_code == 200:
                 data = response.json()
-                team_activity = data.get("items", [])
+                team_activity = data.get('items', [])
         except Exception as e:
             logger.warning(f"Failed to fetch team activity: {e}")
 
@@ -3956,10 +3956,10 @@ async def _handle_team_query(
 
         content = "🔄 **Recent Team Activity:**\n\n"
         for activity in team_activity[:5]:
-            time_ago = _format_time_ago(activity.get("timestamp"))
+            time_ago = _format_time_ago(activity.get('timestamp'))
             content += f"• **{activity.get('author')}** {activity.get('action')} on **{activity.get('target')}** ({time_ago})\n"
 
-        if context.get("current_task"):
+        if context.get('current_task'):
             content += "\n💡 **Tip:** I can help you coordinate with teammates working on related tasks."
 
         suggestions = [
@@ -3984,9 +3984,9 @@ async def _handle_plan_request(
     intent: Dict[str, Any], context: Dict[str, Any]
 ) -> ChatResponse:
     try:
-        current_task = context.get("current_task") or context.get(
+        current_task = context.get('current_task') or context.get(
             "task_context", {}
-        ).get("key")
+        ).get('key')
         if not current_task:
             return ChatResponse(
                 content="I'd love to help you create a plan! Which task would you like me to plan for?",
@@ -3997,12 +3997,12 @@ async def _handle_plan_request(
                 ],
             )
 
-        task_context = context.get("task_context", {})
+        task_context = context.get('task_context', {})
         content = f"I'll create a detailed plan for **{current_task}**.\n\n"
         content += (
             f"**Task**: {task_context.get('summary', 'Task details loading...')}\n\n"
         )
-        if task_context.get("description"):
+        if task_context.get('description'):
             content += f"**Description**: {task_context['description'][:200]}...\n\n"
         content += (
             "Let me analyze the requirements and generate an implementation plan."
@@ -4038,7 +4038,7 @@ async def _handle_code_help(
     if llm_service:
         try:
             # Call LLM with engineering context
-            question = intent.get("query", "Help me with coding")
+            question = intent.get('query', "Help me with coding")
             response = await llm_service.generate_engineering_response(
                 question, context
             )
@@ -4084,7 +4084,7 @@ async def _handle_general_query(
     if llm_service:
         try:
             # Call LLM with full context
-            question = intent.get("query", "Tell me about what you can do")
+            question = intent.get('query', "Tell me about what you can do")
             response = await llm_service.generate_engineering_response(
                 question, context
             )
@@ -4210,7 +4210,7 @@ async def navi_agent_stream(request: NaviChatRequest):
         )
 
     # Get provider/model from request or environment
-    provider = request.provider or os.environ.get("DEFAULT_LLM_PROVIDER", "anthropic")
+    provider = request.provider or os.environ.get('DEFAULT_LLM_PROVIDER', "anthropic")
     model = request.model
 
     # Build project context from request
@@ -4253,8 +4253,8 @@ async def navi_agent_stream(request: NaviChatRequest):
 
                 elif event.type == AgentEventType.TOOL_CALL:
                     # Map tool calls to activity events
-                    tool_name = event.data.get("name", "unknown")
-                    tool_args = event.data.get("arguments", {})
+                    tool_name = event.data.get('name', "unknown")
+                    tool_args = event.data.get('arguments', {})
 
                     kind = "command"
                     label = tool_name
@@ -4263,46 +4263,46 @@ async def navi_agent_stream(request: NaviChatRequest):
                     if tool_name == "read_file":
                         kind = "read"
                         label = "Reading"
-                        detail = tool_args.get("path", "")
+                        detail = tool_args.get('path', "")
                     elif tool_name == "write_file":
                         kind = "create"
                         label = "Creating"
-                        detail = tool_args.get("path", "")
+                        detail = tool_args.get('path', "")
                     elif tool_name == "edit_file":
                         kind = "edit"
                         label = "Editing"
-                        detail = tool_args.get("path", "")
+                        detail = tool_args.get('path', "")
                     elif tool_name == "run_command":
                         kind = "command"
                         label = "Running"
-                        detail = tool_args.get("command", "")
+                        detail = tool_args.get('command', "")
                     elif tool_name == "search_files":
                         kind = "search"
                         label = "Searching"
-                        detail = tool_args.get("pattern", "")
+                        detail = tool_args.get('pattern', "")
                     elif tool_name == "list_directory":
                         kind = "read"
                         label = "Listing"
-                        detail = tool_args.get("path", "")
+                        detail = tool_args.get('path', "")
 
                     yield f"data: {json.dumps({'activity': {'kind': kind, 'label': label, 'detail': detail, 'status': 'running', 'tool_id': event.data.get('id')}})}\n\n"
 
                 elif event.type == AgentEventType.TOOL_RESULT:
                     # Update activity status based on result
-                    result = event.data.get("result", {})
-                    success = result.get("success", True)
+                    result = event.data.get('result', {})
+                    success = result.get('success', True)
                     status = "done" if success else "error"
 
                     yield f"data: {json.dumps({'activity': {'kind': 'tool_result', 'label': event.data.get('name', 'Tool'), 'detail': 'completed' if success else result.get('error', 'failed'), 'status': status, 'tool_id': event.data.get('id')}})}\n\n"
 
                     # Also emit the result content for display
-                    if result.get("stdout"):
+                    if result.get('stdout'):
                         yield f"data: {json.dumps({'tool_output': {'type': 'stdout', 'content': result['stdout'][:2000]}})}\n\n"
-                    if result.get("stderr"):
+                    if result.get('stderr'):
                         yield f"data: {json.dumps({'tool_output': {'type': 'stderr', 'content': result['stderr'][:2000]}})}\n\n"
-                    if result.get("content"):
+                    if result.get('content'):
                         # File content - truncate for large files
-                        content = result["content"]
+                        content = result['content']
                         if len(content) > 5000:
                             content = (
                                 content[:5000]

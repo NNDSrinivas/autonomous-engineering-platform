@@ -35,10 +35,7 @@ _SENTENCE_TRANSFORMERS_CHECKED = False
 
 def _load_sentence_transformer():
     """Lazy import to avoid heavy torch/transformers startup on module import."""
-    global \
-        SentenceTransformer, \
-        SENTENCE_TRANSFORMERS_AVAILABLE, \
-        _SENTENCE_TRANSFORMERS_CHECKED
+    global SentenceTransformer, SENTENCE_TRANSFORMERS_AVAILABLE, _SENTENCE_TRANSFORMERS_CHECKED
     if SentenceTransformer is not None:
         return SentenceTransformer
     if _SENTENCE_TRANSFORMERS_CHECKED:

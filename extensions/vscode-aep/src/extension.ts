@@ -3229,6 +3229,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             // Idempotent guard - only initialize once
             if (this._webviewReady) {
               console.log('[AEP] Webview already initialized, ignoring duplicate ready signal');
+              // Still send acknowledgment in case webview is waiting for auth state
+              // (e.g., after component remount or hot reload during development)
+              await this.emitCurrentAuthState();
               break;
             }
 

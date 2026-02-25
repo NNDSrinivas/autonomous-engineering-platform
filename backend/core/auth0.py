@@ -1,6 +1,13 @@
 from __future__ import annotations
 import os
+import sys
 from dotenv import load_dotenv
+
+
+class Auth0ConfigurationError(Exception):
+    """Raised when Auth0 configuration is invalid or missing."""
+    pass
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -18,11 +25,16 @@ AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "").strip()
 _issuer_from_env = os.getenv("AUTH0_ISSUER")
 
 # Validate that AUTH0_ISSUER is not empty/whitespace if explicitly set
-if _issuer_from_env is not None and not _issuer_from_env.strip():
-    raise ValueError(
-        "AUTH0_ISSUER is set but empty/whitespace. "
-        "Remove the environment variable or set a valid https:// URL."
-    )
+try:
+    if _issuer_from_env is not None and not _issuer_from_env.strip():
+        raise Auth0ConfigurationError(
+            "AUTH0_ISSUER is set but empty/whitespace. "
+            "Remove the environment variable or set a valid https:// URL. "
+            "Example: AUTH0_ISSUER=https://your-tenant.us.auth0.com/"
+        )
+except Auth0ConfigurationError as e:
+    print(f"❌ Auth0 Configuration Error: {e}", file=sys.stderr)
+    raise
 
 if _issuer_from_env:
     AUTH0_ISSUER = _issuer_from_env.strip().rstrip("/") + "/"

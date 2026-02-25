@@ -139,13 +139,43 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
     if (!detail) return title;
 
     // Some upstream plan titles arrive truncated or incomplete.
-    // Detect truncation: title doesn't end with punctuation, and detail is substantially longer.
-    // This handles both short truncations (e.g., "setu") and mid-length incomplete titles.
+    // Use robust truncation detection with concrete signals (ellipsis or mid-word cuts).
+    const minTitleLength = 4;
+    const maxTitleLength = 48;
+    const withinLengthBounds =
+      title.length >= minTitleLength && title.length <= maxTitleLength;
+    const detailSubstantiallyLonger = detail.length > title.length + 6;
+
+    // Explicit ellipsis (ASCII "..." or Unicode "…") is a strong truncation signal
+    const looksEllipsized = /(\.\.\.|…)$/.test(title);
+
+    // Detect titles that end mid-word compared to detail:
+    // - detail starts with title (case-insensitive)
+    // - title ends with an alphanumeric character
+    // - the next character in detail is also alphanumeric (no space/punctuation)
+    const endsMidWordInDetail = (() => {
+      if (!title || !detail) return false;
+      const lowerTitle = title.toLowerCase();
+      const lowerDetail = detail.toLowerCase();
+      if (!lowerDetail.startsWith(lowerTitle)) {
+        return false;
+      }
+      if (!/[a-z0-9]$/i.test(lowerTitle)) {
+        return false;
+      }
+      const nextChar = lowerDetail.charAt(lowerTitle.length);
+      if (!nextChar) {
+        return false;
+      }
+      // If next character is alphanumeric with no intervening whitespace/punctuation,
+      // the title likely ended mid-word
+      return /[a-z0-9]/i.test(nextChar);
+    })();
+
     const titleLikelyTruncated =
-      title.length >= 4 &&
-      title.length <= 48 &&
-      !/[.!?:)]$/.test(title) &&
-      detail.length > title.length + 6;
+      withinLengthBounds &&
+      detailSubstantiallyLonger &&
+      (looksEllipsized || endsMidWordInDetail);
 
     return titleLikelyTruncated ? detail : title;
   };

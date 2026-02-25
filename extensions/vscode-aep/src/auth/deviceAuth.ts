@@ -78,13 +78,11 @@ export class DeviceAuthService {
   }
 
   private getVerificationTarget(data: DeviceCodeResponse): string {
-    // Use clean verification_uri (without user_code in URL) to avoid exposing code in VS Code external link prompt
-    // The user_code is shown in the webview as a fallback helper if browser doesn't open automatically
-    const target = (data.verification_uri || "").trim();
-    if (!target) {
-      throw new Error("Sign-in verification URL is missing from backend response.");
-    }
-    return target;
+    // Use NAVI Connect page for premium branded experience
+    // This wraps Auth0's device flow in a branded NAVI interface
+    const connectUrl = process.env.NAVI_CONNECT_URL || "http://localhost:3030";
+    const userCode = encodeURIComponent(data.user_code);
+    return `${connectUrl}/activate?user_code=${userCode}&client=vscode`;
   }
 
   private parseJsonSafe(value: string): unknown {
@@ -437,8 +435,20 @@ export class DeviceAuthService {
         return refreshed;
       }
 
-      // Refresh failed, force re-auth
+      // Refresh failed, force re-auth and notify user
+      console.warn("[AEP] Token refresh failed, logging out user");
       await this.logout();
+
+      // Show notification explaining the logout
+      vscode.window.showWarningMessage(
+        "Your AEP session has expired. Please sign in again to continue.",
+        "Sign In"
+      ).then(selection => {
+        if (selection === "Sign In") {
+          vscode.commands.executeCommand("aep.auth.login");
+        }
+      });
+
       return undefined;
     }
     return await this.context.secrets.get("aep.authToken");
@@ -478,7 +488,26 @@ export class DeviceAuthService {
         });
 
         if (!response.ok) {
-          // Retry transient errors (5xx, 429); hard fail on auth errors (401, 403)
+          // Auth0-specific errors (400, 401, 403) indicate invalid/expired refresh tokens
+          // These should not be retried as they require re-authentication
+          const isAuthError =
+            response.status === 400 || response.status === 401 || response.status === 403;
+
+          if (isAuthError) {
+            // Try to parse error details for better logging
+            try {
+              const errorData = await response.json() as Record<string, any>;
+              console.warn(
+                `[AEP] Token refresh failed: HTTP ${response.status}`,
+                errorData.error || errorData
+              );
+            } catch {
+              console.warn(`[AEP] Token refresh failed: HTTP ${response.status}`);
+            }
+            return undefined;
+          }
+
+          // Retry transient errors (5xx, 429)
           const isTransient =
             response.status === 429 || (response.status >= 500 && response.status < 600);
 
@@ -493,7 +522,7 @@ export class DeviceAuthService {
             continue;
           }
 
-          // Hard failure (auth error or exhausted retries)
+          // Exhausted retries on transient errors
           console.warn(
             `[AEP] Token refresh failed: HTTP ${response.status} after ${attempt + 1} attempt(s)`
           );

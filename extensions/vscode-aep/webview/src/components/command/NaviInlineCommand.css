@@ -259,6 +259,16 @@
   border-radius: 2px;
 }
 
+/* Optional: Wrapped output mode for better readability on small screens.
+   Add the 'nic-output--wrap' class to enable line wrapping for command output.
+   By default, output uses 'white-space: pre' to preserve formatting, but long
+   lines require horizontal scrolling. This mode trades formatting for readability. */
+.nic-output--wrap pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
 .nic-output-hint {
   display: flex;
   align-items: center;

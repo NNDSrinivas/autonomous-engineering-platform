@@ -11,8 +11,10 @@ import 'prismjs/components/prism-go';
 import 'prismjs/components/prism-rust';
 
 // Rate limiting for production Prism error logging (prevent console spam)
-let prismWarnCount = 0;
+// Track warning timestamps to implement time-based window (max 3 per hour)
+const prismWarnTimestamps: number[] = [];
 const MAX_PRISM_WARNINGS = 3;
+const PRISM_WARN_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 export interface DiffLine {
   type: 'addition' | 'deletion' | 'context';
@@ -143,16 +145,25 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
 
       if (import.meta.env.MODE !== 'production') {
         console.error('Prism.highlight failed in FileDiffView.highlightLine', { ...meta, error });
-      } else if (prismWarnCount < MAX_PRISM_WARNINGS) {
-        // In production, log sanitized warnings (rate-limited to prevent spam)
-        prismWarnCount += 1;
-        const err = error as any;
-        console.warn('Prism.highlight failed (production)', {
-          ...meta,
-          errorName: typeof err?.name === 'string' ? err.name : undefined,
-          errorMessage: typeof err?.message === 'string' ? err.message : undefined,
-          warnCount: prismWarnCount,
-        });
+      } else {
+        // In production, log sanitized warnings with time-based rate limiting
+        const now = Date.now();
+        // Remove timestamps older than the window
+        while (prismWarnTimestamps.length > 0 && now - prismWarnTimestamps[0] > PRISM_WARN_WINDOW_MS) {
+          prismWarnTimestamps.shift();
+        }
+
+        if (prismWarnTimestamps.length < MAX_PRISM_WARNINGS) {
+          prismWarnTimestamps.push(now);
+          const err = error as any;
+          console.warn('Prism.highlight failed (production)', {
+            ...meta,
+            errorName: typeof err?.name === 'string' ? err.name : undefined,
+            errorMessage: typeof err?.message === 'string' ? err.message : undefined,
+            warnCount: prismWarnTimestamps.length,
+            windowResetInMs: PRISM_WARN_WINDOW_MS,
+          });
+        }
       }
 
       return escapeHtml(raw);

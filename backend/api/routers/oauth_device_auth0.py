@@ -99,9 +99,13 @@ _JWKS_LOCK = asyncio.Lock()
 AUTH0_JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 
 # Rate limiting for refresh endpoint (per-IP, 60s window)
-# NOTE: This rate limiter is also process-local. Each worker has its own 20 req/min
-# bucket per IP. For strict global rate limiting across workers, use Redis-backed
-# rate limiting (e.g., aioredis with token bucket).
+# IMPORTANT: This rate limiter is process-local (in-memory TTLCache).
+# - Single worker: 20 requests/minute per IP (as intended)
+# - Multi-worker (e.g., 4 workers): Effective limit is ~80 requests/minute per IP
+#   (20 per worker × 4 workers), since each worker maintains its own bucket.
+# For strict global rate limiting across workers (e.g., in production with multiple
+# Gunicorn/Uvicorn workers), implement Redis-backed rate limiting using a shared
+# token bucket (e.g., aioredis with atomic INCR/EXPIRE or Lua scripts).
 _REFRESH_LIMIT = TTLCache(maxsize=5000, ttl=60)
 
 
@@ -404,6 +408,17 @@ async def refresh(body: RefreshIn, request: Request):
     2. Verifies the new id_token signature and claims (RS256/JWKS)
     3. Mints a fresh AEP session JWT
     4. Returns new refresh_token if Auth0 rotated it
+
+    SECURITY NOTE: For enhanced security, enable the following in Auth0 Dashboard:
+    - "Refresh Token Rotation": Auth0 will issue a new refresh_token on each use
+      and invalidate the previous one, preventing token replay attacks.
+    - "Absolute Expiration": Set a maximum lifetime for refresh tokens (e.g., 30 days)
+      to limit exposure if a token is compromised.
+
+    Without rotation enabled, the same refresh_token can be reused indefinitely until
+    it expires. This endpoint does NOT validate revocation status with Auth0; if a
+    refresh_token has been manually revoked in Auth0, the exchange will fail with
+    invalid_grant.
     """
     _validate_auth0_settings()
 

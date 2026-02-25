@@ -6893,12 +6893,19 @@ export default function NaviChatPanel({
       const [consentId] = Array.from(pendingConsents.entries())[0] || [];
       if (consentId) {
         const normalized = text.toLowerCase().replace(/[^\w\s]/g, " ").trim();
+
+        // Safety check: Only recognize consent patterns in short messages (≤ 30 chars)
+        // to prevent accidental approval from longer conversational responses like
+        // "yes, I understand the implications" or "ok, but what about..."
+        const isShortConfirmation = normalized.length <= 30;
+
         const isAllowAlwaysExact = /^(allow always exact|always exact|trust this command|always allow this command)\b/.test(normalized);
         const isAllowAlwaysType = /^(allow always type|always this type|trust this command type)\b/.test(normalized);
-        const isAllowOnce =
+        const isAllowOnce = isShortConfirmation && (
           /^(yes|y|approve|approved|allow|proceed|continue|ok|okay|confirm|go ahead)\b/.test(normalized) ||
-          /\byes i confirm\b/.test(normalized);
-        const isDeny = /^(no|n|deny|reject|cancel|stop|dont allow|do not allow)\b/.test(normalized);
+          /\byes i confirm\b/.test(normalized)
+        );
+        const isDeny = isShortConfirmation && /^(no|n|deny|reject|cancel|stop|dont allow|do not allow)\b/.test(normalized);
 
         if (isAllowAlwaysExact || isAllowAlwaysType || isAllowOnce || isDeny) {
           if (!overrideText) setInput("");
@@ -10452,9 +10459,13 @@ export default function NaviChatPanel({
                         });
 
                         const readCount = readFiles.size;
+                        const totalExploration = readCount + searchCount + listCount;
                         const collapseReadDetails = readCount >= 4;
                         const collapseSearchOrListDetails = searchCount >= 2 || listCount >= 2;
-                        const shouldShow = collapseReadDetails || collapseSearchOrListDetails;
+
+                        // Show exploration summary when there are 2+ total exploration activities
+                        // This provides consistent UX rather than switching between stream and summary
+                        const shouldShow = totalExploration >= 2;
 
                         if (!shouldShow) {
                           return null;
@@ -10466,22 +10477,19 @@ export default function NaviChatPanel({
                         ]);
 
                         const parts: string[] = [];
-                        if (collapseReadDetails) {
+                        if (readCount > 0) {
                           parts.push(`${readCount} file${readCount === 1 ? '' : 's'}`);
                         }
-                        if (searchCount >= 2) {
+                        if (searchCount > 0) {
                           parts.push(`${searchCount} search${searchCount === 1 ? '' : 'es'}`);
                         }
-                        if (listCount >= 2) {
+                        if (listCount > 0) {
                           parts.push(`${listCount} list${listCount === 1 ? '' : 's'}`);
                         }
 
-                        const summaryItems = explorationItems.filter((item) => {
-                          if (item.kind === 'read') return collapseReadDetails;
-                          if (item.kind === 'search') return searchCount >= 2;
-                          if (item.kind === 'list') return listCount >= 2;
-                          return false;
-                        });
+                        // Include all exploration items in the summary for consistency
+                        // The collapse flags control whether items are also shown in the stream
+                        const summaryItems = explorationItems;
 
                         return {
                           label: `Exploring ${parts.join(', ')}`,

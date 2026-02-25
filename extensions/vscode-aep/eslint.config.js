@@ -3,9 +3,14 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
+    // Ignore build outputs, dependencies, and webview directory
+    // NOTE: webview/ contains React/TSX code with its own build process (Vite).
+    // It uses different TypeScript configurations and globals (browser vs. Node.js).
+    // Consider setting up a separate ESLint config for webview/ if linting is needed.
     ignores: ["out/", "dist/", "node_modules/", "webview/"],
   },
   {
+    // Extension backend code (VS Code extension host, Node.js environment)
     files: ["src/**/*.ts"],
     extends: [tseslint.configs.recommended],
     languageOptions: {

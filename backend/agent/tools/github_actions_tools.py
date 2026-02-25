@@ -350,8 +350,8 @@ async def generate_github_actions(
 
 ## Workflow Overview
 - **Name**: {workflow_name}
-- **Triggers**: {', '.join(triggers)}
-- **Jobs**: lint, test, build{', deploy' if include_deploy else ''}
+- **Triggers**: {", ".join(triggers)}
+- **Jobs**: lint, test, build{", deploy" if include_deploy else ""}
 
 ## Generated Configuration
 

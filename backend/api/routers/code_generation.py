@@ -993,8 +993,8 @@ async def _perform_refactoring(
 {request.code}
 
 Refactoring type: {request.refactor_type}
-Goals: {', '.join(request.goals)}
-Constraints: {', '.join(request.constraints)}
+Goals: {", ".join(request.goals)}
+Constraints: {", ".join(request.constraints)}
 
 Provide:
 1. The refactored code
@@ -1084,7 +1084,7 @@ async def _generate_code_explanation(
 
 {code}
 
-{f'Focus on: {focus}' if focus else ''}
+{f"Focus on: {focus}" if focus else ""}
 
 Include:
 - Overall purpose and functionality
@@ -1154,8 +1154,8 @@ async def _convert_code_language(
 
 Requirements:
 - Maintain equivalent functionality
-- {'Preserve coding style and patterns' if maintain_style else 'Use idiomatic ' + to_lang + ' style'}
-- {'Include explanatory comments' if include_comments else 'Minimal comments'}
+- {"Preserve coding style and patterns" if maintain_style else "Use idiomatic " + to_lang + " style"}
+- {"Include explanatory comments" if include_comments else "Minimal comments"}
 - Note any language-specific considerations
 
 Provide:

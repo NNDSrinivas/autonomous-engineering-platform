@@ -1,15 +1,28 @@
 import { handleAuth, handleLogin, handleCallback, handleLogout } from "@auth0/nextjs-auth0";
 import { Session } from "@auth0/nextjs-auth0";
 import type { NextRequest } from "next/server";
+import type { NextApiRequest } from "next";
 import { validateReturnTo } from "@/lib/auth/validation";
 
 export const GET = handleAuth({
-  login: handleLogin((req: NextRequest) => {
+  login: handleLogin((req: NextRequest | NextApiRequest) => {
     // Get connection from query params for direct social login
-    const searchParams = req.nextUrl.searchParams;
+    // Handle both App Router (NextRequest) and Pages Router (NextApiRequest)
+    let connection: string | null = null;
+    let returnToParam: string | null = null;
 
-    const connection = searchParams.get("connection");
-    const returnToParam = searchParams.get("returnTo");
+    if ('nextUrl' in req) {
+      // App Router (NextRequest)
+      const searchParams = req.nextUrl.searchParams;
+      connection = searchParams.get("connection");
+      returnToParam = searchParams.get("returnTo");
+    } else {
+      // Pages Router (NextApiRequest) - use query object
+      const query = req.query as { connection?: string; returnTo?: string };
+      connection = query.connection || null;
+      returnToParam = query.returnTo || null;
+    }
+
     const returnTo = validateReturnTo(returnToParam, "/app/chats");
 
     return {
@@ -23,7 +36,7 @@ export const GET = handleAuth({
   }),
   callback: handleCallback({
     afterCallback: async (
-      _req: NextRequest,
+      _req: NextRequest | NextApiRequest,
       session: Session
     ): Promise<Session> => {
       // Sync user to backend database after successful authentication

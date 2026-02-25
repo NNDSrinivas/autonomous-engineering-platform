@@ -3,6 +3,7 @@
 REAL Git-Based Review Service - NO FAKE/SYNTHETIC ANALYSIS
 Provides ACTUAL git diff analysis with LLM-powered issue detection
 """
+
 import logging
 import json
 import subprocess

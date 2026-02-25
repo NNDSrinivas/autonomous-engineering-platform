@@ -33,8 +33,8 @@ class BudgetExceeded(Exception):
 
 @dataclass(frozen=True)
 class BudgetScope:
-    scope: str       # global|org|user|provider|model
-    scope_id: str    # e.g. global, org:123, user:abc, openai, openai/gpt-4o
+    scope: str  # global|org|user|provider|model
+    scope_id: str  # e.g. global, org:123, user:abc, openai, openai/gpt-4o
     per_day_limit: int
 
 
@@ -43,6 +43,7 @@ class BudgetReservationToken:
     """
     Captures reservation day (UTC) so commit/release are midnight-safe.
     """
+
     day: str  # YYYY-MM-DD UTC
     amount: int
     scopes: Tuple[BudgetScope, ...]
@@ -165,7 +166,13 @@ end
 return {1}
 """
 
-    def __init__(self, redis_client: Optional[redis.Redis], *, enforcement_mode: str, policy: dict):
+    def __init__(
+        self,
+        redis_client: Optional[redis.Redis],
+        *,
+        enforcement_mode: str,
+        policy: dict,
+    ):
         self._r = redis_client
         self.enforcement_mode = enforcement_mode  # strict|advisory|disabled
         self.policy = policy
@@ -173,7 +180,9 @@ return {1}
     def _key_for(self, scope: BudgetScope, day: str) -> str:
         return f"budget:{scope.scope}:{_safe_id(scope.scope_id)}:{day}"
 
-    async def reserve(self, amount: int, scopes: List[BudgetScope]) -> BudgetReservationToken:
+    async def reserve(
+        self, amount: int, scopes: List[BudgetScope]
+    ) -> BudgetReservationToken:
         day = _utc_day_bucket()
 
         if amount <= 0:
@@ -185,7 +194,9 @@ return {1}
         if self._r is None:
             error_msg = "Redis client is not configured"
             for scope in scopes:
-                BUDGET_RESERVE_TOTAL.labels(scope_type=scope.scope, status="unavailable").inc()
+                BUDGET_RESERVE_TOTAL.labels(
+                    scope_type=scope.scope, status="unavailable"
+                ).inc()
             if self.enforcement_mode == "strict":
                 raise BudgetExceeded(
                     "Budget enforcement unavailable (Redis/Lua error)",
@@ -204,7 +215,9 @@ return {1}
         except Exception as e:
             # Emit metric: reserve unavailable
             for scope in scopes:
-                BUDGET_RESERVE_TOTAL.labels(scope_type=scope.scope, status="unavailable").inc()
+                BUDGET_RESERVE_TOTAL.labels(
+                    scope_type=scope.scope, status="unavailable"
+                ).inc()
 
             if self.enforcement_mode == "strict":
                 raise BudgetExceeded(
@@ -218,11 +231,17 @@ return {1}
         if isinstance(res, list) and len(res) >= 1 and int(res[0]) == 0:
             failed_index = int(res[1])
             remaining = int(res[2])
-            failed_scope = scopes[failed_index - 1] if 0 <= failed_index - 1 < len(scopes) else None
+            failed_scope = (
+                scopes[failed_index - 1]
+                if 0 <= failed_index - 1 < len(scopes)
+                else None
+            )
 
             # Emit metric: reserve exceeded
             for scope in scopes:
-                BUDGET_RESERVE_TOTAL.labels(scope_type=scope.scope, status="exceeded").inc()
+                BUDGET_RESERVE_TOTAL.labels(
+                    scope_type=scope.scope, status="exceeded"
+                ).inc()
 
             if self.enforcement_mode == "advisory":
                 # Advisory mode: log the breach but allow the request through.
@@ -232,7 +251,9 @@ return {1}
                     failed_scope.scope_id if failed_scope else "unknown",
                     remaining,
                 )
-                return BudgetReservationToken(day=day, amount=amount, scopes=tuple(scopes))
+                return BudgetReservationToken(
+                    day=day, amount=amount, scopes=tuple(scopes)
+                )
 
             raise BudgetExceeded(
                 "Budget exceeded",
@@ -243,11 +264,18 @@ return {1}
                     "failed_scope": {
                         "scope": failed_scope.scope,
                         "scope_id": failed_scope.scope_id,
-                    } if failed_scope else None,
+                    }
+                    if failed_scope
+                    else None,
                 },
             )
 
-        logger.info("Budget reserved: amount=%s day=%s scopes=%s", amount, day, [(s.scope, s.scope_id) for s in scopes])
+        logger.info(
+            "Budget reserved: amount=%s day=%s scopes=%s",
+            amount,
+            day,
+            [(s.scope, s.scope_id) for s in scopes],
+        )
 
         # Emit metrics: reserve success
         for scope in scopes:
@@ -262,7 +290,9 @@ return {1}
         if self.enforcement_mode == "disabled":
             return
         if self._r is None:
-            logger.warning("Budget commit skipped (Redis not configured): advisory mode")
+            logger.warning(
+                "Budget commit skipped (Redis not configured): advisory mode"
+            )
             return
 
         used_amount = int(used_amount) if used_amount is not None else token.amount
@@ -274,20 +304,33 @@ return {1}
             if ratio >= 5.0:
                 logger.critical(
                     "BUDGET ANOMALY: Massive overspend detected reserved=%s used=%s ratio=%.2fx",
-                    token.amount, used_amount, ratio,
+                    token.amount,
+                    used_amount,
+                    ratio,
                 )
                 # Emit metric: critical overspend anomaly
                 for scope in token.scopes:
-                    BUDGET_OVERSPEND_ANOMALIES.labels(scope_type=scope.scope, severity="critical").inc()
+                    BUDGET_OVERSPEND_ANOMALIES.labels(
+                        scope_type=scope.scope, severity="critical"
+                    ).inc()
             else:
-                logger.warning("Budget overspend: reserved=%s used=%s", token.amount, used_amount)
+                logger.warning(
+                    "Budget overspend: reserved=%s used=%s", token.amount, used_amount
+                )
                 # Emit metric: moderate overspend anomaly
                 for scope in token.scopes:
-                    BUDGET_OVERSPEND_ANOMALIES.labels(scope_type=scope.scope, severity="moderate").inc()
+                    BUDGET_OVERSPEND_ANOMALIES.labels(
+                        scope_type=scope.scope, severity="moderate"
+                    ).inc()
 
         keys = [self._key_for(s, token.day) for s in token.scopes]
         limits = [s.per_day_limit for s in token.scopes]
-        argv = [*map(str, limits), str(token.amount), str(used_amount), str(self.TTL_SECONDS)]
+        argv = [
+            *map(str, limits),
+            str(token.amount),
+            str(used_amount),
+            str(self.TTL_SECONDS),
+        ]
 
         try:
             await self._r.eval(self.LUA_COMMIT, len(keys), *keys, *argv)
@@ -296,7 +339,12 @@ return {1}
             logger.error("Budget commit failed (non-blocking): %s", e)
             return
 
-        logger.info("Budget committed: reserved=%s used=%s day=%s", token.amount, used_amount, token.day)
+        logger.info(
+            "Budget committed: reserved=%s used=%s day=%s",
+            token.amount,
+            used_amount,
+            token.day,
+        )
 
         # Emit metrics: commit success
         for scope in token.scopes:
@@ -308,7 +356,9 @@ return {1}
         if self.enforcement_mode == "disabled":
             return
         if self._r is None:
-            logger.warning("Budget release skipped (Redis not configured): advisory mode")
+            logger.warning(
+                "Budget release skipped (Redis not configured): advisory mode"
+            )
             return
 
         keys = [self._key_for(s, token.day) for s in token.scopes]
@@ -327,7 +377,9 @@ return {1}
         for scope in token.scopes:
             BUDGET_TOKENS_RELEASED.labels(scope_type=scope.scope).inc(token.amount)
 
-    async def snapshot(self, scopes: List[BudgetScope], day: Optional[str] = None) -> Dict[str, Dict[str, int]]:
+    async def snapshot(
+        self, scopes: List[BudgetScope], day: Optional[str] = None
+    ) -> Dict[str, Dict[str, int]]:
         day = day or _utc_day_bucket()
         out: Dict[str, Dict[str, int]] = {}
 
@@ -335,7 +387,12 @@ return {1}
         if self._r is None:
             for s in scopes:
                 key = self._key_for(s, day)
-                out[key] = {"limit": s.per_day_limit, "used": 0, "reserved": 0, "remaining": s.per_day_limit}
+                out[key] = {
+                    "limit": s.per_day_limit,
+                    "used": 0,
+                    "reserved": 0,
+                    "remaining": s.per_day_limit,
+                }
             return out
 
         for s in scopes:
@@ -349,5 +406,10 @@ return {1}
             used = int(data.get(b"used", b"0")) if data else 0
             reserved = int(data.get(b"reserved", b"0")) if data else 0
             remaining = limit - used - reserved
-            out[key] = {"limit": limit, "used": used, "reserved": reserved, "remaining": remaining}
+            out[key] = {
+                "limit": limit,
+                "used": used,
+                "reserved": reserved,
+                "remaining": remaining,
+            }
         return out

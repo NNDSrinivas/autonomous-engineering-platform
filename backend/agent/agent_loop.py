@@ -1029,7 +1029,7 @@ async def _execute_plan_with_mode(
     for i, step_data in enumerate(steps):
         step_type = step_data.get("step_type", "analyze")
         tool = step_data.get("tool", "")
-        description = step_data.get("description", f"Step {i+1}")
+        description = step_data.get("description", f"Step {i + 1}")
 
         logger.info("[AGENT] Executing step %d/%d: %s", i + 1, len(steps), description)
 
@@ -1054,7 +1054,7 @@ async def _execute_plan_with_mode(
         if needs_approval:
             # Return early with approval request
             approval_message = (
-                f"**Step {i+1}/{len(steps)}: Approval Required**\n\n"
+                f"**Step {i + 1}/{len(steps)}: Approval Required**\n\n"
                 f"**Action:** {description}\n"
                 f"**Type:** {step_type}\n"
                 f"**Tool:** {tool}\n\n"
@@ -1113,12 +1113,12 @@ async def _execute_plan_with_mode(
             if isinstance(output, dict):
                 output = output.get("text", str(output))
 
-            all_outputs.append(f"**Step {i+1}: {description}**\n{output[:500]}...")
+            all_outputs.append(f"**Step {i + 1}: {description}**\n{output[:500]}...")
             completed_count += 1
 
         except Exception as e:
             logger.error("[AGENT] Step %d failed: %s", i + 1, e)
-            all_outputs.append(f"**Step {i+1}: {description}** - Failed: {e}")
+            all_outputs.append(f"**Step {i + 1}: {description}** - Failed: {e}")
             failed_count += 1
 
     # All steps completed

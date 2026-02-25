@@ -163,7 +163,7 @@ class CILogFetcher:
             raise RuntimeError("Session not initialized")
 
         headers = {
-            "Authorization": f'Bearer {self.github_config.token if self.github_config else ""}',
+            "Authorization": f"Bearer {self.github_config.token if self.github_config else ''}",
             "Accept": "application/vnd.github.v3+json",
         }
 

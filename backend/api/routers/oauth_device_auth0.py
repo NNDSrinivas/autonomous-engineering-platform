@@ -26,7 +26,9 @@ router = APIRouter(prefix="/oauth/device", tags=["oauth-device"])
 logger = logging.getLogger(__name__)
 
 
-def _error_detail(error: str, description: str, hint: str | None = None) -> dict[str, str]:
+def _error_detail(
+    error: str, description: str, hint: str | None = None
+) -> dict[str, str]:
     detail = {"error": error, "error_description": description}
     if hint:
         detail["hint"] = hint
@@ -126,10 +128,16 @@ async def _get_jwks(force_refresh: bool = False) -> dict:
     if _JWKS_CACHE_DOMAIN != AUTH0_DOMAIN:
         _JWKS_CACHE = None
         _JWKS_CACHE_DOMAIN = AUTH0_DOMAIN
-        logger.info(f"JWKS cache invalidated due to domain change: {_JWKS_CACHE_DOMAIN}")
+        logger.info(
+            f"JWKS cache invalidated due to domain change: {_JWKS_CACHE_DOMAIN}"
+        )
 
     # Fast path: cache is valid (skip if force_refresh requested)
-    if not force_refresh and _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
+    if (
+        not force_refresh
+        and _JWKS_CACHE is not None
+        and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS
+    ):
         return _JWKS_CACHE
 
     # Slow path: refresh cache with lock to prevent thundering herd
@@ -138,11 +146,17 @@ async def _get_jwks(force_refresh: bool = False) -> dict:
         if _JWKS_CACHE_DOMAIN != AUTH0_DOMAIN:
             _JWKS_CACHE = None
             _JWKS_CACHE_DOMAIN = AUTH0_DOMAIN
-            logger.info(f"JWKS cache invalidated due to domain change: {_JWKS_CACHE_DOMAIN}")
+            logger.info(
+                f"JWKS cache invalidated due to domain change: {_JWKS_CACHE_DOMAIN}"
+            )
 
         # Re-check after acquiring lock (another request may have refreshed)
         now = time.time()
-        if not force_refresh and _JWKS_CACHE is not None and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS:
+        if (
+            not force_refresh
+            and _JWKS_CACHE is not None
+            and (now - _JWKS_CACHE_AT) <= _JWKS_TTL_SECONDS
+        ):
             return _JWKS_CACHE
 
         try:
@@ -359,7 +373,8 @@ async def poll(body: PollIn):
         try:
             async with httpx.AsyncClient(timeout=10.0) as http:
                 ui = await http.get(
-                    USERINFO_URL, headers={"Authorization": f"Bearer {j['access_token']}"}
+                    USERINFO_URL,
+                    headers={"Authorization": f"Bearer {j['access_token']}"},
                 )
         except httpx.RequestError as exc:
             logger.warning("Auth0 userinfo request failed: %s", exc)
@@ -392,9 +407,7 @@ async def poll(body: PollIn):
         )
 
     return TokenOut(
-        access_token=aep_token,
-        expires_in=3600,
-        refresh_token=auth0_refresh_token
+        access_token=aep_token, expires_in=3600, refresh_token=auth0_refresh_token
     )
 
 

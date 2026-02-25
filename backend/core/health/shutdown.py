@@ -55,6 +55,7 @@ async def on_startup():
     # Budget manager init (non-blocking)
     try:
         from ...services.budget_manager_singleton import init_budget_manager
+
         await init_budget_manager()
         print("✅ Budget manager init attempted")
     except Exception as e:
@@ -87,6 +88,7 @@ async def on_shutdown():
     # Budget manager cleanup
     try:
         from ...services.budget_manager_singleton import close_budget_manager
+
         await close_budget_manager()
     except Exception as e:
         logger.warning("Budget manager cleanup failed during shutdown: %s", e)

@@ -36,8 +36,7 @@ class JiraClient:
 
         if not self.base_url:
             raise RuntimeError(
-                "JiraClient is not configured. "
-                "Set AEP_JIRA_BASE_URL or pass base_url."
+                "JiraClient is not configured. Set AEP_JIRA_BASE_URL or pass base_url."
             )
 
         use_bearer = bool(self.access_token)

@@ -49,7 +49,7 @@ class MarkdownFormatter:
     @staticmethod
     def numbered_list(items: List[str]) -> str:
         """Create a numbered list"""
-        return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items)) + "\n\n"
+        return "\n".join(f"{i + 1}. {item}" for i, item in enumerate(items)) + "\n\n"
 
     @staticmethod
     def blockquote(text: str) -> str:

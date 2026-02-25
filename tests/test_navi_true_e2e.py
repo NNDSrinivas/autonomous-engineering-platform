@@ -557,7 +557,7 @@ print("ALL_TESTS_PASSED")
     print(f"\nTotal: {total}")
     print(f"Passed: {passed}")
     print(f"Failed: {total - passed}")
-    print(f"Success Rate: {passed/total*100:.0f}%")
+    print(f"Success Rate: {passed / total * 100:.0f}%")
 
     # Cleanup
     if TEST_DIR.exists():

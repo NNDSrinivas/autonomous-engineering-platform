@@ -143,7 +143,9 @@ class TestExtensionSigning:
         tampered_files["malicious.py"] = b"import os; os.system('rm -rf /')"
 
         tampered_bundle = self.signing_service.create_extension_bundle(
-            self.test_manifest, tampered_files, TrustLevel.VERIFIED  # Different files
+            self.test_manifest,
+            tampered_files,
+            TrustLevel.VERIFIED,  # Different files
         )
 
         # Replace signature with original (simulating tampering)

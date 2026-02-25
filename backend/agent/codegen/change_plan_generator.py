@@ -162,12 +162,12 @@ You are an expert software engineer analyzing a code change request.
 USER REQUEST:
 {user_request}
 
-INTENT: {intent.kind if hasattr(intent, 'kind') else 'IMPLEMENT_FEATURE'}
+INTENT: {intent.kind if hasattr(intent, "kind") else "IMPLEMENT_FEATURE"}
 
 REPOSITORY CONTEXT:
-- Primary languages: {', '.join(languages) if languages else 'Unknown'}
-- Frameworks: {', '.join(frameworks) if frameworks else 'Unknown'}
-- Key files: {', '.join(key_files[:10]) if key_files else 'None identified'}
+- Primary languages: {", ".join(languages) if languages else "Unknown"}
+- Frameworks: {", ".join(frameworks) if frameworks else "Unknown"}
+- Key files: {", ".join(key_files[:10]) if key_files else "None identified"}
 
 TASK:
 Analyze this request and provide a detailed implementation plan.

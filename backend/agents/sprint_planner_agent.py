@@ -142,8 +142,8 @@ class SprintPlannerAgent:
         TEAM INFO:
         - Capacity: {adjusted_capacity} story points
         - Duration: {duration} days
-        - Team Members: {team_members or ['Default Team']}
-        - Previous Velocity: {previous_velocity or 'Unknown'}
+        - Team Members: {team_members or ["Default Team"]}
+        - Previous Velocity: {previous_velocity or "Unknown"}
         
         CREATE A COMPREHENSIVE SPRINT PLAN:
         

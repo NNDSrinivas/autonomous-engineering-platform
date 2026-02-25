@@ -448,7 +448,7 @@ class ClosedLoopOrchestrator:
             # Execute all planned actions
             for i, action in enumerate(execution_plan.primary_actions):
                 logger.info(
-                    f"🔧 [{loop_id}] Executing action {i+1}/{len(execution_plan.primary_actions)}: {action.action_type.value}"
+                    f"🔧 [{loop_id}] Executing action {i + 1}/{len(execution_plan.primary_actions)}: {action.action_type.value}"
                 )
 
                 execution_result = await asyncio.wait_for(
@@ -740,9 +740,9 @@ class ClosedLoopOrchestrator:
             ]:
                 component = getattr(self, component_name, None)
                 if component and hasattr(component, "get_health_status"):
-                    component_health[component_name] = (
-                        await component.get_health_status()
-                    )
+                    component_health[
+                        component_name
+                    ] = await component.get_health_status()
                 else:
                     component_health[component_name] = "available"
 

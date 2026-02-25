@@ -162,7 +162,7 @@ def process_request(data):
 
 if __name__ == "__main__":
     result = asyncio.run(test_with_detailed_logging())
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"RESULT: {'✅ PASSED' if result else '❌ FAILED'}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     exit(0 if result else 1)

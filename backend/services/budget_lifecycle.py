@@ -32,7 +32,9 @@ def build_budget_scopes(
     scopes: List[BudgetScope] = []
 
     # Global
-    scopes.append(BudgetScope(scope="global", scope_id="global", per_day_limit=default_limit))
+    scopes.append(
+        BudgetScope(scope="global", scope_id="global", per_day_limit=default_limit)
+    )
 
     # Org (safe default)
     org_key = org_id or "org:unknown"
@@ -42,16 +44,24 @@ def build_budget_scopes(
     # User optional
     if user_id:
         user_limit = _policy_limit(policy, "users", user_id, default_limit)
-        scopes.append(BudgetScope(scope="user", scope_id=user_id, per_day_limit=user_limit))
+        scopes.append(
+            BudgetScope(scope="user", scope_id=user_id, per_day_limit=user_limit)
+        )
 
     # Provider optional
     if provider_id:
         provider_limit = _policy_limit(policy, "providers", provider_id, default_limit)
-        scopes.append(BudgetScope(scope="provider", scope_id=provider_id, per_day_limit=provider_limit))
+        scopes.append(
+            BudgetScope(
+                scope="provider", scope_id=provider_id, per_day_limit=provider_limit
+            )
+        )
 
     # Model optional
     if model_id:
         model_limit = _policy_limit(policy, "models", model_id, default_limit)
-        scopes.append(BudgetScope(scope="model", scope_id=model_id, per_day_limit=model_limit))
+        scopes.append(
+            BudgetScope(scope="model", scope_id=model_id, per_day_limit=model_limit)
+        )
 
     return scopes

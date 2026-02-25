@@ -28,19 +28,15 @@ class User(Base):
 
     # Subscription & billing
     subscription_plan = Column(
-        String(50),
-        default="free",
-        nullable=False
+        String(50), default="free", nullable=False
     )  # free, premium, enterprise
     subscription_status = Column(
-        String(50),
-        default="active",
-        nullable=False
+        String(50), default="active", nullable=False
     )  # active, canceled, past_due
 
     # Metadata
     user_metadata = Column(JSON, default=dict, nullable=False)  # User-editable
-    app_metadata = Column(JSON, default=dict, nullable=False)   # System-managed
+    app_metadata = Column(JSON, default=dict, nullable=False)  # System-managed
 
     # Settings
     preferences = Column(JSON, default=dict, nullable=False)
@@ -70,5 +66,7 @@ class User(Base):
             "preferences": self.preferences,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None
+            "last_login_at": self.last_login_at.isoformat()
+            if self.last_login_at
+            else None,
         }

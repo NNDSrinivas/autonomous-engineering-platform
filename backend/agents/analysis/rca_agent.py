@@ -311,7 +311,7 @@ class RCAAgent:
         
         DEPENDENCIES: {json.dumps(dependency_map, indent=2)}
         
-        SIMILAR CASES: {json.dumps([case.get('metadata', {}) for case in similar_cases], indent=2)}
+        SIMILAR CASES: {json.dumps([case.get("metadata", {}) for case in similar_cases], indent=2)}
         
         Think through this step by step:
         
@@ -382,7 +382,7 @@ class RCAAgent:
         
         CHAIN ANALYSIS: {json.dumps(chain_analysis, indent=2)}
         
-        SIMILAR CASES: {json.dumps([case.get('metadata', {}).get('solution', 'N/A') for case in similar_cases], indent=2)}
+        SIMILAR CASES: {json.dumps([case.get("metadata", {}).get("solution", "N/A") for case in similar_cases], indent=2)}
         
         Based on all evidence, determine the root cause:
         

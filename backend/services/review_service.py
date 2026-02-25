@@ -316,7 +316,7 @@ class RealReviewService:
             self.progress.current_file = change["path"]
             self.progress.files_processed = i
 
-            logger.info(f"Analyzing file {i+1}/{len(changes)}: {change['path']}")
+            logger.info(f"Analyzing file {i + 1}/{len(changes)}: {change['path']}")
 
             entry = await self.analyze_file_change(change)
             results.append(entry)

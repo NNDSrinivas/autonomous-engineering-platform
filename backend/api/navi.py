@@ -876,7 +876,7 @@ async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
                 "confidence": 1.0,  # Deterministic plans have 100% confidence
                 "steps": [
                     {
-                        "id": f"step_{i+1}",
+                        "id": f"step_{i + 1}",
                         "title": step.tool,
                         "rationale": step.reason,
                         "tool": step.tool,
@@ -1039,7 +1039,7 @@ async def generate_fix_diagnostics_plan(
     for i, diag in enumerate(diagnostics[:3]):  # Limit to first 3 for now
         steps.append(
             PlanStep(
-                id=f"{run_id}_{i+3}",
+                id=f"{run_id}_{i + 3}",
                 title=f"Fix {diag.get('message', 'error')} in {diag.get('file', 'file')}",
                 tool="workspace.readFile",
                 input={"file": diag.get("file")},
@@ -1506,7 +1506,9 @@ async def analyze_working_changes(
                             "severity": (
                                 "high"
                                 if any(i["severity"] == "high" for i in issues)
-                                else "medium" if issues else "low"
+                                else "medium"
+                                if issues
+                                else "low"
                             ),
                             "issues": issues,
                             "diff": change.get("diff", "")[:1000],
@@ -1677,7 +1679,7 @@ async def test_stream():
         import asyncio
 
         for i in range(5):
-            yield f"data: {json.dumps({'type': 'progress', 'step': f'Test message {i+1}', 'progress': (i+1) * 20})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'step': f'Test message {i + 1}', 'progress': (i + 1) * 20})}\n\n"
             await asyncio.sleep(0.5)  # Small delay
         yield f"data: {json.dumps({'type': 'complete', 'step': 'Test completed', 'progress': 100})}\n\n"
 
@@ -3134,9 +3136,7 @@ def build_repo_snapshot_markdown(
         lang = _infer_lang_from_suffix(p)
         fence = f"```{lang}" if lang else "```"
         rel = p.relative_to(root)
-        body_sections.append(
-            f"\n\n---\n\n" f"### File: `{rel}`\n\n" f"{fence}\n{text}\n```"
-        )
+        body_sections.append(f"\n\n---\n\n### File: `{rel}`\n\n{fence}\n{text}\n```")
 
     snapshot = header + layout + "".join(body_sections)
     return snapshot
@@ -6756,13 +6756,22 @@ async def navi_chat_stream(
     provider = getattr(routing_decision, "provider", None)
     model_name = getattr(routing_decision, "model", None)
 
-    if budget_mgr is None and os.getenv("BUDGET_ENFORCEMENT_MODE", "strict").lower() == "strict":
+    if (
+        budget_mgr is None
+        and os.getenv("BUDGET_ENFORCEMENT_MODE", "strict").lower() == "strict"
+    ):
         raise HTTPException(
             status_code=503,
-            detail={"code": "BUDGET_ENFORCEMENT_UNAVAILABLE", "message": "Budget enforcement unavailable"},
+            detail={
+                "code": "BUDGET_ENFORCEMENT_UNAVAILABLE",
+                "message": "Budget enforcement unavailable",
+            },
         )
 
-    if budget_mgr is not None and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled":
+    if (
+        budget_mgr is not None
+        and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled"
+    ):
         final_scopes = build_budget_scopes(
             budget_manager=budget_mgr,
             org_id=org_id or "org:unknown",
@@ -6771,22 +6780,37 @@ async def navi_chat_stream(
             model_id=model_name,
         )
         try:
-            pre_reserved_token = await budget_mgr.reserve(estimated_tokens, final_scopes)
+            pre_reserved_token = await budget_mgr.reserve(
+                estimated_tokens, final_scopes
+            )
         except BudgetExceeded as e:
             if e.code == "BUDGET_EXCEEDED":
                 raise HTTPException(
                     status_code=429,
-                    detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+                    detail={
+                        "code": e.code,
+                        "message": str(e),
+                        "details": getattr(e, "details", {}),
+                    },
                 )
             raise HTTPException(
                 status_code=503,
-                detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+                detail={
+                    "code": e.code,
+                    "message": str(e),
+                    "details": getattr(e, "details", {}),
+                },
             )
 
     # ---------------------------
     # Phase 4: Budget lifecycle state + disconnect watcher (V1)
     # ---------------------------
-    budget_state = {"actual_tokens": None, "ok": False, "done": False, "finalized": False}
+    budget_state = {
+        "actual_tokens": None,
+        "ok": False,
+        "done": False,
+        "finalized": False,
+    }
     _finalize_budget = create_budget_cleanup_handlers(
         http_request=http_request,
         budget_mgr=budget_mgr,
@@ -7200,8 +7224,13 @@ async def navi_chat_stream(
                     # Token tracking: support common shapes
                     try:
                         if isinstance(event, dict):
-                            if event.get("type") == "usage" and event.get("total_tokens") is not None:
-                                budget_state["actual_tokens"] = int(event["total_tokens"])
+                            if (
+                                event.get("type") == "usage"
+                                and event.get("total_tokens") is not None
+                            ):
+                                budget_state["actual_tokens"] = int(
+                                    event["total_tokens"]
+                                )
                             elif isinstance(event.get("usage"), dict):
                                 tt = event["usage"].get("total_tokens")
                                 if tt is not None:
@@ -7693,14 +7722,23 @@ async def navi_chat_stream_v2(
     final_scopes = []
     pre_reserved_token = None
 
-    if budget_mgr is None and os.getenv("BUDGET_ENFORCEMENT_MODE", "strict").lower() == "strict":
+    if (
+        budget_mgr is None
+        and os.getenv("BUDGET_ENFORCEMENT_MODE", "strict").lower() == "strict"
+    ):
         # Strict mode requires enforcement available; fail closed.
         raise HTTPException(
             status_code=503,
-            detail={"code": "BUDGET_ENFORCEMENT_UNAVAILABLE", "message": "Budget enforcement unavailable"},
+            detail={
+                "code": "BUDGET_ENFORCEMENT_UNAVAILABLE",
+                "message": "Budget enforcement unavailable",
+            },
         )
 
-    if budget_mgr is not None and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled":
+    if (
+        budget_mgr is not None
+        and getattr(budget_mgr, "enforcement_mode", "strict") != "disabled"
+    ):
         final_scopes = build_budget_scopes(
             budget_manager=budget_mgr,
             org_id=org_id or "org:unknown",
@@ -7709,22 +7747,37 @@ async def navi_chat_stream_v2(
             model_id=model_name,
         )
         try:
-            pre_reserved_token = await budget_mgr.reserve(estimated_tokens, final_scopes)
+            pre_reserved_token = await budget_mgr.reserve(
+                estimated_tokens, final_scopes
+            )
         except BudgetExceeded as e:
             if e.code == "BUDGET_EXCEEDED":
                 raise HTTPException(
                     status_code=429,
-                    detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+                    detail={
+                        "code": e.code,
+                        "message": str(e),
+                        "details": getattr(e, "details", {}),
+                    },
                 )
             raise HTTPException(
                 status_code=503,
-                detail={"code": e.code, "message": str(e), "details": getattr(e, "details", {})},
+                detail={
+                    "code": e.code,
+                    "message": str(e),
+                    "details": getattr(e, "details", {}),
+                },
             )
 
     # ---------------------------
     # Phase 4: Budget lifecycle state + disconnect watcher (V2)
     # ---------------------------
-    budget_state = {"actual_tokens": None, "ok": False, "done": False, "finalized": False}
+    budget_state = {
+        "actual_tokens": None,
+        "ok": False,
+        "done": False,
+        "finalized": False,
+    }
     _finalize_budget = create_budget_cleanup_handlers(
         http_request=http_request,
         budget_mgr=budget_mgr,

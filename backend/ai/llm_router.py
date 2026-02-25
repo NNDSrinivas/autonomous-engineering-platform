@@ -963,21 +963,21 @@ class LLMRouter:
                 return response.json(), latency_ms
 
             except httpx.TimeoutException as e:
-                logger.error(f"[LLM] Timeout on attempt {attempt+1}: {e}")
+                logger.error(f"[LLM] Timeout on attempt {attempt + 1}: {e}")
                 last_error = ProviderError("Request timeout", provider_info.provider_id)
 
             except httpx.RequestError as e:
-                logger.error(f"[LLM] Request error on attempt {attempt+1}: {e}")
+                logger.error(f"[LLM] Request error on attempt {attempt + 1}: {e}")
                 last_error = ProviderError(
                     f"Network error: {e}", provider_info.provider_id
                 )
 
             except ProviderError as e:
-                logger.error(f"[LLM] Provider error on attempt {attempt+1}: {e}")
+                logger.error(f"[LLM] Provider error on attempt {attempt + 1}: {e}")
                 last_error = e
 
             except Exception as e:
-                logger.error(f"[LLM] Unexpected error on attempt {attempt+1}: {e}")
+                logger.error(f"[LLM] Unexpected error on attempt {attempt + 1}: {e}")
                 last_error = LLMRouterError(f"Unexpected error: {e}")
 
             # Last retry → raise

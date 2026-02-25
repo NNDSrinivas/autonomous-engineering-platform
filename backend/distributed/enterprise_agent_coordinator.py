@@ -864,7 +864,7 @@ class EnterpriseAgentCoordinator:
 ## Context
 - Project ID: {context.project_id}
 - Workspace: {context.workspace_path}
-- Dependencies completed: {', '.join(context.dependencies_completed) if context.dependencies_completed else 'None'}
+- Dependencies completed: {", ".join(context.dependencies_completed) if context.dependencies_completed else "None"}
 
 """
 

@@ -526,7 +526,7 @@ class CollaborationEngine:
         
         CONFLICT: {conflict_description}
         
-        INVOLVED AGENTS: {', '.join(involved_agents)}
+        INVOLVED AGENTS: {", ".join(involved_agents)}
         
         PROJECT CONTEXT: {context.project_goal}
         

@@ -991,7 +991,7 @@ async def detect_requirements(
     # Build recommendation
     lines = ["## Tech Stack Recommendation\n"]
     lines.append(
-        f"**Based on**: \"{description[:200]}{'...' if len(description) > 200 else ''}\"\n"
+        f'**Based on**: "{description[:200]}{"..." if len(description) > 200 else ""}"\n'
     )
 
     if not matches:

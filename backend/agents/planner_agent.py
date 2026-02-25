@@ -86,9 +86,9 @@ class PlannerAgent:
 
         complexity_prompt = f"""
         Analyze the complexity of this engineering instruction on a scale of 0.0 to 1.0:
-        
+
         Instruction: {instruction}
-        
+
         Repository context:
         - Total files: {repo_map.get('total_files', 0)}
         - Languages: {repo_map.get('languages', {})}

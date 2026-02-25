@@ -893,7 +893,7 @@ async def _tool_repo_inspect(args: Dict[str, Any]) -> Dict[str, Any]:
             tree_lines.append(f"- {node}")
 
     files_blob = "\n".join(
-        f"# {f['path']}\n{f.get('content','')[:2000]}\n"
+        f"# {f['path']}\n{f.get('content', '')[:2000]}\n"
         for f in (workspace_ctx.get("small_files") or [])[:5]
     )
 

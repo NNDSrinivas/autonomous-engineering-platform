@@ -454,7 +454,7 @@ class TestPlanListing:
             # Create a couple of plans
             for i in range(2):
                 payload = {
-                    "message": f"Create feature {i+1}",
+                    "message": f"Create feature {i + 1}",
                     "workspace_path": workspace,
                 }
                 async with session.post(

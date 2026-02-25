@@ -418,7 +418,8 @@ async def run_build_verification(workspace_path: str) -> Dict[str, Any]:
         )
 
         stdout, stderr = await asyncio.wait_for(
-            process.communicate(), timeout=120.0  # 2 minute timeout
+            process.communicate(),
+            timeout=120.0,  # 2 minute timeout
         )
 
         stdout_text = stdout.decode("utf-8", errors="replace") if stdout else ""

@@ -22,6 +22,7 @@ settings = get_settings()
 
 class UserSyncPayload(BaseModel):
     """Payload from Auth0 post-login action."""
+
     auth0_user_id: str
     email: EmailStr
     name: Optional[str] = None
@@ -50,16 +51,12 @@ def verify_action_secret(x_auth0_action_secret: str = Header(...)):
 
     if not expected_secret:
         raise HTTPException(
-            status_code=500,
-            detail="AUTH0_ACTION_SECRET not configured"
+            status_code=500, detail="AUTH0_ACTION_SECRET not configured"
         )
 
     # Use constant-time comparison to prevent timing attacks
     if not secrets.compare_digest(x_auth0_action_secret, expected_secret):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid action secret"
-        )
+        raise HTTPException(status_code=401, detail="Invalid action secret")
 
     return True
 
@@ -68,7 +65,7 @@ def verify_action_secret(x_auth0_action_secret: str = Header(...)):
 async def sync_user_from_auth0(
     payload: UserSyncPayload,
     db: Session = Depends(get_db),
-    _verified: bool = Depends(verify_action_secret)
+    _verified: bool = Depends(verify_action_secret),
 ):
     """
     Sync user data from Auth0 to database.
@@ -80,9 +77,12 @@ async def sync_user_from_auth0(
     try:
         # Use SELECT FOR UPDATE to prevent race conditions with concurrent login events
         # This locks the row during the transaction, preventing duplicate user creation
-        user = db.query(User).filter(
-            User.auth0_user_id == payload.auth0_user_id
-        ).with_for_update().first()
+        user = (
+            db.query(User)
+            .filter(User.auth0_user_id == payload.auth0_user_id)
+            .with_for_update()
+            .first()
+        )
 
         is_new_user = user is None
 
@@ -105,7 +105,7 @@ async def sync_user_from_auth0(
                 avatar_url=payload.avatar_url,
                 email_verified=payload.email_verified,
                 created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                updated_at=datetime.utcnow(),
             )
             db.add(user)
 
@@ -114,32 +114,23 @@ async def sync_user_from_auth0(
         db.commit()
         db.refresh(user)
 
-        return {
-            "success": True,
-            "user_id": str(user.id),
-            "is_new_user": is_new_user
-        }
+        return {"success": True, "user_id": str(user.id), "is_new_user": is_new_user}
 
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to sync user {payload.auth0_user_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to sync user: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to sync user: {str(e)}")
 
 
 @router.get("/user/{auth0_user_id}")
 async def get_user_by_auth0_id(
     auth0_user_id: str,
     db: Session = Depends(get_db),
-    _verified: bool = Depends(verify_action_secret)
+    _verified: bool = Depends(verify_action_secret),
 ):
     """Get user by Auth0 user ID (for internal use)."""
 
-    user = db.query(User).filter(
-        User.auth0_user_id == auth0_user_id
-    ).first()
+    user = db.query(User).filter(User.auth0_user_id == auth0_user_id).first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -152,5 +143,5 @@ async def get_user_by_auth0_id(
         "avatar_url": user.avatar_url,
         "email_verified": user.email_verified,
         "created_at": user.created_at.isoformat(),
-        "updated_at": user.updated_at.isoformat()
+        "updated_at": user.updated_at.isoformat(),
     }

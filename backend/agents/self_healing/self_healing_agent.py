@@ -766,7 +766,7 @@ class SelfHealingAgent:
                     Fix this Python syntax error:
                     
                     Error: {failure_context.error_message}
-                    Line: {failure_context.metadata.get('line_number', 'unknown')}
+                    Line: {failure_context.metadata.get("line_number", "unknown")}
                     
                     File content:
                     {content}

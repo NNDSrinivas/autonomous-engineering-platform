@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Test the simple streaming endpoint"""
+
 import requests
 
 url = "http://localhost:8787/api/navi/test-stream"

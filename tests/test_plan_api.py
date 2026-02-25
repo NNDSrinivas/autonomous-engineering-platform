@@ -239,7 +239,7 @@ class TestPlanList:
             response = test_client.post(
                 "/api/plan/start",
                 headers=headers,
-                json={"title": f"List Test Plan {i+1}", "participants": ["user1"]},
+                json={"title": f"List Test Plan {i + 1}", "participants": ["user1"]},
             )
             plans.append(response.json()["plan_id"])
         return plans

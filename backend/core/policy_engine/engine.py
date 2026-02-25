@@ -193,8 +193,7 @@ class PolicyEngine:
                         f"Plan ID {plan_id} is restricted",
                     )
                     logger.warning(
-                        f"Policy denied action={action}: {reason} "
-                        f"(plan_id={plan_id})"
+                        f"Policy denied action={action}: {reason} (plan_id={plan_id})"
                     )
                     return False, reason
 

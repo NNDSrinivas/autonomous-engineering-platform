@@ -360,10 +360,10 @@ class APIUser(HttpUser):
     Simulates a user interacting with the API.
 
     Run with:
-        locust -f {output_path or 'locustfile.py'} --host={target_url}
+        locust -f {output_path or "locustfile.py"} --host={target_url}
 
     Or headless:
-        locust -f {output_path or 'locustfile.py'} --host={target_url} --headless -u {users} -r {spawn_rate} -t 5m
+        locust -f {output_path or "locustfile.py"} --host={target_url} --headless -u {users} -r {spawn_rate} -t 5m
     """
 
     # Wait between 1-3 seconds between tasks
@@ -603,7 +603,7 @@ async def loadtest_analyze_results(
         http_req_failed = metrics.get("http_req_failed", {})
         error_rate = http_req_failed.get("rate", 0)
         if error_rate > 0.01:
-            insights.append(f"Error rate is {error_rate*100:.2f}%")
+            insights.append(f"Error rate is {error_rate * 100:.2f}%")
             recommendations.append(
                 "Investigate failing requests - check logs for errors"
             )

@@ -254,10 +254,10 @@ class PlanGenerator:
 **User Request:** {user_request}
 
 **Project Info:**
-- Type: {codebase_analysis.get('project_type', 'unknown')}
+- Type: {codebase_analysis.get("project_type", "unknown")}
 - Languages: {languages_str}
 - Frameworks: {frameworks_str}
-- Key Files: {', '.join(codebase_analysis.get('key_files', []))}
+- Key Files: {", ".join(codebase_analysis.get("key_files", []))}
 
 **Instructions:**
 Create a structured breakdown including:

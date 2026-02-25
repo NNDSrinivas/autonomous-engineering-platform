@@ -612,7 +612,7 @@ if __name__ == "__main__":
 <body>
     <header>
         <h1>{request.project_name}</h1>
-        <p>{request.description or 'A static website created by NAVI'}</p>
+        <p>{request.description or "A static website created by NAVI"}</p>
     </header>
     <main>
         <section>

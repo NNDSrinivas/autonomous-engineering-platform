@@ -301,7 +301,7 @@ class IncidentStore:
 
             query = f"""
                 SELECT * FROM incidents 
-                WHERE repo = ? AND ({' OR '.join(file_conditions)})
+                WHERE repo = ? AND ({" OR ".join(file_conditions)})
                 ORDER BY timestamp DESC 
                 LIMIT ?
             """
@@ -467,7 +467,7 @@ class IncidentStore:
                     f"""
                     SELECT COUNT(*) as recent
                     FROM incidents 
-                    {where_clause} {'AND' if where_clause else 'WHERE'} 
+                    {where_clause} {"AND" if where_clause else "WHERE"} 
                     timestamp > datetime('now', '-7 days')
                 """,
                     params,
@@ -500,9 +500,7 @@ class IncidentStore:
                     """
                     DELETE FROM incidents 
                     WHERE resolved = 1 AND timestamp < datetime('now', '-{} days')
-                """.format(
-                        days_to_keep
-                    )
+                """.format(days_to_keep)
                 )
 
                 deleted_count = cursor.rowcount

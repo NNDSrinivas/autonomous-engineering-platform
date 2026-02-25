@@ -29,6 +29,7 @@ export function PremiumAuthEntry({
 }: PremiumAuthEntryProps) {
   const [logoFailed, setLogoFailed] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
 
   const openExternal = (url: string) => {
     if (!url) return;
@@ -94,23 +95,37 @@ export function PremiumAuthEntry({
         {showStatus && (
           <div className={`premium-auth-entry__status ${statusClass}`}>
             <p>{signInStatus.message}</p>
+
             {signInStatus.userCode && (
-              <div className="premium-auth-entry__status-helper">
-                <span className="helper-label">If the browser didn't open automatically:</span>
-                <div className="premium-auth-entry__status-code">
-                  <span className="code-pill">Code: {signInStatus.userCode}</span>
-                  <button type="button" onClick={() => copyCode(signInStatus.userCode || "")}>
-                    {copiedCode ? "✓ Copied" : "Copy"}
-                  </button>
-                </div>
-                {signInStatus.verificationUri && (
-                  <button
-                    type="button"
-                    className="premium-auth-entry__status-link"
-                    onClick={() => openExternal(signInStatus.verificationUri || "")}
-                  >
-                    Open sign-in page manually
-                  </button>
+              <div className="premium-auth-entry__troubleshoot">
+                <button
+                  type="button"
+                  className="premium-auth-entry__troubleshoot-toggle"
+                  onClick={() => setShowTroubleshoot(!showTroubleshoot)}
+                >
+                  <span className={`toggle-icon ${showTroubleshoot ? "open" : ""}`}>▸</span>
+                  Having trouble?
+                </button>
+
+                {showTroubleshoot && (
+                  <div className="premium-auth-entry__status-helper">
+                    <span className="helper-label">Your device code:</span>
+                    <div className="premium-auth-entry__status-code">
+                      <span className="code-pill">Code: {signInStatus.userCode}</span>
+                      <button type="button" onClick={() => copyCode(signInStatus.userCode || "")}>
+                        {copiedCode ? "✓ Copied" : "Copy"}
+                      </button>
+                    </div>
+                    {signInStatus.verificationUri && (
+                      <button
+                        type="button"
+                        className="premium-auth-entry__status-link"
+                        onClick={() => openExternal(signInStatus.verificationUri || "")}
+                      >
+                        Open sign-in page manually
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}

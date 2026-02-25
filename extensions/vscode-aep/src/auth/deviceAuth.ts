@@ -78,7 +78,9 @@ export class DeviceAuthService {
   }
 
   private getVerificationTarget(data: DeviceCodeResponse): string {
-    const target = (data.verification_uri_complete || data.verification_uri || "").trim();
+    // Use clean verification_uri (without user_code in URL) to avoid exposing code in VS Code external link prompt
+    // The user_code is shown in the webview as a fallback helper if browser doesn't open automatically
+    const target = (data.verification_uri || "").trim();
     if (!target) {
       throw new Error("Sign-in verification URL is missing from backend response.");
     }
@@ -150,7 +152,7 @@ export class DeviceAuthService {
     if (errorCode === "invalid_client") {
       return (
         "NAVI sign-in is blocked by invalid Auth0 client settings. " +
-        "Verify AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET in backend environment settings."
+        "Verify AUTH0_DEVICE_CLIENT_ID (or AUTH0_CLIENT_ID) and ensure Device Authorization + Refresh Token grants are enabled in Auth0."
       );
     }
     if (errorCode === "auth0_configuration_error") {

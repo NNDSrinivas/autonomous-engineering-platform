@@ -433,13 +433,63 @@ async def refresh(body: RefreshIn, request: Request):
         ) from exc
 
     if r.status_code != 200:
-        logger.warning(f"Auth0 refresh_token exchange failed: HTTP {r.status_code}")
+        # Parse Auth0 error response to distinguish transient vs auth failures
+        error_body = None
+        auth0_error = None
+        auth0_desc = None
+        try:
+            error_body = r.json()
+            if isinstance(error_body, dict):
+                auth0_error = error_body.get("error")
+                auth0_desc = error_body.get("error_description")
+        except ValueError:
+            pass
+
+        logger.warning(
+            f"Auth0 refresh_token exchange failed: HTTP {r.status_code}, "
+            f"error={auth0_error!r}, description={auth0_desc!r}"
+        )
+
+        # Preserve rate limiting semantics so clients can retry with backoff
+        if r.status_code == 429:
+            raise HTTPException(
+                status_code=429,
+                detail=_error_detail(
+                    "auth0_rate_limited",
+                    "Auth0 is rate limiting refresh attempts. Please retry shortly.",
+                    auth0_desc,
+                ),
+            )
+
+        # Propagate upstream server errors as 503 so callers know it's transient
+        if 500 <= r.status_code < 600:
+            raise HTTPException(
+                status_code=503,
+                detail=_error_detail(
+                    "auth0_unavailable",
+                    "Auth0 token endpoint is temporarily unavailable.",
+                    auth0_desc,
+                ),
+            )
+
+        # Treat invalid_grant as an actual refresh/auth failure
+        if auth0_error == "invalid_grant" or r.status_code in (400, 401, 403):
+            raise HTTPException(
+                status_code=401,
+                detail=_error_detail(
+                    "refresh_failed",
+                    "Unable to refresh session. Please sign in again.",
+                    "Refresh token may be expired or revoked.",
+                ),
+            )
+
+        # Fallback for other unexpected errors from Auth0
         raise HTTPException(
-            status_code=401,
+            status_code=502,
             detail=_error_detail(
-                "refresh_failed",
-                "Unable to refresh session. Please sign in again.",
-                "Refresh token may be expired or revoked.",
+                "auth0_token_error",
+                "Unexpected error from Auth0 during token refresh.",
+                auth0_desc,
             ),
         )
 

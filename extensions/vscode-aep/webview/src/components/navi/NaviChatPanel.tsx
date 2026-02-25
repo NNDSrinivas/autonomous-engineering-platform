@@ -940,7 +940,7 @@ const makeLinksClickableSafe = (html: string): string => {
       const safePathAttr = escapeHtml(pathWithoutLine);
       const hoverPath = lineNum ? `${pathWithoutLine}:${lineNum}` : pathWithoutLine;
       const safeHoverPathAttr = escapeHtml(hoverPath);
-      return `${leading}<a href="#" class="navi-link navi-link--file" data-file-path="${safePathAttr}" data-tooltip="${safeHoverPathAttr}" title="${safeHoverPathAttr}" aria-label="Open file ${safeHoverPathAttr}"${dataLine}>${safePathAttr}</a>`;
+      return `${leading}<a href="#" class="navi-link navi-link--file" data-file-path="${safePathAttr}" data-tooltip="${safeHoverPathAttr}" aria-label="Open file ${safeHoverPathAttr}"${dataLine}>${safePathAttr}</a>`;
     },
   );
   return result;

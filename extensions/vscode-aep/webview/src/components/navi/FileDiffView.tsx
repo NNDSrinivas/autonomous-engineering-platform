@@ -40,8 +40,8 @@ export interface FileDiffViewProps {
 const getLanguageClass = (filePath: string): string => {
   const ext = filePath.split('.').pop()?.toLowerCase() || '';
   const langMap: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescript',
-    js: 'javascript', jsx: 'javascript', mjs: 'javascript',
+    ts: 'typescript', tsx: 'tsx',
+    js: 'javascript', jsx: 'jsx', mjs: 'javascript',
     py: 'python', pyw: 'python',
     go: 'go', rs: 'rust',
     java: 'java', kt: 'kotlin',

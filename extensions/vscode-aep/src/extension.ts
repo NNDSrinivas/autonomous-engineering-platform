@@ -3234,14 +3234,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
             // Shell component is mounted - webview is ready to receive messages
             this._webviewReady = true;
-            this.flushPendingConsentMessages();
             await this.emitCurrentAuthState();
             break;
           }
           case 'navi.chat.ready': {
             // Chat panel component is mounted - consent handlers are ready
-            // No additional action needed (webview.ready already handled initialization)
+            // Safe to flush pending consent messages now that listeners are registered
             console.log('[AEP] Chat panel and consent handlers are ready');
+            this.flushPendingConsentMessages();
             break;
           }
           case 'requestWorkspaceContext': {

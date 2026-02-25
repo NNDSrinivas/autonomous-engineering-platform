@@ -138,10 +138,11 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
     const detail = (step.detail || '').trim();
     if (!detail) return title;
 
-    // Some upstream plan titles arrive clipped (e.g. "setup" -> "setu").
-    // When that pattern is detected, promote detail as the primary readable step label.
+    // Some upstream plan titles arrive truncated or incomplete.
+    // Detect truncation: title doesn't end with punctuation, and detail is substantially longer.
+    // This handles both short truncations (e.g., "setu") and mid-length incomplete titles.
     const titleLikelyTruncated =
-      title.length >= 20 &&
+      title.length >= 4 &&
       title.length <= 48 &&
       !/[.!?:)]$/.test(title) &&
       detail.length > title.length + 6;

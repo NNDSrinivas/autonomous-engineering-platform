@@ -207,7 +207,7 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
         />
         <span
           className={`navi-plan-progress-marker ${isExecuting ? 'is-running' : ''} ${allCompleted ? 'is-complete' : ''} ${hasError ? 'has-error' : ''}`}
-          style={{ left: `${markerPosition}%`, transform: 'translateX(-50%)' }}
+          style={{ left: `${markerPosition}%`, transform: 'translate(-50%, -50%)' }}
           aria-hidden="true"
         />
         <span

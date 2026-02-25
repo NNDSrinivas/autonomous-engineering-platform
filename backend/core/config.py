@@ -144,6 +144,47 @@ class Settings(BaseSettings):
             )
         return values
 
+    @model_validator(mode="after")
+    def enforce_production_security(self):
+        """Enforce security requirements for staging and production environments.
+
+        Security Rationale:
+        - In staging and production environments, authentication and JWT validation MUST be enabled
+        - Development auth bypass MUST be disabled to prevent unauthorized access
+        - These checks prevent accidentally deploying with insecure configuration
+
+        Raises:
+            ValueError: If security requirements are not met in staging/prod
+        """
+        # Normalize environment for consistent checking
+        env = normalize_env(self.app_env or "development")
+
+        if env in ("staging", "production"):
+            errors = []
+
+            if not self.jwt_enabled:
+                errors.append(
+                    f"JWT_ENABLED must be true in {env} environment (currently: {self.jwt_enabled})"
+                )
+
+            if self.allow_dev_auth_bypass:
+                errors.append(
+                    f"ALLOW_DEV_AUTH_BYPASS must be false in {env} environment (currently: {self.allow_dev_auth_bypass})"
+                )
+
+            if not self.vscode_auth_required:
+                errors.append(
+                    f"VSCODE_AUTH_REQUIRED must be true in {env} environment (currently: {self.vscode_auth_required})"
+                )
+
+            if errors:
+                raise ValueError(
+                    f"Production security validation failed for environment '{env}':\n  - "
+                    + "\n  - ".join(errors)
+                )
+
+        return self
+
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     realtime_port: int = 8001
@@ -220,10 +261,13 @@ class Settings(BaseSettings):
 
     # Auth0 Configuration
     auth0_domain: Optional[str] = None
+    auth0_oauth_domain: Optional[str] = None  # Separate domain for OAuth device flow (may differ from main domain)
     auth0_client_id: Optional[str] = None
+    auth0_device_client_id: Optional[str] = None  # Client ID for device authorization grant
     auth0_client_secret: Optional[str] = None
     auth0_audience: Optional[str] = None
     auth0_algorithm: str = "RS256"
+    auth0_issuer: Optional[str] = None  # JWT issuer (iss claim) for token validation
     auth0_issuer_base_url: Optional[str] = None  # Auth0 issuer URL (e.g., https://your-tenant.auth0.com)
     auth0_action_secret: Optional[str] = None  # Secret for Auth0 Actions webhook authentication
 

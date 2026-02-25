@@ -13,6 +13,7 @@ interface TokenResponse {
   access_token: string;
   expires_in: number;
   token_type: string;
+  refresh_token?: string;
 }
 
 export type AuthSignInStatusState =
@@ -77,11 +78,106 @@ export class DeviceAuthService {
   }
 
   private getVerificationTarget(data: DeviceCodeResponse): string {
-    const target = (data.verification_uri_complete || data.verification_uri || "").trim();
-    if (!target) {
-      throw new Error("Sign-in verification URL is missing from backend response.");
+    // Use NAVI Connect page for premium branded experience
+    // This wraps Auth0's device flow in a branded NAVI interface
+    const connectUrl = process.env.NAVI_CONNECT_URL || "http://localhost:3030";
+    const userCode = encodeURIComponent(data.user_code);
+    return `${connectUrl}/activate?user_code=${userCode}&client=vscode`;
+  }
+
+  private parseJsonSafe(value: string): unknown {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
     }
-    return target;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private extractAuthErrorShape(
+    value: unknown
+  ): { error?: string; errorDescription?: string; hint?: string } {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    const obj = value as Record<string, unknown>;
+
+    if (
+      typeof obj.error === "string" ||
+      typeof obj.error_description === "string" ||
+      typeof obj.errorDescription === "string"
+    ) {
+      return {
+        error: typeof obj.error === "string" ? obj.error : undefined,
+        errorDescription:
+          typeof obj.error_description === "string"
+            ? obj.error_description
+            : typeof obj.errorDescription === "string"
+            ? obj.errorDescription
+            : undefined,
+        hint: typeof obj.hint === "string" ? obj.hint : undefined,
+      };
+    }
+
+    if (typeof obj.detail === "string") {
+      const nested = this.parseJsonSafe(obj.detail);
+      if (nested) {
+        return this.extractAuthErrorShape(nested);
+      }
+    }
+    if (obj.detail && typeof obj.detail === "object") {
+      return this.extractAuthErrorShape(obj.detail);
+    }
+
+    return {};
+  }
+
+  private buildStartLoginErrorMessage(status: number, detailText: string): string {
+    const parsed = this.parseJsonSafe(detailText);
+    const authError = this.extractAuthErrorShape(parsed);
+    const errorCode = (authError.error || "").toLowerCase();
+
+    if (errorCode === "unauthorized_client") {
+      return (
+        "NAVI sign-in is blocked by Auth0 configuration. " +
+        "Enable Device Authorization Grant for this Auth0 application, and verify AUTH0_CLIENT_ID and AUTH0_AUDIENCE in backend environment settings."
+      );
+    }
+
+    if (errorCode === "invalid_client") {
+      return (
+        "NAVI sign-in is blocked by invalid Auth0 client settings. " +
+        "Verify AUTH0_DEVICE_CLIENT_ID (or AUTH0_CLIENT_ID) and ensure Device Authorization + Refresh Token grants are enabled in Auth0."
+      );
+    }
+    if (errorCode === "auth0_configuration_error") {
+      return (
+        "NAVI sign-in is blocked by backend Auth0 configuration. " +
+        (authError.errorDescription || "Verify AUTH0_DOMAIN, AUTH0_CLIENT_ID, and AUTH0_AUDIENCE.")
+      );
+    }
+    if (errorCode === "auth0_unreachable") {
+      return (
+        "NAVI sign-in could not reach Auth0 from the backend. " +
+        (authError.errorDescription ||
+          "Verify AUTH0_DOMAIN DNS resolution and outbound network access.")
+      );
+    }
+
+    const description = (authError.errorDescription || "").trim();
+    if (description) {
+      return `Failed to start sign-in (HTTP ${status}). ${description}`;
+    }
+
+    const fallbackDetail = detailText.trim();
+    if (fallbackDetail) {
+      return `Failed to start sign-in (HTTP ${status}). ${fallbackDetail}`;
+    }
+
+    return `Failed to start sign-in (HTTP ${status}).`;
   }
 
   /**
@@ -102,7 +198,7 @@ export class DeviceAuthService {
     try {
       emit({
         state: "starting",
-        message: "Starting secure sign-in...",
+        message: "Opening your browser...",
       });
 
       const response = await fetch(`${this.apiBaseUrl}/oauth/device/start`, {
@@ -118,7 +214,7 @@ export class DeviceAuthService {
         } catch {
           detail = response.statusText;
         }
-        throw new Error(`Failed to start sign-in (HTTP ${response.status}). ${detail || ""}`.trim());
+        throw new Error(this.buildStartLoginErrorMessage(response.status, detail));
       }
 
       const data = (await response.json()) as DeviceCodeResponse;
@@ -168,9 +264,7 @@ export class DeviceAuthService {
 
       emit({
         state: "waiting_for_approval",
-        message: data.verification_uri_complete
-          ? "Waiting for browser authorization..."
-          : "Waiting for browser authorization. If prompted, enter the device code shown.",
+        message: "Complete sign-in in your browser to continue",
         userCode: data.user_code,
         verificationUri: verificationTarget,
       });
@@ -203,9 +297,16 @@ export class DeviceAuthService {
     expiresIn: number,
     emit: (status: AuthSignInStatus) => void
   ): Promise<void> {
-    const maxAttempts = Math.floor(expiresIn / interval);
+    // Use defaults if Auth0 doesn't return these values
+    const actualInterval = interval || 5;  // Default 5 seconds
+    const actualExpiresIn = expiresIn || 600;  // Default 10 minutes
+    const maxAttempts = Math.floor(actualExpiresIn / actualInterval);
+
+    console.log(`[AEP] Device flow polling: expires_in=${actualExpiresIn}s, interval=${actualInterval}s, maxAttempts=${maxAttempts}`);
+
     let attempts = 0;
     let lastEmitTime = 0;
+    let currentInterval = actualInterval;  // Track current interval (increases on slow_down)
     const EMIT_THROTTLE_MS = 10000; // Only emit waiting status every 10 seconds
 
     return new Promise((resolve, reject) => {
@@ -221,14 +322,20 @@ export class DeviceAuthService {
 
           if (response.status === 200) {
             const data = (await response.json()) as TokenResponse;
-            await this.storeToken(data.access_token, data.expires_in);
+            await this.storeToken(data.access_token, data.expires_in, data.refresh_token);
+
+            // Extract display name from token for personalized success message
+            const displayName = this.getDisplayNameFromToken(data.access_token);
+            const successMessage = displayName
+              ? `Connected as ${displayName}`
+              : "Successfully signed in to NAVI";
 
             emit({
               state: "success",
-              message: "Successfully signed in to NAVI.",
+              message: successMessage,
             });
 
-            vscode.window.showInformationMessage("Successfully signed in to NAVI.");
+            vscode.window.showInformationMessage(successMessage);
             this.notifyAuthStateChange(true);
             resolve();
             return;
@@ -236,13 +343,17 @@ export class DeviceAuthService {
 
           const isPendingStatus = response.status === 428;
           let pendingFromBody = false;
+          let isSlowDown = false;
           let errorText = "";
 
           try {
             const maybeJson = await response.clone().json();
-            const detail = (maybeJson as { detail?: string }).detail;
+            const detail = (maybeJson as { detail?: any }).detail;
             const errorCode = (maybeJson as { error_code?: string }).error_code;
-            pendingFromBody = detail === "authorization_pending";
+            // Backend returns detail as object: {"error": "authorization_pending", ...}
+            const authError = typeof detail === "object" ? detail?.error : detail;
+            isSlowDown = authError === "slow_down";
+            pendingFromBody = authError === "authorization_pending" || isSlowDown;
             errorText = JSON.stringify(maybeJson);
             if (errorCode && detail && !isPendingStatus) {
               errorText = JSON.stringify({ detail, error_code: errorCode });
@@ -252,20 +363,26 @@ export class DeviceAuthService {
           }
 
           if (isPendingStatus || pendingFromBody) {
+            // Per RFC 8628: slow_down requires increasing polling interval
+            if (isSlowDown) {
+              currentInterval = Math.min(currentInterval + 5, 30);  // +5s per RFC, cap at 30s
+              console.log(`[AEP] Received slow_down, increasing interval to ${currentInterval}s`);
+            }
+
             // Throttle "waiting_for_approval" emissions to avoid spamming webview
             const now = Date.now();
             if (attempts === 1 || now - lastEmitTime >= EMIT_THROTTLE_MS) {
               emit({
                 state: "waiting_for_approval",
-                message: "Waiting for browser authorization...",
+                message: "Complete sign-in in your browser to continue",
               });
               lastEmitTime = now;
             }
 
             if (attempts < maxAttempts) {
-              this.pollInterval = setTimeout(poll, interval * 1000);
+              this.pollInterval = setTimeout(poll, currentInterval * 1000);
             } else {
-              reject(new Error("Authentication timed out while waiting for approval."));
+              reject(new Error(`Authentication timed out after ${actualExpiresIn}s while waiting for approval.`));
             }
             return;
           }
@@ -283,22 +400,162 @@ export class DeviceAuthService {
   /**
    * Store the auth token securely.
    */
-  private async storeToken(token: string, expiresIn: number): Promise<void> {
+  private async storeToken(token: string, expiresIn: number, refreshToken?: string): Promise<void> {
     const expiresAt = Date.now() + expiresIn * 1000;
     await this.context.secrets.store("aep.authToken", token);
     await this.context.globalState.update("aep.tokenExpiresAt", expiresAt);
+
+    // Store Auth0 refresh token for token refresh flow
+    if (refreshToken) {
+      await this.context.secrets.store("aep.auth0RefreshToken", refreshToken);
+    } else {
+      // Log warning if refresh token is missing (should have offline_access scope)
+      console.warn(
+        "Auth0 did not return refresh_token. Ensure offline_access scope is requested " +
+        "and Refresh Token grant is enabled in Auth0 application settings."
+      );
+    }
   }
 
   /**
    * Get the current auth token if valid.
+   * If token is expired or expiring soon (within 60s), attempts to refresh using stored Auth0 refresh token.
+   * If refresh fails, forces re-authentication.
+   *
+   * The 60-second buffer prevents race conditions where tokens expire between the check and API call.
    */
   async getToken(): Promise<string | undefined> {
+    const REFRESH_SKEW_MS = 60_000; // Refresh 60s before expiry
     const expiresAt = this.context.globalState.get<number>("aep.tokenExpiresAt");
-    if (expiresAt && Date.now() > expiresAt) {
+
+    if (expiresAt && Date.now() > (expiresAt - REFRESH_SKEW_MS)) {
+      // Try to refresh before logging out
+      const refreshed = await this.refreshSession();
+      if (refreshed) {
+        return refreshed;
+      }
+
+      // Refresh failed, force re-auth and notify user
+      console.warn("[AEP] Token refresh failed, logging out user");
       await this.logout();
+
+      // Show notification explaining the logout
+      vscode.window.showWarningMessage(
+        "Your AEP session has expired. Please sign in again to continue.",
+        "Sign In"
+      ).then(selection => {
+        if (selection === "Sign In") {
+          vscode.commands.executeCommand("aep.auth.login");
+        }
+      });
+
       return undefined;
     }
     return await this.context.secrets.get("aep.authToken");
+  }
+
+  /**
+   * Get the stored Auth0 refresh token for token refresh flow.
+   */
+  async getRefreshToken(): Promise<string | undefined> {
+    return await this.context.secrets.get("aep.auth0RefreshToken");
+  }
+
+  /**
+   * Attempt to refresh the expired AEP session using stored Auth0 refresh token.
+   * Returns the new AEP session token if successful, undefined if refresh fails.
+   *
+   * Implements retry logic with exponential backoff for transient failures (5xx, 429, network errors).
+   * Hard failures (401, 403) are not retried and require re-authentication.
+   */
+  private async refreshSession(): Promise<string | undefined> {
+    const refreshToken = await this.getRefreshToken();
+    if (!refreshToken) {
+      return undefined;
+    }
+
+    const maxRetries = 2;
+    const baseDelayMs = 400;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/oauth/device/refresh`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+
+        if (!response.ok) {
+          // Auth0-specific errors (400, 401, 403) indicate invalid/expired refresh tokens
+          // These should not be retried as they require re-authentication
+          const isAuthError =
+            response.status === 400 || response.status === 401 || response.status === 403;
+
+          if (isAuthError) {
+            // Try to parse error details for better logging
+            try {
+              const errorData = await response.json() as Record<string, any>;
+              console.warn(
+                `[AEP] Token refresh failed: HTTP ${response.status}`,
+                errorData.error || errorData
+              );
+            } catch {
+              console.warn(`[AEP] Token refresh failed: HTTP ${response.status}`);
+            }
+            return undefined;
+          }
+
+          // Retry transient errors (5xx, 429)
+          const isTransient =
+            response.status === 429 || (response.status >= 500 && response.status < 600);
+
+          if (isTransient && attempt < maxRetries) {
+            const delay = baseDelayMs * Math.pow(2, attempt);
+            console.warn(
+              `[AEP] Refresh transient HTTP ${response.status}. Retrying in ${delay}ms (attempt ${
+                attempt + 1
+              }/${maxRetries + 1})...`
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            continue;
+          }
+
+          // Exhausted retries on transient errors
+          console.warn(
+            `[AEP] Token refresh failed: HTTP ${response.status} after ${attempt + 1} attempt(s)`
+          );
+          return undefined;
+        }
+
+        const data = (await response.json()) as TokenResponse;
+
+        // Store new AEP session token and rotated refresh token (if provided)
+        await this.storeToken(data.access_token, data.expires_in, data.refresh_token);
+
+        console.log("[AEP] Token refreshed successfully");
+        return data.access_token;
+      } catch (err) {
+        // Retry network errors (DNS failures, timeouts)
+        if (attempt < maxRetries) {
+          const delay = baseDelayMs * Math.pow(2, attempt);
+          console.warn(
+            `[AEP] Refresh network error. Retrying in ${delay}ms (attempt ${
+              attempt + 1
+            }/${maxRetries + 1})...`,
+            err
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        console.error("[AEP] Token refresh failed after retries:", err);
+        return undefined;
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -319,6 +576,7 @@ export class DeviceAuthService {
     }
 
     await this.context.secrets.delete("aep.authToken");
+    await this.context.secrets.delete("aep.auth0RefreshToken");
     await this.context.globalState.update("aep.tokenExpiresAt", undefined);
     vscode.window.showInformationMessage("Signed out of NAVI");
 
@@ -330,6 +588,37 @@ export class DeviceAuthService {
    */
   private notifyAuthStateChange(isAuthenticated: boolean): void {
     vscode.commands.executeCommand("aep.notifyAuthStateChange", isAuthenticated);
+  }
+
+  /**
+   * Decode JWT claims without verification (for display purposes only).
+   * SECURITY NOTE: This is unsafe for authorization - only use for displaying user info.
+   */
+  private decodeJwtClaimsUnsafe(token: string): Record<string, any> | null {
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) return null;
+      const payload = parts[1];
+      // Base64url decode
+      const json = Buffer.from(
+        payload.replace(/-/g, "+").replace(/_/g, "/"),
+        "base64"
+      ).toString("utf8");
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Extract display name from AEP session token for UI purposes.
+   * Returns name or email from JWT claims, undefined if unavailable.
+   */
+  private getDisplayNameFromToken(token: string): string | undefined {
+    const claims = this.decodeJwtClaimsUnsafe(token);
+    const name = typeof claims?.name === "string" ? claims.name : undefined;
+    const email = typeof claims?.email === "string" ? claims.email : undefined;
+    return name || email;
   }
 
   /**
@@ -362,4 +651,5 @@ export class DeviceAuthService {
       return null;
     }
   }
+
 }

@@ -534,6 +534,10 @@ async def execute_tool(
     if credentials:
         for provider, creds in credentials.items():
             set_byok_credentials(provider, creds)
+
+    # Normalize tool names: convert dots to underscores (e.g., "repo.inspect" -> "repo_inspect")
+    tool_name = tool_name.replace(".", "_")
+
     logger.info(
         "[TOOLS] execute_tool user=%s tool=%s args=%s",
         user_id,

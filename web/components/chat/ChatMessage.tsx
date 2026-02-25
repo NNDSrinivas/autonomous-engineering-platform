@@ -58,6 +58,16 @@ export function ChatMessage({ role, content, timestamp }: ChatMessageProps) {
         <div className="prose prose-sm dark:prose-invert max-w-none">
           {isUser ? (
             <p className="whitespace-pre-wrap">{content}</p>
+          ) : !content ? (
+            // Thinking animation for empty assistant messages
+            <div className="flex items-center gap-1 text-muted-foreground py-1">
+              <span className="text-sm">Thinking</span>
+              <span className="flex gap-1">
+                <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="w-1 h-1 bg-current rounded-full animate-bounce"></span>
+              </span>
+            </div>
           ) : (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}

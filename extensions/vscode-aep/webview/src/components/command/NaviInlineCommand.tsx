@@ -65,8 +65,11 @@ export const NaviInlineCommand: React.FC<NaviInlineCommandProps> = ({
   const formatOutput = () => {
     if (!output) return status === 'running' ? 'Executing...' : 'No output';
     const cleaned = stripEchoedCommand(output, command);
-    const lines = cleaned.split('\n').filter(l => l.trim());
-    return lines.slice(-12).join('\n') || 'No output';
+    // NOTE: Returns full cleaned output without truncation. For commands with very
+    // large outputs (e.g., npm install, docker build, database dumps), rendering the
+    // full output in the DOM could cause performance issues. Consider implementing
+    // virtualized scrolling or lazy rendering if performance problems are observed.
+    return cleaned.trim() || 'No output';
   };
 
   return (

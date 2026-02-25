@@ -460,6 +460,7 @@ type ActivityEvent = {
   kind: "read" | "edit" | "create" | "delete" | "command" | "grep" | "verification" | "fixing" | "info" | "error" | "success" | "thinking" | "llm_call" | "detection" | "context" | "analysis" | "prompt" | "parsing" | "validation" | "intent" | "rag" | "response";
   label: string;
   detail?: string;
+  commandId?: string;
   filePath?: string;
   status?: "running" | "done" | "error";
   timestamp: string;
@@ -937,7 +938,9 @@ const makeLinksClickableSafe = (html: string): string => {
       const pathWithoutLine = pathPart.replace(/:(\d+)$/, "");
       const dataLine = lineNum ? ` data-line="${lineNum}"` : "";
       const safePathAttr = escapeHtml(pathWithoutLine);
-      return `${leading}<a href="#" class="navi-link navi-link--file" data-file-path="${safePathAttr}"${dataLine}>${safePathAttr}</a>`;
+      const hoverPath = lineNum ? `${pathWithoutLine}:${lineNum}` : pathWithoutLine;
+      const safeHoverPathAttr = escapeHtml(hoverPath);
+      return `${leading}<a href="#" class="navi-link navi-link--file" data-file-path="${safePathAttr}" data-tooltip="${safeHoverPathAttr}" aria-label="Open file ${safeHoverPathAttr}"${dataLine}>${safePathAttr}</a>`;
     },
   );
   return result;
@@ -1190,7 +1193,7 @@ const buildQuickActions = (contextText: string): QuickAction[] => {
 
 const MAX_SESSION_MESSAGES = 200;
 const MAX_CONVERSATION_HISTORY = 25;
-const MAX_TERMINAL_ENTRIES = 6;
+const MAX_TERMINAL_ENTRIES = 80;
 const MAX_ACTIVITY_EVENTS = 60;
 const PANEL_STATE_PREFIX = "aep.navi.panelState.v1.";
 const PANEL_STATE_WEBVIEW_KEY = "aep.navi.panelState.bySession.v1";
@@ -1356,7 +1359,8 @@ const derivePreview = (messages: ChatMessage[]) => {
   return truncateText(firstLine, 120);
 };
 
-const MAX_COMMAND_OUTPUT = 20000;
+// Conservative limit to prevent webview performance issues while allowing most command outputs
+const MAX_COMMAND_OUTPUT = 40000;
 
 const appendWithLimit = (current: string, next: string, limit: number) => {
   const combined = current + next;
@@ -4415,6 +4419,7 @@ export default function NaviChatPanel({
           kind: "command",
           label: "Running command",
           detail: command,
+          commandId: terminalId,
           status: "running",
           timestamp: nowIso(),
         };
@@ -4622,6 +4627,19 @@ export default function NaviChatPanel({
 
           commandActivityRef.current.delete(msg.commandId);
         }
+
+        setTerminalEntries((prev) =>
+          prev.map((terminalEntry) => {
+            if (terminalEntry.id !== terminalId) return terminalEntry;
+            return {
+              ...terminalEntry,
+              output: entry.output,
+              status: finalStatus,
+              exitCode: entry.exitCode,
+              durationMs: entry.durationMs,
+            };
+          })
+        );
 
         reportCoverageIfNeeded(entry);
         if (activityPanel && entry.activityStepIndex !== undefined) {
@@ -6242,8 +6260,8 @@ export default function NaviChatPanel({
       console.warn("[NaviChatPanel] Unhandled message type:", msg.type);
     });
 
-    // Signal that the webview (and consent handlers) are ready to receive messages
-    vscodeApi.postMessage({ type: "webview.ready", source: "NaviChatPanel" });
+    // Signal that the chat panel (and consent handlers) are ready
+    vscodeApi.postMessage({ type: "navi.chat.ready", source: "NaviChatPanel" });
 
     // Return cleanup function
     return () => {
@@ -6286,9 +6304,9 @@ export default function NaviChatPanel({
 
     const body = {
       message,
-      workspace: workspaceRootToSend,
-      llm_provider: provider,
-      llm_model: modelOverride || selectedModelId,
+      workspace_root: workspaceRootToSend,
+      provider: provider,  // Changed from llm_provider to match ChatRequest schema
+      model: modelOverride || selectedModelId,  // Changed from llm_model to match ChatRequest schema
       mode: modeOverride || chatMode,
       user_id: USER_ID,
       org_id: ORG,
@@ -6297,7 +6315,8 @@ export default function NaviChatPanel({
     };
 
     const backendBase = resolveBackendBase();
-    const url = `${backendBase}/api/navi/process/stream`;
+    // Use /api/navi/chat/stream which supports agent mode with autonomous execution
+    const url = `${backendBase}/api/navi/chat/stream`;
 
     return new Promise((resolve, reject) => {
       let finalResult: NaviChatResponse | null = null;
@@ -6867,6 +6886,42 @@ export default function NaviChatPanel({
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
+
+    // If a command consent dialog is pending, treat short confirmation text as a consent decision.
+    // This keeps "yes, I confirm" conversational while still using the structured approval pipeline.
+    if (pendingConsents.size > 0) {
+      const [consentId] = Array.from(pendingConsents.entries())[0] || [];
+      if (consentId) {
+        const normalized = text.toLowerCase().replace(/[^\w\s]/g, " ").trim();
+
+        // Safety check: Only recognize consent patterns in short messages (≤ 30 chars)
+        // to prevent accidental approval from longer conversational responses like
+        // "yes, I understand the implications" or "ok, but what about..."
+        const isShortConfirmation = normalized.length <= 30;
+
+        const isAllowAlwaysExact = /^(allow always exact|always exact|trust this command|always allow this command)\b/.test(normalized);
+        const isAllowAlwaysType = /^(allow always type|always this type|trust this command type)\b/.test(normalized);
+        const isAllowOnce = isShortConfirmation && (
+          /^(yes|y|approve|approved|allow|proceed|continue|ok|okay|confirm|go ahead)\b/.test(normalized) ||
+          /\byes i confirm\b/.test(normalized)
+        );
+        const isDeny = isShortConfirmation && /^(no|n|deny|reject|cancel|stop|dont allow|do not allow)\b/.test(normalized);
+
+        if (isAllowAlwaysExact || isAllowAlwaysType || isAllowOnce || isDeny) {
+          if (!overrideText) setInput("");
+          if (isAllowAlwaysExact) {
+            await handleConsentDecision(consentId, { choice: "allow_always_exact" });
+          } else if (isAllowAlwaysType) {
+            await handleConsentDecision(consentId, { choice: "allow_always_type" });
+          } else if (isDeny) {
+            await handleConsentDecision(consentId, { choice: "deny" });
+          } else {
+            await handleConsentDecision(consentId, { choice: "allow_once" });
+          }
+          return;
+        }
+      }
+    }
 
     // Cancel any existing request before starting new one
     if (chatAbortRef.current) {
@@ -10309,8 +10364,27 @@ export default function NaviChatPanel({
                         .filter(n => n.text.trim().length > 0)
                         .filter(n => !isRedundantNarrative(n.text));
 
-                      const buildExplorationSummary = () => {
-                        const explorationCandidates = activitiesToUse.filter((evt) =>
+                      const normalizePathForExploration = (value: string) =>
+                        value.split(' (lines ')[0].trim();
+
+                      type ExplorationItem = {
+                        id: string;
+                        kind: 'read' | 'search' | 'list';
+                        text: string;
+                        filePath?: string;
+                      };
+
+                      type ExplorationSummary = {
+                        label: string;
+                        items: ExplorationItem[];
+                        readFilePaths: Set<string>;
+                        groupedSearchOrListEventIds: Set<string>;
+                        collapseReadDetails: boolean;
+                        collapseSearchOrListDetails: boolean;
+                      };
+
+                      const buildExplorationSummary = (): ExplorationSummary | null => {
+                        const explorationCandidates = filteredActivities.filter((evt) =>
                           evt.kind === 'read' ||
                           evt.kind === 'grep' ||
                           evt.kind === 'rag' ||
@@ -10323,21 +10397,26 @@ export default function NaviChatPanel({
                         }
 
                         const readFiles = new Set<string>();
-                        const explorationItems: Array<{ id: string; text: string }> = [];
+                        const searchEventIds = new Set<string>();
+                        const listEventIds = new Set<string>();
+                        const explorationItems: ExplorationItem[] = [];
                         let searchCount = 0;
                         let listCount = 0;
-
-                        const normalizePath = (value: string) => value.split(' (lines ')[0].trim();
 
                         explorationCandidates.forEach((evt) => {
                           const detail = typeof evt.detail === 'string' ? evt.detail : '';
                           const label = evt.label || '';
                           const detailNormalized = detail.trim();
                           if (evt.kind === 'read' && detailNormalized) {
-                            const filePath = normalizePath(detailNormalized);
+                            const filePath = normalizePathForExploration(detailNormalized);
                             if (!readFiles.has(filePath)) {
                               readFiles.add(filePath);
-                              explorationItems.push({ id: evt.id, text: `Read ${filePath}` });
+                              explorationItems.push({
+                                id: evt.id,
+                                kind: 'read',
+                                text: `Read ${filePath}`,
+                                filePath,
+                              });
                             }
                             return;
                           }
@@ -10345,13 +10424,19 @@ export default function NaviChatPanel({
                           const isSearch =
                             evt.kind === 'grep' ||
                             evt.kind === 'rag' ||
+                            /^(rg|grep)\b/i.test(detailNormalized) ||
                             /search/i.test(label);
                           if (isSearch) {
                             searchCount += 1;
+                            searchEventIds.add(evt.id);
                             const searchDetail = detailNormalized
                               ? `Searched for ${detailNormalized}`
                               : (label ? `Searched with ${label}` : 'Searched');
-                            explorationItems.push({ id: evt.id, text: searchDetail });
+                            explorationItems.push({
+                              id: evt.id,
+                              kind: 'search',
+                              text: searchDetail,
+                            });
                             return;
                           }
 
@@ -10361,33 +10446,58 @@ export default function NaviChatPanel({
                             evt.kind === 'command' && /^(ls|dir|tree|find|fd|rg\s+--files)\b/i.test(detailNormalized);
                           if (isList || isListCommand) {
                             listCount += 1;
+                            listEventIds.add(evt.id);
                             const listDetail = detailNormalized
                               ? `Listed ${detailNormalized}`
                               : (label ? `Listed ${label}` : 'Listed directory');
-                            explorationItems.push({ id: evt.id, text: listDetail });
+                            explorationItems.push({
+                              id: evt.id,
+                              kind: 'list',
+                              text: listDetail,
+                            });
                           }
                         });
 
                         const readCount = readFiles.size;
                         const totalExploration = readCount + searchCount + listCount;
-                        const shouldShow =
-                          totalExploration >= 3 ||
-                          searchCount >= 2 ||
-                          listCount >= 2 ||
-                          (searchCount >= 1 && readCount >= 1);
+                        const collapseReadDetails = readCount >= 4;
+                        const collapseSearchOrListDetails = searchCount >= 2 || listCount >= 2;
+
+                        // Show exploration summary when there are 2+ total exploration activities
+                        // This provides consistent UX rather than switching between stream and summary
+                        const shouldShow = totalExploration >= 2;
 
                         if (!shouldShow) {
                           return null;
                         }
 
+                        const groupedSearchOrListEventIds = new Set<string>([
+                          ...Array.from(searchEventIds),
+                          ...Array.from(listEventIds),
+                        ]);
+
                         const parts: string[] = [];
-                        if (readCount > 0) parts.push(`${readCount} file${readCount === 1 ? '' : 's'}`);
-                        if (searchCount > 0) parts.push(`${searchCount} search${searchCount === 1 ? '' : 'es'}`);
-                        if (listCount > 0) parts.push(`${listCount} list${listCount === 1 ? '' : 's'}`);
+                        if (readCount > 0) {
+                          parts.push(`${readCount} file${readCount === 1 ? '' : 's'}`);
+                        }
+                        if (searchCount > 0) {
+                          parts.push(`${searchCount} search${searchCount === 1 ? '' : 'es'}`);
+                        }
+                        if (listCount > 0) {
+                          parts.push(`${listCount} list${listCount === 1 ? '' : 's'}`);
+                        }
+
+                        // Include all exploration items in the summary for consistency
+                        // The collapse flags control whether items are also shown in the stream
+                        const summaryItems = explorationItems;
 
                         return {
                           label: `Exploring ${parts.join(', ')}`,
-                          items: explorationItems,
+                          items: summaryItems,
+                          readFilePaths: readFiles,
+                          groupedSearchOrListEventIds,
+                          collapseReadDetails,
+                          collapseSearchOrListDetails,
                         };
                       };
 
@@ -10443,6 +10553,31 @@ export default function NaviChatPanel({
                         }
                       }
 
+                      const streamItems = explorationSummary
+                        ? mergedItems.filter((item) => {
+                            if (item.itemType !== 'activity') {
+                              return true;
+                            }
+
+                            if (item.data.kind === 'read' && explorationSummary.collapseReadDetails) {
+                              const readPath = normalizePathForExploration(
+                                String(item.data.filePath || item.data.detail || '').trim(),
+                              );
+                              if (!readPath) return true;
+                              return !explorationSummary.readFilePaths.has(readPath);
+                            }
+
+                            if (
+                              explorationSummary.collapseSearchOrListDetails &&
+                              explorationSummary.groupedSearchOrListEventIds.has(item.data.id)
+                            ) {
+                              return false;
+                            }
+
+                            return true;
+                          })
+                        : mergedItems;
+
                       // Render activity item helper
                       const renderActivityItem = (evt: ActivityEvent) => {
                         if (evt.kind === 'thinking') {
@@ -10456,7 +10591,10 @@ export default function NaviChatPanel({
                           const isExpanded = expandedThinkingIds.has(evt.id);
 
                           return (
-                            <div key={evt.id} className="navi-claude-activity navi-claude-activity--thinking">
+                            <div
+                              key={evt.id}
+                              className={`navi-claude-activity navi-claude-activity--thinking navi-claude-activity--${evt.status || 'running'}`}
+                            >
                               <div
                                 className="navi-claude-thinking-row"
                                 role="button"
@@ -10752,17 +10890,21 @@ export default function NaviChatPanel({
                               </div>
                             )}
                             {showCommandWidget && evt.detail && (() => {
-                              // Look up output from terminalEntries as fallback
-                              const terminalEntry = [...terminalEntries].reverse().find(
-                                (te) => te.command === evt.detail
-                              );
+                              // Prefer commandId when available, fallback to command text for older events
+                              const terminalEntry = evt.commandId
+                                ? [...terminalEntries]
+                                    .reverse()
+                                    .find((te) => te.id === evt.commandId)
+                                : [...terminalEntries]
+                                    .reverse()
+                                    .find((te) => te.command === evt.detail);
                               const commandOutput = evt.output || terminalEntry?.output || '';
                               const commandExitCode = evt.exitCode ?? terminalEntry?.exitCode;
                               const commandStatus = evt.status || terminalEntry?.status || 'done';
 
                               return (
                                 <NaviInlineCommand
-                                  commandId={terminalEntry?.id}
+                                  commandId={evt.commandId || terminalEntry?.id}
                                   command={evt.detail}
                                   output={commandOutput}
                                   status={commandStatus}
@@ -10984,7 +11126,9 @@ export default function NaviChatPanel({
                             const explorationKey = `${m.id}-explore`;
                             const isExpanded = expandedExplorationIds.has(explorationKey);
                             return (
-                              <div className="navi-exploration-summary">
+                              <div
+                                className={`navi-exploration-summary ${m.isStreaming ? 'navi-exploration-summary--running' : ''}`}
+                              >
                                 <button
                                   type="button"
                                   className="navi-exploration-header"
@@ -11008,11 +11152,33 @@ export default function NaviChatPanel({
                                 </button>
                                 {isExpanded && (
                                   <div className="navi-exploration-details">
-                                    {explorationSummary.items.map((item) => (
-                                      <div key={item.id} className="navi-exploration-item">
-                                        {item.text}
-                                      </div>
-                                    ))}
+                                    {explorationSummary.items.map((item) => {
+                                      if (item.kind === 'read' && item.filePath) {
+                                        return (
+                                          <button
+                                            key={item.id}
+                                            type="button"
+                                            className="navi-exploration-item navi-exploration-item--file"
+                                            data-file-path={item.filePath}
+                                            data-tooltip={item.filePath}
+                                            title={item.filePath}
+                                            aria-label={`Open file ${item.filePath}`}
+                                            onClick={() =>
+                                              vscodeApi.postMessage({ type: 'openFile', filePath: item.filePath })
+                                            }
+                                          >
+                                            <span className="navi-exploration-item-action">Read</span>
+                                            <span className="navi-exploration-item-path">{item.filePath}</span>
+                                          </button>
+                                        );
+                                      }
+
+                                      return (
+                                        <div key={item.id} className="navi-exploration-item">
+                                          {item.text}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -11020,7 +11186,7 @@ export default function NaviChatPanel({
                           })()}
                           {/* Render items in chronological order - interleave text and activities */}
                           {/* Using mergedItems to combine consecutive narratives for proper markdown parsing */}
-                          {mergedItems.map((item, idx) => {
+                          {streamItems.map((item, idx) => {
                             if (item.itemType === 'narrative') {
                               return renderNarrativeItem(item.text, item.id);
                             } else {
@@ -11139,9 +11305,9 @@ export default function NaviChatPanel({
 
                     // ONLY show file-related activities below response
                     // Filter OUT: thinking, info, command, analysis, context, detection, prompt, llm_call, parsing, validation
-                    // Keep ONLY: read, edit, create (file operations)
+                    // Keep ONLY: edit/create (changed files only)
                     const fileActivities = [...activitiesToShow]
-                      .filter((evt) => evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create')
+                      .filter((evt) => evt.kind === 'edit' || evt.kind === 'create')
                       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
                     if (fileActivities.length === 0) return null;
@@ -11153,7 +11319,7 @@ export default function NaviChatPanel({
 
                     // Render a single activity row with proper styling
                     const renderActivityRow = (evt: ActivityEvent) => {
-                      const isFileActivity = evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create';
+                      const isFileActivity = evt.kind === 'edit' || evt.kind === 'create';
                       const filePath = evt.filePath || evt.detail;
                       // Extract just the filename from path for display
                       const fileName = filePath ? filePath.split('/').pop() : '';
@@ -11283,7 +11449,7 @@ export default function NaviChatPanel({
                             <div className="navi-activity-group-items">
                               {item.activities.map((evt) => {
                                 const filePath = evt.filePath || evt.detail;
-                                const isClickable = Boolean(filePath && (evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create'));
+                                const isClickable = Boolean(filePath && (evt.kind === 'edit' || evt.kind === 'create'));
 
                                 return (
                                   <div
@@ -11309,7 +11475,7 @@ export default function NaviChatPanel({
                                     title={isClickable ? `Click to open ${filePath}` : undefined}
                                   >
                                     <span className={`navi-activity-group-item-icon navi-activity-group-item-icon--${evt.kind}`}>
-                                      {evt.kind === 'edit' ? '✎' : evt.kind === 'create' ? '+' : '✓'}
+                                      {evt.kind === 'edit' ? '✎' : '+'}
                                     </span>
                                     <span className={`navi-activity-group-item-path ${isClickable ? 'navi-activity-group-item-path--clickable' : ''}`}>
                                       {filePath || evt.label}
@@ -11771,11 +11937,6 @@ export default function NaviChatPanel({
               evt.kind === 'verification' ||
               evt.kind === 'fixing'
           );
-          const hasPendingAssistantBubble = messages.some(
-            (msg) =>
-              msg.role === "assistant" &&
-              (msg.isStreaming || (!msg.content || msg.content.trim() === ""))
-          );
           const hasRunningThinkingActivity = activityEvents.some(
             (evt) => evt.kind === "thinking" && evt.status === "running"
           );
@@ -11786,7 +11947,6 @@ export default function NaviChatPanel({
           const lastMessage = messages[messages.length - 1];
           const shouldShowBottomThinking = sending &&
             !hasRealActivities &&
-            !hasPendingAssistantBubble &&
             !hasRunningThinkingActivity &&
             narrativeLines.length === 0 &&
             (!lastMessage?.content || lastMessage.content.trim() === '');

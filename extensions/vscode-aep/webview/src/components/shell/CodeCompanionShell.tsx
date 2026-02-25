@@ -695,6 +695,11 @@ export function CodeCompanionShell() {
 
   const activityPanelState = useActivityPanel();
 
+  // Always emit readiness, even when chat panel is not mounted (unauth state).
+  useEffect(() => {
+    postMessage({ type: "webview.ready", source: "CodeCompanionShell" });
+  }, []);
+
   useEffect(() => {
     if (!activityPanelState.isVisible) {
       setActivityPanelOpen(false);
@@ -1634,32 +1639,12 @@ export function CodeCompanionShell() {
           ) : (
             <main className="navi-auth-wall" aria-label="Authentication required">
               <div className="navi-auth-wall__layout">
-                <section className="navi-auth-wall__trust-rail" aria-label="Why sign in">
-                  <h3>Sign in to unlock the NAVI workspace</h3>
-                  <p>
-                    Chat, MCP tools, integrations, and rules are available only after authentication.
-                  </p>
-                  <ul className="navi-auth-wall__trust-list">
-                    <li>
-                      <Shield className="h-4 w-4" />
-                      <span>Secure browser authorization with enterprise identity controls.</span>
-                    </li>
-                    <li>
-                      <Lock className="h-4 w-4" />
-                      <span>Session tokens are stored in VS Code secrets, not in the webview.</span>
-                    </li>
-                    <li>
-                      <CheckCircle2 className="h-4 w-4" />
-                      <span>One sign-in unlocks your full NAVI environment.</span>
-                    </li>
-                  </ul>
-                </section>
                 <div className="navi-auth-wall__entry">
                   <PremiumAuthEntry
                     onSignIn={handleSignIn}
                     onSignUp={handleSignUp}
-                    title="Continue with NAVI account"
-                    subtitle="Sign in uses secure device authorization. Sign up opens NAVI in your browser."
+                    title="Sign in to unlock the NAVI workspace"
+                    subtitle="Chat, MCP tools, integrations, and rules are available only after authentication."
                     signInStatus={authSignInStatus}
                   />
                 </div>
@@ -2229,37 +2214,15 @@ export function CodeCompanionShell() {
               {fullPanelTab === 'account' && (
                 <div className={`navi-cc-account ${!isAuthenticated ? 'navi-cc-account--unauth' : ''}`}>
                   {!isAuthenticated ? (
-                    <div className="navi-cc-account__unauth-layout">
-                      <section className="navi-cc-account__trust-rail" aria-label="NAVI enterprise trust highlights">
-                        <h3>Enterprise-grade account access</h3>
-                        <p>
-                          NAVI keeps your engineering workflow secure, auditable, and ready for production teams.
-                        </p>
-                        <ul className="navi-cc-account__trust-list">
-                          <li>
-                            <Shield className="h-4 w-4" />
-                            <span>Secure browser authorization with scoped access.</span>
-                          </li>
-                          <li>
-                            <Lock className="h-4 w-4" />
-                            <span>Tokens stay in VS Code secrets storage.</span>
-                          </li>
-                          <li>
-                            <CheckCircle2 className="h-4 w-4" />
-                            <span>Sign in once and continue seamlessly across sessions.</span>
-                          </li>
-                        </ul>
-                      </section>
-                      <div className="navi-cc-account__auth-entry">
-                        <PremiumAuthEntry
-                          variant="compact"
-                          onSignIn={handleSignIn}
-                          onSignUp={handleSignUp}
-                          title="Continue with NAVI account"
-                          subtitle="Sign in uses secure device authorization. Sign up opens NAVI in your browser."
-                          signInStatus={authSignInStatus}
-                        />
-                      </div>
+                    <div className="navi-cc-account__auth-entry">
+                      <PremiumAuthEntry
+                        variant="compact"
+                        onSignIn={handleSignIn}
+                        onSignUp={handleSignUp}
+                        title="Enterprise-grade account access"
+                        subtitle="Secure browser authorization with scoped access. Tokens stay in VS Code secrets storage."
+                        signInStatus={authSignInStatus}
+                      />
                     </div>
                   ) : (
                     <>

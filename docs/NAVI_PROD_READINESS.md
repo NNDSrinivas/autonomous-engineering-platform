@@ -62,6 +62,168 @@ Currently using **Auth0's development keys** for Google social connection:
 
 ---
 
+## 🔐 AUTH0 DEVICE AUTHORIZATION GRANT - PRODUCTION SETUP REQUIRED
+
+**Status:** 🔴 REQUIRED FOR PRODUCTION
+**Impact:** VSCode extension authentication will fail without this
+**Priority:** Critical (P0)
+**Last Updated:** February 22, 2026
+
+### Current Issue
+
+VSCode extension shows error on sign-in:
+```
+"NAVI sign-in is blocked by Auth0 configuration.
+Enable Device Authorization Grant for this Auth0 application"
+```
+
+**Root Cause:** Auth0 application does not have Device Authorization Grant (RFC 8628) enabled.
+
+### Solution: Enable Device Code Grant Type
+
+**Time Required:** 5 minutes
+**Reference:** [docs/AUTH0_PRODUCTION_SETUP.md#L161-L183](AUTH0_PRODUCTION_SETUP.md#L161-L183)
+
+**Steps:**
+1. Go to Auth0 Dashboard → Applications → "NAVI VSCode Extension"
+2. Settings → Advanced Settings → Grant Types
+3. Enable: **✓ Device Code**
+4. Enable: **✓ Refresh Token**
+5. Save Changes
+
+### Production Environment Configuration
+
+**Critical Variables:**
+
+```bash
+# Backend .env (PRODUCTION)
+AUTH0_DOMAIN=navralabs.us.auth0.com  # NOT dev tenant!
+AUTH0_CLIENT_ID=<production-client-id>
+AUTH0_CLIENT_SECRET=<production-client-secret>
+AUTH0_AUDIENCE=https://api.navralabs.com
+AUTH0_ISSUER_BASE_URL=https://navralabs.us.auth0.com
+
+PUBLIC_BASE_URL=https://api.navralabs.com
+WEB_APP_BASE_URL=https://app.navralabs.com
+
+# CRITICAL: Ensure dev-only flags are FALSE
+OAUTH_DEVICE_USE_IN_MEMORY_STORE=false  # MUST be false in production
+OAUTH_DEVICE_AUTO_APPROVE=false          # MUST be false in production
+```
+
+**Web App .env.production:**
+
+```bash
+AUTH0_SECRET=<generated-with-openssl-rand-hex-32>
+AUTH0_BASE_URL=https://app.navralabs.com
+AUTH0_ISSUER_BASE_URL=https://navralabs.us.auth0.com
+AUTH0_CLIENT_ID=<production-client-id>
+AUTH0_CLIENT_SECRET=<production-client-secret>
+AUTH0_AUDIENCE=https://api.navralabs.com
+```
+
+### Device Authorization Flow URLs
+
+**Production:**
+- Verification URI: `https://app.navralabs.com/device/authorize`
+- API Endpoint: `https://api.navralabs.com/oauth/device/*`
+
+**Staging:**
+- Verification URI: `https://staging.navralabs.com/device/authorize`
+- API Endpoint: `https://api-staging.navralabs.com/oauth/device/*`
+
+### TODO (Before Production Launch):
+- [ ] Create separate Auth0 tenants (dev, staging, prod)
+- [ ] Enable Device Authorization Grant in production Auth0 app
+- [ ] Set production environment variables (backend + web)
+- [ ] Update Auth0 callback URLs to production domains
+- [ ] Test device authorization flow end-to-end
+- [ ] Enable MFA for production users
+- [ ] Configure brute force protection
+- [ ] Set up Auth0 Action for user sync
+- [ ] Verify Redis is configured (multi-worker requirement)
+
+---
+
+## 🖼️ PREVIEW SERVICE - PHASE 2 PRODUCTION BACKEND REQUIRED
+
+**Status:** 🟡 PHASE 1 COMPLETE (Static HTML), PHASE 2 DEFERRED
+**Impact:** Preview features will be disabled in multi-worker production deployments
+**Priority:** Medium (P1 - for Phase 2 live preview)
+**Last Updated:** February 22, 2026
+
+### Current Status
+
+**Phase 1 (Complete):**
+- ✅ Static HTML preview via in-memory storage
+- ✅ Feature flag: `PREVIEW_SERVICE_IN_MEMORY_ENABLED`
+- ✅ Single-worker deployment support
+- ✅ Security: Auth-gated, restrictive CSP headers, iframe sandboxing
+
+**Phase 2 (Deferred):**
+- ⏳ Live dev server preview (Next.js, Vite, etc.)
+- ⏳ Redis/S3 backend for multi-worker support
+- ⏳ WebSocket proxy for HMR (hot module reload)
+
+### Production Configuration
+
+**Single-Worker Deployment (Staging Only):**
+```bash
+# Enable preview service for single-worker staging environments
+PREVIEW_SERVICE_IN_MEMORY_ENABLED=true
+
+# Run backend with single worker
+uvicorn backend.api.main:app --workers 1
+```
+
+**Multi-Worker Production (Current Recommendation):**
+```bash
+# Disable preview service (default - production-safe)
+PREVIEW_SERVICE_IN_MEMORY_ENABLED=false
+
+# Preview features will return 503 Service Unavailable
+# Phase 2 will implement Redis/S3 backend for multi-worker support
+```
+
+### Why In-Memory Won't Work in Production
+
+**Problem:** Each backend worker has its own process-local memory
+- Worker 1 stores preview → Worker 2 can't retrieve it
+- Preview requests hit random workers (load balancer)
+- Result: 404 errors on preview retrieval
+
+**Solution (Phase 2):**
+- Implement shared backend (Redis or S3)
+- All workers read/write from same storage
+- Consistent preview access regardless of worker
+
+### Phase 2 Implementation Plan
+
+**When:** After Phase 1 validation and user feedback
+
+**Scope:**
+1. **PreviewSessionStore** - Centralized session storage
+2. **Redis Backend** - Replace in-memory dict with Redis
+3. **LocalRunner** - Dev server management (Next.js, Vite, etc.)
+4. **WebSocket Proxy** - Enable HMR for live preview
+5. **Remote Runner (Future)** - ECS Fargate for isolated execution
+
+**Estimated Effort:** 2-3 weeks
+
+**Reference:** [Plan file](../.claude/plans/rustling-whistling-quokka.md)
+
+### TODO (Phase 2):
+- [ ] Implement PreviewSessionStore with Redis backend
+- [ ] Add LocalRunner for dev server management
+- [ ] Implement HTTP + WebSocket proxy
+- [ ] Add workspace/command allowlists for security
+- [ ] Implement idle cleanup (20min timeout)
+- [ ] Add preview session monitoring/metrics
+- [ ] Load test with 100+ concurrent preview sessions
+- [ ] Document deployment requirements (Node.js in containers)
+
+---
+
 ## Executive Summary
 NAVI has strong technical foundations and is **production-ready for pilot deployment** after comprehensive E2E validation with real LLMs. Recent performance optimizations achieved 73-99% latency improvements across all percentiles. All critical security blockers have been resolved (Feb 9, 2026). VSCode extension build automation completed (Feb 13, 2026). Primary remaining gaps are operational readiness (monitoring dashboards, SLOs, incident runbooks).
 

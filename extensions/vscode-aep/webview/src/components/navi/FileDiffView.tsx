@@ -1,5 +1,20 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, Check, FileCode } from 'lucide-react';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-jsx';
+import 'prismjs/components/prism-tsx';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-go';
+import 'prismjs/components/prism-rust';
+
+// Rate limiting for production Prism error logging (prevent console spam)
+// Track warning timestamps to implement time-based window (max 3 per hour)
+const prismWarnTimestamps: number[] = [];
+const MAX_PRISM_WARNINGS = 3;
+const PRISM_WARN_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 export interface DiffLine {
   type: 'addition' | 'deletion' | 'context';
@@ -27,8 +42,8 @@ export interface FileDiffViewProps {
 const getLanguageClass = (filePath: string): string => {
   const ext = filePath.split('.').pop()?.toLowerCase() || '';
   const langMap: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescript',
-    js: 'javascript', jsx: 'javascript', mjs: 'javascript',
+    ts: 'typescript', tsx: 'tsx',
+    js: 'javascript', jsx: 'jsx', mjs: 'javascript',
     py: 'python', pyw: 'python',
     go: 'go', rs: 'rust',
     java: 'java', kt: 'kotlin',
@@ -46,6 +61,14 @@ const getLanguageClass = (filePath: string): string => {
 const getFileName = (path: string): string => {
   return path.split('/').pop() || path;
 };
+
+const escapeHtml = (text: string): string =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 
 export const FileDiffView: React.FC<FileDiffViewProps> = ({
   diff,
@@ -87,6 +110,65 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
                      operation === 'delete' ? 'Deleted file' :
                      'Edited file';
   const fileName = getFileName(diff.path);
+  const languageClass = getLanguageClass(diff.path);
+
+  // Disable Prism highlighting for very large diffs to prevent webview freezes.
+  // The 800-line threshold was chosen empirically as a conservative default that
+  // keeps Prism work small enough to avoid noticeable pauses in the VS Code webview
+  // on typical developer machines. If you see performance issues or have more headroom,
+  // this value can be tuned or made configurable via an extension setting.
+  //
+  // When a diff exceeds HIGHLIGHT_MAX_LINES, Prism highlighting is skipped and the
+  // UI falls back to rendering escaped HTML without syntax highlighting. This preserves
+  // the full diff content while avoiding the cost of tokenizing very large files.
+  const HIGHLIGHT_MAX_LINES = 800;
+  const shouldHighlight = diff.lines.length <= HIGHLIGHT_MAX_LINES;
+
+  const highlightLine = (content: string): string => {
+    const raw = content || '';
+    if (!raw) return '&nbsp;';
+
+    const grammar =
+      Prism.languages[languageClass] ||
+      Prism.languages.tsx ||
+      Prism.languages.typescript ||
+      Prism.languages.javascript;
+
+    try {
+      return Prism.highlight(raw, grammar, languageClass);
+    } catch (error) {
+      // Log Prism failures without exposing sensitive diff content
+      const meta = {
+        language: languageClass,
+        contentLength: raw?.length ?? 0,
+      };
+
+      if (import.meta.env.MODE !== 'production') {
+        console.error('Prism.highlight failed in FileDiffView.highlightLine', { ...meta, error });
+      } else {
+        // In production, log sanitized warnings with time-based rate limiting
+        const now = Date.now();
+        // Remove timestamps older than the window
+        while (prismWarnTimestamps.length > 0 && now - prismWarnTimestamps[0] > PRISM_WARN_WINDOW_MS) {
+          prismWarnTimestamps.shift();
+        }
+
+        if (prismWarnTimestamps.length < MAX_PRISM_WARNINGS) {
+          prismWarnTimestamps.push(now);
+          const err = error as any;
+          console.warn('Prism.highlight failed (production)', {
+            ...meta,
+            errorName: typeof err?.name === 'string' ? err.name : undefined,
+            errorMessage: typeof err?.message === 'string' ? err.message : undefined,
+            warnCount: prismWarnTimestamps.length,
+            windowResetInMs: PRISM_WARN_WINDOW_MS,
+          });
+        }
+      }
+
+      return escapeHtml(raw);
+    }
+  };
   const collapsedPrefix = operation === 'create'
     ? 'Created'
     : operation === 'delete'
@@ -162,7 +244,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
 
       {/* Diff content */}
       {isOpen && (
-        <div className={`fdv-content fdv-lang-${getLanguageClass(diff.path)}`}>
+        <div className={`fdv-content fdv-lang-${languageClass}`}>
           {diff.lines.length === 0 && (
             <div className="fdv-empty">
               {operation === 'create' ? 'New file (no diff)' : 'No diff available'}
@@ -183,7 +265,12 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
                 {line.type === 'addition' ? '+' : line.type === 'deletion' ? '-' : ' '}
               </span>
               <span className="fdv-line-content">
-                <code>{line.content || ' '}</code>
+                <code
+                  className={`language-${languageClass}`}
+                  dangerouslySetInnerHTML={{
+                    __html: shouldHighlight ? highlightLine(line.content) : escapeHtml(line.content)
+                  }}
+                />
               </span>
             </div>
           ))}
@@ -456,6 +543,76 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           border-radius: 0;
           display: block;
           white-space: pre;
+          tab-size: 2;
+          -webkit-font-smoothing: antialiased;
+        }
+
+        /* VS Code-like token colors in diff panel */
+        .fdv-line-content code .token.comment,
+        .fdv-line-content code .token.prolog,
+        .fdv-line-content code .token.doctype,
+        .fdv-line-content code .token.cdata {
+          color: #718096 !important;
+          font-style: italic;
+        }
+
+        .fdv-line-content code .token.punctuation {
+          color: #a0aec0 !important;
+        }
+
+        .fdv-line-content code .token.property,
+        .fdv-line-content code .token.tag,
+        .fdv-line-content code .token.constant,
+        .fdv-line-content code .token.symbol,
+        .fdv-line-content code .token.deleted {
+          color: #fca5a5 !important;
+        }
+
+        .fdv-line-content code .token.boolean,
+        .fdv-line-content code .token.number {
+          color: #fbbf24 !important;
+        }
+
+        .fdv-line-content code .token.selector,
+        .fdv-line-content code .token.attr-name,
+        .fdv-line-content code .token.string,
+        .fdv-line-content code .token.char,
+        .fdv-line-content code .token.builtin,
+        .fdv-line-content code .token.inserted {
+          color: #86efac !important;
+        }
+
+        .fdv-line-content code .token.operator,
+        .fdv-line-content code .token.entity,
+        .fdv-line-content code .token.url,
+        .fdv-line-content code .language-css .token.string,
+        .fdv-line-content code .style .token.string {
+          color: #67e8f9 !important;
+        }
+
+        .fdv-line-content code .token.atrule,
+        .fdv-line-content code .token.attr-value,
+        .fdv-line-content code .token.keyword {
+          color: #c4b5fd !important;
+        }
+
+        .fdv-line-content code .token.function,
+        .fdv-line-content code .token.class-name {
+          color: #93c5fd !important;
+        }
+
+        .fdv-line-content code .token.regex,
+        .fdv-line-content code .token.important,
+        .fdv-line-content code .token.variable {
+          color: #f9a8d4 !important;
+        }
+
+        /* Shell/bash specific tokens */
+        .fdv-line-content code .token.shebang,
+        .fdv-line-content code .token.assign-left,
+        .fdv-line-content code .token.environment,
+        .fdv-line-content code .token.parameter {
+          color: #93c5fd !important;
         }
 
         .fdv-empty {
@@ -466,6 +623,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
 
         .fdv-line--addition .fdv-line-content code {
           background: transparent !important;
+          color: #d1fae5;
         }
 
         .fdv-line--deletion .fdv-line-content code {

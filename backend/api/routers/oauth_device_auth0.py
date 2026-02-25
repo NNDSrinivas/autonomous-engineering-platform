@@ -88,6 +88,9 @@ def _validate_auth0_settings() -> None:
 
 
 # JWKS cache with TTL for Auth0 ID token verification
+# NOTE: This JWKS cache is process-local. In multi-worker deployments, each worker
+# will fetch JWKS independently (acceptable for most use cases). If you need shared
+# caching across workers, consider backing with Redis.
 _JWKS_CACHE: dict | None = None
 _JWKS_CACHE_AT: float = 0.0
 _JWKS_CACHE_DOMAIN: str | None = None  # Track which domain the cache is for
@@ -96,6 +99,9 @@ _JWKS_LOCK = asyncio.Lock()
 AUTH0_JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 
 # Rate limiting for refresh endpoint (per-IP, 60s window)
+# NOTE: This rate limiter is also process-local. Each worker has its own 20 req/min
+# bucket per IP. For strict global rate limiting across workers, use Redis-backed
+# rate limiting (e.g., aioredis with token bucket).
 _REFRESH_LIMIT = TTLCache(maxsize=5000, ttl=60)
 
 

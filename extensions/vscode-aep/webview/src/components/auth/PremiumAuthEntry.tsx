@@ -21,7 +21,7 @@ interface PremiumAuthEntryProps {
 
 export function PremiumAuthEntry({
   title = "Sign in to NAVI",
-  subtitle = "Use secure device authorization for sign in. Sign up opens NAVI in your browser.",
+  subtitle = "Securely sign in using your browser. Credentials never enter VS Code.",
   variant = "default",
   onSignIn,
   onSignUp,
@@ -81,36 +81,38 @@ export function PremiumAuthEntry({
       <div className="premium-auth-entry__controls">
         <div className="premium-auth-entry__actions">
           <button type="button" className="premium-auth-entry__btn primary" onClick={onSignIn}>
-            Sign in
+            Continue in browser
           </button>
           <button type="button" className="premium-auth-entry__btn secondary" onClick={onSignUp}>
             Sign up
           </button>
         </div>
         <p className="premium-auth-entry__mode-note">
-          Sign in uses secure browser authorization and returns to VS Code. Sign up opens
-          navralabs.com/signup in your external browser.
+          After approval, NAVI connects automatically and returns you here.
         </p>
 
         {showStatus && (
           <div className={`premium-auth-entry__status ${statusClass}`}>
             <p>{signInStatus.message}</p>
             {signInStatus.userCode && (
-              <div className="premium-auth-entry__status-code">
-                <span>Code: {signInStatus.userCode}</span>
-                <button type="button" onClick={() => copyCode(signInStatus.userCode || "")}>
-                  {copiedCode ? "Copied" : "Copy"}
-                </button>
+              <div className="premium-auth-entry__status-helper">
+                <span className="helper-label">If the browser didn't open automatically:</span>
+                <div className="premium-auth-entry__status-code">
+                  <span className="code-pill">Code: {signInStatus.userCode}</span>
+                  <button type="button" onClick={() => copyCode(signInStatus.userCode || "")}>
+                    {copiedCode ? "✓ Copied" : "Copy"}
+                  </button>
+                </div>
+                {signInStatus.verificationUri && (
+                  <button
+                    type="button"
+                    className="premium-auth-entry__status-link"
+                    onClick={() => openExternal(signInStatus.verificationUri || "")}
+                  >
+                    Open sign-in page manually
+                  </button>
+                )}
               </div>
-            )}
-            {signInStatus.recoverable && signInStatus.verificationUri && (
-              <button
-                type="button"
-                className="premium-auth-entry__status-link"
-                onClick={() => openExternal(signInStatus.verificationUri || "")}
-              >
-                Open authorization page
-              </button>
             )}
           </div>
         )}

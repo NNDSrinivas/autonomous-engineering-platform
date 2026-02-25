@@ -15,8 +15,19 @@ AUTH0_DEVICE_CLIENT_ID = os.getenv("AUTH0_DEVICE_CLIENT_ID", AUTH0_CLIENT_ID).st
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "").strip()
 # ✅ IMPORTANT: issuer must match the token "iss" exactly (includes trailing slash)
 # Normalize issuer: ensure exactly one trailing slash
-_issuer_from_env = os.getenv("AUTH0_ISSUER", f"https://{AUTH0_DOMAIN}/")
-AUTH0_ISSUER = _issuer_from_env.rstrip("/") + "/"
+_issuer_from_env = os.getenv("AUTH0_ISSUER")
+
+# Validate that AUTH0_ISSUER is not empty/whitespace if explicitly set
+if _issuer_from_env is not None and not _issuer_from_env.strip():
+    raise ValueError(
+        "AUTH0_ISSUER is set but empty/whitespace. "
+        "Remove the environment variable or set a valid https:// URL."
+    )
+
+if _issuer_from_env:
+    AUTH0_ISSUER = _issuer_from_env.strip().rstrip("/") + "/"
+else:
+    AUTH0_ISSUER = f"https://{AUTH0_DOMAIN}/"
 
 # OAuth device endpoints use tenant domain (custom domains may not support these)
 DEVICE_CODE_URL = f"https://{AUTH0_OAUTH_DOMAIN}/oauth/device/code"

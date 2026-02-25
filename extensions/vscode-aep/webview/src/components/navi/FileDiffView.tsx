@@ -10,6 +10,10 @@ import 'prismjs/components/prism-python';
 import 'prismjs/components/prism-go';
 import 'prismjs/components/prism-rust';
 
+// Rate limiting for production Prism error logging (prevent console spam)
+let prismWarnCount = 0;
+const MAX_PRISM_WARNINGS = 3;
+
 export interface DiffLine {
   type: 'addition' | 'deletion' | 'context';
   content: string;
@@ -106,7 +110,15 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
   const fileName = getFileName(diff.path);
   const languageClass = getLanguageClass(diff.path);
 
-  // Disable Prism highlighting for very large diffs to prevent webview freezes
+  // Disable Prism highlighting for very large diffs to prevent webview freezes.
+  // The 800-line threshold was chosen empirically as a conservative default that
+  // keeps Prism work small enough to avoid noticeable pauses in the VS Code webview
+  // on typical developer machines. If you see performance issues or have more headroom,
+  // this value can be tuned or made configurable via an extension setting.
+  //
+  // When a diff exceeds HIGHLIGHT_MAX_LINES, Prism highlighting is skipped and the
+  // UI falls back to rendering escaped HTML without syntax highlighting. This preserves
+  // the full diff content while avoiding the cost of tokenizing very large files.
   const HIGHLIGHT_MAX_LINES = 800;
   const shouldHighlight = diff.lines.length <= HIGHLIGHT_MAX_LINES;
 
@@ -123,14 +135,26 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
     try {
       return Prism.highlight(raw, grammar, languageClass);
     } catch (error) {
-      // Log Prism failures in dev without exposing sensitive diff content
+      // Log Prism failures without exposing sensitive diff content
+      const meta = {
+        language: languageClass,
+        contentLength: raw?.length ?? 0,
+      };
+
       if (import.meta.env.MODE !== 'production') {
-        console.error('Prism.highlight failed in FileDiffView.highlightLine', {
-          language: languageClass,
-          contentLength: raw?.length ?? 0,
-          error,
+        console.error('Prism.highlight failed in FileDiffView.highlightLine', { ...meta, error });
+      } else if (prismWarnCount < MAX_PRISM_WARNINGS) {
+        // In production, log sanitized warnings (rate-limited to prevent spam)
+        prismWarnCount += 1;
+        const err = error as any;
+        console.warn('Prism.highlight failed (production)', {
+          ...meta,
+          errorName: typeof err?.name === 'string' ? err.name : undefined,
+          errorMessage: typeof err?.message === 'string' ? err.message : undefined,
+          warnCount: prismWarnCount,
         });
       }
+
       return escapeHtml(raw);
     }
   };

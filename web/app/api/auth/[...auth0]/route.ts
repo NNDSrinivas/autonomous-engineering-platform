@@ -7,10 +7,22 @@ import { validateReturnTo } from "@/lib/auth/validation";
 export const GET = handleAuth({
   login: handleLogin((req: NextRequest | NextApiRequest) => {
     // Get connection from query params for direct social login
-    const searchParams = (req as NextRequest).nextUrl?.searchParams;
+    // Handle both App Router (NextRequest) and Pages Router (NextApiRequest)
+    let connection: string | null = null;
+    let returnToParam: string | null = null;
 
-    const connection = searchParams?.get("connection") || null;
-    const returnToParam = searchParams?.get("returnTo") || null;
+    if ('nextUrl' in req) {
+      // App Router (NextRequest)
+      const searchParams = req.nextUrl.searchParams;
+      connection = searchParams.get("connection");
+      returnToParam = searchParams.get("returnTo");
+    } else {
+      // Pages Router (NextApiRequest) - use query object
+      const query = req.query as { connection?: string; returnTo?: string };
+      connection = query.connection || null;
+      returnToParam = query.returnTo || null;
+    }
+
     const returnTo = validateReturnTo(returnToParam, "/app/chats");
 
     return {

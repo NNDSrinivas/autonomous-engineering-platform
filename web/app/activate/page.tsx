@@ -12,7 +12,7 @@ function ActivateContent() {
   const [showTroubleshoot, setShowTroubleshoot] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const AUTH0_DOMAIN = process.env.NEXT_PUBLIC_AUTH0_ISSUER || "https://auth.navralabs.com";
+  const AUTH0_DOMAIN = (process.env.NEXT_PUBLIC_AUTH0_ISSUER || "https://auth.navralabs.com").replace(/\/+$/, '');
   const activateUrl = `${AUTH0_DOMAIN}/activate`;
 
   const handleContinue = () => {

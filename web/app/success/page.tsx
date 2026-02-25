@@ -11,6 +11,11 @@ function SuccessContent() {
   const isVSCode = client === "vscode" || client === "vs-code";
 
   useEffect(() => {
+    // Only auto-close for VS Code or when window was opened by script (has opener)
+    if (!isVSCode && !window.opener) {
+      return;
+    }
+
     // Try to auto-close (only works if window was opened by script)
     const timer = setInterval(() => {
       setAutoCloseCountdown((prev) => {
@@ -24,7 +29,7 @@ function SuccessContent() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [isVSCode]);
 
   const handleClose = () => {
     window.close();

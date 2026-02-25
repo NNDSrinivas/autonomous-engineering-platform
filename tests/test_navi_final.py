@@ -363,7 +363,7 @@ def authenticate(request):
     print(f"\nTotal: {len(tests)}")
     print(f"Passed: {passed}")
     print(f"Failed: {failed}")
-    print(f"Success Rate: {passed/len(tests)*100:.1f}%")
+    print(f"Success Rate: {passed / len(tests) * 100:.1f}%")
 
     # Detailed failure analysis
     if failed > 0:

@@ -165,10 +165,10 @@ class TaskDecomposer:
         # Add phases as organizational steps
         for i, phase_tasks in enumerate(decomposition.execution_phases):
             phase_step = {
-                "id": f"phase_{i+1}",
+                "id": f"phase_{i + 1}",
                 "type": "phase",
-                "title": f"Phase {i+1}",
-                "description": f"Execution phase {i+1}",
+                "title": f"Phase {i + 1}",
+                "description": f"Execution phase {i + 1}",
                 "task_ids": phase_tasks,
                 "status": "planned",
             }
@@ -209,10 +209,10 @@ GOAL DECOMPOSITION REQUEST
 Goal: {goal}
 
 Context:
-- Repository: {context.get('repository', 'Unknown')}
-- Team Size: {context.get('team_size', 'Unknown')}
-- Timeline: {context.get('timeline', 'Flexible')}
-- Constraints: {context.get('constraints', 'None specified')}
+- Repository: {context.get("repository", "Unknown")}
+- Team Size: {context.get("team_size", "Unknown")}
+- Timeline: {context.get("timeline", "Flexible")}
+- Constraints: {context.get("constraints", "None specified")}
 
 Please decompose this goal into specific, executable tasks. For each task, provide:
 1. Clear title and description
@@ -249,10 +249,10 @@ Consider:
         steps = plan_result.steps
 
         for i, step in enumerate(steps):
-            task_id = f"task_{i+1:03d}"
+            task_id = f"task_{i + 1:03d}"
 
             # Parse task details from step
-            title = step.description or f"Task {i+1}"
+            title = step.description or f"Task {i + 1}"
             description = step.description or ""
 
             # Infer task type from content

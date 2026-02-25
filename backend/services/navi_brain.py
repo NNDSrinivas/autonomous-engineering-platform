@@ -5695,9 +5695,9 @@ class SelfHealingEngine:
 
         if diagnosis.auto_fixable and retry_count < 3:
             result["recovery_plan"] = diagnosis.recovery_actions
-            result[
-                "message"
-            ] = f"Attempting automatic recovery: {diagnosis.likely_cause}"
+            result["message"] = (
+                f"Attempting automatic recovery: {diagnosis.likely_cause}"
+            )
         else:
             result["message"] = (
                 f"Manual intervention needed: {diagnosis.likely_cause}\n\nSuggested fixes:\n"
@@ -6178,7 +6178,7 @@ class SafetyValidator:
             if not SafetyValidator.validate_file_size(content):
                 size_kb = len(content.encode("utf-8")) / 1024
                 warnings.append(
-                    f"File too large: {file_path} ({size_kb:.1f}KB > {MAX_FILE_SIZE/1024}KB)"
+                    f"File too large: {file_path} ({size_kb:.1f}KB > {MAX_FILE_SIZE / 1024}KB)"
                 )
                 return False, warnings
 
@@ -8515,18 +8515,22 @@ Respond with JSON only."""
                         error_body=error_body,
                     )
                 # Raise sanitized error to avoid leaking provider error bodies into API responses/events
-                request_id = response.headers.get("x-request-id") or response.headers.get(
-                    "X-Request-ID"
-                )
+                request_id = response.headers.get(
+                    "x-request-id"
+                ) or response.headers.get("X-Request-ID")
                 error_code = self._extract_error_code(error_body)
                 if request_id and error_code:
                     raise Exception(
                         f"API error: status={response.status}, code={error_code}, request_id={request_id}"
                     )
                 if request_id:
-                    raise Exception(f"API error: status={response.status}, request_id={request_id}")
+                    raise Exception(
+                        f"API error: status={response.status}, request_id={request_id}"
+                    )
                 if error_code:
-                    raise Exception(f"API error: status={response.status}, code={error_code}")
+                    raise Exception(
+                        f"API error: status={response.status}, code={error_code}"
+                    )
                 raise Exception(f"API error: status={response.status}")
 
             data = await response.json()
@@ -8816,18 +8820,22 @@ Respond with JSON only."""
                         error_body=error_body,
                     )
                 # Raise sanitized error to avoid leaking provider error bodies into API responses/events
-                request_id = response.headers.get("x-request-id") or response.headers.get(
-                    "X-Request-ID"
-                )
+                request_id = response.headers.get(
+                    "x-request-id"
+                ) or response.headers.get("X-Request-ID")
                 error_code = self._extract_error_code(error_body)
                 if request_id and error_code:
                     raise Exception(
                         f"API error: status={response.status}, code={error_code}, request_id={request_id}"
                     )
                 if request_id:
-                    raise Exception(f"API error: status={response.status}, request_id={request_id}")
+                    raise Exception(
+                        f"API error: status={response.status}, request_id={request_id}"
+                    )
                 if error_code:
-                    raise Exception(f"API error: status={response.status}, code={error_code}")
+                    raise Exception(
+                        f"API error: status={response.status}, code={error_code}"
+                    )
                 raise Exception(f"API error: status={response.status}")
 
             async for line in response.content:

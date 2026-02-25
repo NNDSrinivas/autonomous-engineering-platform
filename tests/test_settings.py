@@ -35,9 +35,9 @@ except ValueError as e:
         result = subprocess.run(
             [sys.executable, "-c", code], capture_output=True, cwd=tmpdir, env=env
         )
-    assert (
-        result.returncode == 0
-    ), f"Expected ValueError was not raised. stderr: {result.stderr.decode()}"
+    assert result.returncode == 0, (
+        f"Expected ValueError was not raised. stderr: {result.stderr.decode()}"
+    )
 
 
 def test_jwt_enabled_with_secret_succeeds():
@@ -65,9 +65,9 @@ except Exception as e:
         result = subprocess.run(
             [sys.executable, "-c", code], capture_output=True, cwd=tmpdir, env=env
         )
-    assert (
-        result.returncode == 0
-    ), f"Settings validation failed. stderr: {result.stderr.decode()}"
+    assert result.returncode == 0, (
+        f"Settings validation failed. stderr: {result.stderr.decode()}"
+    )
 
 
 def test_jwt_disabled_without_secret_succeeds():
@@ -94,6 +94,6 @@ except Exception as e:
         result = subprocess.run(
             [sys.executable, "-c", code], capture_output=True, cwd=tmpdir, env=env
         )
-    assert (
-        result.returncode == 0
-    ), f"Settings validation failed. stderr: {result.stderr.decode()}"
+    assert result.returncode == 0, (
+        f"Settings validation failed. stderr: {result.stderr.decode()}"
+    )

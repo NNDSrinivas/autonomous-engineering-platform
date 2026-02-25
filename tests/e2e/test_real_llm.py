@@ -302,7 +302,7 @@ class RealLLMTester:
             batch = test_queue[batch_start:batch_end]
 
             print(
-                f"\n🔄 Running batch {batch_start//concurrent_requests + 1} ({len(batch)} tests concurrently)..."
+                f"\n🔄 Running batch {batch_start // concurrent_requests + 1} ({len(batch)} tests concurrently)..."
             )
 
             # Run batch concurrently with per-request circuit breaker
@@ -404,7 +404,7 @@ async def test_real_llm_performance(llm_tester):
     print("=" * 60)
     print(f"Total Tests: {results.total_tests}")
     print(
-        f"Passed: {results.passed_tests} ({results.passed_tests/results.total_tests*100:.1f}%)"
+        f"Passed: {results.passed_tests} ({results.passed_tests / results.total_tests * 100:.1f}%)"
     )
     print(f"Failed: {results.failed_tests} ({results.error_rate:.1f}%)")
     print(f"Duration: {results.total_duration_sec:.1f}s")
@@ -414,7 +414,7 @@ async def test_real_llm_performance(llm_tester):
     print(f"  p95: {results.latency_p95:.0f}")
     print(f"  p99: {results.latency_p99:.0f}")
     print(
-        f"\nCost: ${results.total_cost:.4f} (avg ${results.total_cost/results.total_tests:.4f} per request)"
+        f"\nCost: ${results.total_cost:.4f} (avg ${results.total_cost / results.total_tests:.4f} per request)"
     )
     print(f"Throughput: {results.throughput_rps:.2f} requests/sec")
     print("=" * 60)
@@ -452,30 +452,30 @@ async def test_real_llm_performance(llm_tester):
     # Assert against performance thresholds
     thresholds = TEST_CONFIG["performance_thresholds"]
 
-    assert (
-        results.latency_p50 < thresholds["p50_latency_ms"]
-    ), f"p50 latency {results.latency_p50:.0f}ms exceeds threshold {thresholds['p50_latency_ms']}ms"
+    assert results.latency_p50 < thresholds["p50_latency_ms"], (
+        f"p50 latency {results.latency_p50:.0f}ms exceeds threshold {thresholds['p50_latency_ms']}ms"
+    )
 
-    assert (
-        results.latency_p95 < thresholds["p95_latency_ms"]
-    ), f"p95 latency {results.latency_p95:.0f}ms exceeds threshold {thresholds['p95_latency_ms']}ms"
+    assert results.latency_p95 < thresholds["p95_latency_ms"], (
+        f"p95 latency {results.latency_p95:.0f}ms exceeds threshold {thresholds['p95_latency_ms']}ms"
+    )
 
-    assert (
-        results.latency_p99 < thresholds["p99_latency_ms"]
-    ), f"p99 latency {results.latency_p99:.0f}ms exceeds threshold {thresholds['p99_latency_ms']}ms"
+    assert results.latency_p99 < thresholds["p99_latency_ms"], (
+        f"p99 latency {results.latency_p99:.0f}ms exceeds threshold {thresholds['p99_latency_ms']}ms"
+    )
 
-    assert (
-        results.error_rate < thresholds["error_rate_percent"]
-    ), f"Error rate {results.error_rate:.1f}% exceeds threshold {thresholds['error_rate_percent']}%"
+    assert results.error_rate < thresholds["error_rate_percent"], (
+        f"Error rate {results.error_rate:.1f}% exceeds threshold {thresholds['error_rate_percent']}%"
+    )
 
     # Only assert on cost if tokens are being tracked (cost > 0)
     avg_cost = (
         results.total_cost / results.total_tests if results.total_tests > 0 else 0
     )
     if results.total_cost > 0:
-        assert (
-            avg_cost < thresholds["avg_cost_per_request"]
-        ), f"Average cost ${avg_cost:.4f} exceeds threshold ${thresholds['avg_cost_per_request']}"
+        assert avg_cost < thresholds["avg_cost_per_request"], (
+            f"Average cost ${avg_cost:.4f} exceeds threshold ${thresholds['avg_cost_per_request']}"
+        )
         print(f"✅ Cost tracking enabled - Average: ${avg_cost:.4f} per request")
     else:
         print("⚠️  Cost tracking not available (tokens not being captured from backend)")

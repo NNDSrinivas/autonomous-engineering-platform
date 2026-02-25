@@ -225,10 +225,10 @@ class ProductManagerAgent:
         if context:
             context_info = f"""
             Context Information:
-            - Existing codebase: {context.get('codebase_info', 'Not provided')}
-            - Technical constraints: {context.get('constraints', 'None specified')}
-            - Target users: {context.get('target_users', 'Not specified')}
-            - Timeline: {context.get('timeline', 'Not specified')}
+            - Existing codebase: {context.get("codebase_info", "Not provided")}
+            - Technical constraints: {context.get("constraints", "None specified")}
+            - Target users: {context.get("target_users", "Not specified")}
+            - Timeline: {context.get("timeline", "Not specified")}
             """
 
         prompt = f"""
@@ -419,10 +419,10 @@ class ProductManagerAgent:
         if context:
             context_info = f"""
             Technical Context:
-            - Existing tech stack: {context.get('tech_stack', 'Not specified')}
-            - Performance requirements: {context.get('performance', 'Standard web app')}
-            - Scale requirements: {context.get('scale', 'Small to medium')}
-            - Integration needs: {context.get('integrations', 'None specified')}
+            - Existing tech stack: {context.get("tech_stack", "Not specified")}
+            - Performance requirements: {context.get("performance", "Standard web app")}
+            - Scale requirements: {context.get("scale", "Small to medium")}
+            - Integration needs: {context.get("integrations", "None specified")}
             """
 
         prompt = f"""

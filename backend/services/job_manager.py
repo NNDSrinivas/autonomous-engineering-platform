@@ -69,7 +69,9 @@ class JobRecord:
     events: List[Dict[str, Any]] = field(default_factory=list)
     next_sequence: int = 1
     task: Optional[asyncio.Task] = None
-    local_runner_token: Optional[str] = None  # Tracks local lock ownership when Redis unavailable
+    local_runner_token: Optional[str] = (
+        None  # Tracks local lock ownership when Redis unavailable
+    )
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     condition: asyncio.Condition = field(init=False)
 

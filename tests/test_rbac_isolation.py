@@ -46,9 +46,9 @@ def test_cross_org_forbidden_timeline(
     # Should block or return empty
     if response.status_code == 200:
         data = response.json()
-        assert (
-            len(data) == 0
-        ), f"Cross-org timeline should be empty, got {len(data)} items"
+        assert len(data) == 0, (
+            f"Cross-org timeline should be empty, got {len(data)} items"
+        )
         print("✅ Cross-org timeline returns empty")
     else:
         assert response.status_code in (
@@ -72,9 +72,9 @@ def test_cross_org_forbidden_query(
         data = response.json()
         # Should have no nodes from other org
         for node in data.get("nodes", []):
-            assert (
-                node["org_id"] != TEST_ORG_ID
-            ), f"Cross-org query returned node from wrong org: {node}"
+            assert node["org_id"] != TEST_ORG_ID, (
+                f"Cross-org query returned node from wrong org: {node}"
+            )
         print("✅ Cross-org query returns no data from other org")
     else:
         assert response.status_code in (
@@ -150,12 +150,12 @@ def test_data_isolation_between_orgs(test_db, seeded_graph):
 
     # Verify all edges only connect nodes within the same org
     for edge in edges:
-        assert (
-            edge.src_id in default_node_ids
-        ), f"Edge {edge.id} src_id {edge.src_id} not in org '{TEST_ORG_ID}'"
-        assert (
-            edge.dst_id in default_node_ids
-        ), f"Edge {edge.id} dst_id {edge.dst_id} not in org '{TEST_ORG_ID}'"
+        assert edge.src_id in default_node_ids, (
+            f"Edge {edge.id} src_id {edge.src_id} not in org '{TEST_ORG_ID}'"
+        )
+        assert edge.dst_id in default_node_ids, (
+            f"Edge {edge.id} dst_id {edge.dst_id} not in org '{TEST_ORG_ID}'"
+        )
 
     print(f"✅ All {len(edges)} edges properly isolated within org '{TEST_ORG_ID}'")
 

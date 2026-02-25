@@ -230,7 +230,7 @@ async def get_tasks(
                    due_date, created, updated,
                    CASE WHEN status_name = 'Done' THEN updated ELSE NULL END as completed_at
             FROM jira_issues
-            WHERE {' AND '.join(conditions)}
+            WHERE {" AND ".join(conditions)}
             ORDER BY 
                 CASE priority 
                     WHEN 'Highest' THEN 4
@@ -554,7 +554,7 @@ async def update_task(
         # Execute update
         update_query = f"""
             UPDATE tasks 
-            SET {', '.join(update_fields)}
+            SET {", ".join(update_fields)}
             WHERE id = :task_id AND org_id = :org_id
         """
 
@@ -572,7 +572,7 @@ async def update_task(
                     jira_update_fields.append(field_expr)
             jira_update_query = f"""
                 UPDATE jira_issues 
-                SET {', '.join(jira_update_fields)}
+                SET {", ".join(jira_update_fields)}
                 WHERE key = :task_id AND org_id = :org_id
             """
             jira_result = db.execute(text(jira_update_query), params)
@@ -678,7 +678,7 @@ async def get_projects(
                    COUNT(CASE WHEN status_name = 'Done' THEN 1 END) as completed_tasks,
                    AVG(CASE WHEN story_points IS NOT NULL THEN story_points ELSE 0 END) as avg_story_points
             FROM jira_issues
-            WHERE {' AND '.join(conditions)} AND project_key IS NOT NULL
+            WHERE {" AND ".join(conditions)} AND project_key IS NOT NULL
             GROUP BY project_key
             ORDER BY MAX(updated) DESC
         """

@@ -101,10 +101,7 @@ class ConsentService:
         return user_id_int, org_id_int
 
     def check_auto_allow(
-        self,
-        user_id: str,
-        org_id: str,
-        command: str
+        self, user_id: str, org_id: str, command: str
     ) -> Optional[str]:
         """
         Check if command is auto-allowed by user preferences.
@@ -138,14 +135,14 @@ class ConsentService:
                 select(ConsentPreference).where(
                     ConsentPreference.user_id == user_id_int,
                     ConsentPreference.org_id == org_id_int,
-                    ConsentPreference.preference_type == 'exact_command',
-                    ConsentPreference.command_pattern == command
+                    ConsentPreference.preference_type == "exact_command",
+                    ConsentPreference.command_pattern == command,
                 )
             ).scalar_one_or_none()
 
             if exact_pref:
                 logger.info(f"Auto-allowed '{command}' via exact_command preference")
-                return 'exact_command'
+                return "exact_command"
 
             # Check for command type match (base command only)
             if base_command:
@@ -153,14 +150,16 @@ class ConsentService:
                     select(ConsentPreference).where(
                         ConsentPreference.user_id == user_id_int,
                         ConsentPreference.org_id == org_id_int,
-                        ConsentPreference.preference_type == 'command_type',
-                        ConsentPreference.command_pattern == base_command
+                        ConsentPreference.preference_type == "command_type",
+                        ConsentPreference.command_pattern == base_command,
                     )
                 ).scalar_one_or_none()
 
                 if type_pref:
-                    logger.info(f"Auto-allowed '{command}' via command_type preference for '{base_command}'")
-                    return 'command_type'
+                    logger.info(
+                        f"Auto-allowed '{command}' via command_type preference for '{base_command}'"
+                    )
+                    return "command_type"
 
             return None
 
@@ -176,7 +175,7 @@ class ConsentService:
         org_id: str,
         preference_type: str,
         command: str,
-        task_id: Optional[str] = None
+        task_id: Optional[str] = None,
     ) -> bool:
         """
         Save an always-allow preference to database.
@@ -203,7 +202,7 @@ class ConsentService:
                 return False
 
             # For command_type, extract base command
-            if preference_type == 'command_type':
+            if preference_type == "command_type":
                 command_pattern = command.split()[0] if command.strip() else command
             else:
                 command_pattern = command
@@ -213,19 +212,23 @@ class ConsentService:
                 org_id=org_id_int,
                 preference_type=preference_type,
                 command_pattern=command_pattern,
-                created_by_task_id=task_id
+                created_by_task_id=task_id,
             )
 
             db.add(pref)
             db.commit()
 
-            logger.info(f"Saved consent preference: {preference_type} for '{command_pattern}'")
+            logger.info(
+                f"Saved consent preference: {preference_type} for '{command_pattern}'"
+            )
             return True
 
         except IntegrityError:
             # Preference already exists (unique constraint violation)
             db.rollback()
-            logger.info(f"Consent preference already exists: {preference_type} for '{command}'")
+            logger.info(
+                f"Consent preference already exists: {preference_type} for '{command}'"
+            )
             return True  # Already exists is still "success"
         except Exception as e:
             db.rollback()
@@ -248,7 +251,7 @@ class ConsentService:
         danger_level: Optional[str] = None,
         alternative_command: Optional[str] = None,
         task_id: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> bool:
         """
         Log a consent decision to the audit trail.
@@ -298,13 +301,15 @@ class ConsentService:
                 responded_at=responded_at,
                 response_time_ms=response_time_ms,
                 task_id=task_id,
-                session_id=session_id
+                session_id=session_id,
             )
 
             db.add(audit_entry)
             db.commit()
 
-            logger.info(f"Logged consent decision: {decision} for '{command}' (response time: {response_time_ms}ms)")
+            logger.info(
+                f"Logged consent decision: {decision} for '{command}' (response time: {response_time_ms}ms)"
+            )
             return True
 
         except Exception as e:
@@ -314,11 +319,7 @@ class ConsentService:
         finally:
             self._close_db_if_owned(db)
 
-    def get_user_preferences(
-        self,
-        user_id: str,
-        org_id: str
-    ) -> List[Dict[str, Any]]:
+    def get_user_preferences(self, user_id: str, org_id: str) -> List[Dict[str, Any]]:
         """
         Get all consent preferences for a user (for settings UI).
 
@@ -340,20 +341,28 @@ class ConsentService:
                 )
                 return []
 
-            prefs = db.execute(
-                select(ConsentPreference).where(
-                    ConsentPreference.user_id == user_id_int,
-                    ConsentPreference.org_id == org_id_int
-                ).order_by(ConsentPreference.created_at.desc())
-            ).scalars().all()
+            prefs = (
+                db.execute(
+                    select(ConsentPreference)
+                    .where(
+                        ConsentPreference.user_id == user_id_int,
+                        ConsentPreference.org_id == org_id_int,
+                    )
+                    .order_by(ConsentPreference.created_at.desc())
+                )
+                .scalars()
+                .all()
+            )
 
             return [
                 {
                     "id": str(pref.id),
                     "preference_type": pref.preference_type,
                     "command_pattern": pref.command_pattern,
-                    "created_at": pref.created_at.isoformat() if pref.created_at else None,
-                    "created_by_task_id": pref.created_by_task_id
+                    "created_at": pref.created_at.isoformat()
+                    if pref.created_at
+                    else None,
+                    "created_by_task_id": pref.created_by_task_id,
                 }
                 for pref in prefs
             ]
@@ -364,12 +373,7 @@ class ConsentService:
         finally:
             self._close_db_if_owned(db)
 
-    def delete_preference(
-        self,
-        preference_id: str,
-        user_id: str,
-        org_id: str
-    ) -> bool:
+    def delete_preference(self, preference_id: str, user_id: str, org_id: str) -> bool:
         """
         Remove an always-allow rule.
 
@@ -397,7 +401,7 @@ class ConsentService:
                 delete(ConsentPreference).where(
                     ConsentPreference.id == preference_id,
                     ConsentPreference.user_id == user_id_int,
-                    ConsentPreference.org_id == org_id_int
+                    ConsentPreference.org_id == org_id_int,
                 )
             )
             db.commit()
@@ -406,7 +410,9 @@ class ConsentService:
             if deleted:
                 logger.info(f"Deleted consent preference: {preference_id}")
             else:
-                logger.warning(f"Consent preference not found or unauthorized: {preference_id}")
+                logger.warning(
+                    f"Consent preference not found or unauthorized: {preference_id}"
+                )
 
             return deleted
 
@@ -418,10 +424,7 @@ class ConsentService:
             self._close_db_if_owned(db)
 
     def get_audit_log(
-        self,
-        user_id: str,
-        org_id: str,
-        limit: int = 50
+        self, user_id: str, org_id: str, limit: int = 50
     ) -> List[Dict[str, Any]]:
         """
         Get recent consent decisions for audit/review.
@@ -445,12 +448,19 @@ class ConsentService:
                 )
                 return []
 
-            logs = db.execute(
-                select(ConsentAuditLog).where(
-                    ConsentAuditLog.user_id == user_id_int,
-                    ConsentAuditLog.org_id == org_id_int
-                ).order_by(ConsentAuditLog.requested_at.desc()).limit(limit)
-            ).scalars().all()
+            logs = (
+                db.execute(
+                    select(ConsentAuditLog)
+                    .where(
+                        ConsentAuditLog.user_id == user_id_int,
+                        ConsentAuditLog.org_id == org_id_int,
+                    )
+                    .order_by(ConsentAuditLog.requested_at.desc())
+                    .limit(limit)
+                )
+                .scalars()
+                .all()
+            )
 
             return [
                 {
@@ -462,11 +472,15 @@ class ConsentService:
                     "danger_level": log.danger_level,
                     "decision": log.decision,
                     "alternative_command": log.alternative_command,
-                    "requested_at": log.requested_at.isoformat() if log.requested_at else None,
-                    "responded_at": log.responded_at.isoformat() if log.responded_at else None,
+                    "requested_at": log.requested_at.isoformat()
+                    if log.requested_at
+                    else None,
+                    "responded_at": log.responded_at.isoformat()
+                    if log.responded_at
+                    else None,
                     "response_time_ms": log.response_time_ms,
                     "task_id": log.task_id,
-                    "session_id": log.session_id
+                    "session_id": log.session_id,
                 }
                 for log in logs
             ]

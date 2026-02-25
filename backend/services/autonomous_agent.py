@@ -287,19 +287,19 @@ class TaskContext:
         default_factory=dict
     )  # Track which step updates have been emitted
     # Enterprise mode fields
-    enterprise_project_id: Optional[
-        str
-    ] = None  # Link to EnterpriseProject if running in enterprise mode
-    enterprise_controller: Optional[
-        EnhancedIterationController
-    ] = None  # Enterprise iteration controller
+    enterprise_project_id: Optional[str] = (
+        None  # Link to EnterpriseProject if running in enterprise mode
+    )
+    enterprise_controller: Optional[EnhancedIterationController] = (
+        None  # Enterprise iteration controller
+    )
     checkpoint_interval: int = (
         10  # Create checkpoint every N iterations in enterprise mode
     )
     last_checkpoint_iteration: int = 0  # Track when last checkpoint was created
-    gate_detector: Optional[
-        CheckpointGateDetector
-    ] = None  # Human checkpoint gate detector
+    gate_detector: Optional[CheckpointGateDetector] = (
+        None  # Human checkpoint gate detector
+    )
     pending_gate: Optional[GateTrigger] = None  # Gate waiting for human decision
     pending_prompt: Optional[PromptRequest] = None  # Prompt waiting for user input
     last_verification_failed: bool = False  # Track if last verification attempt failed
@@ -3366,8 +3366,7 @@ Use this context to understand existing patterns, dependencies, and architecture
 
         # Build volta activation command
         volta_activate = (
-            f'export VOLTA_HOME="{home}/.volta" && '
-            f'export PATH="$VOLTA_HOME/bin:$PATH"'
+            f'export VOLTA_HOME="{home}/.volta" && export PATH="$VOLTA_HOME/bin:$PATH"'
         )
 
         # Build fnm activation command
@@ -5045,9 +5044,9 @@ Return ONLY the JSON, no markdown or explanations."""
                 )
 
                 if response.get("server_verified"):
-                    response[
-                        "message"
-                    ] += f" | Server responding at {response.get('server_url')}"
+                    response["message"] += (
+                        f" | Server responding at {response.get('server_url')}"
+                    )
 
                 # Post-process visual outputs (animations, videos) only for likely visual commands.
                 visual_command_patterns = [
@@ -6028,14 +6027,14 @@ Return ONLY the JSON, no markdown or explanations."""
                 base_url = self.base_url or "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
-                    headers[
-                        "Authorization"
-                    ] = f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
+                    headers["Authorization"] = (
+                        f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
+                    )
                 elif self.provider == "groq":
                     base_url = "https://api.groq.com/openai/v1"
-                    headers[
-                        "Authorization"
-                    ] = f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                    headers["Authorization"] = (
+                        f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                    )
                 elif self.provider == "ollama":
                     base_url = os.environ.get("OLLAMA_BASE_URL", base_url)
                     if not base_url.rstrip("/").endswith("/v1"):
@@ -6177,10 +6176,10 @@ Return ONLY the JSON, no markdown or explanations."""
                                     if tc.get("function", {}).get("name"):
                                         # Convert OpenAI-sanitized name back to original NAVI name
                                         openai_name = tc["function"]["name"]
-                                        tool_calls[idx][
-                                            "name"
-                                        ] = OPENAI_TO_NAVI_TOOL_NAME.get(
-                                            openai_name, openai_name
+                                        tool_calls[idx]["name"] = (
+                                            OPENAI_TO_NAVI_TOOL_NAME.get(
+                                                openai_name, openai_name
+                                            )
                                         )
                                     if tc.get("function", {}).get("arguments"):
                                         tool_calls[idx]["arguments"] += tc["function"][
@@ -6298,9 +6297,9 @@ Return ONLY the JSON, no markdown or explanations."""
                                         logger.info(
                                             "[AutonomousAgent] 🚀 Auto-allowed, executing without consent"
                                         )
-                                        tool_info["arguments"][
-                                            "consent_id"
-                                        ] = consent_id
+                                        tool_info["arguments"]["consent_id"] = (
+                                            consent_id
+                                        )
                                         result = await self._execute_tool(
                                             tool_info["name"],
                                             tool_info["arguments"],
@@ -6368,14 +6367,14 @@ Return ONLY the JSON, no markdown or explanations."""
                                             logger.info(
                                                 "[AutonomousAgent] 🔄 Retrying tool with consent approval"
                                             )
-                                            tool_info["arguments"][
-                                                "consent_id"
-                                            ] = consent_id
+                                            tool_info["arguments"]["consent_id"] = (
+                                                consent_id
+                                            )
                                             # If alternative command, update the args
                                             if decision.get("choice") == "alternative":
-                                                tool_info["arguments"][
-                                                    "command"
-                                                ] = command_to_execute
+                                                tool_info["arguments"]["command"] = (
+                                                    command_to_execute
+                                                )
                                             result = await self._execute_tool(
                                                 tool_info["name"],
                                                 tool_info["arguments"],
@@ -6509,9 +6508,9 @@ Return ONLY the JSON, no markdown or explanations."""
                                         tc["arguments"]["consent_id"] = consent_id
                                         # If alternative command, update the args
                                         if decision.get("choice") == "alternative":
-                                            tc["arguments"][
-                                                "command"
-                                            ] = command_to_execute
+                                            tc["arguments"]["command"] = (
+                                                command_to_execute
+                                            )
                                         result = await self._execute_tool(
                                             tc["name"], tc["arguments"], context
                                         )
@@ -6772,9 +6771,9 @@ Return ONLY the JSON, no markdown or explanations."""
 
         # Update first step to in_progress (running)
         if plan_steps and context.plan_id:
-            context.step_progress_emitted[
-                0
-            ] = "running"  # Track that we've emitted step 0 as running
+            context.step_progress_emitted[0] = (
+                "running"  # Track that we've emitted step 0 as running
+            )
             yield {
                 "type": "step_update",
                 "data": {
@@ -7838,7 +7837,7 @@ DO NOT make minor variations of the same approach - try something completely new
 You have tried the same fix {context.consecutive_same_error_count} times and it keeps failing with the same error.
 
 **YOU MUST COMPLETELY CHANGE YOUR APPROACH:**
-{chr(10).join('- ' + s for s in loop_suggestions)}
+{chr(10).join("- " + s for s in loop_suggestions)}
 
 **MANDATORY ACTIONS:**
 1. STOP trying to fix the file you've been editing
@@ -7856,7 +7855,7 @@ Your fix MUST be fundamentally different this time."""
                     else:
                         approach_hint = f"""
 ⚠️ **WARNING: Your previous fix did not work.**
-{chr(10).join('- ' + s for s in loop_suggestions)}
+{chr(10).join("- " + s for s in loop_suggestions)}
 
 You MUST try a DIFFERENT approach this time:
 1. Re-read the file to see its ACTUAL current content

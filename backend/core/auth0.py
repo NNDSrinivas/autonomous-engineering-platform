@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 class Auth0ConfigurationError(Exception):
     """Raised when Auth0 configuration is invalid or missing."""
+
     pass
 
 
@@ -14,11 +15,15 @@ load_dotenv()
 
 # Auth0 configuration with fallback for CI environments
 # Normalize domain: strip trailing slashes to prevent double-slash in URLs
-AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "dev-nr76km00xa820k15.us.auth0.com").strip().rstrip("/")
+AUTH0_DOMAIN = (
+    os.getenv("AUTH0_DOMAIN", "dev-nr76km00xa820k15.us.auth0.com").strip().rstrip("/")
+)
 # Separate domain for OAuth device flow (custom domains often don't support device endpoints)
 AUTH0_OAUTH_DOMAIN = os.getenv("AUTH0_OAUTH_DOMAIN", AUTH0_DOMAIN).strip().rstrip("/")
 AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID", "").strip()
-AUTH0_DEVICE_CLIENT_ID = os.getenv("AUTH0_DEVICE_CLIENT_ID", AUTH0_CLIENT_ID).strip()  # Fallback to regular client ID if not set
+AUTH0_DEVICE_CLIENT_ID = os.getenv(
+    "AUTH0_DEVICE_CLIENT_ID", AUTH0_CLIENT_ID
+).strip()  # Fallback to regular client ID if not set
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "").strip()
 # ✅ IMPORTANT: issuer must match the token "iss" exactly (includes trailing slash)
 # Normalize issuer: ensure exactly one trailing slash

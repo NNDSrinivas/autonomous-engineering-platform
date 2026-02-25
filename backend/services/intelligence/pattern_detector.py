@@ -184,7 +184,7 @@ class PatternDetector:
 
             # Create activity type sequences
             for i in range(len(sorted_activities) - 1):
-                sequence = f"{sorted_activities[i].activity_type} -> {sorted_activities[i+1].activity_type}"
+                sequence = f"{sorted_activities[i].activity_type} -> {sorted_activities[i + 1].activity_type}"
                 sequence_counts[sequence] += 1
 
         # Find common sequences

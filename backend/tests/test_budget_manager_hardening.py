@@ -53,7 +53,9 @@ async def test_midnight_boundary_commit_uses_token_day():
     )
 
     # Current day is different (midnight has passed)
-    with patch("backend.services.budget_manager._utc_day_bucket", return_value="2025-02-16"):
+    with patch(
+        "backend.services.budget_manager._utc_day_bucket", return_value="2025-02-16"
+    ):
         await mgr.commit(token, 3000)
 
     # Verify commit used token.day (2025-02-15), not current day (2025-02-16)
@@ -99,7 +101,9 @@ async def test_midnight_boundary_release_uses_token_day():
     )
 
     # Current day is different (midnight has passed)
-    with patch("backend.services.budget_manager._utc_day_bucket", return_value="2025-02-16"):
+    with patch(
+        "backend.services.budget_manager._utc_day_bucket", return_value="2025-02-16"
+    ):
         await mgr.release(token)
 
     # Verify release used token.day (2025-02-15)
@@ -149,7 +153,9 @@ async def test_overspend_anomaly_critical_log(caplog):
         await mgr.commit(token, 15000)  # Actual 15000 (6x overspend)
 
     # Verify CRITICAL log was emitted
-    critical_logs = [record for record in caplog.records if record.levelno == logging.CRITICAL]
+    critical_logs = [
+        record for record in caplog.records if record.levelno == logging.CRITICAL
+    ]
     assert len(critical_logs) > 0
 
     # Verify log contains overspend details
@@ -198,7 +204,9 @@ async def test_overspend_within_threshold_no_critical_log(caplog):
         await mgr.commit(token, 8000)  # 3.2x overspend (below 5x threshold)
 
     # Verify NO CRITICAL logs
-    critical_logs = [record for record in caplog.records if record.levelno == logging.CRITICAL]
+    critical_logs = [
+        record for record in caplog.records if record.levelno == logging.CRITICAL
+    ]
     assert len(critical_logs) == 0
 
     # May have WARNING logs (acceptable, but not verified in this test)
@@ -233,7 +241,9 @@ async def test_reserve_captures_current_utc_day():
 
     # Mock specific day
     fixed_day = "2025-02-15"
-    with patch("backend.services.budget_manager._utc_day_bucket", return_value=fixed_day):
+    with patch(
+        "backend.services.budget_manager._utc_day_bucket", return_value=fixed_day
+    ):
         token = await mgr.reserve(2500, scopes)
 
     # Verify token captured the mocked day

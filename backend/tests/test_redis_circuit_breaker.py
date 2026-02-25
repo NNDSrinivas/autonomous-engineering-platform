@@ -12,6 +12,7 @@ import pytest
 
 try:
     import fakeredis
+
     FAKEREDIS_AVAILABLE = True
 except ImportError:
     FAKEREDIS_AVAILABLE = False

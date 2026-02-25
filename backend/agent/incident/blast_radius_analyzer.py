@@ -69,9 +69,9 @@ class BlastRadiusAnalyzer:
     def __init__(self):
         """Initialize the blast radius analyzer"""
         self.service_map: Dict[str, Set[str]] = {}  # service -> files
-        self.dependency_graph: Dict[str, List[ServiceDependency]] = (
-            {}
-        )  # service -> dependencies
+        self.dependency_graph: Dict[
+            str, List[ServiceDependency]
+        ] = {}  # service -> dependencies
         self.impact_cache: Dict[str, ImpactAnalysis] = {}
         logger.info("BlastRadiusAnalyzer initialized for system-level impact analysis")
 

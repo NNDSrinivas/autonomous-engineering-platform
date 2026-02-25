@@ -181,7 +181,8 @@ class CertificateAuthority:
                 self.ca_private_key = cast(
                     "CertificateIssuerPrivateKeyTypes",
                     serialization.load_pem_private_key(
-                        f.read(), password=None  # In production, use encrypted keys
+                        f.read(),
+                        password=None,  # In production, use encrypted keys
                     ),
                 )
 

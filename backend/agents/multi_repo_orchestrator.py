@@ -671,13 +671,21 @@ class MultiRepoOrchestrator:
         DESCRIPTION: {description}
         
         AFFECTED REPOSITORIES:
-        {json.dumps([{
-            "name": name,
-            "type": repo.repo_type.value,
-            "dependencies": repo.dependencies,
-            "dependents": repo.dependents,
-            "api_contracts": repo.api_contracts
-        } for name, repo in repos.items()], indent=2)}
+        {
+            json.dumps(
+                [
+                    {
+                        "name": name,
+                        "type": repo.repo_type.value,
+                        "dependencies": repo.dependencies,
+                        "dependents": repo.dependents,
+                        "api_contracts": repo.api_contracts,
+                    }
+                    for name, repo in repos.items()
+                ],
+                indent=2,
+            )
+        }
         
         Analyze and provide:
         1. **Impact Score** (0.0-1.0): Overall risk/complexity

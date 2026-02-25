@@ -1219,12 +1219,12 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
                     actual_message = f"""[AUTO-RECOVERY] The previous action failed with error:
 Error: {error_msg}
 Details: {error_details}
-Exit code: {exit_code if exit_code is not None else 'unknown'}
+Exit code: {exit_code if exit_code is not None else "unknown"}
 Command output:
 ```
-{command_output or 'No output captured'}
+{command_output or "No output captured"}
 ```
-Failed action type: {failed_action.get('type', 'unknown')}
+Failed action type: {failed_action.get("type", "unknown")}
 Failed file path: {failed_path}
 
 Please debug this issue and continue with the original task. The user's new message is:
@@ -1456,12 +1456,12 @@ async def navi_chat(
       - else -> fall back to existing /api/chat/respond behavior
     """
     # DEBUG: Log incoming request state
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("🔵 CHAT.PY NAVI_CHAT CALLED 🔵")
     print(f"DEBUG REQUEST - Message: {request.message[:50]}...")
     print(f"DEBUG REQUEST - Has state: {request.state is not None}")
     print(f"DEBUG REQUEST - State content: {request.state}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
     logger.info(
         f"🔵 CHAT.PY navi_chat handler called with message: {request.message[:50]}"
     )
@@ -1890,15 +1890,15 @@ I'll automatically detect the best tech stack based on your description (Next.js
                             ChatResponse(
                                 content=f"""✅ **Project created successfully!**
 
-📁 **Location**: `{result['project_path']}`
-🎯 **Type**: {result['project_type']}
+📁 **Location**: `{result["project_path"]}`
+🎯 **Type**: {result["project_type"]}
 
 **Commands executed**:
 ```bash
-{chr(10).join(result['commands_run'])}
+{chr(10).join(result["commands_run"])}
 ```
 
-{result['message']}
+{result["message"]}
 
 I'll now open this project in VSCode for you. Once it opens, I can help you customize it further!
 """,
@@ -1929,9 +1929,9 @@ I'll now open this project in VSCode for you. Once it opens, I can help you cust
                             ChatResponse(
                                 content=f"""❌ **Failed to create project**
 
-{result['message']}
+{result["message"]}
 
-Error: {result.get('error', 'Unknown error')}
+Error: {result.get("error", "Unknown error")}
 
 Would you like to try a different location or project name?
 """,
@@ -2188,7 +2188,9 @@ Would you like to try again with different settings?
                                     operation_icon = (
                                         "📄"
                                         if step.operation == "create"
-                                        else "✏️" if step.operation == "modify" else "🗑️"
+                                        else "✏️"
+                                        if step.operation == "modify"
+                                        else "🗑️"
                                     )
 
                                     # Try to get git diff stats for this file
@@ -2405,7 +2407,7 @@ Would you like to create it at a different location?""",
                 if is_casual:
                     # User is just acknowledging - maintain context and ask what's next
                     return ChatResponse(
-                        content=f"""Great! Your project **{recent_project['name']}** is ready at `{recent_project['path']}`.
+                        content=f"""Great! Your project **{recent_project["name"]}** is ready at `{recent_project["path"]}`.
 
 What would you like to do next? I can help you:
 - Add specific files or features to the project
@@ -2603,10 +2605,10 @@ What would you like to work on?""",
                         return ChatResponse(
                             content=f"""✅ **I already implemented something similar!**
 
-I previously worked on: **{latest_memory.get('title', 'this task')}**
+I previously worked on: **{latest_memory.get("title", "this task")}**
 
 **What I implemented:**
-{latest_memory.get('content', 'Previous implementation details')}
+{latest_memory.get("content", "Previous implementation details")}
 
 **Options:**
 - If you want me to enhance or modify what's already there, please specify what changes you'd like
@@ -2732,7 +2734,7 @@ What would you like to do?""",
                 # Build concise response without repetition
                 reply = f"""🤖 **Implementation Plan Created**
 
-I'll implement this in **{len(steps)} step{'s' if len(steps) != 1 else ''}**:
+I'll implement this in **{len(steps)} step{"s" if len(steps) != 1 else ""}**:
 
 """
                 # Show all steps (usually just 1-3 steps from enhanced engine)
@@ -3892,7 +3894,11 @@ async def _handle_task_query(
             status_emoji = (
                 "🔄"
                 if status == "In Progress"
-                else "📝" if status == "To Do" else "✅" if status == "Done" else "📌"
+                else "📝"
+                if status == "To Do"
+                else "✅"
+                if status == "Done"
+                else "📌"
             )
             jira_key = task.get("jira_key", "")
             title = task.get("title", "").replace(f"[Jira] {jira_key}: ", "")

@@ -24,7 +24,9 @@ class VisualOutputHandler:
     def __init__(self, workspace_path: str):
         self.workspace_path = workspace_path
 
-    def detect_frame_sequence(self, output: str, created_files: List[str]) -> Optional[Dict[str, Any]]:
+    def detect_frame_sequence(
+        self, output: str, created_files: List[str]
+    ) -> Optional[Dict[str, Any]]:
         """
         Detect if the output indicates frame generation for animation.
 
@@ -39,26 +41,36 @@ class VisualOutputHandler:
 
             for pattern in image_patterns:
                 frames.extend(glob.glob(os.path.join(self.workspace_path, pattern)))
-                frames.extend(glob.glob(os.path.join(self.workspace_path, "**", pattern), recursive=True))
+                frames.extend(
+                    glob.glob(
+                        os.path.join(self.workspace_path, "**", pattern), recursive=True
+                    )
+                )
 
             if len(frames) > 3:  # Need at least a few frames for animation
                 return {
                     "type": "frame_sequence",
                     "frames": sorted(frames),
                     "count": len(frames),
-                    "detected_from": "frame_saved_messages"
+                    "detected_from": "frame_saved_messages",
                 }
 
         # Pattern 2: Numbered frame files (frame_001.png, etc.)
-        numbered_frames = glob.glob(os.path.join(self.workspace_path, "**/frame_*.png"), recursive=True)
-        numbered_frames.extend(glob.glob(os.path.join(self.workspace_path, "**/frame*.png"), recursive=True))
+        numbered_frames = glob.glob(
+            os.path.join(self.workspace_path, "**/frame_*.png"), recursive=True
+        )
+        numbered_frames.extend(
+            glob.glob(
+                os.path.join(self.workspace_path, "**/frame*.png"), recursive=True
+            )
+        )
 
         if len(numbered_frames) > 3:
             return {
                 "type": "frame_sequence",
                 "frames": sorted(numbered_frames),
                 "count": len(numbered_frames),
-                "detected_from": "numbered_frame_files"
+                "detected_from": "numbered_frame_files",
             }
 
         # Pattern 3: Canvas/animation keywords in output
@@ -72,14 +84,18 @@ class VisualOutputHandler:
             if len(image_files) > 3:
                 return {
                     "type": "frame_sequence",
-                    "frames": [os.path.join(self.workspace_path, f) for f in image_files],
+                    "frames": [
+                        os.path.join(self.workspace_path, f) for f in image_files
+                    ],
                     "count": len(image_files),
-                    "detected_from": "animation_keywords"
+                    "detected_from": "animation_keywords",
                 }
 
         return None
 
-    async def compile_to_video(self, frames: List[str], output_path: str, fps: int = 30) -> Dict[str, Any]:
+    async def compile_to_video(
+        self, frames: List[str], output_path: str, fps: int = 30
+    ) -> Dict[str, Any]:
         """
         Compile image frames into a video using ffmpeg (optional).
         Falls back to GIF if ffmpeg is not available.
@@ -95,15 +111,14 @@ class VisualOutputHandler:
         try:
             # Check if ffmpeg is available
             result = subprocess.run(
-                ["which", "ffmpeg"],
-                capture_output=True,
-                text=True,
-                timeout=5
+                ["which", "ffmpeg"], capture_output=True, text=True, timeout=5
             )
 
             if result.returncode != 0:
                 logger.info("ffmpeg not found, using GIF format instead")
-                return await self.compile_to_gif(frames, output_path.replace(".mp4", ".gif"))
+                return await self.compile_to_gif(
+                    frames, output_path.replace(".mp4", ".gif")
+                )
 
             # Create a temporary file list for ffmpeg
             list_file = os.path.join(os.path.dirname(output_path), "frame_list.txt")
@@ -115,21 +130,21 @@ class VisualOutputHandler:
             # Run ffmpeg to create video
             cmd = [
                 "ffmpeg",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", list_file,
-                "-r", str(fps),
-                "-pix_fmt", "yuv420p",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                list_file,
+                "-r",
+                str(fps),
+                "-pix_fmt",
+                "yuv420p",
                 "-y",  # Overwrite output
-                output_path
+                output_path,
             ]
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
             # Clean up temp file
             if os.path.exists(list_file):
@@ -143,20 +158,30 @@ class VisualOutputHandler:
                     "format": "video/mp4",
                     "size_mb": round(size_mb, 2),
                     "fps": fps,
-                    "frame_count": len(frames)
+                    "frame_count": len(frames),
                 }
             else:
-                logger.warning(f"ffmpeg failed, falling back to GIF: {result.stderr[:200]}")
-                return await self.compile_to_gif(frames, output_path.replace(".mp4", ".gif"))
+                logger.warning(
+                    f"ffmpeg failed, falling back to GIF: {result.stderr[:200]}"
+                )
+                return await self.compile_to_gif(
+                    frames, output_path.replace(".mp4", ".gif")
+                )
 
         except subprocess.TimeoutExpired:
             logger.warning("ffmpeg timed out, falling back to GIF")
-            return await self.compile_to_gif(frames, output_path.replace(".mp4", ".gif"))
+            return await self.compile_to_gif(
+                frames, output_path.replace(".mp4", ".gif")
+            )
         except Exception as e:
             logger.warning(f"Error with ffmpeg, falling back to GIF: {e}")
-            return await self.compile_to_gif(frames, output_path.replace(".mp4", ".gif"))
+            return await self.compile_to_gif(
+                frames, output_path.replace(".mp4", ".gif")
+            )
 
-    async def compile_to_gif(self, frames: List[str], output_path: str, fps: int = 10) -> Dict[str, Any]:
+    async def compile_to_gif(
+        self, frames: List[str], output_path: str, fps: int = 10
+    ) -> Dict[str, Any]:
         """
         Compile frames into animated GIF using Python Pillow (no external dependencies).
         """
@@ -169,18 +194,15 @@ class VisualOutputHandler:
                 try:
                     img = Image.open(frame_path)
                     # Convert to RGB if necessary (GIF requires RGB or palette mode)
-                    if img.mode not in ('RGB', 'P'):
-                        img = img.convert('RGB')
+                    if img.mode not in ("RGB", "P"):
+                        img = img.convert("RGB")
                     images.append(img)
                 except Exception as e:
                     logger.warning(f"Failed to load frame {frame_path}: {e}")
                     continue
 
             if not images:
-                return {
-                    "success": False,
-                    "error": "No valid image frames found"
-                }
+                return {"success": False, "error": "No valid image frames found"}
 
             # Calculate duration between frames (in milliseconds)
             duration = int(1000 / fps)
@@ -192,7 +214,7 @@ class VisualOutputHandler:
                 append_images=images[1:],
                 duration=duration,
                 loop=0,  # Infinite loop
-                optimize=False  # Faster but larger file
+                optimize=False,  # Faster but larger file
             )
 
             if os.path.exists(output_path):
@@ -203,26 +225,22 @@ class VisualOutputHandler:
                     "format": "image/gif",
                     "size_mb": round(size_mb, 2),
                     "fps": fps,
-                    "frame_count": len(images)
+                    "frame_count": len(images),
                 }
             else:
-                return {
-                    "success": False,
-                    "error": "GIF file was not created"
-                }
+                return {"success": False, "error": "GIF file was not created"}
 
         except ImportError:
-            logger.error("Pillow library not installed. Install with: pip install Pillow")
+            logger.error(
+                "Pillow library not installed. Install with: pip install Pillow"
+            )
             return {
                 "success": False,
-                "error": "Pillow library required for GIF creation. Install with: pip install Pillow"
+                "error": "Pillow library required for GIF creation. Install with: pip install Pillow",
             }
         except Exception as e:
             logger.error(f"Error compiling GIF: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     async def open_file(self, file_path: str) -> Dict[str, Any]:
         """
@@ -244,33 +262,23 @@ class VisualOutputHandler:
                 logger.warning("Cannot determine how to open files on this system")
                 return {
                     "success": False,
-                    "error": "File opening not supported on this system"
+                    "error": "File opening not supported on this system",
                 }
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
 
             return {
                 "success": result.returncode == 0,
                 "opened": file_path,
-                "error": result.stderr if result.returncode != 0 else None
+                "error": result.stderr if result.returncode != 0 else None,
             }
 
         except Exception as e:
             logger.error(f"Error opening file: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     async def process_visual_output(
-        self,
-        output: str,
-        created_files: List[str]
+        self, output: str, created_files: List[str]
     ) -> Optional[Dict[str, Any]]:
         """
         Main entry point: detect and process visual outputs.
@@ -295,8 +303,7 @@ class VisualOutputHandler:
         output_path = os.path.join(self.workspace_path, output_name)
 
         compilation_result = await self.compile_to_video(
-            frame_info["frames"],
-            output_path
+            frame_info["frames"], output_path
         )
 
         if not compilation_result["success"]:
@@ -304,8 +311,7 @@ class VisualOutputHandler:
             output_name = "animation_output.gif"
             output_path = os.path.join(self.workspace_path, output_name)
             compilation_result = await self.compile_to_gif(
-                frame_info["frames"],
-                output_path
+                frame_info["frames"], output_path
             )
 
         if compilation_result["success"]:
@@ -320,7 +326,9 @@ class VisualOutputHandler:
                 "format": compilation_result["format"],
                 "size_mb": compilation_result["size_mb"],
                 "opened": open_result.get("success", False),
-                "message": self._generate_success_message(compilation_result, open_result)
+                "message": self._generate_success_message(
+                    compilation_result, open_result
+                ),
             }
         else:
             return {
@@ -328,10 +336,12 @@ class VisualOutputHandler:
                 "frame_count": frame_info["count"],
                 "compiled": False,
                 "error": compilation_result.get("error"),
-                "message": f"Detected {frame_info['count']} frames but failed to compile animation: {compilation_result.get('error')}"
+                "message": f"Detected {frame_info['count']} frames but failed to compile animation: {compilation_result.get('error')}",
             }
 
-    def _generate_success_message(self, compilation: Dict[str, Any], open_result: Dict[str, Any]) -> str:
+    def _generate_success_message(
+        self, compilation: Dict[str, Any], open_result: Dict[str, Any]
+    ) -> str:
         """Generate a user-friendly success message."""
         format_name = "video" if "mp4" in compilation["format"] else "animated GIF"
 

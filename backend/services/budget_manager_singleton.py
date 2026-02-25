@@ -69,13 +69,20 @@ async def init_budget_manager() -> Optional[BudgetManager]:
         return None
 
     # Budget can use separate Redis instance for testing/isolation
-    redis_url = os.getenv("BUDGET_REDIS_URL") or os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    redis_url = os.getenv("BUDGET_REDIS_URL") or os.getenv(
+        "REDIS_URL", "redis://localhost:6379/0"
+    )
 
     try:
         r = redis.from_url(redis_url, decode_responses=False)
         await r.ping()
         _BUDGET_MANAGER = BudgetManager(r, enforcement_mode=enforcement, policy=policy)
-        logger.info("Budget manager ACTIVE: mode=%s env=%s redis=%s", enforcement, app_env, _redact_redis_url(redis_url))
+        logger.info(
+            "Budget manager ACTIVE: mode=%s env=%s redis=%s",
+            enforcement,
+            app_env,
+            _redact_redis_url(redis_url),
+        )
         return _BUDGET_MANAGER
     except Exception as e:
         # Redact the Redis URL from the exception string before logging to avoid
@@ -84,20 +91,29 @@ async def init_budget_manager() -> Optional[BudgetManager]:
 
         if enforcement == "disabled":
             # Redis is unreachable; initialize BudgetManager without a Redis client
-            _BUDGET_MANAGER = BudgetManager(None, enforcement_mode="disabled", policy=policy)
-            logger.warning("Budget manager init: disabled mode (Redis unreachable): %s", safe_error)
+            _BUDGET_MANAGER = BudgetManager(
+                None, enforcement_mode="disabled", policy=policy
+            )
+            logger.warning(
+                "Budget manager init: disabled mode (Redis unreachable): %s", safe_error
+            )
             return _BUDGET_MANAGER
 
         if enforcement == "advisory":
             # Redis is unreachable; initialize BudgetManager without a Redis client
-            _BUDGET_MANAGER = BudgetManager(None, enforcement_mode="advisory", policy=policy)
-            logger.warning("Budget manager init: advisory mode (Redis unreachable): %s", safe_error)
+            _BUDGET_MANAGER = BudgetManager(
+                None, enforcement_mode="advisory", policy=policy
+            )
+            logger.warning(
+                "Budget manager init: advisory mode (Redis unreachable): %s", safe_error
+            )
             return _BUDGET_MANAGER
 
         # strict + redis down => keep None (endpoint maps to 503)
         logger.error(
             "CRITICAL: Budget manager UNAVAILABLE in strict mode - all requests will return 503. "
-            "Redis connection failed: %s", safe_error
+            "Redis connection failed: %s",
+            safe_error,
         )
         _BUDGET_MANAGER = None
         return None

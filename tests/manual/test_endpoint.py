@@ -2,6 +2,7 @@
 """
 Simple test script to verify the analyze-changes endpoint returns real analysis
 """
+
 import requests
 import json
 

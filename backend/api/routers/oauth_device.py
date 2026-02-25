@@ -638,7 +638,7 @@ class DeviceAuthorizationRequest(BaseModel):
     """Request model for device authorization."""
 
     user_code: str = Field(description="User code to authorize")
-    action: str = Field(description="Authorization action:" "'approve' or 'deny'")
+    action: str = Field(description="Authorization action:'approve' or 'deny'")
     user_id: Optional[str] = Field(default=None, description="Optional user identifier")
     org_id: Optional[str] = Field(default=None, description="Optional org identifier")
 

@@ -853,7 +853,7 @@ class PlanGenerator:
         ):
             tasks.append(
                 PlanTask(
-                    id=f"task-{len(tasks)+1}",
+                    id=f"task-{len(tasks) + 1}",
                     title="Set up project structure",
                     description="Create necessary directories and configuration files",
                     task_type="setup",
@@ -864,7 +864,7 @@ class PlanGenerator:
         # Task 2: Core implementation
         tasks.append(
             PlanTask(
-                id=f"task-{len(tasks)+1}",
+                id=f"task-{len(tasks) + 1}",
                 title="Implement core functionality",
                 description="Create the main implementation files",
                 task_type="implementation",
@@ -877,7 +877,7 @@ class PlanGenerator:
         if plan.images:
             tasks.append(
                 PlanTask(
-                    id=f"task-{len(tasks)+1}",
+                    id=f"task-{len(tasks) + 1}",
                     title="Create UI components",
                     description="Implement the UI based on provided screenshots",
                     task_type="ui",
@@ -889,7 +889,7 @@ class PlanGenerator:
         # Task 4: Integration/wiring
         tasks.append(
             PlanTask(
-                id=f"task-{len(tasks)+1}",
+                id=f"task-{len(tasks) + 1}",
                 title="Wire up integration",
                 description="Connect components and ensure proper data flow",
                 task_type="integration",
@@ -900,7 +900,7 @@ class PlanGenerator:
         # Task 5: Tests
         tasks.append(
             PlanTask(
-                id=f"task-{len(tasks)+1}",
+                id=f"task-{len(tasks) + 1}",
                 title="Add tests",
                 description="Write unit and integration tests",
                 task_type="testing",
@@ -911,7 +911,7 @@ class PlanGenerator:
         # Task 6: Documentation
         tasks.append(
             PlanTask(
-                id=f"task-{len(tasks)+1}",
+                id=f"task-{len(tasks) + 1}",
                 title="Update documentation",
                 description="Add/update relevant documentation",
                 task_type="documentation",
@@ -924,7 +924,7 @@ class PlanGenerator:
         if should_refactor:
             tasks.append(
                 PlanTask(
-                    id=f"task-{len(tasks)+1}",
+                    id=f"task-{len(tasks) + 1}",
                     title="Review and improve code quality",
                     description="Run code validation, suggest improvements, and apply refactoring",
                     task_type="refactoring",
@@ -937,7 +937,7 @@ class PlanGenerator:
         if commit_strategy and commit_strategy != "manual":
             tasks.append(
                 PlanTask(
-                    id=f"task-{len(tasks)+1}",
+                    id=f"task-{len(tasks) + 1}",
                     title="Commit changes to git",
                     description=f"Stage and commit all changes ({commit_strategy})",
                     task_type="commit",

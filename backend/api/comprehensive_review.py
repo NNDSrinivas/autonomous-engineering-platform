@@ -3,6 +3,7 @@
 Comprehensive Advanced Code Review API Endpoint
 Provides deep, multi-layered AI analysis including security, performance, and architecture insights
 """
+
 from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import JSONResponse
 import logging
@@ -299,7 +300,7 @@ async def comprehensive_analysis_stream(
 
 @router.get("/review/repository-summary")
 async def get_repository_summary(
-    workspace_root: Optional[str] = Query(None, description="Repository root path")
+    workspace_root: Optional[str] = Query(None, description="Repository root path"),
 ):
     """
     Get summary information about the repository without performing full analysis

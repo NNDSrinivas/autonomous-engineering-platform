@@ -66,7 +66,9 @@ def test_start_validates_missing_device_client_id(monkeypatch):
 
 def test_refresh_success_with_token_rotation(monkeypatch):
     """Test successful refresh with Auth0 returning rotated refresh token."""
-    monkeypatch.setattr(oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client")
+    monkeypatch.setattr(
+        oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client"
+    )
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_AUDIENCE", "https://api.example.com")
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_DOMAIN", "auth.example.com")
 
@@ -112,7 +114,9 @@ def test_refresh_success_with_token_rotation(monkeypatch):
 
 def test_refresh_success_without_token_rotation(monkeypatch):
     """Test successful refresh when Auth0 doesn't rotate refresh token."""
-    monkeypatch.setattr(oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client")
+    monkeypatch.setattr(
+        oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client"
+    )
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_AUDIENCE", "https://api.example.com")
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_DOMAIN", "auth.example.com")
 
@@ -156,7 +160,9 @@ def test_refresh_success_without_token_rotation(monkeypatch):
 
 def test_refresh_fails_when_auth0_unreachable(monkeypatch):
     """Test refresh returns 503 when Auth0 is unreachable."""
-    monkeypatch.setattr(oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client")
+    monkeypatch.setattr(
+        oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client"
+    )
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_AUDIENCE", "https://api.example.com")
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_DOMAIN", "auth.example.com")
 
@@ -177,7 +183,9 @@ def test_refresh_fails_when_auth0_unreachable(monkeypatch):
 
 def test_refresh_fails_with_invalid_refresh_token(monkeypatch):
     """Test refresh returns 401 when refresh token is expired/invalid."""
-    monkeypatch.setattr(oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client")
+    monkeypatch.setattr(
+        oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client"
+    )
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_AUDIENCE", "https://api.example.com")
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_DOMAIN", "auth.example.com")
 
@@ -207,7 +215,9 @@ def test_refresh_fails_with_invalid_refresh_token(monkeypatch):
 
 def test_refresh_fails_when_id_token_missing(monkeypatch):
     """Test refresh returns 401 when Auth0 response missing id_token."""
-    monkeypatch.setattr(oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client")
+    monkeypatch.setattr(
+        oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client"
+    )
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_AUDIENCE", "https://api.example.com")
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_DOMAIN", "auth.example.com")
 
@@ -240,7 +250,9 @@ def test_refresh_fails_when_id_token_missing(monkeypatch):
 
 def test_refresh_fails_when_sub_claim_missing(monkeypatch):
     """Test refresh returns 401 when id_token missing sub claim."""
-    monkeypatch.setattr(oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client")
+    monkeypatch.setattr(
+        oauth_auth0_router, "AUTH0_DEVICE_CLIENT_ID", "test-device-client"
+    )
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_AUDIENCE", "https://api.example.com")
     monkeypatch.setattr(oauth_auth0_router, "AUTH0_DOMAIN", "auth.example.com")
 

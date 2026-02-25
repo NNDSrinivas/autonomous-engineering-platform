@@ -395,7 +395,7 @@ async def get_user(user_id: str, db: Session = Depends(get_db)):
     print(f"Passed: {passed}")
     print(f"Failed: {failed}")
     print(f"Total: {passed + failed}")
-    print(f"Success Rate: {passed/(passed+failed)*100:.1f}%")
+    print(f"Success Rate: {passed / (passed + failed) * 100:.1f}%")
 
     return failed == 0
 

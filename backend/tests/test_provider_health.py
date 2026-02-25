@@ -10,6 +10,7 @@ import pytest
 
 try:
     import fakeredis
+
     FAKEREDIS_AVAILABLE = True
 except ImportError:
     FAKEREDIS_AVAILABLE = False
@@ -190,6 +191,7 @@ class TestGracefulDegradation:
 
     def test_redis_error_handled_gracefully(self):
         """Redis errors are handled gracefully."""
+
         # Create tracker with broken Redis client
         class BrokenRedis:
             def register_script(self, script):
@@ -274,7 +276,9 @@ class TestProbeLease:
         from backend.services.redis_circuit_breaker import RedisCircuitBreaker
 
         breaker = RedisCircuitBreaker(
-            redis_client, "openai", probe_lease_ttl=1  # 1 second TTL
+            redis_client,
+            "openai",
+            probe_lease_ttl=1,  # 1 second TTL
         )
         tracker = ProviderHealthTracker(redis_client)
         tracker._breakers["openai"] = breaker

@@ -170,9 +170,9 @@ class NaviMultiRepoIntegration:
                     ]
                 ):
                     intent["system_context"]["potential_cross_repo_impact"] = True
-                    intent["system_context"][
-                        "recommendation"
-                    ] = "Consider cross-repository impact analysis"
+                    intent["system_context"]["recommendation"] = (
+                        "Consider cross-repository impact analysis"
+                    )
 
             elif intent.get("kind") == "fix_bug":
                 # For bug fixes, consider system-wide debugging
@@ -188,9 +188,9 @@ class NaviMultiRepoIntegration:
                     ]
                 ):
                     intent["system_context"]["system_wide_analysis"] = True
-                    intent["system_context"][
-                        "recommendation"
-                    ] = "Perform system health analysis"
+                    intent["system_context"]["recommendation"] = (
+                        "Perform system health analysis"
+                    )
 
             logger.debug(
                 f"Enhanced intent with system context for {system_context.current_repository}"

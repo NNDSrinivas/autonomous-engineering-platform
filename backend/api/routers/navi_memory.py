@@ -47,8 +47,7 @@ def _get_user_id_from_auth(user: User, db: Session) -> int:
     user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
     if user_id is None:
         raise HTTPException(
-            status_code=403,
-            detail="User ID not found in authentication context"
+            status_code=403, detail="User ID not found in authentication context"
         )
 
     try:
@@ -71,7 +70,9 @@ def _get_user_id_from_auth(user: User, db: Session) -> int:
     if db_user:
         return int(db_user.id)
 
-    logger.warning("Cannot resolve authenticated user '%s' to numeric users.id", user_sub)
+    logger.warning(
+        "Cannot resolve authenticated user '%s' to numeric users.id", user_sub
+    )
     raise HTTPException(
         status_code=403,
         detail=f"Unable to resolve user identity '{user_sub}' for memory features",
@@ -91,7 +92,11 @@ def _get_org_id_from_auth(user: User, db: Session) -> Optional[int]:
         if not org_key:
             return None
         try:
-            org = db.query(Organization).filter(Organization.org_key == org_key).one_or_none()
+            org = (
+                db.query(Organization)
+                .filter(Organization.org_key == org_key)
+                .one_or_none()
+            )
         except Exception as exc:
             logger.warning("Failed to resolve organization key '%s': %s", org_key, exc)
             org = None

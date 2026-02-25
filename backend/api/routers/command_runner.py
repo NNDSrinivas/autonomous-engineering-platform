@@ -95,7 +95,7 @@ def _ensure_table(db) -> None:
                 f"""
                 CREATE TABLE IF NOT EXISTS navi_run_allowlist (
                     command TEXT PRIMARY KEY,
-                    auto_approve {'INTEGER' if dialect_name == 'sqlite' else 'BOOLEAN'} DEFAULT {'0' if dialect_name == 'sqlite' else 'FALSE'},
+                    auto_approve {"INTEGER" if dialect_name == "sqlite" else "BOOLEAN"} DEFAULT {"0" if dialect_name == "sqlite" else "FALSE"},
                     updated_at {timestamp_type} DEFAULT {default_timestamp}
                 )
                 """

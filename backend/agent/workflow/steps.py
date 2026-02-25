@@ -57,15 +57,15 @@ async def step_analysis(
         # Format plan for display
         plan_summary = f"""📘 **Analysis Complete**
 
-**Task**: {issue.get('title')}
+**Task**: {issue.get("title")}
 
-**Summary**: {plan.get('summary', 'No summary available')}
+**Summary**: {plan.get("summary", "No summary available")}
 
 **Acceptance Criteria**:
-{chr(10).join(['- ' + c for c in plan.get('acceptance_criteria', [])])}
+{chr(10).join(["- " + c for c in plan.get("acceptance_criteria", [])])}
 
 **Next Steps**:
-{chr(10).join(['1. ' + s for s in plan.get('next_steps', [])[:3]])}
+{chr(10).join(["1. " + s for s in plan.get("next_steps", [])[:3]])}
 
 Ready to proceed with implementation?
 """
@@ -140,7 +140,7 @@ async def step_locate_files(
 
 Found {len(file_list)} file(s) that may need changes:
 
-{chr(10).join(['- ' + f for f in state.file_targets])}
+{chr(10).join(["- " + f for f in state.file_targets])}
 
 Ready to propose code changes?
 """
@@ -198,8 +198,8 @@ async def step_propose_diffs(state: Any, user_id: str) -> Dict[str, Any]:
             # Generate diff using LLM
             diff_prompt = f"""Generate a unified diff to implement this change:
 
-**Task**: {state.issue.get('title')}
-**Plan**: {state.plan.get('summary', '')}
+**Task**: {state.issue.get("title")}
+**Plan**: {state.plan.get("summary", "")}
 **File**: {file_path}
 
 **Current content**:
@@ -515,16 +515,16 @@ async def step_create_pr(state: Any, user_id: str) -> Dict[str, Any]:
 
         # Generate PR title and body
         pr_title = f"[{state.issue_id}] {state.issue.get('title')}"
-        pr_body = f"""## {state.issue_id}: {state.issue.get('title')}
+        pr_body = f"""## {state.issue_id}: {state.issue.get("title")}
 
 ### Summary
-{state.plan.get('summary', '')}
+{state.plan.get("summary", "")}
 
 ### Changes
-{chr(10).join(['- Modified: ' + f for f in state.file_targets])}
+{chr(10).join(["- Modified: " + f for f in state.file_targets])}
 
 ### Acceptance Criteria
-{chr(10).join(['- [ ] ' + c for c in state.plan.get('acceptance_criteria', [])])}
+{chr(10).join(["- [ ] " + c for c in state.plan.get("acceptance_criteria", [])])}
 
 ---
 *Autonomously implemented by NAVI*
@@ -651,7 +651,7 @@ async def step_done(state: Any) -> Dict[str, Any]:
 
         summary = f"""🎉 **Autonomous Workflow Complete!**
 
-**Task**: {state.issue.get('title')}
+**Task**: {state.issue.get("title")}
 **Jira**: {state.issue_id}
 **Branch**: {state.branch_name}
 **PR**: {state.pr_url}

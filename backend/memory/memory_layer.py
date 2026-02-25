@@ -333,13 +333,23 @@ class MemoryLayer:
         FOCUS AREA: {focus_area or "General"}
         
         RELEVANT MEMORIES:
-        {json.dumps([{
-            "type": mem.memory_type.value,
-            "title": mem.title,
-            "content": mem.content[:200] + "..." if len(mem.content) > 200 else mem.content,
-            "importance": mem.importance.value,
-            "tags": mem.tags
-        } for mem, _ in relevant_memories[:10]], indent=2)}
+        {
+            json.dumps(
+                [
+                    {
+                        "type": mem.memory_type.value,
+                        "title": mem.title,
+                        "content": mem.content[:200] + "..."
+                        if len(mem.content) > 200
+                        else mem.content,
+                        "importance": mem.importance.value,
+                        "tags": mem.tags,
+                    }
+                    for mem, _ in relevant_memories[:10]
+                ],
+                indent=2,
+            )
+        }
         
         Generate insights in these categories:
         1. **Patterns**: Recurring themes or issues
@@ -426,13 +436,23 @@ class MemoryLayer:
         Analyze these memories and identify consolidation opportunities:
         
         MEMORIES:
-        {json.dumps([{
-            "id": mem.id,
-            "title": mem.title,
-            "content": mem.content[:150] + "..." if len(mem.content) > 150 else mem.content,
-            "type": mem.memory_type.value,
-            "tags": mem.tags
-        } for mem in memories[:20]], indent=2)}
+        {
+            json.dumps(
+                [
+                    {
+                        "id": mem.id,
+                        "title": mem.title,
+                        "content": mem.content[:150] + "..."
+                        if len(mem.content) > 150
+                        else mem.content,
+                        "type": mem.memory_type.value,
+                        "tags": mem.tags,
+                    }
+                    for mem in memories[:20]
+                ],
+                indent=2,
+            )
+        }
         
         Identify groups of memories that should be consolidated because they:
         - Contain duplicate information

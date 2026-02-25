@@ -56,7 +56,7 @@ class BacklogItem:
         priority=Priority.MEDIUM,
         item_type=None,
         estimated_hours=0,
-        **kwargs
+        **kwargs,
     ):
         self.id = id
         self.title = title
@@ -132,8 +132,9 @@ class TestSprintPlannerAgent:
     @pytest.fixture
     async def sprint_planner(self):
         """Create sprint planner instance with mocked dependencies."""
-        with patch("backend.agents.sprint_planner_agent.LLMRouter"), patch(
-            "backend.agents.sprint_planner_agent.DatabaseService"
+        with (
+            patch("backend.agents.sprint_planner_agent.LLMRouter"),
+            patch("backend.agents.sprint_planner_agent.DatabaseService"),
         ):
             planner = SprintPlannerAgent()
             planner.llm = AsyncMock()
@@ -247,8 +248,9 @@ class TestBacklogManagerAgent:
     @pytest.fixture
     async def backlog_manager(self):
         """Create backlog manager instance."""
-        with patch("backend.agents.backlog_manager_agent.LLMRouter"), patch(
-            "backend.agents.backlog_manager_agent.DatabaseService"
+        with (
+            patch("backend.agents.backlog_manager_agent.LLMRouter"),
+            patch("backend.agents.backlog_manager_agent.DatabaseService"),
         ):
             manager = BacklogManagerAgent()
             manager.llm = AsyncMock()
@@ -451,8 +453,9 @@ class TestMemoryLayer:
     @pytest.fixture
     async def memory_layer(self):
         """Create memory layer instance."""
-        with patch("backend.memory.memory_layer.DatabaseService"), patch(
-            "backend.memory.memory_layer.VectorStore"
+        with (
+            patch("backend.memory.memory_layer.DatabaseService"),
+            patch("backend.memory.memory_layer.VectorStore"),
         ):
             memory = MemoryLayer()
             memory.db = AsyncMock()
@@ -603,8 +606,9 @@ class TestMultiRepoOrchestrator:
     @pytest.fixture
     async def orchestrator(self):
         """Create multi-repo orchestrator instance."""
-        with patch("backend.agents.multi_repo_orchestrator.DatabaseService"), patch(
-            "backend.agents.multi_repo_orchestrator.MemoryLayer"
+        with (
+            patch("backend.agents.multi_repo_orchestrator.DatabaseService"),
+            patch("backend.agents.multi_repo_orchestrator.MemoryLayer"),
         ):
             orch = MultiRepoOrchestrator()
             orch.db = AsyncMock()
@@ -696,8 +700,9 @@ class TestAutonomousPRReviewer:
     @pytest.fixture
     async def pr_reviewer(self):
         """Create PR reviewer instance."""
-        with patch("backend.agents.autonomous_pr_reviewer.DatabaseService"), patch(
-            "backend.agents.autonomous_pr_reviewer.MemoryLayer"
+        with (
+            patch("backend.agents.autonomous_pr_reviewer.DatabaseService"),
+            patch("backend.agents.autonomous_pr_reviewer.MemoryLayer"),
         ):
             reviewer = AutonomousPRReviewer()
             reviewer.db = AsyncMock()

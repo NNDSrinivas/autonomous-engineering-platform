@@ -98,11 +98,11 @@ async def generate_gitlab_ci(context: Dict[str, Any]) -> ToolResult:
 # Project Type: {project_type}
 
 ## Pipeline Overview
-- **Stages**: {', '.join(stages)}
-- **Environments**: {', '.join(environments)}
-- **Security Scanning**: {'Enabled' if include_security else 'Disabled'}
-- **Docker Support**: {'Enabled' if docker_enabled else 'Disabled'}
-- **Caching**: {'Enabled' if cache_enabled else 'Disabled'}
+- **Stages**: {", ".join(stages)}
+- **Environments**: {", ".join(environments)}
+- **Security Scanning**: {"Enabled" if include_security else "Disabled"}
+- **Docker Support**: {"Enabled" if docker_enabled else "Disabled"}
+- **Caching**: {"Enabled" if cache_enabled else "Disabled"}
 
 ## Generated Configuration
 
@@ -223,7 +223,7 @@ async def setup_gitlab_runners(context: Dict[str, Any]) -> ToolResult:
 
 ## Runner Type: `{runner_type}`
 ## Concurrent Jobs: `{concurrent}`
-## Tags: `{', '.join(tags)}`
+## Tags: `{", ".join(tags)}`
 
 ### Configuration File (`config.toml`)
 
@@ -247,7 +247,7 @@ docker exec -it gitlab-runner gitlab-runner register \\
   --registration-token "YOUR_TOKEN" \\
   --executor "{runner_type}" \\
   --description "NAVI Runner" \\
-  --tag-list "{','.join(tags)}" \\
+  --tag-list "{",".join(tags)}" \\
   --run-untagged="true" \\
   --locked="false"
 ```
@@ -332,7 +332,7 @@ async def generate_gitlab_cd(context: Dict[str, Any]) -> ToolResult:
     output = f"""# GitLab CD (Continuous Deployment) Configuration
 
 ## Deployment Strategy: `{deployment_strategy}`
-## Environments: {', '.join([e['name'] for e in environments])}
+## Environments: {", ".join([e["name"] for e in environments])}
 
 ### CD Pipeline Configuration
 

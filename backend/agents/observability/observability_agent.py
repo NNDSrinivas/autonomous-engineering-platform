@@ -763,7 +763,7 @@ class ObservabilityAgent:
         TYPE: {anomaly.event_type.value}
         SEVERITY: {anomaly.severity.value}
         DESCRIPTION: {anomaly.description}
-        AFFECTED COMPONENTS: {', '.join(anomaly.affected_components)}
+        AFFECTED COMPONENTS: {", ".join(anomaly.affected_components)}
         PATTERN: {anomaly.pattern_matched}
         CONFIDENCE: {anomaly.confidence_score:.2f}
         

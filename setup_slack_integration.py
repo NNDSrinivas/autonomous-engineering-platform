@@ -102,7 +102,9 @@ async def test_slack_service():
 
         # Test message search (with mock DB)
         messages = search_messages_for_user(
-            db=None, user_id="test_user", limit=5  # No DB for testing
+            db=None,
+            user_id="test_user",
+            limit=5,  # No DB for testing
         )
 
         print(f"✅ Message search works: {len(messages)} messages retrieved")

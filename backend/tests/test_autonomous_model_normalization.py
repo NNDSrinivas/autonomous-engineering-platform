@@ -26,6 +26,8 @@ def test_openrouter_preserves_namespaced_model_id() -> None:
 def test_openrouter_internal_prefix_is_stripped_only_once() -> None:
     agent = _agent("openrouter")
     assert (
-        agent._normalize_openai_compatible_model_name("openrouter/anthropic/claude-3.5-sonnet")  # type: ignore[attr-defined]
+        agent._normalize_openai_compatible_model_name(
+            "openrouter/anthropic/claude-3.5-sonnet"
+        )  # type: ignore[attr-defined]
         == "anthropic/claude-3.5-sonnet"
     )

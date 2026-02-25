@@ -417,7 +417,7 @@ class TemporalReasoner:
 
         context += "\n## Causality Chains:\n"
         for i, path in enumerate(paths[:MAX_PATHS_IN_CONTEXT]):  # Limit paths
-            context += f"Path {i+1}: "
+            context += f"Path {i + 1}: "
             path_str = " → ".join(
                 [f"{node.foreign_id} ({edge.relation})" for node, edge in path]
             )

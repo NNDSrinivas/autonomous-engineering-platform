@@ -1,12 +1,13 @@
 import { handleAuth, handleLogin, handleCallback, handleLogout } from "@auth0/nextjs-auth0";
 import { Session } from "@auth0/nextjs-auth0";
 import type { NextRequest } from "next/server";
+import type { NextApiRequest } from "next";
 import { validateReturnTo } from "@/lib/auth/validation";
 
 export const GET = handleAuth({
-  login: handleLogin((req: NextRequest) => {
+  login: handleLogin((req: NextRequest | NextApiRequest) => {
     // Get connection from query params for direct social login
-    const searchParams = req.nextUrl.searchParams;
+    const searchParams = (req as NextRequest).nextUrl?.searchParams;
 
     const connection = searchParams.get("connection");
     const returnToParam = searchParams.get("returnTo");
@@ -23,7 +24,7 @@ export const GET = handleAuth({
   }),
   callback: handleCallback({
     afterCallback: async (
-      _req: NextRequest,
+      _req: NextRequest | NextApiRequest,
       session: Session
     ): Promise<Session> => {
       // Sync user to backend database after successful authentication

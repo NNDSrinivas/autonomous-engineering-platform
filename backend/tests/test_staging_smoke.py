@@ -27,13 +27,17 @@ pytestmark = pytest.mark.skipif(
 def test_health_live():
     """Backend liveness probe must return 200."""
     resp = requests.get(f"{STAGING_URL}/health/live", timeout=15)
-    assert resp.status_code == 200, f"/health/live returned {resp.status_code}: {resp.text}"
+    assert resp.status_code == 200, (
+        f"/health/live returned {resp.status_code}: {resp.text}"
+    )
 
 
 def test_health_ready():
     """Backend readiness probe must return 200 (DB + Redis connected)."""
     resp = requests.get(f"{STAGING_URL}/health/ready", timeout=15)
-    assert resp.status_code == 200, f"/health/ready returned {resp.status_code}: {resp.text}"
+    assert resp.status_code == 200, (
+        f"/health/ready returned {resp.status_code}: {resp.text}"
+    )
 
 
 def test_frontend_serves_html():

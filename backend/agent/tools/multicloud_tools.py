@@ -107,9 +107,9 @@ async def generate_multi_region_config(context: Dict[str, Any]) -> ToolResult:
 
     output = f"""# Multi-Region Deployment Configuration
 
-## Strategy: {strategy.replace('-', ' ').title()}
+## Strategy: {strategy.replace("-", " ").title()}
 ## Provider: {provider.upper()}
-## Regions: {', '.join(regions)}
+## Regions: {", ".join(regions)}
 
 ### Architecture Overview
 
@@ -133,7 +133,7 @@ async def generate_multi_region_config(context: Dict[str, Any]) -> ToolResult:
 {monitoring_config}
 ```
 
-### Strategy Details: {strategy.replace('-', ' ').title()}
+### Strategy Details: {strategy.replace("-", " ").title()}
 
 {_get_strategy_details(strategy)}
 
@@ -337,8 +337,8 @@ async def generate_cloud_landing_zone(context: Dict[str, Any]) -> ToolResult:
 
 ## Provider: {provider.upper()}
 ## Organization: {organization_name}
-## Environments: {', '.join(environments)}
-## Compliance: {', '.join(compliance_frameworks) if compliance_frameworks else 'None specified'}
+## Environments: {", ".join(environments)}
+## Compliance: {", ".join(compliance_frameworks) if compliance_frameworks else "None specified"}
 
 ### Account/Project Structure
 
@@ -406,7 +406,7 @@ async def analyze_cloud_spend(context: Dict[str, Any]) -> ToolResult:
     output = f"""# Cloud Spend Analysis
 
 ## Provider: {provider.upper()}
-## Focus Areas: {', '.join(focus_areas)}
+## Focus Areas: {", ".join(focus_areas)}
 
 ### Executive Summary
 
@@ -1033,14 +1033,14 @@ def _generate_multi_region_diagram(
     return f"""```
                         ┌─────────────────────────────────────────┐
                         │            Global Load Balancer          │
-                        │         ({provider.upper()} {'Global Accelerator' if provider == 'aws' else 'GLB' if provider == 'gcp' else 'Traffic Manager'})          │
+                        │         ({provider.upper()} {"Global Accelerator" if provider == "aws" else "GLB" if provider == "gcp" else "Traffic Manager"})          │
                         └─────────────────┬───────────────────────┘
                                           │
             ┌─────────────────────────────┼─────────────────────────────┐
             │                             │                             │
             ▼                             ▼                             ▼
     ┌───────────────┐           ┌───────────────┐           ┌───────────────┐
-    │   {regions[0]:^11}   │           │   {regions[1] if len(regions) > 1 else 'N/A':^11}   │           │   {regions[2] if len(regions) > 2 else 'N/A':^11}   │
+    │   {regions[0]:^11}   │           │   {regions[1] if len(regions) > 1 else "N/A":^11}   │           │   {regions[2] if len(regions) > 2 else "N/A":^11}   │
     │               │           │               │           │               │
     │  ┌─────────┐  │           │  ┌─────────┐  │           │  ┌─────────┐  │
     │  │   API   │  │           │  │   API   │  │           │  │   API   │  │
@@ -1056,7 +1056,7 @@ def _generate_multi_region_diagram(
     │  └─────────┘  │           │  └─────────┘  │           │  └─────────┘  │
     └───────────────┘           └───────────────┘           └───────────────┘
 
-    Strategy: {strategy.replace('-', ' ').title()}
+    Strategy: {strategy.replace("-", " ").title()}
 ```"""
 
 
@@ -1735,8 +1735,8 @@ def _generate_account_structure(
 │   └── shared-services-{org_name}
 ├── Workloads OU
 │   ├── {environments[0]}-{org_name}
-│   ├── {environments[1] if len(environments) > 1 else 'staging'}-{org_name}
-│   └── {environments[2] if len(environments) > 2 else 'production'}-{org_name}
+│   ├── {environments[1] if len(environments) > 1 else "staging"}-{org_name}
+│   └── {environments[2] if len(environments) > 2 else "production"}-{org_name}
 └── Sandbox OU
     └── sandbox-{org_name}
 ```
@@ -1755,8 +1755,8 @@ def _generate_account_structure(
 │   │   └── shared-services-{org_name}
 │   ├── Workloads/
 │   │   ├── {environments[0]}-{org_name}
-│   │   ├── {environments[1] if len(environments) > 1 else 'staging'}-{org_name}
-│   │   └── {environments[2] if len(environments) > 2 else 'production'}-{org_name}
+│   │   ├── {environments[1] if len(environments) > 1 else "staging"}-{org_name}
+│   │   └── {environments[2] if len(environments) > 2 else "production"}-{org_name}
 │   └── Sandbox/
 │       └── sandbox-{org_name}
 ```

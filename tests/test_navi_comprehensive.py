@@ -528,7 +528,7 @@ async def run_all_tests():
         )
 
     print(
-        f"\nOverall: {total_passed}/{total_tests} tests passed ({total_passed/total_tests*100:.1f}%)"
+        f"\nOverall: {total_passed}/{total_tests} tests passed ({total_passed / total_tests * 100:.1f}%)"
     )
 
     # Detailed failures

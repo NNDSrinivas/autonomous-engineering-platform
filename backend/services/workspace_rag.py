@@ -1160,8 +1160,8 @@ async def get_context_for_task(
         content = result["content_preview"]
 
         section = f"""
---- {chunk['file_path']}:{chunk['start_line']} ({chunk['chunk_type']}) ---
-{chunk.get('signature', '')}
+--- {chunk["file_path"]}:{chunk["start_line"]} ({chunk["chunk_type"]}) ---
+{chunk.get("signature", "")}
 {content}
 """
 

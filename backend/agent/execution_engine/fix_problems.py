@@ -1482,7 +1482,9 @@ All changes verified and diagnostics are now clean."""
             file_path = (
                 target_files[i]
                 if i < len(target_files)
-                else target_files[0] if target_files else "unknown"
+                else target_files[0]
+                if target_files
+                else "unknown"
             )
 
             diagnostics.append(

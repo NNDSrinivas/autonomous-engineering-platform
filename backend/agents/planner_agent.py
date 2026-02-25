@@ -90,9 +90,9 @@ class PlannerAgent:
         Instruction: {instruction}
         
         Repository context:
-        - Total files: {repo_map.get('total_files', 0)}
-        - Languages: {repo_map.get('languages', {})}
-        - Architecture: {repo_map.get('architecture', {})}
+        - Total files: {repo_map.get("total_files", 0)}
+        - Languages: {repo_map.get("languages", {})}
+        - Architecture: {repo_map.get("architecture", {})}
         
         Consider:
         - Scope (single file vs multi-file vs architecture change)
@@ -228,11 +228,11 @@ class PlannerAgent:
         User instruction: {instruction}
 
         Repository context:
-        - Root path: {repo_map.get('root_path', '')}
-        - Total files: {repo_map.get('total_files', 0)}
-        - Languages: {json.dumps(repo_map.get('languages', {}), indent=2)}
-        - Key files: {json.dumps(repo_map.get('hotspots', [])[:10], indent=2)}
-        - Architecture: {json.dumps(repo_map.get('architecture', {}), indent=2)}
+        - Root path: {repo_map.get("root_path", "")}
+        - Total files: {repo_map.get("total_files", 0)}
+        - Languages: {json.dumps(repo_map.get("languages", {}), indent=2)}
+        - Key files: {json.dumps(repo_map.get("hotspots", [])[:10], indent=2)}
+        - Architecture: {json.dumps(repo_map.get("architecture", {}), indent=2)}
         
         {context_section}
 

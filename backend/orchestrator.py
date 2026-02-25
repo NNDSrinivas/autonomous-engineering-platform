@@ -629,9 +629,7 @@ class NaviOrchestrator:
                         getattr(impact_analysis, "testing_recommendations", [])
                         if hasattr(impact_analysis, "testing_recommendations")
                         else impact_analysis.get("testing_recommendations", [])
-                    )[
-                        :3
-                    ],  # Limit for API
+                    )[:3],  # Limit for API
                 },
                 "summary": f"Impact analysis: {getattr(impact_analysis, 'blast_radius', 0) if hasattr(impact_analysis, 'blast_radius') else impact_analysis.get('blast_radius', 0)} repositories affected, {getattr(getattr(impact_analysis, 'overall_risk', {}), 'value', 'low') if hasattr(impact_analysis, 'overall_risk') and hasattr(getattr(impact_analysis, 'overall_risk'), 'value') else impact_analysis.get('risk_level', 'low')} risk",
             }
@@ -693,9 +691,7 @@ class NaviOrchestrator:
                         getattr(health_report, "immediate_actions", [])
                         if hasattr(health_report, "immediate_actions")
                         else health_report.get("immediate_actions", [])
-                    )[
-                        :5
-                    ],  # Limit for API
+                    )[:5],  # Limit for API
                     "strategic_improvements": (
                         getattr(health_report, "strategic_improvements", [])
                         if hasattr(health_report, "strategic_improvements")
@@ -876,9 +872,7 @@ class NaviOrchestrator:
                         )
                         if hasattr(decision, "get")
                         else getattr(decision, "implementation_plan", [])
-                    )[
-                        :3
-                    ],  # Limit for API
+                    )[:3],  # Limit for API
                     "estimated_effort_weeks": (
                         getattr(
                             decision,

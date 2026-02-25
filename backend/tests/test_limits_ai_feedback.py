@@ -110,9 +110,9 @@ def test_feedback_stats_rate_limited():
         # If we didn't hit rate limit after multiple requests,
         # make one more to ensure we do
         r_final = client.get("/api/feedback/stats", headers=RATE_LIMIT_HEADERS)
-        assert (
-            r_final.status_code == 429
-        ), f"Expected eventual 429, got {r_final.status_code}"
+        assert r_final.status_code == 429, (
+            f"Expected eventual 429, got {r_final.status_code}"
+        )
 
 
 def test_different_endpoints_separate_limits():

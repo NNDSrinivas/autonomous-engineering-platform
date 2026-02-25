@@ -168,7 +168,7 @@ class BacklogManagerAgent:
         BUSINESS CONTEXT:
         {json.dumps(business_context or {}, indent=2)}
         
-        TEAM VELOCITY: {team_velocity or 'Unknown'}
+        TEAM VELOCITY: {team_velocity or "Unknown"}
         
         For each item, provide detailed scoring (0-10 scale):
         

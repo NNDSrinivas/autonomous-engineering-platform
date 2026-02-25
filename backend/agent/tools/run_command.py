@@ -632,6 +632,7 @@ async def run_command(
             if not _is_conditional_allowed(command):
                 # Return consent request for user approval
                 import uuid
+
                 consent_id = f"consent_{uuid.uuid4().hex[:12]}"
 
                 permission_request = format_permission_request(command, cmd_info, cwd)
@@ -682,6 +683,7 @@ async def run_command(
             # Check if it's a dangerous command that could be allowed with permission
             if cmd_info is not None:
                 import uuid
+
                 consent_id = f"consent_{uuid.uuid4().hex[:12]}"
 
                 permission_request = format_permission_request(command, cmd_info, cwd)

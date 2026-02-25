@@ -130,9 +130,9 @@ class NaviTester:
         mode: str = "agent",
     ) -> TestResult:
         """Run a single test and validate results."""
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"TEST: {name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Message: {message[:100]}{'...' if len(message) > 100 else ''}")
 
         response = await self.send_navi_request(message, attachments, mode)
@@ -562,7 +562,7 @@ def process_request(data):
         print(f"\nTotal: {len(tester.results)}")
         print(f"✅ Passed: {passed}")
         print(f"❌ Failed: {failed}")
-        print(f"Success Rate: {passed/len(tester.results)*100:.1f}%")
+        print(f"Success Rate: {passed / len(tester.results) * 100:.1f}%")
 
         if failed > 0:
             print("\nFailed Tests:")

@@ -312,7 +312,15 @@ class AutonomousPRReviewer:
         
         REVIEW FINDINGS:
         - Total Comments: {len(analysis.review_comments)}
-        - Critical Issues: {len([c for c in analysis.review_comments if c.severity == ReviewSeverity.CRITICAL])}
+        - Critical Issues: {
+            len(
+                [
+                    c
+                    for c in analysis.review_comments
+                    if c.severity == ReviewSeverity.CRITICAL
+                ]
+            )
+        }
         - Security Issues: {len(analysis.security_issues)}
         - Patch Suggestions: {len(analysis.patch_suggestions)}
         
@@ -320,12 +328,20 @@ class AutonomousPRReviewer:
         RECOMMENDATION: {analysis.approval_recommendation}
         
         KEY ISSUES:
-        {json.dumps([{
-            "severity": comment.severity.value,
-            "category": comment.category.value,
-            "title": comment.title,
-            "file": comment.file_path
-        } for comment in analysis.review_comments[:10]], indent=2)}
+        {
+            json.dumps(
+                [
+                    {
+                        "severity": comment.severity.value,
+                        "category": comment.category.value,
+                        "title": comment.title,
+                        "file": comment.file_path,
+                    }
+                    for comment in analysis.review_comments[:10]
+                ],
+                indent=2,
+            )
+        }
         
         Generate a clear, structured review summary that includes:
         1. **Overall Assessment** - High level verdict
@@ -729,13 +745,21 @@ class AutonomousPRReviewer:
         ```
         
         ISSUES TO FIX:
-        {json.dumps([{
-            "line": comment.line_number,
-            "severity": comment.severity.value,
-            "title": comment.title,
-            "message": comment.message,
-            "suggested_fix": comment.suggested_fix
-        } for comment in comments], indent=2)}
+        {
+            json.dumps(
+                [
+                    {
+                        "line": comment.line_number,
+                        "severity": comment.severity.value,
+                        "title": comment.title,
+                        "message": comment.message,
+                        "suggested_fix": comment.suggested_fix,
+                    }
+                    for comment in comments
+                ],
+                indent=2,
+            )
+        }
         
         For each fixable issue, generate a precise patch:
         

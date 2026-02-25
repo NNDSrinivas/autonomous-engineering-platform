@@ -629,8 +629,8 @@ def process_order(order_data):
     print(f"\nTotal Tests: {total_count}")
     print(f"Passed: {passed_count}")
     print(f"Failed: {total_count - passed_count}")
-    print(f"Success Rate: {passed_count/total_count*100:.1f}%")
-    print(f"Total Time: {total_time/1000:.1f}s")
+    print(f"Success Rate: {passed_count / total_count * 100:.1f}%")
+    print(f"Total Time: {total_time / 1000:.1f}s")
 
     return passed_count == total_count
 

@@ -62,86 +62,152 @@ Currently using **Auth0's development keys** for Google social connection:
 
 ---
 
-## 🔐 AUTH0 DEVICE AUTHORIZATION GRANT - PRODUCTION SETUP REQUIRED
+## 🔐 VSCODE EXTENSION AUTHENTICATION - PREMIUM OAUTH PKCE
 
-**Status:** 🔴 REQUIRED FOR PRODUCTION
-**Impact:** VSCode extension authentication will fail without this
-**Priority:** Critical (P0)
-**Last Updated:** February 22, 2026
+**Status:** ✅ IMPLEMENTED
+**Impact:** Premium authentication experience for VS Code users
+**Priority:** High (P0)
+**Last Updated:** February 25, 2026
 
-### Current Issue
+### Overview
 
-VSCode extension shows error on sign-in:
+NAVI VS Code extension uses **Authorization Code + PKCE** (Proof Key for Code Exchange) for authentication - the same OAuth flow used by GitHub Desktop, Slack, and other premium desktop applications.
+
+**Key Features:**
+- ✅ No device codes shown to users
+- ✅ Direct browser → Auth0 → back to VS Code flow
+- ✅ Long-lived sessions via refresh tokens
+- ✅ Silent token refresh (users never see login prompts after initial auth)
+- ✅ Premium UX with "snap back to VS Code" effect
+
+### Authentication Flow
+
+**User Experience:**
+1. User clicks "Sign in" in VS Code
+2. Browser opens to Auth0 login (no code shown anywhere)
+3. User signs in with Google/Email on Auth0
+4. Browser auto-redirects back to VS Code
+5. User sees "✓ Connected as [Name]" toast
+
+**Technical Flow:**
+1. Extension starts local HTTP server on `127.0.0.1:4312`
+2. Extension opens browser to Auth0 `/authorize` with PKCE challenge
+3. User authenticates with Auth0
+4. Auth0 redirects to `http://127.0.0.1:4312/callback?code=xxx&state=yyy`
+5. Local server captures code, validates state (CSRF protection)
+6. Server returns HTML that auto-redirects to `vscode://navralabs.aep-professional/auth/done`
+7. Extension exchanges code for tokens (directly to Auth0)
+8. Tokens stored securely in VS Code SecretStorage
+9. Extension shows success message
+
+### Auth0 Configuration
+
+**Application:** NAVI VSCode Native (Native/Public Client)
+- **Client ID:** `VieiheBGMQu3rSq4fyqtjCZj3H9Q0A1q`
+- **Type:** Native (Public Client - no client secret required)
+- **Token Endpoint Authentication:** None (standard for Native apps)
+
+**Allowed Callback URLs:**
 ```
-"NAVI sign-in is blocked by Auth0 configuration.
-Enable Device Authorization Grant for this Auth0 application"
-```
-
-**Root Cause:** Auth0 application does not have Device Authorization Grant (RFC 8628) enabled.
-
-### Solution: Enable Device Code Grant Type
-
-**Time Required:** 5 minutes
-**Reference:** [docs/AUTH0_PRODUCTION_SETUP.md#L161-L183](AUTH0_PRODUCTION_SETUP.md#L161-L183)
-
-**Steps:**
-1. Go to Auth0 Dashboard → Applications → "NAVI VSCode Extension"
-2. Settings → Advanced Settings → Grant Types
-3. Enable: **✓ Device Code**
-4. Enable: **✓ Refresh Token**
-5. Save Changes
-
-### Production Environment Configuration
-
-**Critical Variables:**
-
-```bash
-# Backend .env (PRODUCTION)
-AUTH0_DOMAIN=navralabs.us.auth0.com  # NOT dev tenant!
-AUTH0_CLIENT_ID=<production-client-id>
-AUTH0_CLIENT_SECRET=<production-client-secret>
-AUTH0_AUDIENCE=https://api.navralabs.com
-AUTH0_ISSUER_BASE_URL=https://navralabs.us.auth0.com
-
-PUBLIC_BASE_URL=https://api.navralabs.com
-WEB_APP_BASE_URL=https://app.navralabs.com
-
-# CRITICAL: Ensure dev-only flags are FALSE
-OAUTH_DEVICE_USE_IN_MEMORY_STORE=false  # MUST be false in production
-OAUTH_DEVICE_AUTO_APPROVE=false          # MUST be false in production
-```
-
-**Web App .env.production:**
-
-```bash
-AUTH0_SECRET=<generated-with-openssl-rand-hex-32>
-AUTH0_BASE_URL=https://app.navralabs.com
-AUTH0_ISSUER_BASE_URL=https://navralabs.us.auth0.com
-AUTH0_CLIENT_ID=<production-client-id>
-AUTH0_CLIENT_SECRET=<production-client-secret>
-AUTH0_AUDIENCE=https://api.navralabs.com
+http://127.0.0.1:4312/callback
+http://localhost:4312/callback
 ```
 
-### Device Authorization Flow URLs
+**Allowed Logout URLs:**
+```
+http://127.0.0.1:4312/logout
+http://localhost:4312/logout
+```
 
-**Production:**
-- Verification URI: `https://app.navralabs.com/device/authorize`
-- API Endpoint: `https://api.navralabs.com/oauth/device/*`
+**Grant Types (Required):**
+- ✅ Authorization Code
+- ✅ Refresh Token
 
-**Staging:**
-- Verification URI: `https://staging.navralabs.com/device/authorize`
-- API Endpoint: `https://api-staging.navralabs.com/oauth/device/*`
+**Scopes:**
+```
+openid profile email offline_access
+```
 
-### TODO (Before Production Launch):
-- [ ] Create separate Auth0 tenants (dev, staging, prod)
-- [ ] Enable Device Authorization Grant in production Auth0 app
-- [ ] Set production environment variables (backend + web)
-- [ ] Update Auth0 callback URLs to production domains
-- [ ] Test device authorization flow end-to-end
-- [ ] Enable MFA for production users
-- [ ] Configure brute force protection
-- [ ] Set up Auth0 Action for user sync
-- [ ] Verify Redis is configured (multi-worker requirement)
+**API Configuration:**
+- **Audience:** `https://api.navralabs.com`
+- **Allow Offline Access:** ON (enables refresh tokens)
+
+### Implementation Details
+
+**File:** `extensions/vscode-aep/src/auth/pkceLoopbackAuth.ts`
+
+**Security Features:**
+- PKCE (S256) prevents authorization code interception
+- State parameter prevents CSRF attacks
+- Tokens stored in encrypted VS Code SecretStorage
+- Local server timeout (2 minutes) prevents hanging
+- HTML escaping prevents XSS
+- Refresh token rotation supported (if Auth0 returns new RT)
+
+**Token Lifetime:**
+- **Access token:** 900 seconds (15 minutes)
+- **Refresh token:** Long-lived (30 days absolute, configurable in Auth0)
+- **Auto-refresh:** 60 seconds before access token expiry
+- **User experience:** Seamless, long-lived sessions with no login prompts
+
+### Troubleshooting
+
+**Issue:** "Login timed out"
+- **Cause:** User didn't complete login within 2 minutes
+- **Solution:** Try again, complete login faster
+
+**Issue:** "State mismatch (possible CSRF attack)"
+- **Cause:** CSRF attack attempt OR browser/extension state desync
+- **Solution:** Reload VS Code window and try again
+
+**Issue:** "No refresh_token returned"
+- **Cause:** Auth0 API doesn't have "Allow Offline Access" enabled
+- **Solution:** Auth0 Dashboard → APIs → NAVI API → Settings → Allow Offline Access → ON
+
+**Issue:** "Port 4312 already in use"
+- **Cause:** Another process is using the loopback port
+- **Solution:** Kill the process: `lsof -ti:4312 | xargs kill -9`
+
+### Migration from Device Flow
+
+**Old Flow (Removed):**
+- Used OAuth Device Flow (designed for TVs/IoT devices)
+- Required showing user_code for device confirmation
+- Had intermediate device confirmation page (`/activate`)
+- Backend proxy endpoint for token refresh (`/oauth/device/refresh`)
+
+**New Flow (Current):**
+- Uses Authorization Code + PKCE (designed for desktop apps)
+- No user codes shown anywhere
+- Direct browser → Auth0 → VS Code flow
+- Direct Auth0 refresh (no backend proxy needed)
+
+**User Impact:**
+- Existing users will see "Sign in" prompt after extension update
+- One-time re-authentication required
+- Much cleaner, more premium UX after migration
+
+### Production Deployment Checklist
+
+**Extension Configuration:**
+- [x] PKCE loopback auth service implemented
+- [x] Extension ID matches bounce-back URI (`vscode://navralabs.aep-professional/auth/done`)
+- [x] Device flow code removed
+- [x] Premium auth UI updated ("Sign in" button)
+
+**Auth0 Configuration:**
+- [ ] Production Auth0 tenant created (separate from dev)
+- [ ] Native application configured with correct callback URLs
+- [ ] Authorization Code + Refresh Token grants enabled
+- [ ] API has "Allow Offline Access" enabled
+- [ ] Token lifetime configured (15 min access, 30 day refresh recommended)
+
+**Testing:**
+- [ ] Sign-in flow works end-to-end
+- [ ] Silent token refresh works (no login prompts)
+- [ ] Logout clears tokens correctly
+- [ ] Cross-platform testing (macOS, Windows, Linux)
+- [ ] Remote development scenarios (WSL, Codespaces, SSH)
 
 ---
 

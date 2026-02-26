@@ -9,11 +9,12 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install deps first (layer-cache friendly)
-COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm install --prefer-offline
 
-# Copy source
-COPY . .
+# Copy frontend source and shared packages
+COPY frontend/ ./
+COPY packages/ ../packages/
 
 # Build-time env vars (Vite bakes these into the JS bundle).
 # WARNING: Defaults point to localhost — only valid for local dev builds.

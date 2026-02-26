@@ -373,7 +373,7 @@ class CodeParser:
         lines = content.split("\n")
 
         # Extract imports first
-        imports = cls._extract_imports(content, patterns.get('import'))
+        imports = cls._extract_imports(content, patterns.get("import"))
 
         # Find all functions/classes
         if "function" in patterns:
@@ -646,7 +646,7 @@ class EmbeddingProvider:
             try:
                 import httpx
 
-                api_key = os.environ.get('OPENAI_API_KEY')
+                api_key = os.environ.get("OPENAI_API_KEY")
                 if not api_key:
                     return cls.generate_embedding(text)
 
@@ -1156,12 +1156,12 @@ async def get_context_for_task(
     max_chars = max_context_tokens * 4  # Rough estimate
 
     for result in results:
-        chunk = result['chunk']
-        content = result['content_preview']
+        chunk = result["chunk"]
+        content = result["content_preview"]
 
         section = f"""
---- {chunk['file_path']}:{chunk['start_line']} ({chunk['chunk_type']}) ---
-{chunk.get('signature', "")}
+--- {chunk["file_path"]}:{chunk["start_line"]} ({chunk["chunk_type"]}) ---
+{chunk.get("signature", "")}
 {content}
 """
 

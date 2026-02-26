@@ -165,7 +165,7 @@ async def db_orchestrate_migration(
         }
 
     # Execute migration (only in development by default)
-    if target_env == "production" and not os.environ.get('ALLOW_PROD_MIGRATIONS'):
+    if target_env == "production" and not os.environ.get("ALLOW_PROD_MIGRATIONS"):
         return {
             "success": False,
             "error": "Production migrations require ALLOW_PROD_MIGRATIONS=true",
@@ -412,7 +412,7 @@ async def db_configure_sharding(
 // 3. Start mongos routers
 
 // Enable sharding on database
-sh.enableSharding("{collection_name.split('.')[0] if "." in collection_name else "mydb"}")
+sh.enableSharding("{collection_name.split(".")[0] if "." in collection_name else "mydb"}")
 
 // Shard collection with hashed key for even distribution
 sh.shardCollection("{collection_name}", {{ "{shard_key}": "hashed" }})
@@ -595,8 +595,8 @@ async def db_backup_restore(
         "backup_path": backup_path,
         "compression": compression,
         "commands": {
-            "backup": db_commands.get('backup', "Not available"),
-            "restore": db_commands.get('restore', "Not available"),
+            "backup": db_commands.get("backup", "Not available"),
+            "restore": db_commands.get("restore", "Not available"),
         },
         "best_practices": [
             "Test restore process regularly",

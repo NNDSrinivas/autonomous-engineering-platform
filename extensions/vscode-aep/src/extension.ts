@@ -38,7 +38,7 @@ import { GitService } from './services/GitService';
 import { TaskService } from './services/TaskService';
 import { createDefaultActionRegistry, ActionRegistry } from './actions';
 import type { ActivityEvent } from './types/activity';
-import { DeviceAuthService, AuthSignInStatus } from './auth/deviceAuth';
+import { PKCELoopbackAuthService } from './auth/pkceLoopbackAuth';
 import { buildUndoRestoreMetadataFromSnapshot } from './undoMetadata';
 
 const exec = util.promisify(child_process.exec);
@@ -120,7 +120,7 @@ let globalContextService: ContextService | undefined;
 let globalGitService: GitService | undefined;
 let globalTaskService: TaskService | undefined;
 let globalActionRegistry: ActionRegistry | undefined;
-let globalAuthService: DeviceAuthService | undefined;
+let globalAuthService: PKCELoopbackAuthService | undefined;
 let cachedAuthToken: string | undefined;
 
 // Phase 1.4: Collect VS Code diagnostics for a set of files
@@ -927,9 +927,13 @@ export function activate(context: vscode.ExtensionContext) {
   globalActionRegistry = createDefaultActionRegistry();
   console.log('[AEP] ActionRegistry initialized with dynamic handlers');
 
-  // Initialize Auth Service for device code flow
-  globalAuthService = new DeviceAuthService(context);
-  console.log('[AEP] DeviceAuthService initialized');
+  // Initialize Auth Service for PKCE flow
+  globalAuthService = new PKCELoopbackAuthService(context, {
+    auth0Domain: 'https://auth.navralabs.com',
+    clientId: 'VieiheBGMQu3rSq4fyqtjCZj3H9Q0A1q',
+    audience: 'https://api.navralabs.com',
+  });
+  console.log('[AEP] PKCELoopbackAuthService initialized');
   globalAuthService.getToken().then((token) => {
     if (token) {
       cachedAuthToken = token;
@@ -937,20 +941,13 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // Register auth commands
-  const emitSignInStatus = (status: AuthSignInStatus) => {
-    provider.postToWebview({
-      type: 'auth.signIn.status',
-      ...status,
-      timestamp: new Date().toISOString(),
-    });
-  };
-
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.signIn', async () => {
       try {
-        await globalAuthService?.startLogin(emitSignInStatus);
+        await globalAuthService?.login();
       } catch (error) {
-        console.warn('[AEP] Sign-in flow finished with error:', error);
+        console.error('[AEP] Sign-in failed:', error);
+        vscode.window.showErrorMessage(`Sign in failed: ${error}`);
       }
       cachedAuthToken = await globalAuthService?.getToken();
       await vscode.commands.executeCommand('aep.notifyAuthStateChange', Boolean(cachedAuthToken));
@@ -973,13 +970,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.isLoggedIn', async () => {
-      return await globalAuthService?.isLoggedIn();
+      return await globalAuthService?.isAuthenticated();
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.getUserInfo', async () => {
-      return await globalAuthService?.getUserInfo();
+      return await globalAuthService?.getCurrentUser();
     })
   );
 
@@ -989,7 +986,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (authToken) {
         cachedAuthToken = authToken;
       }
-      const user = await globalAuthService?.getUserInfo();
+      const user = await globalAuthService?.getCurrentUser();
       // This command is called internally to notify the webview of auth changes
       provider.postToWebview({
         type: 'auth.stateChange',
@@ -2659,7 +2656,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
   private async emitCurrentAuthState(): Promise<void> {
     const authToken = await this.ensureLiveAuthToken();
-    const user = await globalAuthService?.getUserInfo();
+    const user = await globalAuthService?.getCurrentUser();
     this.postToWebview({
       type: 'auth.stateChange',
       isAuthenticated: Boolean(authToken),
@@ -15186,7 +15183,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       const liveAuthToken = await this.ensureLiveAuthToken();
-      const authUser = await globalAuthService?.getUserInfo();
+      const authUser = await globalAuthService?.getCurrentUser();
       const webviewConfig = {
         backendBaseUrl: this.getBackendBaseUrl(),
         orgId: authUser?.org || this.getOrgId(),

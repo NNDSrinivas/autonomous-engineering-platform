@@ -62,9 +62,10 @@ def main() -> int:
     total = 0
     exported = 0
 
-    with input_path.open("r", encoding="utf-8") as src, output_path.open(
-        "w", encoding="utf-8"
-    ) as dst:
+    with (
+        input_path.open("r", encoding="utf-8") as src,
+        output_path.open("w", encoding="utf-8") as dst,
+    ):
         for line in src:
             line = line.strip()
             if not line:

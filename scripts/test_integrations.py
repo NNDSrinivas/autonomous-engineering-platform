@@ -45,8 +45,7 @@ class IntegrationTester:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{self.backend_url}/api/telemetry/health",
-                    timeout=5.0
+                    f"{self.backend_url}/api/telemetry/health", timeout=5.0
                 )
                 passed = response.status_code == 200
                 details = f"Status: {response.status_code}"
@@ -63,10 +62,7 @@ class IntegrationTester:
         """Test 2: Verify Prometheus metrics endpoint."""
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.backend_url}/metrics",
-                    timeout=5.0
-                )
+                response = await client.get(f"{self.backend_url}/metrics", timeout=5.0)
                 passed = response.status_code == 200
                 content = response.text
 
@@ -96,6 +92,7 @@ class IntegrationTester:
 
                 # Try to query tables (will fail if tables don't exist)
                 from sqlalchemy import select
+
                 result = await db.execute(select(AiGenerationLog).limit(1))
                 result = await db.execute(select(AiFeedback).limit(1))
 
@@ -137,7 +134,9 @@ class IntegrationTester:
             # Test tracking a suggestion
             suggestion = manager.track_suggestion(
                 suggestion_id="test_001",
-                category=manager.store.suggestions.get("test_001", None) and "explanation" or "explanation",
+                category=manager.store.suggestions.get("test_001", None)
+                and "explanation"
+                or "explanation",
                 content="Test suggestion",
                 context="Test context",
                 org_id="test-org",
@@ -190,16 +189,22 @@ class IntegrationTester:
         print()
 
         tests = [
-            ("Backend Services", [
-                self.test_telemetry_endpoint,
-                self.test_metrics_endpoint,
-                self.test_feedback_database_schema,
-            ]),
-            ("Core Systems", [
-                self.test_rag_retrieval,
-                self.test_learning_manager,
-                self.test_feedback_service,
-            ]),
+            (
+                "Backend Services",
+                [
+                    self.test_telemetry_endpoint,
+                    self.test_metrics_endpoint,
+                    self.test_feedback_database_schema,
+                ],
+            ),
+            (
+                "Core Systems",
+                [
+                    self.test_rag_retrieval,
+                    self.test_learning_manager,
+                    self.test_feedback_service,
+                ],
+            ),
         ]
 
         all_passed = True

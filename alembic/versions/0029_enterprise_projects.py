@@ -319,9 +319,7 @@ def downgrade():
 
     # Project Task Queue
     if is_postgres:
-        op.drop_constraint(
-            "uq_project_task_key", "project_task_queue", type_="unique"
-        )
+        op.drop_constraint("uq_project_task_key", "project_task_queue", type_="unique")
     op.drop_index("idx_project_task_queue_milestone", "project_task_queue")
     op.drop_index("idx_project_task_queue_status", "project_task_queue")
     op.drop_index("idx_project_task_queue_project", "project_task_queue")

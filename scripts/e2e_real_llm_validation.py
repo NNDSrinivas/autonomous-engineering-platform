@@ -29,8 +29,7 @@ import httpx
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -38,6 +37,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TestCase:
     """A single test case for NAVI validation."""
+
     id: str
     name: str
     category: str  # simple, medium, complex, enterprise
@@ -53,6 +53,7 @@ class TestCase:
 @dataclass
 class TestResult:
     """Result from a single test execution."""
+
     test_id: str
     test_name: str
     category: str
@@ -69,6 +70,7 @@ class TestResult:
 @dataclass
 class ValidationReport:
     """Comprehensive validation report."""
+
     start_time: str
     end_time: str
     total_duration_seconds: float
@@ -148,7 +150,6 @@ TEST_SUITES = {
             max_iterations=8,
         ),
     ],
-
     "medium": [
         TestCase(
             id="medium_001",
@@ -201,7 +202,6 @@ TEST_SUITES = {
             max_iterations=15,
         ),
     ],
-
     "complex": [
         TestCase(
             id="complex_001",
@@ -254,7 +254,6 @@ TEST_SUITES = {
             max_iterations=25,
         ),
     ],
-
     "full": [],  # Will be populated with all tests
 }
 
@@ -272,222 +271,338 @@ def generate_full_test_suite() -> List[TestCase]:
         ("Count {type}", "How many {type} are there?", ["bash", "grep"]),
     ]
 
-    file_targets = ["README.md", "requirements.txt", "package.json", ".gitignore", "Makefile"]
+    file_targets = [
+        "README.md",
+        "requirements.txt",
+        "package.json",
+        ".gitignore",
+        "Makefile",
+    ]
     patterns = ["*.py", "*.ts", "*.tsx", "*.json", "*.yaml"]
     git_aspects = ["status", "recent commits", "branch", "uncommitted files", "remote"]
     dirs = ["backend", "frontend", "docs", "scripts", "config"]
-    count_types = ["Python files", "TypeScript files", "test files", "API endpoints", "database models"]
+    count_types = [
+        "Python files",
+        "TypeScript files",
+        "test files",
+        "API endpoints",
+        "database models",
+    ]
 
     for i, file in enumerate(file_targets, 1):
-        tests.append(TestCase(
-            id=f"simple_{i:03d}",
-            name=simple_templates[0][0].format(file=file),
-            category="simple",
-            description=f"Read and analyze {file}",
-            request_message=simple_templates[0][1].format(file=file),
-            mode="simple",
-            expected_tool_calls=simple_templates[0][2],
-            max_iterations=8,
-        ))
+        tests.append(
+            TestCase(
+                id=f"simple_{i:03d}",
+                name=simple_templates[0][0].format(file=file),
+                category="simple",
+                description=f"Read and analyze {file}",
+                request_message=simple_templates[0][1].format(file=file),
+                mode="simple",
+                expected_tool_calls=simple_templates[0][2],
+                max_iterations=8,
+            )
+        )
 
     for i, pattern in enumerate(patterns, 6):
-        tests.append(TestCase(
-            id=f"simple_{i:03d}",
-            name=simple_templates[1][0].format(pattern=pattern),
-            category="simple",
-            description=f"Find {pattern} files",
-            request_message=simple_templates[1][1].format(pattern=pattern),
-            mode="simple",
-            expected_tool_calls=simple_templates[1][2],
-            max_iterations=8,
-        ))
+        tests.append(
+            TestCase(
+                id=f"simple_{i:03d}",
+                name=simple_templates[1][0].format(pattern=pattern),
+                category="simple",
+                description=f"Find {pattern} files",
+                request_message=simple_templates[1][1].format(pattern=pattern),
+                mode="simple",
+                expected_tool_calls=simple_templates[1][2],
+                max_iterations=8,
+            )
+        )
 
     for i, aspect in enumerate(git_aspects, 11):
-        tests.append(TestCase(
-            id=f"simple_{i:03d}",
-            name=simple_templates[2][0].format(aspect=aspect),
-            category="simple",
-            description=f"Git {aspect} check",
-            request_message=simple_templates[2][1].format(aspect=aspect),
-            mode="simple",
-            expected_tool_calls=simple_templates[2][2],
-            max_iterations=8,
-        ))
+        tests.append(
+            TestCase(
+                id=f"simple_{i:03d}",
+                name=simple_templates[2][0].format(aspect=aspect),
+                category="simple",
+                description=f"Git {aspect} check",
+                request_message=simple_templates[2][1].format(aspect=aspect),
+                mode="simple",
+                expected_tool_calls=simple_templates[2][2],
+                max_iterations=8,
+            )
+        )
 
     for i, dir in enumerate(dirs, 16):
-        tests.append(TestCase(
-            id=f"simple_{i:03d}",
-            name=simple_templates[3][0].format(dir=dir),
-            category="simple",
-            description=f"List {dir} contents",
-            request_message=simple_templates[3][1].format(dir=dir),
-            mode="simple",
-            expected_tool_calls=simple_templates[3][2],
-            max_iterations=8,
-        ))
+        tests.append(
+            TestCase(
+                id=f"simple_{i:03d}",
+                name=simple_templates[3][0].format(dir=dir),
+                category="simple",
+                description=f"List {dir} contents",
+                request_message=simple_templates[3][1].format(dir=dir),
+                mode="simple",
+                expected_tool_calls=simple_templates[3][2],
+                max_iterations=8,
+            )
+        )
 
     for i, type in enumerate(count_types, 21):
-        tests.append(TestCase(
-            id=f"simple_{i:03d}",
-            name=simple_templates[4][0].format(type=type),
-            category="simple",
-            description=f"Count {type}",
-            request_message=simple_templates[4][1].format(type=type),
-            mode="simple",
-            expected_tool_calls=simple_templates[4][2],
-            max_iterations=8,
-        ))
+        tests.append(
+            TestCase(
+                id=f"simple_{i:03d}",
+                name=simple_templates[4][0].format(type=type),
+                category="simple",
+                description=f"Count {type}",
+                request_message=simple_templates[4][1].format(type=type),
+                mode="simple",
+                expected_tool_calls=simple_templates[4][2],
+                max_iterations=8,
+            )
+        )
 
     # Medium tests (30 tests - multi-step operations)
     medium_templates = [
-        ("Search for {term}", "Find all occurrences of '{term}' in the codebase", ["grep"]),
-        ("Analyze {module}", "Analyze the {module} module and list its main functions", ["read_file"]),
-        ("Review {dir} structure", "What is the directory structure of {dir}/?", ["bash", "glob"]),
+        (
+            "Search for {term}",
+            "Find all occurrences of '{term}' in the codebase",
+            ["grep"],
+        ),
+        (
+            "Analyze {module}",
+            "Analyze the {module} module and list its main functions",
+            ["read_file"],
+        ),
+        (
+            "Review {dir} structure",
+            "What is the directory structure of {dir}/?",
+            ["bash", "glob"],
+        ),
         ("Find {pattern} imports", "Which files import {pattern}?", ["grep"]),
-        ("Check {aspect} tests", "Review {aspect} tests in backend/tests/", ["glob", "read_file"]),
+        (
+            "Check {aspect} tests",
+            "Review {aspect} tests in backend/tests/",
+            ["glob", "read_file"],
+        ),
     ]
 
-    search_terms = ["TODO", "FIXME", "async def", "class ", "import anthropic", "pytest"]
-    modules = ["autonomous_agent", "feedback_service", "workspace_rag", "memory", "telemetry"]
-    review_dirs = ["backend/api", "backend/services", "frontend/src", "extensions/vscode-aep", "docs"]
+    search_terms = [
+        "TODO",
+        "FIXME",
+        "async def",
+        "class ",
+        "import anthropic",
+        "pytest",
+    ]
+    modules = [
+        "autonomous_agent",
+        "feedback_service",
+        "workspace_rag",
+        "memory",
+        "telemetry",
+    ]
+    review_dirs = [
+        "backend/api",
+        "backend/services",
+        "frontend/src",
+        "extensions/vscode-aep",
+        "docs",
+    ]
     import_patterns = ["fastapi", "asyncio", "pytest", "redis", "postgresql"]
     test_aspects = ["integration", "unit", "e2e", "navi", "api"]
 
     for i, term in enumerate(search_terms, 1):
-        tests.append(TestCase(
-            id=f"medium_{i:03d}",
-            name=medium_templates[0][0].format(term=term),
-            category="medium",
-            description=f"Search for {term}",
-            request_message=medium_templates[0][1].format(term=term),
-            mode="medium",
-            expected_tool_calls=medium_templates[0][2],
-            max_iterations=15,
-        ))
+        tests.append(
+            TestCase(
+                id=f"medium_{i:03d}",
+                name=medium_templates[0][0].format(term=term),
+                category="medium",
+                description=f"Search for {term}",
+                request_message=medium_templates[0][1].format(term=term),
+                mode="medium",
+                expected_tool_calls=medium_templates[0][2],
+                max_iterations=15,
+            )
+        )
 
     for i, module in enumerate(modules, 7):
-        tests.append(TestCase(
-            id=f"medium_{i:03d}",
-            name=medium_templates[1][0].format(module=module),
-            category="medium",
-            description=f"Analyze {module}",
-            request_message=medium_templates[1][1].format(module=module),
-            mode="medium",
-            expected_tool_calls=medium_templates[1][2],
-            max_iterations=15,
-        ))
+        tests.append(
+            TestCase(
+                id=f"medium_{i:03d}",
+                name=medium_templates[1][0].format(module=module),
+                category="medium",
+                description=f"Analyze {module}",
+                request_message=medium_templates[1][1].format(module=module),
+                mode="medium",
+                expected_tool_calls=medium_templates[1][2],
+                max_iterations=15,
+            )
+        )
 
     for i, dir in enumerate(review_dirs, 12):
-        tests.append(TestCase(
-            id=f"medium_{i:03d}",
-            name=medium_templates[2][0].format(dir=dir),
-            category="medium",
-            description=f"Review {dir} structure",
-            request_message=medium_templates[2][1].format(dir=dir),
-            mode="medium",
-            expected_tool_calls=medium_templates[2][2],
-            max_iterations=15,
-        ))
+        tests.append(
+            TestCase(
+                id=f"medium_{i:03d}",
+                name=medium_templates[2][0].format(dir=dir),
+                category="medium",
+                description=f"Review {dir} structure",
+                request_message=medium_templates[2][1].format(dir=dir),
+                mode="medium",
+                expected_tool_calls=medium_templates[2][2],
+                max_iterations=15,
+            )
+        )
 
     for i, pattern in enumerate(import_patterns, 17):
-        tests.append(TestCase(
-            id=f"medium_{i:03d}",
-            name=medium_templates[3][0].format(pattern=pattern),
-            category="medium",
-            description=f"Find {pattern} imports",
-            request_message=medium_templates[3][1].format(pattern=pattern),
-            mode="medium",
-            expected_tool_calls=medium_templates[3][2],
-            max_iterations=15,
-        ))
+        tests.append(
+            TestCase(
+                id=f"medium_{i:03d}",
+                name=medium_templates[3][0].format(pattern=pattern),
+                category="medium",
+                description=f"Find {pattern} imports",
+                request_message=medium_templates[3][1].format(pattern=pattern),
+                mode="medium",
+                expected_tool_calls=medium_templates[3][2],
+                max_iterations=15,
+            )
+        )
 
     for i, aspect in enumerate(test_aspects, 22):
-        tests.append(TestCase(
-            id=f"medium_{i:03d}",
-            name=medium_templates[4][0].format(aspect=aspect),
-            category="medium",
-            description=f"Review {aspect} tests",
-            request_message=medium_templates[4][1].format(aspect=aspect),
-            mode="medium",
-            expected_tool_calls=medium_templates[4][2],
-            max_iterations=15,
-        ))
+        tests.append(
+            TestCase(
+                id=f"medium_{i:03d}",
+                name=medium_templates[4][0].format(aspect=aspect),
+                category="medium",
+                description=f"Review {aspect} tests",
+                request_message=medium_templates[4][1].format(aspect=aspect),
+                mode="medium",
+                expected_tool_calls=medium_templates[4][2],
+                max_iterations=15,
+            )
+        )
 
     # Complex tests (20 tests - advanced analysis)
     complex_templates = [
-        ("Code quality - {file}", "Review {file} and suggest 3 code quality improvements", ["read_file"]),
-        ("Security audit - {component}", "Audit {component} for security vulnerabilities", ["read_file", "grep"]),
-        ("Performance review - {service}", "Identify performance bottlenecks in {service}", ["read_file"]),
-        ("Architecture - {system}", "Explain the architecture of {system}", ["read_file", "glob"]),
-        ("Refactor proposal - {module}", "Propose refactoring improvements for {module}", ["read_file"]),
+        (
+            "Code quality - {file}",
+            "Review {file} and suggest 3 code quality improvements",
+            ["read_file"],
+        ),
+        (
+            "Security audit - {component}",
+            "Audit {component} for security vulnerabilities",
+            ["read_file", "grep"],
+        ),
+        (
+            "Performance review - {service}",
+            "Identify performance bottlenecks in {service}",
+            ["read_file"],
+        ),
+        (
+            "Architecture - {system}",
+            "Explain the architecture of {system}",
+            ["read_file", "glob"],
+        ),
+        (
+            "Refactor proposal - {module}",
+            "Propose refactoring improvements for {module}",
+            ["read_file"],
+        ),
     ]
 
-    quality_files = ["backend/services/autonomous_agent.py", "backend/services/feedback_service.py",
-                     "backend/api/navi.py", "backend/services/memory/conversation_memory.py"]
-    security_components = ["authentication", "API endpoints", "database access", "token encryption"]
+    quality_files = [
+        "backend/services/autonomous_agent.py",
+        "backend/services/feedback_service.py",
+        "backend/api/navi.py",
+        "backend/services/memory/conversation_memory.py",
+    ]
+    security_components = [
+        "authentication",
+        "API endpoints",
+        "database access",
+        "token encryption",
+    ]
     perf_services = ["autonomous_agent", "streaming", "RAG", "feedback_service"]
-    arch_systems = ["the learning system", "the memory system", "the RAG system", "the telemetry system"]
-    refactor_modules = ["feedback_service", "workspace_rag", "telemetry", "autonomous_agent"]
+    arch_systems = [
+        "the learning system",
+        "the memory system",
+        "the RAG system",
+        "the telemetry system",
+    ]
+    refactor_modules = [
+        "feedback_service",
+        "workspace_rag",
+        "telemetry",
+        "autonomous_agent",
+    ]
 
     for i, file in enumerate(quality_files, 1):
-        tests.append(TestCase(
-            id=f"complex_{i:03d}",
-            name=complex_templates[0][0].format(file=file),
-            category="complex",
-            description=f"Code quality review of {file}",
-            request_message=complex_templates[0][1].format(file=file),
-            mode="complex",
-            expected_tool_calls=complex_templates[0][2],
-            max_iterations=25,
-        ))
+        tests.append(
+            TestCase(
+                id=f"complex_{i:03d}",
+                name=complex_templates[0][0].format(file=file),
+                category="complex",
+                description=f"Code quality review of {file}",
+                request_message=complex_templates[0][1].format(file=file),
+                mode="complex",
+                expected_tool_calls=complex_templates[0][2],
+                max_iterations=25,
+            )
+        )
 
     for i, component in enumerate(security_components, 5):
-        tests.append(TestCase(
-            id=f"complex_{i:03d}",
-            name=complex_templates[1][0].format(component=component),
-            category="complex",
-            description=f"Security audit of {component}",
-            request_message=complex_templates[1][1].format(component=component),
-            mode="complex",
-            expected_tool_calls=complex_templates[1][2],
-            max_iterations=25,
-        ))
+        tests.append(
+            TestCase(
+                id=f"complex_{i:03d}",
+                name=complex_templates[1][0].format(component=component),
+                category="complex",
+                description=f"Security audit of {component}",
+                request_message=complex_templates[1][1].format(component=component),
+                mode="complex",
+                expected_tool_calls=complex_templates[1][2],
+                max_iterations=25,
+            )
+        )
 
     for i, service in enumerate(perf_services, 9):
-        tests.append(TestCase(
-            id=f"complex_{i:03d}",
-            name=complex_templates[2][0].format(service=service),
-            category="complex",
-            description=f"Performance review of {service}",
-            request_message=complex_templates[2][1].format(service=service),
-            mode="complex",
-            expected_tool_calls=complex_templates[2][2],
-            max_iterations=25,
-        ))
+        tests.append(
+            TestCase(
+                id=f"complex_{i:03d}",
+                name=complex_templates[2][0].format(service=service),
+                category="complex",
+                description=f"Performance review of {service}",
+                request_message=complex_templates[2][1].format(service=service),
+                mode="complex",
+                expected_tool_calls=complex_templates[2][2],
+                max_iterations=25,
+            )
+        )
 
     for i, system in enumerate(arch_systems, 13):
-        tests.append(TestCase(
-            id=f"complex_{i:03d}",
-            name=complex_templates[3][0].format(system=system),
-            category="complex",
-            description=f"Architecture analysis of {system}",
-            request_message=complex_templates[3][1].format(system=system),
-            mode="complex",
-            expected_tool_calls=complex_templates[3][2],
-            max_iterations=25,
-        ))
+        tests.append(
+            TestCase(
+                id=f"complex_{i:03d}",
+                name=complex_templates[3][0].format(system=system),
+                category="complex",
+                description=f"Architecture analysis of {system}",
+                request_message=complex_templates[3][1].format(system=system),
+                mode="complex",
+                expected_tool_calls=complex_templates[3][2],
+                max_iterations=25,
+            )
+        )
 
     for i, module in enumerate(refactor_modules, 17):
-        tests.append(TestCase(
-            id=f"complex_{i:03d}",
-            name=complex_templates[4][0].format(module=module),
-            category="complex",
-            description=f"Refactoring proposal for {module}",
-            request_message=complex_templates[4][1].format(module=module),
-            mode="complex",
-            expected_tool_calls=complex_templates[4][2],
-            max_iterations=25,
-        ))
+        tests.append(
+            TestCase(
+                id=f"complex_{i:03d}",
+                name=complex_templates[4][0].format(module=module),
+                category="complex",
+                description=f"Refactoring proposal for {module}",
+                request_message=complex_templates[4][1].format(module=module),
+                mode="complex",
+                expected_tool_calls=complex_templates[4][2],
+                max_iterations=25,
+            )
+        )
 
     # Enterprise tests (10 tests - end-to-end scenarios)
     enterprise_tests = [
@@ -561,7 +676,7 @@ class NaviClient:
     """Client for interacting with NAVI API."""
 
     def __init__(self, base_url: str = "http://127.0.0.1:8787", timeout: int = 300):
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
     async def execute_autonomous_task(
@@ -597,8 +712,8 @@ class NaviClient:
 
                 # Parse SSE stream
                 events = []
-                for line in response.text.strip().split('\n'):
-                    if line.startswith('data: '):
+                for line in response.text.strip().split("\n"):
+                    if line.startswith("data: "):
                         try:
                             event_data = json.loads(line[6:])
                             events.append(event_data)
@@ -606,8 +721,12 @@ class NaviClient:
                             continue
 
                 # Check for completion
-                completion_event = next((e for e in events if e.get("type") == "complete"), None)
-                success = completion_event and completion_event.get("summary", {}).get("success", False)
+                completion_event = next(
+                    (e for e in events if e.get("type") == "complete"), None
+                )
+                success = completion_event and completion_event.get("summary", {}).get(
+                    "success", False
+                )
 
                 response_data = {
                     "events": events,
@@ -620,7 +739,11 @@ class NaviClient:
         except httpx.HTTPStatusError as e:
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
-            return False, duration_ms, {"error": str(e), "status_code": e.response.status_code}
+            return (
+                False,
+                duration_ms,
+                {"error": str(e), "status_code": e.response.status_code},
+            )
         except httpx.TimeoutException:
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Request timeout after {self.timeout}s")
@@ -718,8 +841,16 @@ async def run_validation_suite(
     # Latency metrics
     durations = [r.duration_ms for r in results if r.duration_ms > 0]
     latency_p50 = statistics.median(durations) if durations else 0
-    latency_p95 = statistics.quantiles(durations, n=20)[18] if len(durations) >= 20 else (max(durations) if durations else 0)
-    latency_p99 = statistics.quantiles(durations, n=100)[98] if len(durations) >= 100 else (max(durations) if durations else 0)
+    latency_p95 = (
+        statistics.quantiles(durations, n=20)[18]
+        if len(durations) >= 20
+        else (max(durations) if durations else 0)
+    )
+    latency_p99 = (
+        statistics.quantiles(durations, n=100)[98]
+        if len(durations) >= 100
+        else (max(durations) if durations else 0)
+    )
     avg_latency = statistics.mean(durations) if durations else 0
 
     # By category
@@ -728,20 +859,27 @@ async def run_validation_suite(
         category_results = [r for r in results if r.category == category]
         if category_results:
             category_passed = sum(1 for r in category_results if r.success)
-            category_durations = [r.duration_ms for r in category_results if r.duration_ms > 0]
+            category_durations = [
+                r.duration_ms for r in category_results if r.duration_ms > 0
+            ]
             results_by_category[category] = {
                 "total": len(category_results),
                 "passed": category_passed,
                 "failed": len(category_results) - category_passed,
                 "success_rate": (category_passed / len(category_results)) * 100,
-                "avg_latency_ms": statistics.mean(category_durations) if category_durations else 0,
-                "p95_latency_ms": statistics.quantiles(category_durations, n=20)[18] if len(category_durations) >= 20 else (max(category_durations) if category_durations else 0),
+                "avg_latency_ms": statistics.mean(category_durations)
+                if category_durations
+                else 0,
+                "p95_latency_ms": statistics.quantiles(category_durations, n=20)[18]
+                if len(category_durations) >= 20
+                else (max(category_durations) if category_durations else 0),
             }
 
     # Collect errors
     errors = [
         {"test_id": r.test_id, "test_name": r.test_name, "error": r.error}
-        for r in results if r.error
+        for r in results
+        if r.error
     ]
 
     return ValidationReport(
@@ -803,7 +941,7 @@ def generate_json_report(report: ValidationReport, output_path: Path):
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open('w') as f:
+    with output_path.open("w") as f:
         json.dump(report_dict, f, indent=2)
 
     logger.info(f"JSON report saved to {output_path}")
@@ -845,12 +983,14 @@ def generate_markdown_report(report: ValidationReport, output_path: Path):
     lines.append("")
 
     # Results by category
-    lines.extend([
-        "## Results by Category",
-        "",
-        "| Category | Tests | Passed | Failed | Success Rate | Avg Latency (ms) | P95 Latency (ms) |",
-        "|----------|-------|--------|--------|--------------|------------------|------------------|",
-    ])
+    lines.extend(
+        [
+            "## Results by Category",
+            "",
+            "| Category | Tests | Passed | Failed | Success Rate | Avg Latency (ms) | P95 Latency (ms) |",
+            "|----------|-------|--------|--------|--------------|------------------|------------------|",
+        ]
+    )
 
     for category, stats in sorted(report.results_by_category.items()):
         lines.append(
@@ -862,29 +1002,39 @@ def generate_markdown_report(report: ValidationReport, output_path: Path):
 
     # Errors
     if report.errors:
-        lines.extend([
-            "## Failed Tests",
-            "",
-            "| Test ID | Test Name | Error |",
-            "|---------|-----------|-------|",
-        ])
+        lines.extend(
+            [
+                "## Failed Tests",
+                "",
+                "| Test ID | Test Name | Error |",
+                "|---------|-----------|-------|",
+            ]
+        )
 
         for error in report.errors:
-            error_msg = error['error'][:100] + "..." if len(error['error']) > 100 else error['error']
+            error_msg = (
+                error["error"][:100] + "..."
+                if len(error["error"]) > 100
+                else error["error"]
+            )
             lines.append(f"| {error['test_id']} | {error['test_name']} | {error_msg} |")
 
         lines.extend(["", ""])
 
     # Recommendations
-    lines.extend([
-        "## Recommendations",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Recommendations",
+            "",
+        ]
+    )
 
     if slo_met:
         lines.append("- ✅ Latency SLO is met - system is performant")
     else:
-        lines.append(f"- ❌ Latency P95 ({report.latency_p95_ms:.2f} ms) exceeds target ({slo_target} ms)")
+        lines.append(
+            f"- ❌ Latency P95 ({report.latency_p95_ms:.2f} ms) exceeds target ({slo_target} ms)"
+        )
         lines.append("  - Investigate slow queries and optimize LLM calls")
         lines.append("  - Consider caching frequently requested data")
 
@@ -899,16 +1049,22 @@ def generate_markdown_report(report: ValidationReport, output_path: Path):
     lines.extend(["", ""])
 
     # Detailed results
-    lines.extend([
-        "## Detailed Results",
-        "",
-        "| Test ID | Test Name | Category | Success | Duration (ms) | Iterations | Error |",
-        "|---------|-----------|----------|---------|---------------|------------|-------|",
-    ])
+    lines.extend(
+        [
+            "## Detailed Results",
+            "",
+            "| Test ID | Test Name | Category | Success | Duration (ms) | Iterations | Error |",
+            "|---------|-----------|----------|---------|---------------|------------|-------|",
+        ]
+    )
 
     for result in report.test_results:
         success_icon = "✅" if result.success else "❌"
-        error_summary = (result.error[:50] + "...") if result.error and len(result.error) > 50 else (result.error or "")
+        error_summary = (
+            (result.error[:50] + "...")
+            if result.error and len(result.error) > 50
+            else (result.error or "")
+        )
         lines.append(
             f"| {result.test_id} | {result.test_name} | {result.category} | {success_icon} | "
             f"{result.duration_ms:.2f} | {result.iterations_used} | {error_summary} |"
@@ -917,16 +1073,18 @@ def generate_markdown_report(report: ValidationReport, output_path: Path):
     lines.extend(["", ""])
 
     # Footer
-    lines.extend([
-        "---",
-        "",
-        f"**Report Generated:** {datetime.now().isoformat()}",
-        "**Validation Script:** `scripts/e2e_real_llm_validation.py`",
-        "",
-    ])
+    lines.extend(
+        [
+            "---",
+            "",
+            f"**Report Generated:** {datetime.now().isoformat()}",
+            "**Validation Script:** `scripts/e2e_real_llm_validation.py`",
+            "",
+        ]
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text('\n'.join(lines))
+    output_path.write_text("\n".join(lines))
 
     logger.info(f"Markdown report saved to {output_path}")
 
@@ -979,7 +1137,7 @@ def generate_html_report(report: ValidationReport, output_path: Path):
                 <div class="metric-label">Failed</div>
             </div>
             <div class="metric">
-                <div class="metric-value {'success' if report.success_rate >= 95 else 'warning' if report.success_rate >= 90 else 'error'}">{report.success_rate:.1f}%</div>
+                <div class="metric-value {"success" if report.success_rate >= 95 else "warning" if report.success_rate >= 90 else "error"}">{report.success_rate:.1f}%</div>
                 <div class="metric-label">Success Rate</div>
             </div>
         </div>
@@ -991,7 +1149,7 @@ def generate_html_report(report: ValidationReport, output_path: Path):
                 <div class="metric-label">P50 (Median)</div>
             </div>
             <div class="metric">
-                <div class="metric-value {'success' if report.latency_p95_ms < 5000 else 'error'}">{report.latency_p95_ms:.0f} ms</div>
+                <div class="metric-value {"success" if report.latency_p95_ms < 5000 else "error"}">{report.latency_p95_ms:.0f} ms</div>
                 <div class="metric-label">P95</div>
             </div>
             <div class="metric">
@@ -1024,12 +1182,12 @@ def generate_html_report(report: ValidationReport, output_path: Path):
         html += f"""
                 <tr>
                     <td>{category.title()}</td>
-                    <td>{stats['total']}</td>
-                    <td class="success">{stats['passed']}</td>
-                    <td class="error">{stats['failed']}</td>
-                    <td>{stats['success_rate']:.1f}%</td>
-                    <td>{stats['avg_latency_ms']:.2f} ms</td>
-                    <td>{stats['p95_latency_ms']:.2f} ms</td>
+                    <td>{stats["total"]}</td>
+                    <td class="success">{stats["passed"]}</td>
+                    <td class="error">{stats["failed"]}</td>
+                    <td>{stats["success_rate"]:.1f}%</td>
+                    <td>{stats["avg_latency_ms"]:.2f} ms</td>
+                    <td>{stats["p95_latency_ms"]:.2f} ms</td>
                 </tr>
         """
 
@@ -1087,29 +1245,47 @@ def generate_html_report(report: ValidationReport, output_path: Path):
 
 async def main():
     parser = argparse.ArgumentParser(description="NAVI Real LLM E2E Validation")
-    parser.add_argument("--suite", choices=["quick", "medium", "complex", "full"], default="quick",
-                        help="Test suite to run (quick=5 tests, full=100+ tests)")
-    parser.add_argument("--model", default="claude-sonnet-4",
-                        help="Model identifier for reporting")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8787",
-                        help="NAVI API base URL")
-    parser.add_argument("--output", default="tmp/e2e_validation_report.json",
-                        help="JSON output file path")
-    parser.add_argument("--report-md", action="store_true",
-                        help="Generate Markdown report")
-    parser.add_argument("--report-html", action="store_true",
-                        help="Generate HTML report")
-    parser.add_argument("--max-concurrent", type=int, default=1,
-                        help="Maximum concurrent tests (default: 1 for sequential execution)")
-    parser.add_argument("--count", type=int,
-                        help="Override number of tests to run (takes first N from suite)")
+    parser.add_argument(
+        "--suite",
+        choices=["quick", "medium", "complex", "full"],
+        default="quick",
+        help="Test suite to run (quick=5 tests, full=100+ tests)",
+    )
+    parser.add_argument(
+        "--model", default="claude-sonnet-4", help="Model identifier for reporting"
+    )
+    parser.add_argument(
+        "--base-url", default="http://127.0.0.1:8787", help="NAVI API base URL"
+    )
+    parser.add_argument(
+        "--output",
+        default="tmp/e2e_validation_report.json",
+        help="JSON output file path",
+    )
+    parser.add_argument(
+        "--report-md", action="store_true", help="Generate Markdown report"
+    )
+    parser.add_argument(
+        "--report-html", action="store_true", help="Generate HTML report"
+    )
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=1,
+        help="Maximum concurrent tests (default: 1 for sequential execution)",
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        help="Override number of tests to run (takes first N from suite)",
+    )
 
     args = parser.parse_args()
 
     # Get test suite
     tests = TEST_SUITES[args.suite]
     if args.count:
-        tests = tests[:args.count]
+        tests = tests[: args.count]
 
     logger.info(f"Starting E2E validation with {len(tests)} tests")
     logger.info(f"Model: {args.model}")
@@ -1129,11 +1305,11 @@ async def main():
     generate_json_report(report, output_path)
 
     if args.report_md:
-        md_path = output_path.with_suffix('.md')
+        md_path = output_path.with_suffix(".md")
         generate_markdown_report(report, md_path)
 
     if args.report_html:
-        html_path = output_path.with_suffix('.html')
+        html_path = output_path.with_suffix(".html")
         generate_html_report(report, html_path)
 
     # Print summary

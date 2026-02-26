@@ -57,15 +57,15 @@ async def step_analysis(
         # Format plan for display
         plan_summary = f"""📘 **Analysis Complete**
 
-**Task**: {issue.get('title')}
+**Task**: {issue.get("title")}
 
-**Summary**: {plan.get('summary', "No summary available")}
+**Summary**: {plan.get("summary", "No summary available")}
 
 **Acceptance Criteria**:
-{chr(10).join(["- " + c for c in plan.get('acceptance_criteria', [])])}
+{chr(10).join(["- " + c for c in plan.get("acceptance_criteria", [])])}
 
 **Next Steps**:
-{chr(10).join(["1. " + s for s in plan.get('next_steps', [])[:3]])}
+{chr(10).join(["1. " + s for s in plan.get("next_steps", [])[:3]])}
 
 Ready to proceed with implementation?
 """
@@ -110,8 +110,8 @@ async def step_locate_files(
         logger.info(f"Step 2: Locating files for {state.issue_id}")
 
         # Build search query from issue and plan
-        issue_title = state.issue.get('title', "")
-        plan_summary = state.plan.get('summary', "")
+        issue_title = state.issue.get("title", "")
+        plan_summary = state.plan.get("summary", "")
 
         # Search for relevant files
         search_result = await search_repo(
@@ -123,14 +123,14 @@ async def step_locate_files(
             regex=False,
         )
 
-        if not search_result.get('success'):
+        if not search_result.get("success"):
             return {
                 "success": False,
                 "message": f"❌ File search failed: {search_result.get('error')}",
                 "actions": ["retry", "skip", "cancel"],
             }
 
-        matches = search_result.get('matches', [])
+        matches = search_result.get("matches", [])
         file_list = list(set([m["file"] for m in matches]))  # Unique files
 
         # Store in state
@@ -187,19 +187,19 @@ async def step_propose_diffs(state: Any, user_id: str) -> Dict[str, Any]:
             # Read current file content
             read_result = await read_file(user_id=user_id, path=file_path)
 
-            if not read_result.get('success'):
+            if not read_result.get("success"):
                 logger.warning(
                     f"Could not read {file_path}: {read_result.get('error')}"
                 )
                 continue
 
-            current_content = read_result.get('content', "")
+            current_content = read_result.get("content", "")
 
             # Generate diff using LLM
             diff_prompt = f"""Generate a unified diff to implement this change:
 
-**Task**: {state.issue.get('title')}
-**Plan**: {state.plan.get('summary', "")}
+**Task**: {state.issue.get("title")}
+**Plan**: {state.plan.get("summary", "")}
 **File**: {file_path}
 
 **Current content**:
@@ -292,10 +292,10 @@ async def step_apply_diffs(state: Any, user_id: str) -> Dict[str, Any]:
                 user_id=user_id, path=file_path, diff=diff_text, old_content=old_content
             )
 
-            if result.get('success'):
+            if result.get("success"):
                 applied.append(file_path)
             else:
-                failed.append({"file": file_path, "error": result.get('error')})
+                failed.append({"file": file_path, "error": result.get("error")})
 
         if failed:
             fail_summary = "\n".join([f"- {f['file']}: {f['error']}" for f in failed])
@@ -350,9 +350,9 @@ async def step_run_tests(state: Any, user_id: str, cwd: str) -> Dict[str, Any]:
 
         state.test_results = test_result
 
-        stdout = test_result.get('stdout', "")
-        stderr = test_result.get('stderr', "")
-        exit_code = test_result.get('exit_code', 1)
+        stdout = test_result.get("stdout", "")
+        stderr = test_result.get("stderr", "")
+        exit_code = test_result.get("exit_code", 1)
 
         if exit_code == 0:
             return {
@@ -410,7 +410,7 @@ async def step_commit_changes(state: Any, user_id: str, cwd: str) -> Dict[str, A
             user_id=user_id, command=f'git commit -m "{commit_msg}"', cwd=cwd
         )
 
-        if commit_result.get('success'):
+        if commit_result.get("success"):
             return {
                 "success": True,
                 "message": f"💾 **Changes Committed**\n\n```\n{commit_result.get('stdout', '')}\n```\n\nReady to push branch?",
@@ -469,7 +469,7 @@ async def step_push_branch(state: Any, user_id: str, cwd: str) -> Dict[str, Any]
             user_id=user_id, command=f"git push -u origin {branch_name}", cwd=cwd
         )
 
-        if push_result.get('success'):
+        if push_result.get("success"):
             return {
                 "success": True,
                 "message": f"⬆️ **Branch Pushed**\n\nBranch `{branch_name}` pushed to remote.\n\nReady to create pull request?",
@@ -515,16 +515,16 @@ async def step_create_pr(state: Any, user_id: str) -> Dict[str, Any]:
 
         # Generate PR title and body
         pr_title = f"[{state.issue_id}] {state.issue.get('title')}"
-        pr_body = f"""## {state.issue_id}: {state.issue.get('title')}
+        pr_body = f"""## {state.issue_id}: {state.issue.get("title")}
 
 ### Summary
-{state.plan.get('summary', "")}
+{state.plan.get("summary", "")}
 
 ### Changes
 {chr(10).join(["- Modified: " + f for f in state.file_targets])}
 
 ### Acceptance Criteria
-{chr(10).join(["- [ ] " + c for c in state.plan.get('acceptance_criteria', [])])}
+{chr(10).join(["- [ ] " + c for c in state.plan.get("acceptance_criteria", [])])}
 
 ---
 *Autonomously implemented by NAVI*
@@ -539,9 +539,9 @@ async def step_create_pr(state: Any, user_id: str) -> Dict[str, Any]:
             base_branch="main",
         )
 
-        if pr_result.get('success'):
-            state.pr_url = pr_result.get('pr_url')
-            state.pr_number = pr_result.get('pr_number')
+        if pr_result.get("success"):
+            state.pr_url = pr_result.get("pr_url")
+            state.pr_number = pr_result.get("pr_number")
 
             return {
                 "success": True,
@@ -604,7 +604,7 @@ Autonomously implemented by NAVI. Ready for code review.
             user_id=user_id, issue_id=state.issue_id, target_status="Code Review"
         )
 
-        if transition_result.get('success'):
+        if transition_result.get("success"):
             return {
                 "success": True,
                 "message": f"📌 **Jira Updated**\n\n{state.issue_id} moved to Code Review.\n\nWorkflow complete!",
@@ -651,7 +651,7 @@ async def step_done(state: Any) -> Dict[str, Any]:
 
         summary = f"""🎉 **Autonomous Workflow Complete!**
 
-**Task**: {state.issue.get('title')}
+**Task**: {state.issue.get("title")}
 **Jira**: {state.issue_id}
 **Branch**: {state.branch_name}
 **PR**: {state.pr_url}

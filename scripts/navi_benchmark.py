@@ -75,6 +75,7 @@ def run_task(repo_root: Path, task: dict, default_timeout: int | None = None) ->
         "error": error,
     }
 
+
 def write_scorecard(report: dict, path: Path) -> None:
     lines = [
         "# NAVI Benchmark Scorecard",
@@ -170,7 +171,9 @@ def main() -> int:
         "summary": {
             "passed": sum(1 for r in results if r.get("success")),
             "failed": sum(1 for r in results if not r.get("success")),
-            "total_duration_seconds": round(sum(r.get("duration_seconds", 0) for r in results), 2),
+            "total_duration_seconds": round(
+                sum(r.get("duration_seconds", 0) for r in results), 2
+            ),
         },
     }
 

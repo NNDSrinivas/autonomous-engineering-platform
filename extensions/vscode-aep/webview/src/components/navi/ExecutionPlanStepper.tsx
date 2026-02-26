@@ -60,11 +60,20 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
 
   const completedCount = steps.filter((s) => s.status === 'completed').length;
   const errorCount = steps.filter((s) => s.status === 'error').length;
-  const progressPercent =
-    steps.length > 0 ? (completedCount / steps.length) * 100 : 0;
-  const currentStep = steps.find((s) => s.status === 'running');
   const allCompleted = completedCount === steps.length && steps.length > 0;
   const hasError = errorCount > 0;
+  const currentStep = steps.find((s) => s.status === 'running');
+  const currentStepIndex = currentStep ? steps.findIndex((s) => s === currentStep) : -1;
+  const errorStepIndex = steps.findIndex((s) => s.status === 'error');
+  const progressCount = (() => {
+    if (steps.length === 0) return 0;
+    if (allCompleted) return steps.length;
+    if (currentStepIndex >= 0) return Math.max(completedCount, currentStepIndex + 1);
+    if (errorStepIndex >= 0) return Math.max(completedCount, errorStepIndex + 1);
+    return completedCount;
+  })();
+  const progressPercent =
+    steps.length > 0 ? (progressCount / steps.length) * 100 : 0;
   const markerPosition = steps.length > 0 ? Math.max(0, Math.min(progressPercent, 100)) : 0;
 
   // Handle toggle - support both controlled and uncontrolled modes
@@ -219,7 +228,7 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
         </span>
         <span className="navi-plan-title">{headerText}</span>
         <span className="navi-plan-progress-badge">
-          {completedCount}/{steps.length}
+          {progressCount}/{steps.length}
         </span>
         <span className={`navi-plan-chevron ${isExpanded ? 'rotated' : ''}`}>
           {isExpanded ? (

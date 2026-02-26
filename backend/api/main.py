@@ -153,7 +153,7 @@ from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
 from .routers.preview import (
     router as preview_router,
 )  # Phase 1: Loveable-style live preview
-from backend.core.auth0 import AUTH0_CLIENT_ID
+from backend.core.auth0 import AUTH0_CLIENT_ID, AUTH0_DEVICE_CLIENT_ID
 
 # Conditionally import in-memory OAuth device router for development mode
 # This router requires OAUTH_DEVICE_USE_IN_MEMORY_STORE=true to be set
@@ -626,21 +626,30 @@ app.include_router(
     enterprise_project_router
 )  # Enterprise project management for long-running projects
 
-# Register Auth0 device flow router only when configured and not in dev in-memory mode
-if AUTH0_CLIENT_ID and not settings.oauth_device_use_in_memory_store:
+# Register Auth0 device flow router (LEGACY - gated by feature flag)
+# DEPRECATED: Device flow is replaced by PKCE for VS Code extension.
+# Only enable ENABLE_LEGACY_DEVICE_FLOW=true for backward compatibility.
+if settings.enable_legacy_device_flow and AUTH0_DEVICE_CLIENT_ID and not settings.oauth_device_use_in_memory_store:
     app.include_router(oauth_device_auth0_router)
-else:
     logger.warning(
-        "Auth0 device flow router disabled (missing AUTH0_CLIENT_ID or dev in-memory mode enabled)."
+        "⚠️  LEGACY MODE: Device flow endpoints enabled. "
+        "This is DEPRECATED. Extension v0.3.0+ uses PKCE. "
+        "Set ENABLE_LEGACY_DEVICE_FLOW=false to disable."
+    )
+else:
+    logger.info(
+        "Device flow router disabled (ENABLE_LEGACY_DEVICE_FLOW=false or missing config). "
+        "Extension v0.3.0+ uses PKCE."
     )
 
-# Register in-memory OAuth device router for development mode
+# Register in-memory OAuth device router for development mode (LEGACY)
 # This provides a simple device code flow without Auth0 for local development
-if oauth_device_dev_router is not None:
+if settings.enable_legacy_device_flow and oauth_device_dev_router is not None:
     app.include_router(oauth_device_dev_router)
     logger.warning(
-        "🚨 DEVELOPMENT MODE: In-memory OAuth device router enabled. "
-        "This is NOT suitable for production. Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=false for production."
+        "🚨 DEVELOPMENT MODE: In-memory OAuth device router enabled (LEGACY). "
+        "This is NOT suitable for production. Extension v0.3.0+ uses PKCE. "
+        "Set ENABLE_LEGACY_DEVICE_FLOW=false and OAUTH_DEVICE_USE_IN_MEMORY_STORE=false."
     )
 
 app.include_router(connectors_router)

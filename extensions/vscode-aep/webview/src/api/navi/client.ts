@@ -1,4 +1,5 @@
 // Webview NAVI API helpers (runtime-config aware).
+import { fetchEventSource } from "@microsoft/fetch-event-source";
 
 const FALLBACK_BACKEND_BASE_URL = "http://127.0.0.1:8787";
 
@@ -593,9 +594,6 @@ export class NaviAPIClient {
     onError?: (error: string) => void;
     onDone?: () => void;
   }): Promise<void> {
-    // Import fetch-event-source dynamically
-    const { fetchEventSource } = await import('@microsoft/fetch-event-source');
-
     const url = `${this.baseUrl}/api/navi/process/stream`;
 
     return fetchEventSource(url, {

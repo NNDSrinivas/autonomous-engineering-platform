@@ -3507,6 +3507,246 @@ Use this context to understand existing patterns, dependencies, and architecture
         Generate a high-level plan for complex tasks before execution.
         This helps users understand what the agent will do.
         """
+        def _normalize_step_text(value: Any) -> str:
+            text = str(value or "")
+            text = re.sub(r"\s+", " ", text).strip()
+            text = re.sub(r'^[`"“”‘’\-\s]+|[`"“”‘’\s]+$', "", text)
+            return text
+
+        def _smart_clip(value: str, max_chars: int) -> str:
+            clean = _normalize_step_text(value)
+            if len(clean) <= max_chars:
+                return clean
+            clipped = clean[: max_chars + 1]
+            split_idx = clipped.rfind(" ")
+            if split_idx >= max_chars * 0.55:
+                clipped = clipped[:split_idx]
+            else:
+                clipped = clean[:max_chars]
+            return f"{clipped.rstrip(' .,:;')}..."
+
+        def _is_generic_step_label(value: str) -> bool:
+            clean = _normalize_step_text(value).lower()
+            if not clean:
+                return True
+            if "request" in clean and any(
+                token in clean for token in ("process", "perform", "analyze")
+            ):
+                return True
+            generic_exact = {
+                "complete task",
+                "analyze request",
+                "execute changes",
+                "verify results",
+                "provide assistance",
+                "analyze and show result",
+                "perform necessary actions",
+                "process the request and perform necessary actions",
+                "identify issues",
+                "apply fixes",
+                "test changes",
+                "check dependencies",
+                "create new files",
+                "update imports",
+                "review requirements",
+                "build components",
+                "integrate & test",
+            }
+            return clean in generic_exact
+
+        def _derive_request_label(text: str) -> str:
+            core = _normalize_step_text(text)
+            core = re.sub(
+                r"^(?:can|could|would)\s+you\s+",
+                "",
+                core,
+                flags=re.IGNORECASE,
+            )
+            core = re.sub(r"^(?:please|pls)\s+", "", core, flags=re.IGNORECASE)
+            core = re.sub(r"[?.!]+$", "", core).strip()
+            if not core:
+                return "Execute requested task"
+            if len(core) > 72:
+                return _smart_clip(core, 72)
+            return core[0].upper() + core[1:] if core else "Execute requested task"
+
+        def _shape_plan_steps(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+            fallback_label = _derive_request_label(request)
+            shaped: List[Dict[str, Any]] = []
+            for i, step in enumerate(raw_steps[:5]):
+                raw_label = _normalize_step_text(step.get("label", f"Step {i + 1}"))
+                raw_desc = _normalize_step_text(step.get("description", ""))
+
+                label = raw_label or f"Step {i + 1}"
+                description = raw_desc
+
+                label_is_generic = _is_generic_step_label(label)
+                desc_is_specific = bool(description) and not _is_generic_step_label(
+                    description
+                )
+                if label_is_generic and desc_is_specific:
+                    label = description
+                elif label_is_generic and not desc_is_specific:
+                    label = (
+                        fallback_label
+                        if i == 0
+                        else _smart_clip(f"Continue {fallback_label}", 72)
+                    )
+
+                if len(label) > 72:
+                    label = _smart_clip(label, 72)
+                if description and len(description) > 180:
+                    description = _smart_clip(description, 180)
+                if description.lower() == label.lower():
+                    description = ""
+
+                shaped.append(
+                    {
+                        "id": step.get("id", i + 1),
+                        "label": label,
+                        "description": description,
+                        "status": "pending",
+                    }
+                )
+
+            if not shaped:
+                shaped = [
+                    {
+                        "id": 1,
+                        "label": fallback_label,
+                        "description": "Execute the requested task and verify the result",
+                        "status": "pending",
+                    }
+                ]
+            return shaped
+
+        def _is_actionable_step(label: Any, description: Any) -> bool:
+            clean_label = _normalize_step_text(label).lower()
+            clean_desc = _normalize_step_text(description).lower()
+            if not clean_label:
+                return False
+
+            action_verbs = (
+                "fix",
+                "add",
+                "create",
+                "update",
+                "remove",
+                "refactor",
+                "rename",
+                "move",
+                "edit",
+                "implement",
+                "run",
+                "write",
+                "patch",
+                "verify",
+                "test",
+                "lint",
+                "build",
+                "search",
+                "analyze",
+                "read",
+                "install",
+                "configure",
+            )
+            has_action = bool(re.match(rf"^({'|'.join(action_verbs)})\b", clean_label))
+            if not has_action:
+                return False
+
+            if _is_generic_step_label(clean_label):
+                if not clean_desc or _is_generic_step_label(clean_desc):
+                    return False
+
+            combined = f"{clean_label} {clean_desc}"
+            target_signals = (
+                "/",
+                ".py",
+                ".ts",
+                ".tsx",
+                ".js",
+                ".jsx",
+                ".json",
+                ".md",
+                "file",
+                "component",
+                "module",
+                "function",
+                "api",
+                "endpoint",
+                "migration",
+                "schema",
+                "query",
+                "command",
+                "test",
+                "lint",
+                "build",
+                "dependency",
+            )
+            has_target = any(signal in combined for signal in target_signals)
+            return has_target or len(clean_label.split()) >= 3
+
+        def _plan_needs_regeneration(raw_steps: Any) -> bool:
+            if not isinstance(raw_steps, list) or len(raw_steps) == 0:
+                return True
+
+            candidates = raw_steps[:5]
+            actionable_count = 0
+            generic_count = 0
+            for i, step in enumerate(candidates):
+                if isinstance(step, dict):
+                    label = step.get("label", f"Step {i + 1}")
+                    description = step.get("description", "")
+                else:
+                    label = str(step)
+                    description = ""
+                if _is_generic_step_label(label):
+                    generic_count += 1
+                if _is_actionable_step(label, description):
+                    actionable_count += 1
+
+            total = len(candidates)
+            if actionable_count == 0:
+                return True
+            if total <= 2:
+                return actionable_count < total
+            if actionable_count < (total - 1):
+                return True
+            return generic_count >= 2
+
+        def _extract_json_payload(raw_text: str) -> Dict[str, Any]:
+            cleaned = (raw_text or "").strip()
+            if cleaned.startswith("```"):
+                parts = cleaned.split("```")
+                fenced = parts[1] if len(parts) > 1 else cleaned
+                if fenced.lstrip().lower().startswith("json"):
+                    fenced = fenced.lstrip()[4:]
+                cleaned = fenced.strip()
+            return json.loads(cleaned)
+
+        async def _request_plan_from_llm(prompt: str, max_tokens: int = 500) -> Dict[str, Any]:
+            if self.provider == "anthropic":
+                import anthropic
+
+                client = anthropic.AsyncAnthropic(api_key=self.api_key)
+                response = await client.messages.create(
+                    model="claude-3-5-haiku-latest",
+                    max_tokens=max_tokens,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                plan_text = response.content[0].text
+            else:
+                import openai
+
+                client = openai.AsyncOpenAI(api_key=self.api_key)
+                response = await client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    max_tokens=max_tokens,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                plan_text = response.choices[0].message.content or ""
+            return _extract_json_payload(plan_text)
+
         if fast_mode and self._is_prod_readiness_request(request):
             fast_steps = [
                 {
@@ -3807,57 +4047,64 @@ Respond with ONLY a JSON object:
   "estimated_files": ["backend/auth.py", "frontend/api.ts"]
 }}
 
-Return ONLY the JSON, no markdown or explanations."""
+        Return ONLY the JSON, no markdown or explanations."""
 
         try:
-            # Use a fast model for planning
-            if self.provider == "anthropic":
-                import anthropic
-
-                client = anthropic.AsyncAnthropic(api_key=self.api_key)
-                response = await client.messages.create(
-                    model="claude-3-5-haiku-latest",
-                    max_tokens=500,
-                    messages=[{"role": "user", "content": plan_prompt}],
-                )
-                plan_text = response.content[0].text
-            else:
-                import openai
-
-                client = openai.AsyncOpenAI(api_key=self.api_key)
-                response = await client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    max_tokens=500,
-                    messages=[{"role": "user", "content": plan_prompt}],
-                )
-                plan_text = response.choices[0].message.content
-
-            # Parse the plan
-            import json
-
-            # Extract JSON from response (handle potential markdown wrapping)
-            plan_text = plan_text.strip()
-            if plan_text.startswith("```"):
-                plan_text = plan_text.split("```")[1]
-                if plan_text.startswith("json"):
-                    plan_text = plan_text[4:]
-            plan_text = plan_text.strip()
-
-            plan_data = json.loads(plan_text)
+            plan_data = await _request_plan_from_llm(plan_prompt, max_tokens=500)
             steps = plan_data.get("steps", [])
             estimated_files = plan_data.get("estimated_files", [])
 
-            # Ensure steps have proper structure
-            formatted_steps = []
-            for i, step in enumerate(steps[:5]):  # Max 5 steps
-                formatted_steps.append(
-                    {
-                        "id": step.get("id", i + 1),
-                        "label": str(step.get("label", f"Step {i + 1}"))[:30],
-                        "description": str(step.get("description", "")),
-                        "status": "pending",
-                    }
+            # Strict policy: if plan is generic, regenerate once with tighter constraints.
+            if _plan_needs_regeneration(steps):
+                yield {
+                    "type": "status",
+                    "status": "replanning",
+                    "message": "Regenerating a higher-quality execution plan...",
+                }
+                logger.info(
+                    "[AutonomousAgent] Initial plan too generic, retrying plan generation once."
                 )
+                retry_prompt = (
+                    plan_prompt
+                    + "\n\nRETRY REQUIREMENT (STRICT):\n"
+                    + "- Previous draft was too generic.\n"
+                    + "- Every step label must be concrete and actionable.\n"
+                    + "- Do NOT use generic phrases like 'Analyze request', 'Execute changes', or 'Verify results'.\n"
+                    + "- Include specific target in each step (file/component/module/command).\n"
+                    + "- Return 3-5 steps as JSON only.\n"
+                )
+                try:
+                    retry_plan_data = await _request_plan_from_llm(
+                        retry_prompt, max_tokens=650
+                    )
+                    retry_steps = retry_plan_data.get("steps", [])
+                    if retry_steps and not _plan_needs_regeneration(retry_steps):
+                        steps = retry_steps
+                        estimated_files = retry_plan_data.get("estimated_files", [])
+                    elif retry_steps:
+                        logger.warning(
+                            "[AutonomousAgent] Retry plan still generic; evaluating suppression policy."
+                        )
+                        steps = retry_steps
+                        estimated_files = retry_plan_data.get("estimated_files", [])
+                except Exception as retry_err:
+                    logger.warning(
+                        "[AutonomousAgent] Plan regeneration failed: %s", retry_err
+                    )
+
+            if _plan_needs_regeneration(steps):
+                logger.warning(
+                    "[AutonomousAgent] Suppressing low-quality plan display after retry; continuing without plan panel."
+                )
+                yield {
+                    "type": "status",
+                    "status": "planning",
+                    "message": "Continuing without plan panel due to low-confidence plan quality.",
+                }
+                return
+
+            # Ensure steps have proper structure
+            formatted_steps = _shape_plan_steps(steps)
 
             # Emit plan_start event in the format the frontend expects
             plan_id = f"plan-{uuid.uuid4().hex[:8]}"
@@ -3981,6 +4228,7 @@ Return ONLY the JSON, no markdown or explanations."""
                         "status": "pending",
                     },
                 ]
+            fallback_steps = _shape_plan_steps(fallback_steps)
 
             # Emit plan_start event in the format the frontend expects
             plan_id = f"plan-{uuid.uuid4().hex[:8]}"

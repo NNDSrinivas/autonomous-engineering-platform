@@ -141,14 +141,13 @@ export class PKCELoopbackAuthService {
             return;
           }
 
-          // Return success page with bounce-back to VS Code
+          // Return success page
           res.writeHead(200, { "Content-Type": "text/html" });
           res.end(`
             <!DOCTYPE html>
             <html>
               <head>
                 <meta charset="utf-8">
-                <meta http-equiv="refresh" content="0.5; url=vscode://navralabs.aep-professional/auth/done">
                 <title>Signed in</title>
                 <style>
                   body {
@@ -187,8 +186,19 @@ export class PKCELoopbackAuthService {
                 <div class="container">
                   <div class="checkmark">✓</div>
                   <h1>Signed in successfully</h1>
-                  <p>Returning to VS Code…</p>
+                  <p id="message">This tab will close automatically...</p>
                 </div>
+                <script>
+                  // Attempt to auto-close after 2.5 seconds
+                  setTimeout(() => {
+                    window.close();
+                    // If close fails (browser blocks it), update message
+                    setTimeout(() => {
+                      const msg = document.getElementById('message');
+                      if (msg) msg.textContent = 'You can close this tab and return to VS Code';
+                    }, 500);
+                  }, 2500);
+                </script>
               </body>
             </html>
           `);

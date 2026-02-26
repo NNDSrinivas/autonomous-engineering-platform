@@ -21,6 +21,8 @@ interface UserInfo {
   name?: string;
   email?: string;
   picture?: string;
+  org?: string;
+  roles?: string[];
 }
 
 export class PKCELoopbackAuthService {
@@ -260,7 +262,7 @@ export class PKCELoopbackAuthService {
       throw new Error(`Token exchange failed: ${error}`);
     }
 
-    return response.json();
+    return response.json() as Promise<TokenResponse>;
   }
 
   /**
@@ -284,7 +286,7 @@ export class PKCELoopbackAuthService {
       throw new Error(`Token refresh failed: ${error}`);
     }
 
-    return response.json();
+    return response.json() as Promise<TokenResponse>;
   }
 
   /**
@@ -302,7 +304,7 @@ export class PKCELoopbackAuthService {
       throw new Error(`Failed to get user info: ${error}`);
     }
 
-    return response.json();
+    return response.json() as Promise<UserInfo>;
   }
 
   /**
@@ -334,7 +336,7 @@ export class PKCELoopbackAuthService {
           )
           .then((action) => {
             if (action === "Sign in") {
-              vscode.commands.executeCommand("aep.signin");
+              vscode.commands.executeCommand("aep.signIn");
             }
           });
       }

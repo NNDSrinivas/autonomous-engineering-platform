@@ -5762,9 +5762,12 @@ Respond with ONLY a JSON object:
                     # block immediately (don't rely on is_scan_command's path parsing which can be bypassed).
                     if "`" in command_to_check or "$(" in command_to_check:
                         # Check for scan tool keywords (fail closed approach)
+                        # Check both exact tokens AND substrings to catch $(find ...) forms
                         scan_tools = ["find", "grep", "egrep", "rg"]
                         tokens = command_to_check.split()
-                        if any(tool in tokens for tool in scan_tools):
+                        if any(tool in tokens for tool in scan_tools) or any(
+                            tool in command_to_check for tool in scan_tools
+                        ):
                             return {
                                 "success": False,
                                 "error": "⚠️ SCAN BLOCKED: Scan command using command substitution/backticks detected.",
@@ -5779,11 +5782,11 @@ Respond with ONLY a JSON object:
                             }
                     # COPILOT FIX: Include || operator in split pattern (pattern order matters: \|\| before \|)
                     # Split by ALL operators detected by is_piped_or_chained()
-                    # including || (fallback), redirection (>, <), -exec, and xargs
+                    # including || (fallback), redirection (>, <), -exec / -execdir, and xargs
                     # Note: $() and backticks are handled above. xargs is treated as a split delimiter so its subcommand is analyzed.
                     # Simplified: & handles all background cases uniformly (trailing, with space, etc.)
                     segments = re.split(
-                        r"\|\||\||&&|;|&|[<>]|-exec\b|\bxargs\b",
+                        r"\|\||\||&&|;|&|[<>]|-exec(?:dir)?\b|\bxargs\b",
                         command_to_check,
                     )
 

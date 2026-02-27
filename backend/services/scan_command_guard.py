@@ -322,10 +322,10 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         if search_root in [".", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
             search_root = "."
 
-        # If explicitly scoped or bounded by depth, treat as safe (pass-through)
+        # If explicitly scoped or bounded by an upper depth limit, treat as safe (pass-through)
         if _is_scoped_path(search_root):
             return None
-        if "-maxdepth" in tokens or "-mindepth" in tokens:
+        if "-maxdepth" in tokens:
             return None
 
         # COPILOT FIX: Hard-block compound expressions and semantic-changing predicates
@@ -731,8 +731,9 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
 
     # Even with explicit + confirmed, require bounds for safety
     if info.tool == "find":
-        # bounded by -maxdepth/-mindepth or scoped root
-        if "-maxdepth" in info.tokens or "-mindepth" in info.tokens:
+        # bounded by upper depth limit (-maxdepth) or scoped root
+        # Note: -mindepth only sets lower bound, doesn't limit scan depth
+        if "-maxdepth" in info.tokens:
             return True
 
         # Extract search root, skipping global options like -H, -L, -P, -O, -D

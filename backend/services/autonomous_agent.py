@@ -5531,12 +5531,20 @@ Respond with ONLY a JSON object:
                     is_piped_or_chained,
                 )
 
+                # COPILOT FIX: Block scan commands in ANY segment, including redirection/subshell.
                 # P1 FIX #3: Block scan commands in ANY segment of pipes/chains/backgrounding/xargs/-exec.
                 # Previously only checked first segment - now we check ALL segments.
-                # Example: "cd . && rg TODO" should be caught (rg TODO is in second segment).
+                # Examples:
+                # - "cd . && rg TODO" should be caught (rg in second segment)
+                # - "rg TODO > out.txt" should be caught (redirection operator)
+                # - "rg TODO $(cat files)" should be caught (command substitution)
                 if is_piped_or_chained(command):
-                    # Split by all chain/pipe operators and check each segment
-                    segments = re.split(r"\||&&|;|&\s+|&\s*$|\bxargs\b", command)
+                    # COPILOT FIX: Split by ALL operators detected by is_piped_or_chained()
+                    # including redirection (>, <), subshell ($(), backticks), -exec
+                    segments = re.split(
+                        r"\||&&|;|&\s+|&\s*$|\bxargs\b|[<>]|`|\$\(|-exec\b",
+                        command,
+                    )
                     for segment in segments:
                         segment = segment.strip()
                         if not segment:

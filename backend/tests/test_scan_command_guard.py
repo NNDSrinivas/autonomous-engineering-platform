@@ -182,3 +182,79 @@ class TestCopilotP1Fixes:
         # With explicit scoped path should NOT be detected
         scan_info = is_scan_command("grep -R TODO backend")
         assert scan_info is None  # Scoped to backend/
+
+
+class TestCopilotAdditionalFixes:
+    """Test cases for additional Copilot review issues."""
+
+    def test_redirection_detected(self):
+        """COPILOT FIX: Commands with redirection should be detected by is_piped_or_chained."""
+        assert is_piped_or_chained("rg TODO > out.txt") is True
+        assert is_piped_or_chained("grep -R TODO . > results") is True
+        assert is_piped_or_chained("find . -name '*.py' < input.txt") is True
+
+    def test_command_substitution_detected(self):
+        """COPILOT FIX: Commands with $() or backticks should be detected."""
+        assert is_piped_or_chained("rg TODO $(cat files)") is True
+        assert is_piped_or_chained("grep -R pattern `find . -name '*.txt'`") is True
+
+    def test_grep_option_values_not_treated_as_path(self):
+        """COPILOT FIX: grep -R TODO --exclude-dir node_modules should NOT treat node_modules as scoped path."""
+        # --exclude-dir value should be skipped, only pattern detected
+        scan_info = is_scan_command("grep -R TODO --exclude-dir node_modules")
+        assert scan_info is not None  # Should be blocked (no explicit path)
+        assert scan_info.tool == "grep"
+
+        # With explicit scoped path after options, should NOT be detected
+        scan_info = is_scan_command("grep -R TODO --exclude-dir node_modules src")
+        assert scan_info is None  # Scoped to src/
+
+    def test_rg_e_flag_with_path(self):
+        """COPILOT FIX: rg -e TODO src should be treated as scoped (pattern from -e, path is src)."""
+        scan_info = is_scan_command("rg -e TODO src")
+        assert scan_info is None  # Scoped to src/
+
+        # Without path, should be blocked
+        scan_info = is_scan_command("rg -e TODO")
+        assert scan_info is not None
+        assert scan_info.tool == "rg"
+
+    def test_rg_regexp_flag_with_path(self):
+        """COPILOT FIX: rg --regexp TODO backend should be treated as scoped."""
+        scan_info = is_scan_command("rg --regexp TODO backend")
+        assert scan_info is None  # Scoped to backend/
+
+        # Without path, should be blocked
+        scan_info = is_scan_command("rg --regexp pattern")
+        assert scan_info is not None
+        assert scan_info.tool == "rg"
+
+    def test_parse_failure_fallback(self):
+        """COPILOT FIX: Parse failures should fall back to whitespace split (fail-closed)."""
+        from backend.services.scan_command_guard import split_command
+
+        # Malformed quoting should still tokenize via fallback
+        tokens = split_command("rg 'unclosed")
+        assert tokens is not None  # Fallback should return tokens
+        assert len(tokens) > 0
+        assert tokens[0] == "rg"
+
+        # Should still detect scan command after fallback
+        scan_info = is_scan_command("rg 'unclosed")
+        assert scan_info is not None  # Should detect despite parse error
+
+    def test_rewrite_to_discovery_rg_pattern_extraction(self):
+        """COPILOT FIX: rewrite_to_discovery should extract pattern correctly for rg."""
+        from backend.services.scan_command_guard import rewrite_to_discovery
+
+        # Test with positional pattern
+        scan_info = is_scan_command("rg TODO")
+        rewrite = rewrite_to_discovery(scan_info)
+        assert "TODO" in rewrite.get("alternative", "")
+
+        # Test with -e pattern
+        scan_info = is_scan_command("rg --max-count 10 -e FIXME")
+        rewrite = rewrite_to_discovery(scan_info)
+        assert "FIXME" in rewrite.get("alternative", "")
+        # Should NOT include --max-count in pattern extraction
+        assert "--max-count" not in rewrite.get("alternative", "").split()[1]

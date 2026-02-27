@@ -28,23 +28,82 @@ _PIPE_CHAIN_RE = re.compile(r"\||&&|;|&\s*$|&\s+|`|\$\(|>|<|\bxargs\b|-exec\b")
 
 def split_command(cmd: str) -> Optional[List[str]]:
     """
-    Tokenize command with shlex (fail closed if parse error).
+    Tokenize command with shlex, with conservative fallback on parse error.
 
-    FIX #6 CLARIFICATION: Returning None on parse failure is FAIL-CLOSED for
-    scan detection specifically. If we can't parse the command safely, we don't
-    classify it as a scan, so it passes through to the existing dangerous command
-    system which has its own safeguards. This prevents false blocking while
-    maintaining security.
+    COPILOT FIX: Returning None on parse error is fail-open for scan detection.
+    Instead, fall back to simple whitespace split to maintain fail-closed posture.
+
+    We try to use shlex for accurate shell-like tokenization. If shlex raises
+    ValueError (e.g., due to malformed quoting), we fall back to a simple
+    whitespace-based split. This ensures that scan detection still has tokens
+    to inspect and does not silently treat parse errors as "not a scan",
+    maintaining a fail-closed posture for scan-specific safeguards.
     """
     try:
         return shlex.split(cmd)
     except ValueError:
-        return None
+        # Best-effort fallback: basic whitespace split. This may be less precise
+        # than shlex, but it preserves the ability to recognize scan tools like
+        # find/grep/rg in the first token and apply appropriate safeguards.
+        fallback_tokens = cmd.strip().split()
+        if not fallback_tokens:
+            return None
+        return fallback_tokens
 
 
 def is_piped_or_chained(cmd: str) -> bool:
     """Detect pipes, chains, backgrounding, xargs, exec, redirection, subshell."""
     return bool(_PIPE_CHAIN_RE.search(cmd))
+
+
+def _extract_grep_positionals(tokens: List[str]) -> List[str]:
+    """
+    Extract positional arguments from grep command, skipping option values.
+
+    COPILOT FIX: grep -R TODO --exclude-dir node_modules incorrectly treats
+    'node_modules' as search path. Must skip option values like --exclude-dir.
+
+    grep options that take values:
+    - Long options with =: --exclude=*.log (single token)
+    - Long options with space: --exclude *.log (two tokens)
+    - Short options: -A 5, -m 10
+    """
+    # Options that take a value as the next token
+    opts_with_values = {
+        "-e", "--regexp",
+        "-f", "--file",
+        "--include", "--exclude",
+        "--include-dir", "--exclude-dir",
+        "-A", "-B", "-C",  # context lines
+        "--after-context", "--before-context", "--context",
+        "-m", "--max-count",
+        "--label",
+        "-d", "--directories",
+        "-D", "--devices",
+    }
+
+    positionals = []
+    skip_next = False
+
+    for i, tok in enumerate(tokens[1:], start=1):  # Skip command name (grep)
+        if skip_next:
+            skip_next = False
+            continue
+
+        if tok.startswith("-"):
+            # Check if it's an option that takes a value
+            # Handle both --option=value and --option value
+            if "=" in tok:
+                continue  # --exclude=*.log is a single token
+            opt_name = tok.split("=")[0]
+            if opt_name in opts_with_values:
+                skip_next = True  # Skip next token (the value)
+            continue
+
+        # Non-flag, non-skipped token is a positional
+        positionals.append(tok)
+
+    return positionals
 
 
 def _extract_rg_positionals(tokens: List[str]) -> List[str]:
@@ -239,14 +298,15 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         if not any(tok in tokens for tok in ["-r", "-R", "--recursive"]):
             return None
 
-        # FIX #8: Parse grep arguments properly
+        # COPILOT FIX: Use proper positional extraction to avoid option value bypass
+        # grep -R TODO --exclude-dir node_modules should NOT treat node_modules as path
         # grep syntax: grep [OPTIONS] PATTERN [FILE...]
-        # - If 1 non-flag arg: it's the PATTERN (no path, defaults to ".")
-        # - If 2+ non-flag args: first is PATTERN, rest are FILE path(s)
-        non_flags = [tok for tok in tokens[1:] if not tok.startswith("-")]
+        # - If 1 positional: it's the PATTERN (no path, defaults to ".")
+        # - If 2+ positionals: first is PATTERN, rest are FILE path(s)
+        positionals = _extract_grep_positionals(tokens)
 
         # No path provided (only pattern or no args) -> defaults to "."
-        if len(non_flags) <= 1:
+        if len(positionals) <= 1:
             return ScanCommandInfo(
                 tool="grep",
                 raw=cmd,
@@ -256,9 +316,9 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
                 rewrite_kind="blocked",
             )
 
-        # Multiple non-flags: pattern + path(s)
+        # Multiple positionals: pattern + path(s)
         # Check the last argument (the search path)
-        search_path = non_flags[-1]
+        search_path = positionals[-1]
 
         # If explicit "." path -> block
         if search_path == ".":
@@ -294,16 +354,27 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         if has_bounds:
             return None
 
-        # If user provides explicit non-root path, allow
-        # (ripgrep: first positional is pattern, second+ are paths)
+        # COPILOT FIX: Handle -e/--regexp pattern form
+        # rg -e TODO src should NOT be blocked (pattern from -e, path is src)
+        # If pattern comes from -e/--regexp/-f/--file, ALL positionals are paths
+        pattern_from_option = any(tok in tokens for tok in ["-e", "--regexp", "-f", "--file"])
+
         # P1 FIX #2: Use proper positional extraction (skip option values)
         positionals = _extract_rg_positionals(tokens)
-        if len(positionals) > 1:
-            # Multiple positionals: pattern + path(s)
-            # Check if path is explicit (not root)
-            path = positionals[-1]
-            if path not in [".", ""] and _is_scoped_path(path):
-                return None  # scoped path
+
+        if pattern_from_option:
+            # All remaining positionals are paths (pattern came from option)
+            if len(positionals) >= 1:
+                path = positionals[-1]
+                if path not in [".", ""] and _is_scoped_path(path):
+                    return None  # scoped path
+        else:
+            # Positional pattern: first positional is pattern, second+ are paths
+            if len(positionals) > 1:
+                # Multiple positionals: pattern + path(s)
+                path = positionals[-1]
+                if path not in [".", ""] and _is_scoped_path(path):
+                    return None  # scoped path
 
         # No explicit path or path is root -> unbounded root scan
         return ScanCommandInfo(
@@ -360,8 +431,22 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
         }
 
     if info.tool == "rg":
-        # Provide a bounded safe alternative template
-        pattern = info.tokens[1] if len(info.tokens) > 1 else "PATTERN"
+        # COPILOT FIX: Extract pattern properly from positionals or -e flag
+        # info.tokens[1] could be a flag, not the pattern
+        pattern = "PATTERN"
+
+        # Check if pattern comes from -e/--regexp
+        for i, tok in enumerate(info.tokens):
+            if tok in ["-e", "--regexp"] and i + 1 < len(info.tokens):
+                pattern = info.tokens[i + 1]
+                break
+
+        # Otherwise, pattern is first positional
+        if pattern == "PATTERN":
+            positionals = _extract_rg_positionals(info.tokens)
+            if positionals:
+                pattern = positionals[0]
+
         return {
             "use_discovery": False,
             "alternative": f"rg {pattern!r} src -g'*.{{ts,tsx,js,py,go}}' --max-count 100",

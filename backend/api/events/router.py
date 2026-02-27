@@ -66,14 +66,19 @@ async def health_check(db: Session = Depends(get_db)) -> dict:
 
 async def _process_event_in_background(
     event: IngestEvent,
-    db: Session,
 ) -> None:
     """
     Background task to process event ingestion asynchronously.
 
     This prevents slow OpenAI embedding API calls from blocking the HTTP response.
     Errors are logged but don't propagate to the caller since this runs async.
+
+    IMPORTANT: Creates its own database session to avoid using closed request-scoped session.
     """
+    # Create fresh DB session for background task (request-scoped session will be closed)
+    db_gen = get_db()
+    db = next(db_gen)
+
     try:
         # Determine memory category based on source and event type
         category = _determine_memory_category(event.source, event.event_type)
@@ -136,6 +141,12 @@ async def _process_event_in_background(
             f"Background task: Failed to ingest event {event.source}:{event.event_type}:{event.external_id} for user {event.user_id}: {str(e)}",
             exc_info=True
         )
+    finally:
+        # Always close the database session to prevent leaks
+        try:
+            db.close()
+        except Exception as close_error:
+            logger.error(f"Failed to close DB session in background task: {close_error}")
 
 
 @router.post("/ingest", response_model=IngestResponse)
@@ -163,8 +174,8 @@ async def ingest_event(
             )
 
         # Queue background task for async processing
-        # This returns immediately without waiting for OpenAI embedding generation
-        background_tasks.add_task(_process_event_in_background, event, db)
+        # NOTE: Don't pass request-scoped db session - background task creates its own
+        background_tasks.add_task(_process_event_in_background, event)
 
         # Return success immediately - actual processing happens in background
         logger.info(

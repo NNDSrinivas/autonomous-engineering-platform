@@ -8,6 +8,7 @@
 import * as vscode from "vscode";
 
 export interface PromptOption {
+  value: string;
   label: string;
   description?: string;
 }
@@ -24,7 +25,7 @@ export interface PromptRequest {
 }
 
 export interface PromptResponse {
-  response?: string;
+  response?: string | boolean | string[];
   cancelled: boolean;
 }
 
@@ -102,9 +103,11 @@ export class PromptHandler {
       return { cancelled: true };
     }
 
+    // Map options to QuickPickItems, storing value for later retrieval
     const items = prompt.options.map((opt) => ({
       label: opt.label,
       description: opt.description,
+      value: opt.value, // Store value for returning to backend
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
@@ -119,7 +122,7 @@ export class PromptHandler {
     }
 
     return {
-      response: selected.label,
+      response: selected.value, // Return value, not label
       cancelled: false,
     };
   }
@@ -133,9 +136,11 @@ export class PromptHandler {
       return { cancelled: true };
     }
 
+    // Map options to QuickPickItems, storing value for later retrieval
     const items = prompt.options.map((opt) => ({
       label: opt.label,
       description: opt.description,
+      value: opt.value, // Store value for returning to backend
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
@@ -150,7 +155,7 @@ export class PromptHandler {
     }
 
     return {
-      response: selected.map((item) => item.label).join(", "),
+      response: selected.map((item) => item.value), // Return array of values, not joined string
       cancelled: false,
     };
   }
@@ -159,6 +164,33 @@ export class PromptHandler {
    * Show confirmation dialog
    */
   private async handleConfirmPrompt(prompt: PromptRequest): Promise<PromptResponse> {
+    // If options are provided, use them; otherwise default to Yes/No
+    if (prompt.options && prompt.options.length > 0) {
+      // Map options to QuickPickItems for custom confirm options
+      const items = prompt.options.map((opt) => ({
+        label: opt.label,
+        description: opt.description,
+        value: opt.value,
+      }));
+
+      const selected = await vscode.window.showQuickPick(items, {
+        title: prompt.title,
+        placeHolder: prompt.description || "Select an option",
+        canPickMany: false,
+        ignoreFocusOut: true,
+      });
+
+      if (selected === undefined) {
+        return { cancelled: true };
+      }
+
+      return {
+        response: selected.value,
+        cancelled: false,
+      };
+    }
+
+    // Default Yes/No confirmation
     const answer = await vscode.window.showInformationMessage(
       prompt.description || prompt.title,
       { modal: true },
@@ -171,7 +203,7 @@ export class PromptHandler {
     }
 
     return {
-      response: answer,
+      response: answer === "Yes", // Return boolean for default confirm
       cancelled: false,
     };
   }

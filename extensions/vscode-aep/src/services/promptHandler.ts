@@ -7,14 +7,19 @@
 
 import * as vscode from "vscode";
 
+export interface PromptOption {
+  label: string;
+  description?: string;
+}
+
 export interface PromptRequest {
   prompt_id: string;
-  prompt_type: "text" | "choice" | "confirm";
+  prompt_type: "text" | "select" | "multiselect" | "confirm";
   title: string;
   description?: string;
   placeholder?: string;
   default_value?: string;
-  options?: string[];
+  options?: PromptOption[];
   timeout_seconds?: number;
 }
 
@@ -42,8 +47,11 @@ export class PromptHandler {
 
     try {
       switch (promptRequest.prompt_type) {
-        case "choice":
-          response = await this.handleChoicePrompt(promptRequest);
+        case "select":
+          response = await this.handleSelectPrompt(promptRequest);
+          break;
+        case "multiselect":
+          response = await this.handleMultiSelectPrompt(promptRequest);
           break;
         case "confirm":
           response = await this.handleConfirmPrompt(promptRequest);
@@ -86,15 +94,20 @@ export class PromptHandler {
   }
 
   /**
-   * Show quick pick dialog for choice prompts
+   * Show quick pick dialog for select prompts
    */
-  private async handleChoicePrompt(prompt: PromptRequest): Promise<PromptResponse> {
+  private async handleSelectPrompt(prompt: PromptRequest): Promise<PromptResponse> {
     if (!prompt.options || prompt.options.length === 0) {
-      console.error("[PromptHandler] Choice prompt has no options");
+      console.error("[PromptHandler] Select prompt has no options");
       return { cancelled: true };
     }
 
-    const selected = await vscode.window.showQuickPick(prompt.options, {
+    const items = prompt.options.map((opt) => ({
+      label: opt.label,
+      description: opt.description,
+    }));
+
+    const selected = await vscode.window.showQuickPick(items, {
       title: prompt.title,
       placeHolder: prompt.description || "Select an option",
       canPickMany: false,
@@ -106,7 +119,38 @@ export class PromptHandler {
     }
 
     return {
-      response: selected,
+      response: selected.label,
+      cancelled: false,
+    };
+  }
+
+  /**
+   * Show multi-select quick pick dialog
+   */
+  private async handleMultiSelectPrompt(prompt: PromptRequest): Promise<PromptResponse> {
+    if (!prompt.options || prompt.options.length === 0) {
+      console.error("[PromptHandler] MultiSelect prompt has no options");
+      return { cancelled: true };
+    }
+
+    const items = prompt.options.map((opt) => ({
+      label: opt.label,
+      description: opt.description,
+    }));
+
+    const selected = await vscode.window.showQuickPick(items, {
+      title: prompt.title,
+      placeHolder: prompt.description || "Select one or more options",
+      canPickMany: true,
+      ignoreFocusOut: true,
+    });
+
+    if (selected === undefined || selected.length === 0) {
+      return { cancelled: true };
+    }
+
+    return {
+      response: selected.map((item) => item.label).join(", "),
       cancelled: false,
     };
   }

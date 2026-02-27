@@ -954,7 +954,8 @@ export function activate(context: vscode.ExtensionContext) {
         await globalAuthService?.login();
       } catch (error) {
         console.error('[AEP] Sign-in failed:', error);
-        vscode.window.showErrorMessage(`Sign in failed: ${error}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        vscode.window.showErrorMessage(`Sign in failed: ${errorMessage}`);
       }
       cachedAuthToken = await globalAuthService?.getToken();
       await vscode.commands.executeCommand('aep.notifyAuthStateChange', Boolean(cachedAuthToken));
@@ -1658,7 +1659,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private _naviTerminal?: vscode.Terminal;
   private _naviOutputChannel?: vscode.OutputChannel;
   private _webviewReady = false;
+  private _chatUiReady = false;
   private _pendingConsentMessages = new Map<string, any>();
+  private _pendingPromptMessages = new Map<string, any>();
 
   // Public accessors for external functions
   public get webviewAvailable(): boolean {
@@ -3225,6 +3228,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   ) {
     this._view = webviewView;
     this._webviewReady = false;
+    this._chatUiReady = false;
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -3256,9 +3260,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           }
           case 'navi.chat.ready': {
             // Chat panel component is mounted - consent handlers are ready
-            // Safe to flush pending consent messages now that listeners are registered
+            // Safe to flush pending consent/prompt messages now that listeners are registered
             console.log('[AEP] Chat panel and consent handlers are ready');
+            this._chatUiReady = true;
             this.flushPendingConsentMessages();
+            this.flushPendingPromptMessages();
             break;
           }
           case 'requestWorkspaceContext': {
@@ -7363,6 +7369,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         this._scanTimer = undefined;
       }
       this._webviewReady = false;
+      this._chatUiReady = false;
       this._view = undefined;
     });
 
@@ -9214,6 +9221,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       };
       // Collect actions during streaming (declared outside try for access in catch)
       let streamedActions: any[] = [];
+      let streamSummaryText = '';
       const toolCommandMap = new Map<string, { command: string; cwd?: string }>();
       const toolFileMap = new Map<string, { path: string; actionType: 'editFile' | 'createFile'; summary?: string; content?: string }>();
 
@@ -9371,20 +9379,24 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     elapsed_seconds: parsed.elapsed_seconds || 0,
                     heartbeat_count: parsed.heartbeat_count || 0,
                   });
-                  // Also emit as activity event so users can see progress
-                  this.postToWebview({
-                    type: 'navi.agent.event',
-                    event: {
-                      kind: 'heartbeat',
-                      data: {
-                        label: 'Working',
-                        detail: parsed.message || 'Processing your request...',
-                        status: 'running',
-                        elapsed: parsed.elapsed_seconds,
-                      }
-                    }
-                  });
                   continue; // Skip further processing for heartbeat events
+                }
+
+                // Handle user prompt requests from autonomous agent
+                if (parsed.type === 'prompt_request' && parsed.data) {
+                  console.log('[AEP] 💬 Prompt request received:', parsed.data);
+                  const route = this.routePromptRequest(parsed.data);
+                  if (route === 'fallback-native') {
+                    if (this.promptHandler) {
+                      // Handle prompt asynchronously - don't await to avoid blocking stream
+                      this.promptHandler.handlePromptRequest(parsed.data).catch((error) => {
+                        console.error('[AEP] Failed to handle native prompt request:', error);
+                      });
+                    } else {
+                      console.error('[AEP] Prompt handler not initialized');
+                    }
+                  }
+                  continue; // Skip further processing for prompt events
                 }
 
                 if (parsed.type === 'job_created' || parsed.type === 'job_started' || parsed.type === 'job_completed' || parsed.type === 'job_failed' || parsed.type === 'job_canceled' || parsed.type === 'job_paused') {
@@ -9767,10 +9779,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     timestamp: new Date().toISOString(),
                   };
 
-                  if (!this._webviewReady) {
+                  if (!this._webviewReady || !this._chatUiReady) {
                     const queueKey = consentId || `pending-consent-${Date.now()}`;
                     this._pendingConsentMessages.set(queueKey, consentMessage);
-                    console.log('[AEP] ⏳ Webview not ready. Queued consent message:', queueKey);
+                    console.log('[AEP] ⏳ Chat UI not ready. Queued consent message:', queueKey);
                   } else {
                     this.postToWebview(consentMessage);
                   }
@@ -9796,6 +9808,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   console.log('[AEP] 🏁 Task done with summary:', parsed.summary);
                   const summaryText = summarizeRunPayload(parsed.summary);
                   if (summaryText) {
+                    streamSummaryText = summaryText;
                     this._lastRunSummary = { content: summaryText, timestamp: Date.now() };
                   }
                   this.postToWebview({
@@ -9815,13 +9828,13 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 if (parsed.type === 'status') {
                   console.log('[AEP] 🤖 Autonomous status:', parsed.status);
                   const statusMessages: Record<string, string> = {
-                    'planning': '🧠 Planning approach...',
-                    'replanning': '🧠 Refining plan quality...',
-                    'executing': '⚡ Executing changes...',
-                    'verifying': '🔍 Running verification...',
-                    'fixing': '🔧 Fixing issues...',
-                    'completed': '✅ Task completed!',
-                    'failed': '❌ Task failed after max attempts',
+                    'planning': 'Planning approach...',
+                    'replanning': 'Refining plan quality...',
+                    'executing': 'Executing changes...',
+                    'verifying': 'Running verification...',
+                    'fixing': 'Fixing issues...',
+                    'completed': 'Task completed.',
+                    'failed': 'Task failed after max attempts.',
                   };
                   this.postToWebview({
                     type: 'navi.agent.event',
@@ -9886,6 +9899,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   console.log('[AEP] 🏁 Task complete:', parsed.summary);
                   const summaryText = summarizeRunPayload(parsed.summary);
                   if (summaryText) {
+                    streamSummaryText = summaryText;
                     this._lastRunSummary = { content: summaryText, timestamp: Date.now() };
                   }
                   this.postToWebview({
@@ -10078,6 +10092,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   console.log('[AEP] 🏢 Enterprise task completed:', parsed.task_id);
                   const summaryText = summarizeRunPayload(parsed.result);
                   if (summaryText) {
+                    streamSummaryText = summaryText;
                     this._lastRunSummary = { content: summaryText, timestamp: Date.now() };
                   }
                   this.postToWebview({
@@ -10174,6 +10189,27 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               }
             }
           }
+        }
+
+        if (!streamedContent.trim()) {
+          const fileActionCount = streamedActions.filter((action) =>
+            ['edit_file', 'create_file', 'write_file', 'replace_in_file', 'delete_file', 'edit', 'create', 'delete']
+              .includes(String(action?.type || '').toLowerCase())
+          ).length;
+          const commandActionCount = streamedActions.filter((action) =>
+            ['run_command', 'command', 'bash', 'terminal']
+              .includes(String(action?.type || '').toLowerCase())
+          ).length;
+          const actionSummary = streamedActions.length > 0
+            ? [
+                fileActionCount > 0 ? `Updated ${fileActionCount} file${fileActionCount === 1 ? '' : 's'}.` : '',
+                commandActionCount > 0 ? `Ran ${commandActionCount} command${commandActionCount === 1 ? '' : 's'}.` : '',
+                fileActionCount === 0 && commandActionCount === 0
+                  ? `Completed ${streamedActions.length} action${streamedActions.length === 1 ? '' : 's'}.`
+                  : '',
+              ].filter(Boolean).join(' ')
+            : '';
+          streamedContent = (streamSummaryText || actionSummary || 'Completed the request.').trim();
         }
 
         // Finalize the streamed message with collected actions
@@ -11576,12 +11612,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
           case 'prompt_request':
             // Handle user prompt request from autonomous agent
-            if (this.promptHandler) {
-              this.promptHandler.handlePromptRequest(data).catch((error) => {
-                console.error('[AEP] Failed to handle prompt request:', error);
-              });
-            } else {
-              console.error('[AEP] Prompt handler not initialized');
+            if (this.routePromptRequest(data) === 'fallback-native') {
+              if (this.promptHandler) {
+                this.promptHandler.handlePromptRequest(data).catch((error) => {
+                  console.error('[AEP] Failed to handle native prompt request:', error);
+                });
+              } else {
+                console.error('[AEP] Prompt handler not initialized');
+              }
             }
             break;
 
@@ -12487,6 +12525,43 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       this.postToWebview(message);
     }
     this._pendingConsentMessages.clear();
+  }
+
+  private routePromptRequest(promptData: any): 'sent-inline' | 'queued-inline' | 'fallback-native' {
+    const promptId =
+      typeof promptData?.prompt_id === 'string' && promptData.prompt_id.trim().length > 0
+        ? promptData.prompt_id.trim()
+        : `prompt-${Date.now()}`;
+
+    const promptMessage = {
+      type: 'prompt_request',
+      data: promptData,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Webview exists but chat surface isn't mounted yet: queue for inline rendering.
+    if (this._view && (!this._webviewReady || !this._chatUiReady)) {
+      this._pendingPromptMessages.set(promptId, promptMessage);
+      console.log('[AEP] ⏳ Chat UI not ready. Queued prompt message:', promptId);
+      return 'queued-inline';
+    }
+
+    // Webview is active: always route prompt requests inline in chat.
+    if (this._view && this._webviewReady && this._chatUiReady) {
+      this.postToWebview(promptMessage);
+      return 'sent-inline';
+    }
+
+    // No webview available (background/non-chat usage): keep native fallback.
+    return 'fallback-native';
+  }
+
+  private flushPendingPromptMessages(): void {
+    if (!this._view || !this._webviewReady || !this._chatUiReady || this._pendingPromptMessages.size === 0) return;
+    for (const message of this._pendingPromptMessages.values()) {
+      this.postToWebview(message);
+    }
+    this._pendingPromptMessages.clear();
   }
 
   public postToWebview(message: any) {

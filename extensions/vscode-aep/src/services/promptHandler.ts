@@ -186,7 +186,31 @@ export class PromptHandler {
     try {
       const token = await this.getAuthToken();
       if (!token) {
-        console.error("[PromptHandler] No auth token available");
+        console.error("[PromptHandler] No auth token available, sending cancellation");
+
+        // Notify user about auth failure
+        vscode.window.showErrorMessage(
+          "Authentication failed. Unable to send response to NAVI. Please sign in again.",
+          "Sign In"
+        ).then(selection => {
+          if (selection === "Sign In") {
+            vscode.commands.executeCommand("aep.auth.login");
+          }
+        });
+
+        // Send cancellation to backend (no auth required for cancellation fallback)
+        // This ensures the backend doesn't wait indefinitely for a response
+        try {
+          const url = `${this.backendUrl}/api/navi/prompt/${promptId}`;
+          await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cancelled: true }),
+          });
+        } catch (fallbackError) {
+          console.error("[PromptHandler] Failed to send cancellation fallback:", fallbackError);
+        }
+
         return;
       }
 

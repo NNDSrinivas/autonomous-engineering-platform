@@ -177,6 +177,13 @@ class Settings(BaseSettings):
                     f"VSCODE_AUTH_REQUIRED must be true in {env} environment (currently: {self.vscode_auth_required})"
                 )
 
+            # Validate Auth0 client ID allowlist is configured when JWT is enabled
+            if self.jwt_enabled and not self.auth0_valid_client_ids.strip():
+                errors.append(
+                    f"AUTH0_VALID_CLIENT_IDS must be configured in {env} environment when JWT is enabled. "
+                    "This is required to validate the 'azp' (authorized party) claim and prevent token misuse."
+                )
+
             if errors:
                 raise ValueError(
                     f"Production security validation failed for environment '{env}':\n  - "

@@ -40,31 +40,42 @@ const AUTH0_ISSUER = 'https://auth.navralabs.com';
 /**
  * Infer environment from backend base URL.
  *
+ * Security: Uses proper URL parsing to prevent malicious URLs from matching
+ * via path/query components (e.g., "https://evil.com/localhost" should not match localhost).
+ *
  * @param backendUrl - Backend base URL (e.g., "http://localhost:8787", "https://api-staging.navralabs.com")
  * @returns Environment name
  */
 export function inferEnvironment(backendUrl: string): Environment {
-  const url = backendUrl.toLowerCase();
+  try {
+    const url = new URL(backendUrl);
+    const hostname = url.hostname.toLowerCase();
 
-  // Dev: localhost or 127.0.0.1
-  if (url.includes('localhost') || url.includes('127.0.0.1')) {
+    // Dev: localhost or 127.0.0.1
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'dev';
+    }
+
+    // Staging: hostname contains "staging"
+    // Use includes() for staging to match both "api-staging.navralabs.com" and "staging.navralabs.com"
+    if (hostname.includes('staging')) {
+      return 'staging';
+    }
+
+    // Production: exact hostname match for known production domains
+    const PRODUCTION_DOMAINS = ['api.navralabs.com', 'app.navralabs.com', 'navralabs.com'];
+    if (PRODUCTION_DOMAINS.includes(hostname)) {
+      return 'production';
+    }
+
+    // Default to dev for safety (unrecognized URLs should not use production credentials)
+    console.warn(`Unrecognized backend URL hostname: ${hostname}, defaulting to dev environment`);
+    return 'dev';
+  } catch (error) {
+    // Invalid URL format - default to dev for safety
+    console.warn(`Invalid backend URL format: ${backendUrl}, defaulting to dev environment`, error);
     return 'dev';
   }
-
-  // Staging: contains "staging" in hostname
-  if (url.includes('staging') || url.includes('api-staging')) {
-    return 'staging';
-  }
-
-  // Production: whitelist of known production domains
-  const PRODUCTION_DOMAINS = ['api.navralabs.com', 'app.navralabs.com', 'navralabs.com'];
-  if (PRODUCTION_DOMAINS.some(domain => url.includes(domain))) {
-    return 'production';
-  }
-
-  // Default to dev for safety (unrecognized URLs should not use production credentials)
-  console.warn(`Unrecognized backend URL: ${backendUrl}, defaulting to dev environment`);
-  return 'dev';
 }
 
 /**

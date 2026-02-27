@@ -10,11 +10,13 @@ import {
   FileJson,
   FileText,
   GitBranch,
-  RotateCcw,
+  Undo2,
 } from "lucide-react";
 
 export interface FileChange {
   path: string;
+  displayPath?: string;
+  hoverPath?: string;
   additions?: number;
   deletions?: number;
   originalContent?: string;
@@ -199,7 +201,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
             <span>Keep</span>
           </button>
           <button type="button" className="fcs-btn fcs-btn--undo" onClick={onUndo}>
-            <RotateCcw size={12} />
+            <Undo2 size={12} />
             <span>Undo</span>
           </button>
         </div>
@@ -208,7 +210,9 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
       <div className={`fcs-file-list ${isExpanded ? "fcs-file-list--expanded" : ""}`}>
         {isExpanded &&
           files.map((file, index) => {
-            const { filename, directory } = parseFilePath(file.path);
+            const effectiveDisplayPath = file.displayPath || file.path;
+            const effectiveHoverPath = file.hoverPath || effectiveDisplayPath;
+            const { filename, directory } = parseFilePath(effectiveDisplayPath);
             const hasStats =
               typeof file.additions === "number" || typeof file.deletions === "number";
             const additionsCount =
@@ -231,18 +235,15 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
                   type="button"
                   className={`fcs-file-main ${!canOpenDiff ? "fcs-file-main--disabled" : ""}`}
                   onClick={() => canOpenDiff && openFileDiff(file)}
-                  title={file.path}
+                  title={effectiveHoverPath}
                 >
                   <div className="fcs-file-info">
                     {getFileIcon(file.path)}
-                    <span
-                      className={`fcs-filename ${isDeleted ? "fcs-filename--deleted" : ""}`}
-                      title={file.path}
-                    >
+                    <span className={`fcs-filename ${isDeleted ? "fcs-filename--deleted" : ""}`}>
                       {filename}
                     </span>
                     {directory && (
-                      <span className="fcs-directory" title={file.path}>
+                      <span className="fcs-directory">
                         {directory}
                       </span>
                     )}
@@ -269,7 +270,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
                     <button
                       type="button"
                       className="fcs-file-icon-btn"
-                      title="Open in diff editor"
+                      title={`Open in diff editor: ${effectiveHoverPath}`}
                       onClick={(event) => {
                         event.stopPropagation();
                         openFileDiff(file);
@@ -282,20 +283,20 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
                     <button
                       type="button"
                       className="fcs-file-icon-btn"
-                      title="Undo this file change"
+                      title={`Undo this file change: ${effectiveHoverPath}`}
                       onClick={(event) => {
                         event.stopPropagation();
                         onUndoFile(file);
                       }}
                     >
-                      <RotateCcw size={13} />
+                      <Undo2 size={13} />
                     </button>
                   )}
                   {onKeepFile && (
                     <button
                       type="button"
                       className="fcs-file-icon-btn fcs-file-icon-btn--keep"
-                      title="Keep this file change"
+                      title={`Keep this file change: ${effectiveHoverPath}`}
                       onClick={(event) => {
                         event.stopPropagation();
                         onKeepFile(file);

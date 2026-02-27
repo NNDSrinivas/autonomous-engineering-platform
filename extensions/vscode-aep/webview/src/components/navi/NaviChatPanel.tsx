@@ -2222,6 +2222,8 @@ export default function NaviChatPanel({
   const [stickySummaryHasUndo, setStickySummaryHasUndo] = useState(false);
   const [inlineSummaryExpanded, setInlineSummaryExpanded] = useState(false);
   const fileChangeSummaryRef = useRef<HTMLDivElement | null>(null);
+  const chatFooterRef = useRef<HTMLDivElement | null>(null);
+  const [scrollNavBottomOffset, setScrollNavBottomOffset] = useState(220);
   const [summaryRunToken, setSummaryRunToken] = useState(0);
   const [dismissedSummaryKey, setDismissedSummaryKey] = useState<string | null>(null);
   const [hiddenSummaryPaths, setHiddenSummaryPaths] = useState<Set<string>>(new Set());
@@ -9845,6 +9847,62 @@ export default function NaviChatPanel({
         typeof file.additions === "number" || typeof file.deletions === "number"
     );
   }, [visibleSummaryFiles]);
+  const summaryPathLookup = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const addPath = (rawPath?: string) => {
+      if (!rawPath) return;
+      const normalized = toWorkspaceRelativePath(rawPath);
+      if (!normalized) return;
+      const baseName = normalized.split("/").pop() || normalized;
+      if (!map.has(baseName)) {
+        map.set(baseName, new Set());
+      }
+      map.get(baseName)!.add(normalized);
+    };
+    activityFileList.forEach((file) => addPath(file.path));
+    diffDetails.forEach((detail) => addPath(detail.path));
+    activeSummaryFiles.forEach((file) => addPath(file.path));
+    return map;
+  }, [activityFileList, diffDetails, activeSummaryFiles]);
+  const visibleSummaryFilesWithDisplayPath = useMemo(() => {
+    const { effectiveRoot } = getEffectiveWorkspace();
+    const normalizedRoot = (effectiveRoot || "")
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "");
+    const toTildePath = (value: string) =>
+      value
+        .replace(/^\/Users\/[^/]+(?=\/|$)/, "~")
+        .replace(/^\/home\/[^/]+(?=\/|$)/, "~");
+    const isAbsolutePath = (value: string) =>
+      value.startsWith("/") || /^[A-Za-z]:\//.test(value);
+
+    return visibleSummaryFiles.map((file) => {
+      const normalized = toWorkspaceRelativePath(file.path).replace(/\\/g, "/");
+      let resolved = normalized;
+      if (!resolved.includes("/")) {
+        const baseName = resolved.split("/").pop() || resolved;
+        const candidates = summaryPathLookup.get(baseName);
+        if (candidates && candidates.size === 1) {
+          resolved = Array.from(candidates)[0].replace(/\\/g, "/");
+        }
+      }
+      const normalizedResolved = resolved || file.path.replace(/\\/g, "/");
+      const isAbsoluteResolved = isAbsolutePath(normalizedResolved);
+      const displayPath = isAbsoluteResolved
+        ? normalizedResolved
+        : normalizedResolved.includes("/")
+          ? normalizedResolved
+          : `./${normalizedResolved}`;
+
+      const hoverPath = toTildePath(
+        !isAbsoluteResolved && normalizedRoot
+          ? `${normalizedRoot}/${normalizedResolved.replace(/^\.?\//, "")}`
+          : normalizedResolved
+      );
+
+      return { ...file, displayPath, hoverPath };
+    });
+  }, [visibleSummaryFiles, summaryPathLookup, workspaceRoot, repoName]);
 
   const summaryKey = useMemo(() => {
     return buildSummaryKey(activeSummary);
@@ -9895,6 +9953,48 @@ export default function NaviChatPanel({
   useEffect(() => {
     setHiddenSummaryPaths(new Set());
   }, [summaryKey]);
+
+  useEffect(() => {
+    const updateScrollNavOffset = () => {
+      const footerHeight = chatFooterRef.current?.offsetHeight ?? 0;
+      const summaryHeight = fileChangeSummaryRef.current?.offsetHeight ?? 0;
+      const consentHeight = activePendingUserInput
+        ? (consentContainerRef.current?.offsetHeight ?? 0)
+        : 0;
+      const consentClearance = consentHeight > 0 ? Math.min(consentHeight, 170) : 0;
+      const nextOffset = Math.max(
+        170,
+        Math.min(360, footerHeight + summaryHeight + consentClearance + 18)
+      );
+      setScrollNavBottomOffset(nextOffset);
+    };
+
+    updateScrollNavOffset();
+    window.addEventListener("resize", updateScrollNavOffset);
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.removeEventListener("resize", updateScrollNavOffset);
+      };
+    }
+
+    const observer = new ResizeObserver(() => updateScrollNavOffset());
+    if (chatFooterRef.current) observer.observe(chatFooterRef.current);
+    if (fileChangeSummaryRef.current) observer.observe(fileChangeSummaryRef.current);
+    if (consentContainerRef.current) observer.observe(consentContainerRef.current);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateScrollNavOffset);
+    };
+  }, [
+    activePendingUserInput,
+    shouldShowSummary,
+    inlineSummaryExpanded,
+    sending,
+    showScrollTop,
+    showScrollBottom,
+  ]);
 
   // Get the last assistant message ID to attach activities to it
   const lastAssistantMessageId = useMemo(() => {
@@ -13362,7 +13462,7 @@ export default function NaviChatPanel({
       </div>
 
       {/* Scroll Navigation Buttons */}
-      <div className="navi-scroll-nav">
+      <div className="navi-scroll-nav" style={{ bottom: `${scrollNavBottomOffset}px` }}>
         {showScrollTop && (
           <button
             type="button"
@@ -13387,7 +13487,7 @@ export default function NaviChatPanel({
         )}
       </div>
 
-      <div className="navi-chat-footer">
+      <div className="navi-chat-footer" ref={chatFooterRef}>
         {/* Hide QuickActionsBar when we have specific next steps from the response */}
         {/* QuickActionsBar removed: only show backend-provided next steps */}
 
@@ -13464,7 +13564,7 @@ export default function NaviChatPanel({
               </div>
             )}
             <FileChangeSummary
-              files={visibleSummaryFiles}
+              files={visibleSummaryFilesWithDisplayPath}
               totalAdditions={visibleSummaryHasStats ? visibleSummaryTotals.additions : undefined}
               totalDeletions={visibleSummaryHasStats ? visibleSummaryTotals.deletions : undefined}
               onKeep={handleKeepChanges}

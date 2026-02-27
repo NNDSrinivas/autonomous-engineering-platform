@@ -8,16 +8,32 @@ const normalizePrompt = (line: string): string => {
 
 export const stripEchoedCommand = (output: string, command: string): string => {
   if (!output || !command) return output;
-  const lines = output.split("\n");
-  const firstIdx = lines.findIndex((line) => line.trim().length > 0);
-  if (firstIdx < 0) return output;
-  const normalizedLine = normalizePrompt(lines[firstIdx]);
-  const normalizedCommand = command.trim();
-  if (!normalizedCommand) return output;
-  if (normalizedLine !== normalizedCommand) return output;
-  const remaining = lines.slice(firstIdx + 1);
-  const hasRemainingContent = remaining.some((line) => line.trim().length > 0);
-  if (!hasRemainingContent) return output;
-  const nextLines = [...lines.slice(0, firstIdx), ...lines.slice(firstIdx + 1)];
-  return nextLines.join("\n");
+  const outputLines = output.split("\n");
+  const commandLines = command
+    .split("\n")
+    .map((line) => line.replace(/\r$/, ""))
+    .filter((line, idx, arr) => !(idx === arr.length - 1 && line.trim().length === 0));
+
+  if (commandLines.length === 0) return output;
+
+  const firstOutputIdx = outputLines.findIndex((line) => line.trim().length > 0);
+  if (firstOutputIdx < 0) return output;
+
+  const matches = commandLines.every((commandLine, index) => {
+    const outputLine = outputLines[firstOutputIdx + index];
+    if (outputLine === undefined) return false;
+    if (index === 0) {
+      return normalizePrompt(outputLine) === commandLine.trim();
+    }
+    return outputLine.replace(/\r$/, "").trimEnd() === commandLine.trimEnd();
+  });
+
+  if (!matches) return output;
+
+  const stripped = [
+    ...outputLines.slice(0, firstOutputIdx),
+    ...outputLines.slice(firstOutputIdx + commandLines.length),
+  ];
+  const hasContent = stripped.some((line) => line.trim().length > 0);
+  return hasContent ? stripped.join("\n") : "";
 };

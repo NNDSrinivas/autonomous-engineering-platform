@@ -1,26 +1,46 @@
-import React, { useState, useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
-import { MessageCircle, AlertCircle } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertCircle, Clock3, MessageSquareText } from "lucide-react";
 import type {
   NaviPromptRequest,
   NaviPromptResponse,
+  PromptOption,
 } from "../../types/naviChat";
 
 interface PromptDialogProps {
   prompt: NaviPromptRequest;
-  onSubmit: (response: NaviPromptResponse) => void;
-  onCancel: (prompt_id: string) => void;
+  onSubmit: (response: NaviPromptResponse) => Promise<void> | void;
+  onCancel: (prompt_id: string) => Promise<void> | void;
 }
+
+const PROMPT_TYPE_LABEL: Record<NaviPromptRequest["prompt_type"], string> = {
+  text: "Text input",
+  select: "Select one",
+  confirm: "Confirmation",
+  multiselect: "Select multiple",
+};
+
+const normalizeOptions = (
+  options: NaviPromptRequest["options"] | string[] | undefined
+): PromptOption[] => {
+  if (!options || options.length === 0) return [];
+  return options
+    .map((option) => {
+      if (typeof option === "string") {
+        return { value: option, label: option };
+      }
+      if (option && typeof option === "object") {
+        const value = String(option.value ?? option.label ?? "").trim();
+        if (!value) return null;
+        return {
+          value,
+          label: String(option.label ?? value),
+          description: option.description ? String(option.description) : undefined,
+        };
+      }
+      return null;
+    })
+    .filter((option): option is PromptOption => Boolean(option));
+};
 
 export const PromptDialog: React.FC<PromptDialogProps> = ({
   prompt,
@@ -28,41 +48,96 @@ export const PromptDialog: React.FC<PromptDialogProps> = ({
   onCancel,
 }) => {
   const [value, setValue] = useState<string | string[] | boolean>(() => {
-    if (prompt.prompt_type === "multiselect") {
-      return [];
-    }
+    if (prompt.prompt_type === "multiselect") return [];
     if (prompt.prompt_type === "confirm") {
-      return false;
+      const confirmOptions = normalizeOptions(
+        prompt.options as unknown as PromptOption[] | string[]
+      );
+      if (confirmOptions.length > 0) {
+        return String(prompt.default_value || "").trim();
+      }
+      const normalizedDefault = String(prompt.default_value || "").trim().toLowerCase();
+      if (["true", "1", "yes", "y", "approve", "allow"].includes(normalizedDefault)) {
+        return true;
+      }
+      if (["false", "0", "no", "n", "deny", "reject"].includes(normalizedDefault)) {
+        return false;
+      }
+      return "";
     }
     return prompt.default_value || "";
   });
   const [error, setError] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(
     prompt.timeout_seconds || null
   );
 
-  // Countdown timer
+  const options = useMemo(
+    () => normalizeOptions(prompt.options as unknown as PromptOption[] | string[]),
+    [prompt.options]
+  );
+  const hasCustomConfirmOptions = prompt.prompt_type === "confirm" && options.length > 0;
+  const confirmOptionButtons = useMemo(() => {
+    if (prompt.prompt_type !== "confirm") return [];
+    if (options.length > 0) return options;
+    return [
+      { value: "yes", label: "Yes" },
+      { value: "no", label: "No" },
+    ] as PromptOption[];
+  }, [prompt.prompt_type, options]);
+
   useEffect(() => {
     if (!timeRemaining || timeRemaining <= 0) return;
-
     const timer = setInterval(() => {
       setTimeRemaining((prev) => {
         if (!prev || prev <= 1) {
-          // Timeout - auto-cancel
-          handleCancel();
+          onCancel(prompt.prompt_id);
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(timer);
-  }, [timeRemaining]);
+  }, [timeRemaining, onCancel, prompt.prompt_id]);
 
-  const handleSubmit = () => {
-    // Validation
+  const isValueProvided = () => {
+    if (prompt.prompt_type === "multiselect") {
+      return (value as string[]).length > 0;
+    }
+    if (prompt.prompt_type === "confirm") {
+      return hasCustomConfirmOptions ? Boolean(String(value ?? "").trim()) : typeof value === "boolean";
+    }
+    return Boolean(String(value ?? "").trim());
+  };
+
+  const submitResponse = async (responseValue: string | string[] | boolean) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        prompt_id: prompt.prompt_id,
+        response: responseValue,
+        cancelled: false,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await onCancel(prompt.prompt_id);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async () => {
     if (prompt.required && !isValueProvided()) {
-      setError("This field is required");
+      setError("This field is required.");
       return;
     }
 
@@ -70,208 +145,215 @@ export const PromptDialog: React.FC<PromptDialogProps> = ({
       try {
         const regex = new RegExp(prompt.validation_pattern);
         if (!regex.test(value)) {
-          setError("Invalid format");
+          setError("Value does not match required format.");
           return;
         }
-      } catch (e) {
-        console.error("Invalid regex pattern:", e);
+      } catch {
+        // Ignore invalid regex from backend and let user continue.
       }
     }
 
-    onSubmit({
-      prompt_id: prompt.prompt_id,
-      response: value,
-      cancelled: false,
-    });
-  };
-
-  const handleCancel = () => {
-    onCancel(prompt.prompt_id);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && prompt.prompt_type === "text") {
-      e.preventDefault();
-      handleSubmit();
+    let responseValue: string | string[] | boolean = value;
+    if (prompt.prompt_type === "confirm") {
+      responseValue = hasCustomConfirmOptions ? String(value ?? "").trim() : value === true;
     }
+
+    await submitResponse(responseValue);
+  };
+
+  const handleToggleMulti = (optionValue: string, checked: boolean) => {
+    const current = Array.isArray(value) ? value : [];
+    if (checked) {
+      setValue([...current, optionValue]);
+      return;
+    }
+    setValue(current.filter((entry) => entry !== optionValue));
+  };
+
+  const getConfirmToneClass = (option: PromptOption): string => {
+    const token = `${option.value} ${option.label}`.toLowerCase();
+    if (/\b(yes|y|approve|allow|continue|proceed|confirm|accept|run)\b/.test(token)) {
+      return "is-approve";
+    }
+    if (/\b(no|n|deny|reject|cancel|decline|stop|block)\b/.test(token)) {
+      return "is-deny";
+    }
+    return "";
   };
 
   const renderInput = () => {
     switch (prompt.prompt_type) {
       case "text":
         return (
-          <div className="space-y-2">
-            <Input
-              value={value as string}
-              onChange={(e) => {
-                setValue(e.target.value);
-                setError("");
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder={prompt.placeholder || "Enter your response..."}
-              autoFocus
-              className="w-full"
-            />
+          <input
+            className="navi-inline-prompt__input"
+            value={value as string}
+            disabled={isSubmitting}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleSubmit();
+              }
+            }}
+            placeholder={prompt.placeholder || "Enter a value"}
+            autoFocus
+          />
+        );
+
+      case "confirm":
+        return (
+          <div className="navi-inline-prompt__confirm-grid">
+            {confirmOptionButtons.map((option) => {
+              const toneClass = getConfirmToneClass(option);
+              const isActive = hasCustomConfirmOptions
+                ? value === option.value
+                : (option.value.toLowerCase() === "yes" && value === true) ||
+                  (option.value.toLowerCase() === "no" && value === false);
+              return (
+                <button
+                  type="button"
+                  key={option.value}
+                  className={`navi-inline-prompt__option-btn ${
+                    isActive ? `is-active ${toneClass}`.trim() : ""
+                  }`}
+                  disabled={isSubmitting}
+                  onClick={() => {
+                    const selectedValue: string | boolean = hasCustomConfirmOptions
+                      ? option.value
+                      : option.value.toLowerCase() === "yes";
+                    setValue(selectedValue);
+                    setError("");
+                    void submitResponse(
+                      hasCustomConfirmOptions ? String(selectedValue).trim() : selectedValue === true
+                    );
+                  }}
+                >
+                  <span className="navi-inline-prompt__option-label">{option.label}</span>
+                  {option.description && (
+                    <span className="navi-inline-prompt__option-desc">{option.description}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         );
 
       case "select":
         return (
-          <div className="space-y-2">
-            <select
-              value={value as string}
-              onChange={(e) => {
-                setValue(e.target.value);
-                setError("");
-              }}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              autoFocus
-            >
-              <option value="">Select an option...</option>
-              {prompt.options?.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {prompt.options && value && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {
-                  prompt.options.find((opt) => opt.value === value)
-                    ?.description
-                }
-              </p>
-            )}
-          </div>
-        );
-
-      case "confirm":
-        return (
-          <div className="flex gap-4 justify-center py-4">
-            <Button
-              onClick={() => {
-                setValue(true);
-                setError("");
-              }}
-              variant={value === true ? "primary" : "outline"}
-            >
-              Yes
-            </Button>
-            <Button
-              onClick={() => {
-                setValue(false);
-                setError("");
-              }}
-              variant={value === false ? "primary" : "outline"}
-            >
-              No
-            </Button>
+          <div className="navi-inline-prompt__option-list">
+            {options.map((option) => {
+              const isActive = value === option.value;
+              return (
+                <button
+                  type="button"
+                  key={option.value}
+                  className={`navi-inline-prompt__option-btn ${isActive ? "is-active" : ""}`}
+                  disabled={isSubmitting}
+                  onClick={() => {
+                    setValue(option.value);
+                    setError("");
+                  }}
+                >
+                  <span className="navi-inline-prompt__option-label">{option.label}</span>
+                  {option.description && (
+                    <span className="navi-inline-prompt__option-desc">{option.description}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         );
 
       case "multiselect":
         return (
-          <div className="space-y-2">
-            {prompt.options?.map((option) => (
-              <label
-                key={option.value}
-                className="flex items-start gap-2 p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={(value as string[]).includes(option.value)}
-                  onChange={(e) => {
-                    const current = value as string[];
-                    if (e.target.checked) {
-                      setValue([...current, option.value]);
-                    } else {
-                      setValue(current.filter((v) => v !== option.value));
-                    }
-                    setError("");
-                  }}
-                  className="mt-0.5"
-                />
-                <div className="flex-1">
-                  <div className="font-medium text-sm">{option.label}</div>
-                  {option.description && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {option.description}
-                    </div>
-                  )}
-                </div>
-              </label>
-            ))}
+          <div className="navi-inline-prompt__option-list">
+            {options.map((option) => {
+              const selected = Array.isArray(value) && value.includes(option.value);
+              return (
+                <label
+                  key={option.value}
+                  className={`navi-inline-prompt__multi-item ${selected ? "is-active" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    disabled={isSubmitting}
+                    onChange={(e) => {
+                      handleToggleMulti(option.value, e.target.checked);
+                      setError("");
+                    }}
+                  />
+                  <span className="navi-inline-prompt__multi-text">
+                    <span className="navi-inline-prompt__option-label">{option.label}</span>
+                    {option.description && (
+                      <span className="navi-inline-prompt__option-desc">{option.description}</span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         );
-
-      default:
-        return (
-          <textarea
-            value={value as string}
-            onChange={(e) => {
-              setValue(e.target.value);
-              setError("");
-            }}
-            placeholder={prompt.placeholder}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 min-h-[100px]"
-            autoFocus
-          />
-        );
     }
-  };
-
-  const isValueProvided = () => {
-    if (prompt.prompt_type === "multiselect") {
-      return (value as string[]).length > 0;
-    }
-    if (prompt.prompt_type === "confirm") {
-      return true; // Confirm always has a value (true/false)
-    }
-    return Boolean(value);
   };
 
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && handleCancel()}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5 text-blue-500" />
-            <DialogTitle>{prompt.title}</DialogTitle>
+    <div className="navi-inline-consent navi-inline-consent--prompt">
+      <div className="navi-inline-consent__header">
+        <div className="navi-inline-consent__title-wrap">
+          <span className="navi-inline-consent__icon">
+            <MessageSquareText className="h-3.5 w-3.5" />
+          </span>
+          <div className="navi-inline-consent__title-group">
+            <div className="navi-inline-consent__title">{prompt.title || "Input required"}</div>
+            <div className="navi-inline-consent__meta">{PROMPT_TYPE_LABEL[prompt.prompt_type]}</div>
           </div>
-          <DialogDescription className="text-left">
-            {prompt.description}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="py-4">
-          {renderInput()}
-          {error && (
-            <div className="flex items-center gap-2 mt-2 text-red-500 text-sm">
-              <AlertCircle className="h-4 w-4" />
-              {error}
-            </div>
-          )}
         </div>
-
-        {timeRemaining && timeRemaining > 0 && (
-          <div className="text-sm text-gray-500 dark:text-gray-400 text-center">
-            Time remaining: {Math.floor(timeRemaining / 60)}:
-            {(timeRemaining % 60).toString().padStart(2, "0")}
+        {typeof timeRemaining === "number" && timeRemaining > 0 && (
+          <div className="navi-inline-consent__timer">
+            <Clock3 className="h-3.5 w-3.5" />
+            {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, "0")}
           </div>
         )}
+      </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={prompt.required && !isValueProvided()}
+      {prompt.description && (
+        <div className="navi-inline-consent__description">{prompt.description}</div>
+      )}
+
+      <div className="navi-inline-prompt__body">{renderInput()}</div>
+
+      {error && (
+        <div className="navi-inline-consent__error">
+          <AlertCircle className="h-3.5 w-3.5" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="navi-inline-consent__actions">
+        <button
+          type="button"
+          className="navi-inline-consent__btn navi-inline-consent__btn--ghost"
+          onClick={() => void handleCancel()}
+          disabled={isSubmitting}
+        >
+          Cancel
+        </button>
+        {prompt.prompt_type !== "confirm" && (
+          <button
+            type="button"
+            className="navi-inline-consent__btn navi-inline-consent__btn--primary"
+            onClick={() => void handleSubmit()}
+            disabled={isSubmitting || (prompt.required && !isValueProvided())}
           >
             Submit
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </button>
+        )}
+      </div>
+    </div>
   );
 };

@@ -41,7 +41,7 @@
 /* Header */
 .nic-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
   cursor: pointer;
@@ -104,12 +104,30 @@
 /* Command */
 .nic-command {
   flex: 1;
+  display: block;
   font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 12px;
+  line-height: 1.35;
   color: var(--nic-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: pre;
+  max-height: calc(1.35em * 3);
+  overflow-x: auto;
+  overflow-y: auto;
+  text-overflow: clip;
+  word-break: normal;
+  overflow-wrap: normal;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+
+.nic-command::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.nic-command::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
 }
 
 .nic--running .nic-command {
@@ -157,11 +175,16 @@
 }
 
 .nic-activity-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border: 1px solid var(--nic-border);
   background: rgba(255, 255, 255, 0.04);
   color: var(--nic-text-dim);
-  font-size: 10px;
-  padding: 2px 6px;
+  font-size: 0;
+  padding: 0;
   border-radius: 6px;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   flex-shrink: 0;

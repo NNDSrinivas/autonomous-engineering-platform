@@ -1,13 +1,25 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, FileText, File, FileCode, FileCog, FileJson, Check, RotateCcw, GitBranch, Eye } from 'lucide-react';
+import React, { useState } from "react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  File,
+  FileCode,
+  FileCog,
+  FileJson,
+  FileText,
+  GitBranch,
+  RotateCcw,
+} from "lucide-react";
 
 export interface FileChange {
   path: string;
   additions?: number;
   deletions?: number;
   originalContent?: string;
-  wasCreated?: boolean; // True if file was newly created (undo = delete)
-  wasDeleted?: boolean; // True if file was deleted (undo = restore)
+  wasCreated?: boolean;
+  wasDeleted?: boolean;
   status?: "added" | "modified" | "deleted";
 }
 
@@ -18,79 +30,79 @@ export interface FileChangeSummaryProps {
   onKeep: () => void;
   onUndo: () => void;
   onFileClick?: (filePath: string) => void;
-  onPreviewAll?: () => void; // Opens diff view for all changed files
+  onPreviewAll?: () => void;
+  onKeepFile?: (file: FileChange) => void;
+  onUndoFile?: (file: FileChange) => void;
+  onOpenFileDiff?: (file: FileChange) => void;
   expanded?: boolean;
   onToggle?: (expanded: boolean) => void;
 }
 
-// Get file icon based on extension
 const getFileIcon = (filePath: string) => {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-
+  const ext = filePath.split(".").pop()?.toLowerCase() || "";
   switch (ext) {
-    case 'ts':
-    case 'tsx':
+    case "ts":
+    case "tsx":
       return <FileCode size={14} className="fcs-icon fcs-icon--ts" />;
-    case 'js':
-    case 'jsx':
-    case 'mjs':
+    case "js":
+    case "jsx":
+    case "mjs":
       return <FileCode size={14} className="fcs-icon fcs-icon--js" />;
-    case 'py':
-    case 'pyw':
+    case "py":
+    case "pyw":
       return <FileCode size={14} className="fcs-icon fcs-icon--py" />;
-    case 'go':
+    case "go":
       return <FileCode size={14} className="fcs-icon fcs-icon--go" />;
-    case 'rs':
+    case "rs":
       return <FileCode size={14} className="fcs-icon fcs-icon--rs" />;
-    case 'java':
-    case 'kt':
+    case "java":
+    case "kt":
       return <FileCode size={14} className="fcs-icon fcs-icon--java" />;
-    case 'c':
-    case 'cpp':
-    case 'h':
-    case 'cs':
+    case "c":
+    case "cpp":
+    case "h":
+    case "cs":
       return <FileCode size={14} className="fcs-icon fcs-icon--c" />;
-    case 'rb':
+    case "rb":
       return <FileCode size={14} className="fcs-icon fcs-icon--rb" />;
-    case 'php':
+    case "php":
       return <FileCode size={14} className="fcs-icon fcs-icon--php" />;
-    case 'swift':
+    case "swift":
       return <FileCode size={14} className="fcs-icon fcs-icon--swift" />;
-    case 'json':
-    case 'jsonc':
+    case "json":
+    case "jsonc":
       return <FileJson size={14} className="fcs-icon fcs-icon--json" />;
-    case 'yaml':
-    case 'yml':
-    case 'toml':
+    case "yaml":
+    case "yml":
+    case "toml":
       return <FileCog size={14} className="fcs-icon fcs-icon--yaml" />;
-    case 'md':
-    case 'mdx':
-    case 'txt':
-    case 'rst':
+    case "md":
+    case "mdx":
+    case "txt":
+    case "rst":
       return <FileText size={14} className="fcs-icon fcs-icon--md" />;
-    case 'css':
-    case 'scss':
-    case 'less':
+    case "css":
+    case "scss":
+    case "less":
       return <FileCode size={14} className="fcs-icon fcs-icon--css" />;
-    case 'html':
-    case 'htm':
+    case "html":
+    case "htm":
       return <FileCode size={14} className="fcs-icon fcs-icon--html" />;
-    case 'config':
-    case 'env':
-    case 'gitignore':
-    case 'dockerfile':
+    case "config":
+    case "env":
+    case "gitignore":
+    case "dockerfile":
       return <FileCog size={14} className="fcs-icon fcs-icon--config" />;
     default:
       return <File size={14} className="fcs-icon" />;
   }
 };
 
-// Parse file path into filename and directory
 const parseFilePath = (filePath: string): { filename: string; directory: string } => {
-  if (!filePath) return { filename: 'Unknown file', directory: '' };
-  const parts = filePath.split('/');
+  if (!filePath) return { filename: "Unknown file", directory: "" };
+  const parts = filePath.split("/");
   const filename = parts.pop() || filePath;
-  const directory = parts.length > 0 ? parts.join('/') : '';
+  const directory = parts.length > 0 ? parts.join("/") : "";
   return { filename, directory };
 };
 
@@ -102,11 +114,14 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   onUndo,
   onFileClick,
   onPreviewAll,
+  onKeepFile,
+  onUndoFile,
+  onOpenFileDiff,
   expanded,
   onToggle,
 }) => {
   const [internalExpanded, setInternalExpanded] = useState(false);
-  const isControlled = typeof expanded === 'boolean';
+  const isControlled = typeof expanded === "boolean";
   const isExpanded = isControlled ? Boolean(expanded) : internalExpanded;
 
   const toggleExpanded = () => {
@@ -117,24 +132,42 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
     onToggle?.(next);
   };
 
-  // Calculate totals if not provided
-  const additions = totalAdditions ?? files.reduce((sum, f) => sum + (f.additions || 0), 0);
-  const deletions = totalDeletions ?? files.reduce((sum, f) => sum + (f.deletions || 0), 0);
-  const hasStats = additions > 0 || deletions > 0;
+  const additions =
+    typeof totalAdditions === "number"
+      ? totalAdditions
+      : files.reduce((sum, file) => sum + (typeof file.additions === "number" ? file.additions : 0), 0);
+  const deletions =
+    typeof totalDeletions === "number"
+      ? totalDeletions
+      : files.reduce((sum, file) => sum + (typeof file.deletions === "number" ? file.deletions : 0), 0);
+  const hasAnyFileStats = files.some(
+    (file) =>
+      typeof file.additions === "number" || typeof file.deletions === "number"
+  );
+  const hasHeaderStats = hasAnyFileStats && (additions > 0 || deletions > 0);
 
   if (files.length === 0) return null;
 
+  const openFileDiff = (file: FileChange) => {
+    if (onOpenFileDiff) {
+      onOpenFileDiff(file);
+      return;
+    }
+    if (onFileClick && file.path) {
+      onFileClick(file.path);
+    }
+  };
+
   return (
     <div className="fcs-container">
-      {/* Header row */}
       <div
         className="fcs-header"
         role="button"
         tabIndex={0}
         onClick={toggleExpanded}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
             toggleExpanded();
           }
         }}
@@ -145,16 +178,16 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           </span>
           <GitBranch size={14} className="fcs-git-icon" />
           <span className="fcs-count">
-            {files.length} file{files.length !== 1 ? 's' : ''} changed
+            {files.length} file{files.length !== 1 ? "s" : ""} changed
           </span>
-          {hasStats && (
+          {hasHeaderStats && (
             <div className="fcs-stats">
               {additions > 0 && <span className="fcs-stat fcs-stat--add">+{additions}</span>}
               {deletions > 0 && <span className="fcs-stat fcs-stat--del">-{deletions}</span>}
             </div>
           )}
         </div>
-        <div className="fcs-actions" onClick={(e) => e.stopPropagation()}>
+        <div className="fcs-actions" onClick={(event) => event.stopPropagation()}>
           {onPreviewAll && (
             <button type="button" className="fcs-btn fcs-btn--preview" onClick={onPreviewAll}>
               <Eye size={12} />
@@ -172,97 +205,149 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         </div>
       </div>
 
-      {/* File list */}
-      <div className={`fcs-file-list ${isExpanded ? 'fcs-file-list--expanded' : ''}`}>
-        {isExpanded && files.map((file, index) => {
-          const { filename, directory } = parseFilePath(file.path);
-          const fileHasStats = typeof file.additions === 'number' || typeof file.deletions === 'number';
-          const derivedStatus = file.status
-            || (file.wasCreated ? "added" : file.wasDeleted ? "deleted" : undefined);
-          const isDeleted = derivedStatus === "deleted";
-          const isAdded = derivedStatus === "added";
+      <div className={`fcs-file-list ${isExpanded ? "fcs-file-list--expanded" : ""}`}>
+        {isExpanded &&
+          files.map((file, index) => {
+            const { filename, directory } = parseFilePath(file.path);
+            const hasStats =
+              typeof file.additions === "number" || typeof file.deletions === "number";
+            const additionsCount =
+              typeof file.additions === "number" ? file.additions : undefined;
+            const deletionsCount =
+              typeof file.deletions === "number" ? file.deletions : undefined;
+            const derivedStatus =
+              file.status ||
+              (file.wasCreated ? "added" : file.wasDeleted ? "deleted" : undefined);
+            const isDeleted = derivedStatus === "deleted";
+            const isAdded = derivedStatus === "added";
+            const canOpenDiff = Boolean((onOpenFileDiff || onFileClick) && file.path);
 
-          return (
-            <button
-              key={file.path || `file-${index}`}
-              type="button"
-              className={`fcs-file-row ${isDeleted ? 'fcs-file-row--deleted' : isAdded ? 'fcs-file-row--added' : ''}`}
-              onClick={() => file.path && onFileClick?.(file.path)}
-            >
-              <div className="fcs-file-info">
-                {getFileIcon(file.path)}
-                <span className={`fcs-filename ${isDeleted ? 'fcs-filename--deleted' : ''}`}>{filename}</span>
-                {directory && (
-                  <span className="fcs-directory">{directory}</span>
-                )}
+            return (
+              <div
+                key={file.path || `file-${index}`}
+                className={`fcs-file-row ${isDeleted ? "fcs-file-row--deleted" : ""}`}
+              >
+                <button
+                  type="button"
+                  className={`fcs-file-main ${!canOpenDiff ? "fcs-file-main--disabled" : ""}`}
+                  onClick={() => canOpenDiff && openFileDiff(file)}
+                  title={canOpenDiff ? "Open changes in diff editor" : undefined}
+                >
+                  <div className="fcs-file-info">
+                    {getFileIcon(file.path)}
+                    <span className={`fcs-filename ${isDeleted ? "fcs-filename--deleted" : ""}`}>
+                      {filename}
+                    </span>
+                    {directory && <span className="fcs-directory">{directory}</span>}
+                  </div>
+                  <div className="fcs-file-stats">
+                    {isDeleted ? (
+                      <span className="fcs-badge fcs-badge--deleted">deleted</span>
+                    ) : (
+                      <>
+                        {isAdded && <span className="fcs-badge fcs-badge--added">new</span>}
+                        {hasStats && additionsCount !== undefined && additionsCount > 0 && (
+                          <span className="fcs-stat fcs-stat--add">+{additionsCount}</span>
+                        )}
+                        {hasStats && deletionsCount !== undefined && deletionsCount > 0 && (
+                          <span className="fcs-stat fcs-stat--del">-{deletionsCount}</span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </button>
+
+                <div className="fcs-file-actions">
+                  {canOpenDiff && (
+                    <button
+                      type="button"
+                      className="fcs-file-icon-btn"
+                      title="Open in diff editor"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openFileDiff(file);
+                      }}
+                    >
+                      <Eye size={13} />
+                    </button>
+                  )}
+                  {onUndoFile && (
+                    <button
+                      type="button"
+                      className="fcs-file-icon-btn"
+                      title="Undo this file change"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onUndoFile(file);
+                      }}
+                    >
+                      <RotateCcw size={13} />
+                    </button>
+                  )}
+                  {onKeepFile && (
+                    <button
+                      type="button"
+                      className="fcs-file-icon-btn fcs-file-icon-btn--keep"
+                      title="Keep this file change"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onKeepFile(file);
+                      }}
+                    >
+                      <Check size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="fcs-file-stats">
-                {isDeleted ? (
-                  <span className="fcs-badge fcs-badge--deleted">deleted</span>
-                ) : fileHasStats ? (
-                  <>
-                    {typeof file.additions === 'number' && file.additions > 0 && (
-                      <span className="fcs-stat fcs-stat--add">+{file.additions}</span>
-                    )}
-                    {typeof file.deletions === 'number' && file.deletions > 0 && (
-                      <span className="fcs-stat fcs-stat--del">-{file.deletions}</span>
-                    )}
-                    {file.additions === 0 && file.deletions === 0 && (
-                      <span className="fcs-stat fcs-stat--zero">0</span>
-                    )}
-                  </>
-                ) : (
-                  <span className="fcs-stat fcs-stat--empty">modified</span>
-                )}
-              </div>
-            </button>
-          );
-        })}
+            );
+          })}
       </div>
 
       <style>{`
         .fcs-container {
-          background: linear-gradient(135deg, rgba(30, 32, 40, 0.95), rgba(25, 27, 35, 0.98));
-          border: 1px solid rgba(99, 102, 241, 0.2);
+          margin: 10px 0;
           border-radius: 12px;
-          margin: 12px 0;
+          border: 1px solid rgba(99, 102, 241, 0.24);
+          background:
+            radial-gradient(120% 140% at 0% 0%, rgba(59, 130, 246, 0.1), transparent 46%),
+            linear-gradient(150deg, rgba(17, 24, 39, 0.92), rgba(13, 20, 34, 0.98));
           overflow: hidden;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.03);
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.26);
         }
 
         .fcs-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
+          gap: 10px;
           padding: 8px 12px;
           cursor: pointer;
-          transition: background 0.15s ease;
           border-bottom: 1px solid transparent;
+          transition: background 140ms ease;
         }
 
         .fcs-header:hover {
-          background: rgba(99, 102, 241, 0.08);
+          background: rgba(59, 130, 246, 0.08);
         }
 
         .fcs-header:focus {
           outline: none;
-          background: rgba(99, 102, 241, 0.1);
+          background: rgba(59, 130, 246, 0.1);
         }
 
         .fcs-header-left {
           display: flex;
           align-items: center;
           gap: 8px;
-          flex: 1;
           min-width: 0;
+          flex: 1;
         }
 
         .fcs-expand-icon {
-          display: flex;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          color: rgba(255, 255, 255, 0.5);
-          transition: transform 0.2s ease;
+          color: rgba(255, 255, 255, 0.54);
         }
 
         .fcs-git-icon {
@@ -272,160 +357,130 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
 
         .fcs-count {
           font-size: 12px;
-          font-weight: 600;
-          color: var(--vscode-foreground, #e2e8f0);
+          font-weight: 650;
+          color: var(--vscode-foreground, #e5e7eb);
           white-space: nowrap;
         }
 
         .fcs-stats {
-          display: flex;
+          display: inline-flex;
           align-items: center;
           gap: 6px;
           margin-left: 4px;
         }
 
         .fcs-stat {
+          display: inline-flex;
+          align-items: center;
           font-family: "SF Mono", "Menlo", "Monaco", monospace;
           font-size: 10px;
-          font-weight: 600;
-          padding: 2px 6px;
-          border-radius: 4px;
+          line-height: 1;
+          font-weight: 650;
+          padding: 3px 6px;
+          border-radius: 5px;
         }
 
         .fcs-stat--add {
           color: #4ade80;
-          background: rgba(74, 222, 128, 0.12);
+          background: rgba(74, 222, 128, 0.14);
         }
 
         .fcs-stat--del {
           color: #f87171;
-          background: rgba(248, 113, 113, 0.12);
-        }
-
-        .fcs-stat--zero {
-          color: rgba(255, 255, 255, 0.4);
-          background: rgba(255, 255, 255, 0.05);
-        }
-
-        .fcs-stat--empty {
-          color: rgba(255, 255, 255, 0.4);
-          font-size: 10px;
-          font-weight: 500;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
+          background: rgba(248, 113, 113, 0.14);
         }
 
         .fcs-badge {
           font-size: 10px;
-          font-weight: 600;
+          line-height: 1;
+          font-weight: 650;
+          letter-spacing: 0.04em;
           text-transform: uppercase;
-          letter-spacing: 0.4px;
-          padding: 2px 6px;
+          padding: 3px 6px;
           border-radius: 999px;
+          border: 1px solid transparent;
         }
 
         .fcs-badge--deleted {
           color: #fecaca;
-          background: rgba(248, 113, 113, 0.2);
-          border: 1px solid rgba(248, 113, 113, 0.35);
+          background: rgba(248, 113, 113, 0.16);
+          border-color: rgba(248, 113, 113, 0.34);
+        }
+
+        .fcs-badge--added {
+          color: #bbf7d0;
+          background: rgba(22, 163, 74, 0.22);
+          border-color: rgba(22, 163, 74, 0.36);
         }
 
         .fcs-actions {
-          display: flex;
+          display: inline-flex;
           align-items: center;
           gap: 6px;
           flex-shrink: 0;
         }
 
         .fcs-btn {
-          display: flex;
+          display: inline-flex;
           align-items: center;
           gap: 4px;
-          padding: 6px 10px;
-          font-size: 11px;
-          font-weight: 600;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.15s ease;
           border: none;
           outline: none;
+          border-radius: 7px;
+          padding: 6px 10px;
+          font-size: 11px;
+          font-weight: 640;
+          cursor: pointer;
+          transition: transform 120ms ease, filter 120ms ease, background 120ms ease;
         }
 
-        .fcs-btn span {
-          line-height: 1;
-        }
-
-        .fcs-btn--keep {
-          background: linear-gradient(135deg, #3b82f6, #2563eb);
-          color: white;
-          box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25);
-        }
-
-        .fcs-btn--keep:hover {
-          background: linear-gradient(135deg, #60a5fa, #3b82f6);
-          transform: translateY(-1px);
-          box-shadow: 0 4px 8px rgba(59, 130, 246, 0.35);
-        }
-
-        .fcs-btn--keep:active {
-          transform: translateY(0);
+        .fcs-btn:active {
+          transform: translateY(1px);
         }
 
         .fcs-btn--preview {
+          color: #ffffff;
           background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-          color: white;
-          box-shadow: 0 2px 4px rgba(139, 92, 246, 0.25);
         }
 
-        .fcs-btn--preview:hover {
-          background: linear-gradient(135deg, #a78bfa, #8b5cf6);
-          transform: translateY(-1px);
-          box-shadow: 0 4px 8px rgba(139, 92, 246, 0.35);
-        }
-
-        .fcs-btn--preview:active {
-          transform: translateY(0);
+        .fcs-btn--keep {
+          color: #ffffff;
+          background: linear-gradient(135deg, #3b82f6, #2563eb);
         }
 
         .fcs-btn--undo {
-          background: rgba(255, 255, 255, 0.06);
-          color: rgba(255, 255, 255, 0.8);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.84);
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.13);
         }
 
-        .fcs-btn--undo:hover {
-          background: rgba(255, 255, 255, 0.1);
-          border-color: rgba(255, 255, 255, 0.15);
-          color: white;
+        .fcs-btn:hover {
+          filter: brightness(1.08);
         }
 
         .fcs-file-list {
           max-height: 0;
           overflow: hidden;
-          transition: max-height 0.25s ease, padding 0.25s ease;
           padding: 0 8px;
+          transition: max-height 220ms ease, padding 220ms ease;
         }
 
         .fcs-file-list--expanded {
-          max-height: 400px;
+          max-height: 430px;
           overflow-y: auto;
+          border-top: 1px solid rgba(255, 255, 255, 0.07);
           padding: 8px;
-          border-top: 1px solid rgba(255, 255, 255, 0.06);
         }
 
         .fcs-file-row {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          width: 100%;
-          padding: 6px 8px;
-          margin-bottom: 4px;
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid transparent;
+          gap: 8px;
+          margin-bottom: 5px;
+          padding: 2px 4px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
           border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.15s ease;
-          text-align: left;
+          background: rgba(255, 255, 255, 0.018);
         }
 
         .fcs-file-row:last-child {
@@ -433,44 +488,51 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         }
 
         .fcs-file-row:hover {
-          background: rgba(99, 102, 241, 0.1);
-          border-color: rgba(99, 102, 241, 0.3);
-          transform: translateX(2px);
+          border-color: rgba(96, 165, 250, 0.35);
+          background: linear-gradient(90deg, rgba(30, 64, 175, 0.18), rgba(30, 64, 175, 0.03));
         }
 
         .fcs-file-row--deleted {
-          background: rgba(248, 113, 113, 0.08);
-          border-color: rgba(248, 113, 113, 0.25);
+          border-color: rgba(248, 113, 113, 0.22);
+          background: rgba(127, 29, 29, 0.13);
         }
 
-        .fcs-file-row--deleted:hover {
-          background: rgba(248, 113, 113, 0.12);
-          border-color: rgba(248, 113, 113, 0.35);
+        .fcs-file-main {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex: 1;
+          min-width: 0;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          padding: 3px 4px;
+          border-radius: 6px;
+          text-align: left;
         }
 
-        .fcs-file-row:focus {
-          outline: none;
-          border-color: rgba(99, 102, 241, 0.5);
+        .fcs-file-main--disabled {
+          cursor: default;
+        }
+
+        .fcs-file-main:focus {
+          outline: 1px solid rgba(96, 165, 250, 0.45);
+          outline-offset: 1px;
         }
 
         .fcs-file-info {
-          display: flex;
+          display: inline-flex;
           align-items: center;
           gap: 8px;
-          flex: 1;
           min-width: 0;
           overflow: hidden;
-          flex-wrap: wrap;
-          word-break: normal;
-          overflow-wrap: normal;
         }
 
         .fcs-icon {
+          color: rgba(255, 255, 255, 0.45);
           flex-shrink: 0;
-          color: rgba(255, 255, 255, 0.5);
         }
 
-        /* Language-specific icon colors */
         .fcs-icon--ts { color: #3178c6; }
         .fcs-icon--js { color: #f7df1e; }
         .fcs-icon--py { color: #3776ab; }
@@ -489,168 +551,125 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         .fcs-icon--config { color: #6d8086; }
 
         .fcs-filename {
-          font-size: 11px;
-          font-weight: 500;
-          color: var(--vscode-foreground, #e2e8f0);
-          white-space: normal;
-          flex-shrink: 0;
-          word-break: normal;
-          overflow-wrap: normal;
+          font-size: 12px;
+          font-weight: 540;
+          color: var(--vscode-foreground, #e5e7eb);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 40%;
         }
 
         .fcs-filename--deleted {
-          color: #f87171;
+          color: #fda4af;
           text-decoration: line-through;
         }
 
         .fcs-directory {
           font-size: 11px;
-          color: rgba(255, 255, 255, 0.35);
-          white-space: normal;
+          color: rgba(255, 255, 255, 0.4);
+          white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          margin-left: 4px;
-          word-break: normal;
-          overflow-wrap: normal;
-        }
-
-        .fcs-directory::before {
-          content: "";
-          margin-right: 0;
         }
 
         .fcs-file-stats {
-          display: flex;
+          display: inline-flex;
           align-items: center;
           gap: 6px;
+          margin-left: 10px;
           flex-shrink: 0;
-          margin-left: 12px;
         }
 
-        /* Scrollbar styling */
+        .fcs-file-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          opacity: 0;
+          transform: translateX(4px);
+          pointer-events: none;
+          transition: opacity 120ms ease, transform 120ms ease;
+        }
+
+        .fcs-file-row:hover .fcs-file-actions,
+        .fcs-file-row:focus-within .fcs-file-actions {
+          opacity: 1;
+          transform: translateX(0);
+          pointer-events: auto;
+        }
+
+        .fcs-file-icon-btn {
+          width: 25px;
+          height: 25px;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(15, 23, 42, 0.7);
+          color: rgba(255, 255, 255, 0.82);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+        }
+
+        .fcs-file-icon-btn:hover {
+          border-color: rgba(96, 165, 250, 0.45);
+          background: rgba(30, 64, 175, 0.34);
+          color: #ffffff;
+        }
+
+        .fcs-file-icon-btn--keep:hover {
+          border-color: rgba(74, 222, 128, 0.55);
+          background: rgba(21, 128, 61, 0.34);
+        }
+
         .fcs-file-list--expanded::-webkit-scrollbar {
           width: 6px;
         }
 
-        .fcs-file-list--expanded::-webkit-scrollbar-track {
-          background: transparent;
-        }
-
         .fcs-file-list--expanded::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.15);
-          border-radius: 3px;
+          background: rgba(148, 163, 184, 0.35);
+          border-radius: 999px;
         }
 
-        .fcs-file-list--expanded::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.25);
-        }
-
-        /* VSCode light theme */
         :root.vscode-light .fcs-container,
         [data-vscode-theme-kind="vscode-light"] .fcs-container,
         :root.light .fcs-container {
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.98));
-          border-color: rgba(99, 102, 241, 0.15);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.03);
-        }
-
-        :root.vscode-light .fcs-header:hover,
-        [data-vscode-theme-kind="vscode-light"] .fcs-header:hover,
-        :root.light .fcs-header:hover {
-          background: rgba(99, 102, 241, 0.06);
+          background:
+            radial-gradient(120% 140% at 0% 0%, rgba(37, 99, 235, 0.1), transparent 46%),
+            linear-gradient(150deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.98));
+          border-color: rgba(59, 130, 246, 0.2);
+          box-shadow: 0 3px 12px rgba(15, 23, 42, 0.09);
         }
 
         :root.vscode-light .fcs-count,
         [data-vscode-theme-kind="vscode-light"] .fcs-count,
-        :root.light .fcs-count {
-          color: #1e293b;
-        }
-
-        :root.vscode-light .fcs-stat--add,
-        [data-vscode-theme-kind="vscode-light"] .fcs-stat--add,
-        :root.light .fcs-stat--add {
-          color: #16a34a;
-          background: rgba(22, 163, 74, 0.1);
-        }
-
-        :root.vscode-light .fcs-stat--del,
-        [data-vscode-theme-kind="vscode-light"] .fcs-stat--del,
-        :root.light .fcs-stat--del {
-          color: #dc2626;
-          background: rgba(220, 38, 38, 0.1);
-        }
-
-        :root.vscode-light .fcs-btn--undo,
-        [data-vscode-theme-kind="vscode-light"] .fcs-btn--undo,
-        :root.light .fcs-btn--undo {
-          background: rgba(0, 0, 0, 0.04);
-          color: rgba(0, 0, 0, 0.7);
-          border-color: rgba(0, 0, 0, 0.1);
-        }
-
-        :root.vscode-light .fcs-btn--undo:hover,
-        [data-vscode-theme-kind="vscode-light"] .fcs-btn--undo:hover,
-        :root.light .fcs-btn--undo:hover {
-          background: rgba(0, 0, 0, 0.08);
-          color: rgba(0, 0, 0, 0.9);
-        }
-
-        :root.vscode-light .fcs-file-row,
-        [data-vscode-theme-kind="vscode-light"] .fcs-file-row,
-        :root.light .fcs-file-row {
-          background: rgba(0, 0, 0, 0.02);
-        }
-
-        :root.vscode-light .fcs-file-row:hover,
-        [data-vscode-theme-kind="vscode-light"] .fcs-file-row:hover,
-        :root.light .fcs-file-row:hover {
-          background: rgba(99, 102, 241, 0.08);
-        }
-
-        :root.vscode-light .fcs-file-row--deleted,
-        [data-vscode-theme-kind="vscode-light"] .fcs-file-row--deleted,
-        :root.light .fcs-file-row--deleted {
-          background: rgba(220, 38, 38, 0.08);
-          border-color: rgba(220, 38, 38, 0.25);
-        }
-
-        :root.vscode-light .fcs-file-row--deleted:hover,
-        [data-vscode-theme-kind="vscode-light"] .fcs-file-row--deleted:hover,
-        :root.light .fcs-file-row--deleted:hover {
-          background: rgba(220, 38, 38, 0.12);
-          border-color: rgba(220, 38, 38, 0.35);
-        }
-
+        :root.light .fcs-count,
         :root.vscode-light .fcs-filename,
         [data-vscode-theme-kind="vscode-light"] .fcs-filename,
         :root.light .fcs-filename {
-          color: #1e293b;
-        }
-
-        :root.vscode-light .fcs-filename--deleted,
-        [data-vscode-theme-kind="vscode-light"] .fcs-filename--deleted,
-        :root.light .fcs-filename--deleted {
-          color: #dc2626;
+          color: #0f172a;
         }
 
         :root.vscode-light .fcs-directory,
         [data-vscode-theme-kind="vscode-light"] .fcs-directory,
         :root.light .fcs-directory {
-          color: rgba(0, 0, 0, 0.4);
+          color: rgba(15, 23, 42, 0.45);
         }
 
-        :root.vscode-light .fcs-icon,
-        [data-vscode-theme-kind="vscode-light"] .fcs-icon,
-        :root.light .fcs-icon {
-          color: rgba(0, 0, 0, 0.5);
+        :root.vscode-light .fcs-file-row,
+        [data-vscode-theme-kind="vscode-light"] .fcs-file-row,
+        :root.light .fcs-file-row {
+          background: rgba(148, 163, 184, 0.08);
+          border-color: rgba(100, 116, 139, 0.2);
         }
 
-        :root.vscode-light .fcs-badge--deleted,
-        [data-vscode-theme-kind="vscode-light"] .fcs-badge--deleted,
-        :root.light .fcs-badge--deleted {
-          color: #dc2626;
-          background: rgba(220, 38, 38, 0.12);
-          border-color: rgba(220, 38, 38, 0.3);
+        :root.vscode-light .fcs-btn--undo,
+        [data-vscode-theme-kind="vscode-light"] .fcs-btn--undo,
+        :root.light .fcs-btn--undo {
+          color: rgba(15, 23, 42, 0.85);
+          background: rgba(148, 163, 184, 0.16);
+          border-color: rgba(100, 116, 139, 0.28);
         }
       `}</style>
     </div>

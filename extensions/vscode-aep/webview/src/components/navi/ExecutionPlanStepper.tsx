@@ -75,6 +75,7 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
   const progressPercent =
     steps.length > 0 ? (progressCount / steps.length) * 100 : 0;
   const markerPosition = steps.length > 0 ? Math.max(0, Math.min(progressPercent, 100)) : 0;
+  const progressBadgeCount = allCompleted || hasError ? progressCount : completedCount;
 
   // Handle toggle - support both controlled and uncontrolled modes
   const handleToggle = () => {
@@ -228,7 +229,7 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
         </span>
         <span className="navi-plan-title">{headerText}</span>
         <span className="navi-plan-progress-badge">
-          {progressCount}/{steps.length}
+          {progressBadgeCount}/{steps.length}
         </span>
         <span className={`navi-plan-chevron ${isExpanded ? 'rotated' : ''}`}>
           {isExpanded ? (
@@ -246,7 +247,7 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
           style={{ width: `${progressPercent}%` }}
         />
         <span
-          className={`navi-plan-progress-marker ${isExecuting ? 'is-running' : ''} ${allCompleted ? 'is-complete' : ''} ${hasError ? 'has-error' : ''}`}
+          className={`navi-plan-progress-marker ${isExecuting && !allCompleted && !hasError ? 'is-running' : ''} ${allCompleted ? 'is-complete' : ''} ${hasError ? 'has-error' : ''}`}
           style={{ left: `${markerPosition}%`, transform: 'translate(-50%, -50%)' }}
           aria-hidden="true"
         />

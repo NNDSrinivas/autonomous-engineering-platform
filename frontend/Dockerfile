@@ -55,7 +55,7 @@ RUN npm run build
 FROM nginx:1.27-alpine
 
 # nginx config template — BACKEND_URL is substituted at container start
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Copy Vite build output
 COPY --from=builder /build/frontend/dist /usr/share/nginx/html

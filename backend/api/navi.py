@@ -158,9 +158,9 @@ class RunState(BaseModel):
     context: ContextPack
     plan: Optional[Plan] = None
     current_step: int = 0
-    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = (
-        "idle"
-    )
+    status: Literal[
+        "idle", "planning", "executing", "verifying", "done", "failed"
+    ] = "idle"
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: float = Field(default_factory=time.time)
 

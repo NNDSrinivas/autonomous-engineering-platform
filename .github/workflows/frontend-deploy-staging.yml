@@ -12,6 +12,7 @@ on:
       - 'frontend/tsconfig*.json'
       - 'frontend/package*.json'
       - 'frontend/Dockerfile'
+      - '.dockerignore'
       - '.github/workflows/frontend-deploy-staging.yml'
 
 env:
@@ -65,7 +66,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./frontend
+          context: .
           file: ./frontend/Dockerfile
           platforms: linux/amd64
           push: true

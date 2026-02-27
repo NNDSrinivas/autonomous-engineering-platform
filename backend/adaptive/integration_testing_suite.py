@@ -253,14 +253,14 @@ class AdaptiveLearningIntegrationSuite:
                 integration_status = await self._validate_component_integrations(
                     component_name, component
                 )
-                initialization_results["integration_points"][component_name] = (
-                    integration_status
-                )
+                initialization_results["integration_points"][
+                    component_name
+                ] = integration_status
 
             except Exception as e:
-                initialization_results["components"][component_name] = (
-                    f"failed: {str(e)}"
-                )
+                initialization_results["components"][
+                    component_name
+                ] = f"failed: {str(e)}"
                 logging.error(f"Failed to initialize {component_name}: {e}")
 
         # Perform system-wide health check

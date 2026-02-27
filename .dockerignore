@@ -78,14 +78,14 @@ wheels/
 .installed.cfg
 *.egg
 
-# Node modules and frontend (only if backend doesn't need them)
+# Node modules and build artifacts
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-frontend/
-web/
-extensions/
+# NOTE: Do NOT exclude frontend/, web/, extensions/ directories here
+# Different Dockerfiles need different directories (frontend needs frontend/ + packages/, backend needs backend/)
+# Let each Dockerfile explicitly COPY only what it needs
 
 # Local development files
 .env

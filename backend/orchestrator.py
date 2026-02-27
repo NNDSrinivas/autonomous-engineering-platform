@@ -263,27 +263,28 @@ PHASE_3_AVAILABLE = False
 
 
 class StateManager(Protocol):
-    def load_state(self, session_id: str) -> Dict[str, Any]: ...
+    def load_state(self, session_id: str) -> Dict[str, Any]:
+        ...
 
-    def save_state(self, session_id: str, state: Dict[str, Any]) -> None: ...
+    def save_state(self, session_id: str, state: Dict[str, Any]) -> None:
+        ...
 
 
 class MemoryRetriever(Protocol):
-    def retrieve(
-        self, intent: NaviIntent, context: Dict[str, Any]
-    ) -> Dict[str, Any]: ...
+    def retrieve(self, intent: NaviIntent, context: Dict[str, Any]) -> Dict[str, Any]:
+        ...
 
 
 class Planner(Protocol):
-    async def plan(
-        self, intent: NaviIntent, context: Dict[str, Any]
-    ) -> "PlanResult": ...
+    async def plan(self, intent: NaviIntent, context: Dict[str, Any]) -> "PlanResult":
+        ...
 
 
 class ToolExecutor(Protocol):
     async def execute_step(
         self, step: "PlannedStep", intent: NaviIntent, context: Dict[str, Any]
-    ) -> "StepResult": ...
+    ) -> "StepResult":
+        ...
 
 
 class LLMIntentClassifier(Protocol):
@@ -296,7 +297,8 @@ class LLMIntentClassifier(Protocol):
         api_key: Optional[str] = None,
         org_id: Optional[str] = None,
         session_id: Optional[str] = None,
-    ) -> NaviIntent: ...
+    ) -> NaviIntent:
+        ...
 
 
 # ============================================================================
@@ -629,7 +631,9 @@ class NaviOrchestrator:
                         getattr(impact_analysis, "testing_recommendations", [])
                         if hasattr(impact_analysis, "testing_recommendations")
                         else impact_analysis.get("testing_recommendations", [])
-                    )[:3],  # Limit for API
+                    )[
+                        :3
+                    ],  # Limit for API
                 },
                 "summary": f"Impact analysis: {getattr(impact_analysis, 'blast_radius', 0) if hasattr(impact_analysis, 'blast_radius') else impact_analysis.get('blast_radius', 0)} repositories affected, {getattr(getattr(impact_analysis, 'overall_risk', {}), 'value', 'low') if hasattr(impact_analysis, 'overall_risk') and hasattr(getattr(impact_analysis, 'overall_risk'), 'value') else impact_analysis.get('risk_level', 'low')} risk",
             }
@@ -691,7 +695,9 @@ class NaviOrchestrator:
                         getattr(health_report, "immediate_actions", [])
                         if hasattr(health_report, "immediate_actions")
                         else health_report.get("immediate_actions", [])
-                    )[:5],  # Limit for API
+                    )[
+                        :5
+                    ],  # Limit for API
                     "strategic_improvements": (
                         getattr(health_report, "strategic_improvements", [])
                         if hasattr(health_report, "strategic_improvements")
@@ -872,7 +878,9 @@ class NaviOrchestrator:
                         )
                         if hasattr(decision, "get")
                         else getattr(decision, "implementation_plan", [])
-                    )[:3],  # Limit for API
+                    )[
+                        :3
+                    ],  # Limit for API
                     "estimated_effort_weeks": (
                         getattr(
                             decision,

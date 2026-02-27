@@ -5695,9 +5695,9 @@ class SelfHealingEngine:
 
         if diagnosis.auto_fixable and retry_count < 3:
             result["recovery_plan"] = diagnosis.recovery_actions
-            result["message"] = (
-                f"Attempting automatic recovery: {diagnosis.likely_cause}"
-            )
+            result[
+                "message"
+            ] = f"Attempting automatic recovery: {diagnosis.likely_cause}"
         else:
             result["message"] = (
                 f"Manual intervention needed: {diagnosis.likely_cause}\n\nSuggested fixes:\n"

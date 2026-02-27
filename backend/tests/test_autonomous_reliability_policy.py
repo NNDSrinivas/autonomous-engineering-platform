@@ -105,15 +105,15 @@ class TestCommandFirstRouting:
 
         # Test command intent detection
         command_intent = mock_agent._detect_command_intent(user_request)
-        assert command_intent != "unknown", (
-            f"Failed to detect command intent in: {user_request}"
-        )
+        assert (
+            command_intent != "unknown"
+        ), f"Failed to detect command intent in: {user_request}"
 
         # Test that file operation check returns False (command, not file-op)
         is_file_op = mock_agent._is_file_operation_request(user_request, mock_context)
-        assert not is_file_op, (
-            f"Incorrectly classified '{user_request}' as file operation"
-        )
+        assert (
+            not is_file_op
+        ), f"Incorrectly classified '{user_request}' as file operation"
 
 
 class TestFileEvidence:
@@ -144,9 +144,9 @@ class TestFileEvidence:
     ):
         """Test that file evidence detection is conservative and accurate."""
         has_evidence = mock_agent._has_file_evidence(user_request)
-        assert has_evidence == should_have_evidence, (
-            f"File evidence check failed for: {user_request}"
-        )
+        assert (
+            has_evidence == should_have_evidence
+        ), f"File evidence check failed for: {user_request}"
 
 
 class TestReadOnlyDiscovery:
@@ -169,9 +169,9 @@ class TestReadOnlyDiscovery:
         forbidden_tools = ["write_file", "edit_file", "delete_file", "run_command"]
         for tool in forbidden_tools:
             result = await mock_agent._execute_readonly_discovery(tool, {})
-            assert not result.get("success"), (
-                f"Discovery allowed forbidden tool: {tool}"
-            )
+            assert not result.get(
+                "success"
+            ), f"Discovery allowed forbidden tool: {tool}"
             assert "not allowed" in result.get("error", "").lower()
 
     @pytest.mark.asyncio
@@ -200,9 +200,9 @@ class TestReadOnlyDiscovery:
 
         # First result should be from src/ (likely root) or root itself (exact match)
         # Should NOT be the deeply nested one
-        assert "src/components/nested" not in files[0], (
-            "Ranked deeply nested file first"
-        )
+        assert (
+            "src/components/nested" not in files[0]
+        ), "Ranked deeply nested file first"
 
     @pytest.mark.asyncio
     async def test_discovery_budget_limits(self, mock_agent, temp_workspace):
@@ -244,9 +244,9 @@ class TestDestructiveGates:
             tool_name, arguments, mock_context
         )
 
-        assert needs_confirm == should_require_confirm, (
-            f"Gate check failed for {tool_name}: {reason}"
-        )
+        assert (
+            needs_confirm == should_require_confirm
+        ), f"Gate check failed for {tool_name}: {reason}"
 
     def test_autofix_from_diagnostic_no_confirmation(self, mock_agent, mock_context):
         """Autofixes from recent diagnostic runs should not require confirmation."""
@@ -425,15 +425,15 @@ class TestDiagnosticTracking:
             )
 
         # Check that diagnostic run was tracked
-        assert mock_context.last_diagnostic_run is not None, (
-            "Diagnostic run should be tracked"
-        )
-        assert mock_context.last_diagnostic_run.get("type") == "lint", (
-            "Diagnostic type should be 'lint'"
-        )
-        assert "run_id" in mock_context.last_diagnostic_run, (
-            "Diagnostic run should have run_id"
-        )
+        assert (
+            mock_context.last_diagnostic_run is not None
+        ), "Diagnostic run should be tracked"
+        assert (
+            mock_context.last_diagnostic_run.get("type") == "lint"
+        ), "Diagnostic type should be 'lint'"
+        assert (
+            "run_id" in mock_context.last_diagnostic_run
+        ), "Diagnostic run should have run_id"
         # Note: affected_files may be empty in mocked tests if file parsing doesn't match perfectly
         # The important invariant is that the diagnostic tracking exists with a run_id
 
@@ -578,7 +578,7 @@ class TestScanCommandPolicy:
 
         result = await mock_agent._execute_tool(
             "run_command",
-            {"command": "bash -c \"find . -name '*.py'\""},
+            {"command": 'bash -c "find . -name \'*.py\'"'},
             mock_context,
         )
 

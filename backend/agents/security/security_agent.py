@@ -708,7 +708,9 @@ class SecurityAgent:
             f
             for f in findings
             if f.severity in ["critical", "high"] and f.confidence in ["high", "medium"]
-        ][:5]  # Limit to top 5 for performance
+        ][
+            :5
+        ]  # Limit to top 5 for performance
 
         for finding in patchable_findings:
             try:

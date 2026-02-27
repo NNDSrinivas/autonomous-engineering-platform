@@ -272,29 +272,29 @@ class Settings(BaseSettings):
 
     # Auth0 Configuration
     auth0_domain: Optional[str] = None
-    auth0_oauth_domain: Optional[str] = (
-        None  # Separate domain for OAuth device flow (may differ from main domain)
-    )
+    auth0_oauth_domain: Optional[
+        str
+    ] = None  # Separate domain for OAuth device flow (may differ from main domain)
     auth0_client_id: Optional[str] = None
-    auth0_device_client_id: Optional[str] = (
-        None  # Client ID for device authorization grant
-    )
+    auth0_device_client_id: Optional[
+        str
+    ] = None  # Client ID for device authorization grant
     auth0_client_secret: Optional[str] = None
     auth0_audience: Optional[str] = None
     auth0_algorithm: str = "RS256"
     auth0_issuer: Optional[str] = None  # JWT issuer (iss claim) for token validation
-    auth0_issuer_base_url: Optional[str] = (
-        None  # Auth0 issuer URL (e.g., https://your-tenant.auth0.com)
-    )
+    auth0_issuer_base_url: Optional[
+        str
+    ] = None  # Auth0 issuer URL (e.g., https://your-tenant.auth0.com)
     # Valid PKCE Native App Client IDs (comma-separated for all environments)
     # These are public client IDs (not secrets) for VS Code Native Apps
     # Format: "dev_client_id,staging_client_id,prod_client_id"
     # REQUIRED when JWT_ENABLED=true in production/staging (enforced by validator)
     # Example: "G5PtcWXaYKJ8JD2ktA9j40wwVnBuwOzu,ZtGrpbrjy6LuHHz1yeTiWwfb8FKZc5QT,VieiheBGMQu3rSq4fyqtjCZj3H9Q0Alq"
     auth0_valid_client_ids: str = ""
-    auth0_action_secret: Optional[str] = (
-        None  # Secret for Auth0 Actions webhook authentication
-    )
+    auth0_action_secret: Optional[
+        str
+    ] = None  # Secret for Auth0 Actions webhook authentication
 
     # AEP JWT Session Management
     aep_jwt_secret: Optional[str] = None

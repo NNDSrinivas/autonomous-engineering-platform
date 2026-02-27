@@ -65,9 +65,9 @@ class ExecutionRequest:
     affected_resources: List[str] = field(default_factory=list)
     rollback_plan: Optional[str] = None
     requires_confirmation: bool = True
-    confirmation_phrase: Optional[str] = (
-        None  # User must type this to confirm critical ops
-    )
+    confirmation_phrase: Optional[
+        str
+    ] = None  # User must type this to confirm critical ops
     created_at: datetime = field(default_factory=datetime.utcnow)
     expires_at: Optional[datetime] = None
     approved: bool = False

@@ -117,19 +117,19 @@ class NaviMemoryIntegration:
 
             # 2. Get conversation context if in a conversation - synchronous
             if conversation_id:
-                context["conversation_context"] = (
-                    self.conversation_memory.build_conversation_context(
-                        conversation_id,
-                        max_messages=20,
-                        include_summary=True,
-                    )
+                context[
+                    "conversation_context"
+                ] = self.conversation_memory.build_conversation_context(
+                    conversation_id,
+                    max_messages=20,
+                    include_summary=True,
                 )
 
             # 3. Get personalization context - synchronous
-            context["personalization"] = (
-                self.response_personalizer.build_personalization_context(
-                    user_id, org_id
-                )
+            context[
+                "personalization"
+            ] = self.response_personalizer.build_personalization_context(
+                user_id, org_id
             )
 
             # 4-7. Run all async operations in parallel for maximum speed

@@ -192,27 +192,27 @@ class ChatRequest(BaseModel):
 class NaviChatRequest(ChatRequest):
     attachments: List[Attachment] = Field(default_factory=list)
     executionMode: Optional[str] = None  # e.g., plan_propose | plan_and_run (future)
-    model: Optional[str] = (
-        None  # requested model id (e.g., openai/gpt-4o or auto/recommended)
-    )
+    model: Optional[
+        str
+    ] = None  # requested model id (e.g., openai/gpt-4o or auto/recommended)
     mode: Optional[str] = None  # chat mode (agent | plan | ask | edit)
     execution: Optional[str] = None  # UI execution mode label (agent/auto)
     scope: Optional[str] = None  # scope for routing (this_repo/current_file)
     provider: Optional[str] = None  # requested provider id
     workspace_root: Optional[str] = None  # Workspace root for reading new file contents
-    state: Optional[Dict[str, Any]] = (
-        None  # State from previous response for autonomous coding continuity
-    )
+    state: Optional[
+        Dict[str, Any]
+    ] = None  # State from previous response for autonomous coding continuity
 
     # 🚀 LLM-FIRST: Full VS Code context fields
-    current_file: Optional[str] = (
-        None  # Currently open file path (relative to workspace)
-    )
+    current_file: Optional[
+        str
+    ] = None  # Currently open file path (relative to workspace)
     current_file_content: Optional[str] = None  # Content of the current file
     selection: Optional[str] = None  # Selected text in the editor
-    errors: Optional[List[Dict[str, Any]]] = (
-        None  # List of errors from VS Code diagnostics
-    )
+    errors: Optional[
+        List[Dict[str, Any]]
+    ] = None  # List of errors from VS Code diagnostics
 
     # AUTO-RECOVERY: Last action error for NAVI to debug and continue
     last_action_error: Optional[Dict[str, Any]] = None

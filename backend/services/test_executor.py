@@ -698,9 +698,9 @@ class FailureAnalyzer:
         # Categorize error type
         if "AssertionError" in error or "assert" in error.lower():
             analysis["error_type"] = "assertion"
-            analysis["root_cause"] = (
-                "Test assertion failed - expected value doesn't match actual"
-            )
+            analysis[
+                "root_cause"
+            ] = "Test assertion failed - expected value doesn't match actual"
             analysis["suggested_fixes"] = [
                 "Check if the expected value in the test is correct",
                 "Verify the function under test is returning the right value",
@@ -850,9 +850,9 @@ async def verify_tests_pass(workspace_path: str) -> Tuple[bool, Dict[str, Any]]:
 
     if not success and result.get("failed", 0) > 0:
         # Add diagnostic info
-        result["diagnosis"] = (
-            "Tests failed - review the failed tests and fix suggestions"
-        )
+        result[
+            "diagnosis"
+        ] = "Tests failed - review the failed tests and fix suggestions"
         result["next_steps"] = [
             "Review the error messages for failed tests",
             "Check the suggested fixes",

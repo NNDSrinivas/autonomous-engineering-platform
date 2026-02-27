@@ -139,9 +139,9 @@ class CheckpointGateDetector:
     def __init__(self, enterprise_project_id: Optional[str] = None):
         """Initialize detector with optional enterprise project link."""
         self.enterprise_project_id = enterprise_project_id
-        self._detected_gates: List[
-            str
-        ] = []  # Track already detected gates to avoid duplicates
+        self._detected_gates: List[str] = (
+            []
+        )  # Track already detected gates to avoid duplicates
 
     def detect_gates(
         self,

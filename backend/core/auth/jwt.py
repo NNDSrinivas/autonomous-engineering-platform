@@ -119,10 +119,16 @@ def decode_jwt(token: str) -> dict:
                 )
 
             # Load valid client IDs from config (comma-separated list)
-            valid_client_ids = set(parse_comma_separated(settings.auth0_valid_client_ids))
+            valid_client_ids = set(
+                parse_comma_separated(settings.auth0_valid_client_ids)
+            )
             if not valid_client_ids:
-                logger.error("auth0_valid_client_ids not configured - rejecting all tokens")
-                raise JWTVerificationError("Server misconfiguration: no valid client IDs configured")
+                logger.error(
+                    "auth0_valid_client_ids not configured - rejecting all tokens"
+                )
+                raise JWTVerificationError(
+                    "Server misconfiguration: no valid client IDs configured"
+                )
 
             if azp not in valid_client_ids:
                 # Log only prefix for security (avoid leaking full client IDs in logs)
@@ -140,7 +146,7 @@ def decode_jwt(token: str) -> dict:
                 extra={
                     "audience": settings.JWT_AUDIENCE,
                     "issuer": settings.JWT_ISSUER,
-                }
+                },
             )
             raise JWTVerificationError("Invalid token claims") from e
         except JWTError as e:

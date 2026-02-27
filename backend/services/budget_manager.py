@@ -261,12 +261,14 @@ return {1}
                 details={
                     "failed_index": failed_index,
                     "remaining": remaining,
-                    "failed_scope": {
-                        "scope": failed_scope.scope,
-                        "scope_id": failed_scope.scope_id,
-                    }
-                    if failed_scope
-                    else None,
+                    "failed_scope": (
+                        {
+                            "scope": failed_scope.scope,
+                            "scope_id": failed_scope.scope_id,
+                        }
+                        if failed_scope
+                        else None
+                    ),
                 },
             )
 

@@ -131,9 +131,9 @@ def other_org_client():
 # Test utilities
 def assert_response_ok(response, expected_status=200):
     """Assert response status and return JSON"""
-    assert response.status_code == expected_status, (
-        f"Expected {expected_status}, got {response.status_code}: {response.text}"
-    )
+    assert (
+        response.status_code == expected_status
+    ), f"Expected {expected_status}, got {response.status_code}: {response.text}"
     return response.json()
 
 

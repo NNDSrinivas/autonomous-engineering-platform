@@ -197,10 +197,10 @@ class SecurityAgent:
                 scan_results["patches"] = patches
 
             # Generate recommendations
-            scan_results[
-                "recommendations"
-            ] = await self._generate_security_recommendations(
-                scan_results["findings"], scan_results["summary"]
+            scan_results["recommendations"] = (
+                await self._generate_security_recommendations(
+                    scan_results["findings"], scan_results["summary"]
+                )
             )
 
             # Calculate scan duration
@@ -708,7 +708,9 @@ class SecurityAgent:
             f
             for f in findings
             if f.severity in ["critical", "high"] and f.confidence in ["high", "medium"]
-        ][:5]  # Limit to top 5 for performance
+        ][
+            :5
+        ]  # Limit to top 5 for performance
 
         for finding in patchable_findings:
             try:

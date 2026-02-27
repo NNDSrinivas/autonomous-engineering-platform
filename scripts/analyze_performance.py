@@ -51,9 +51,11 @@ def analyze_by_scenario(metrics: List[Dict]) -> Dict:
                 "count": data["count"],
                 "latency_avg": statistics.mean(data["latencies"]),
                 "latency_median": statistics.median(data["latencies"]),
-                "latency_stdev": statistics.stdev(data["latencies"])
-                if len(data["latencies"]) > 1
-                else 0,
+                "latency_stdev": (
+                    statistics.stdev(data["latencies"])
+                    if len(data["latencies"]) > 1
+                    else 0
+                ),
                 "tokens_avg": statistics.mean(data["tokens"]),
                 "cost_avg": statistics.mean(data["costs"]),
                 "cost_total": sum(data["costs"]),

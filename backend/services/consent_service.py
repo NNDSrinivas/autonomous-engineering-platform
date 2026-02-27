@@ -359,9 +359,9 @@ class ConsentService:
                     "id": str(pref.id),
                     "preference_type": pref.preference_type,
                     "command_pattern": pref.command_pattern,
-                    "created_at": pref.created_at.isoformat()
-                    if pref.created_at
-                    else None,
+                    "created_at": (
+                        pref.created_at.isoformat() if pref.created_at else None
+                    ),
                     "created_by_task_id": pref.created_by_task_id,
                 }
                 for pref in prefs
@@ -472,12 +472,12 @@ class ConsentService:
                     "danger_level": log.danger_level,
                     "decision": log.decision,
                     "alternative_command": log.alternative_command,
-                    "requested_at": log.requested_at.isoformat()
-                    if log.requested_at
-                    else None,
-                    "responded_at": log.responded_at.isoformat()
-                    if log.responded_at
-                    else None,
+                    "requested_at": (
+                        log.requested_at.isoformat() if log.requested_at else None
+                    ),
+                    "responded_at": (
+                        log.responded_at.isoformat() if log.responded_at else None
+                    ),
                     "response_time_ms": log.response_time_ms,
                     "task_id": log.task_id,
                     "session_id": log.session_id,

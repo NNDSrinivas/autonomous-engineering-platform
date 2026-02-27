@@ -636,9 +636,9 @@ class KnowledgeAggregator:
 
         # Team collaboration matrix
         for team1, knowledge1 in team_knowledge.items():
-            insights["team_collaboration_matrix"][team1] = (
-                knowledge1.collaboration_patterns
-            )
+            insights["team_collaboration_matrix"][
+                team1
+            ] = knowledge1.collaboration_patterns
 
         # Shared expertise areas
         expertise_teams = defaultdict(list)

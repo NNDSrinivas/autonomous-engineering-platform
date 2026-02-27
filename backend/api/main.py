@@ -645,7 +645,11 @@ app.include_router(
 # Register Auth0 device flow router (LEGACY - gated by feature flag)
 # DEPRECATED: Device flow is replaced by PKCE for VS Code extension.
 # Only enable ENABLE_LEGACY_DEVICE_FLOW=true for backward compatibility.
-if settings.enable_legacy_device_flow and AUTH0_DEVICE_CLIENT_ID and not settings.oauth_device_use_in_memory_store:
+if (
+    settings.enable_legacy_device_flow
+    and AUTH0_DEVICE_CLIENT_ID
+    and not settings.oauth_device_use_in_memory_store
+):
     app.include_router(oauth_device_auth0_router)
     logger.warning(
         "⚠️  LEGACY MODE: Device flow endpoints enabled. "

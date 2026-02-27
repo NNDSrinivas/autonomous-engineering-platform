@@ -329,11 +329,15 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
             return None
 
         # COPILOT FIX: Hard-block compound expressions and semantic-changing predicates
-        # Expanded to include -not, -path, -prune, -a/-and, ) to prevent semantic violations
-        # Example: find . -not -path '*/node_modules/*' -name '*.py' should NOT be rewritten
+        # Block any find command with predicates that would be dropped during rewrite
+        # Examples that MUST NOT be rewritten:
+        # - find . -name '*.log' -delete (drops destructive action!)
+        # - find . -name '*.py' -mtime -7 (drops time filter)
+        # - find . -name '*.py' -exec grep TODO {} \; (drops exec action)
         if any(
             tok in tokens
             for tok in [
+                # Logical operators
                 "-o",
                 "-or",  # OR operator
                 "!",
@@ -342,8 +346,25 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
                 ")",  # Grouping
                 "-a",
                 "-and",  # AND operator (explicit)
+                # Path/traversal predicates
                 "-path",  # Path matching (can exclude subtrees)
                 "-prune",  # Prune directories (changes traversal)
+                # Action predicates (CRITICAL - dropping these is dangerous!)
+                "-delete",  # Delete files
+                "-exec",  # Execute command
+                "-execdir",  # Execute in directory
+                "-ok",  # Prompt before exec
+                "-okdir",  # Prompt before execdir
+                # Filter predicates (dropping these changes semantics)
+                "-type",  # File type filter
+                "-size",  # Size filter
+                "-perm",  # Permission filter
+                "-mtime",  # Modification time
+                "-atime",  # Access time
+                "-ctime",  # Change time
+                "-newer",  # Newer than file
+                "-user",  # User filter
+                "-group",  # Group filter
             ]
         ):
             return ScanCommandInfo(

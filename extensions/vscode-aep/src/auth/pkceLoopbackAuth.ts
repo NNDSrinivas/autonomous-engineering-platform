@@ -36,6 +36,7 @@ export class PKCELoopbackAuthService {
 
   private server?: http.Server;
   private refreshTimer?: NodeJS.Timeout;
+  private refreshing: Promise<string | undefined> | null = null;
 
   constructor(context: vscode.ExtensionContext, config: PKCEAuthConfig) {
     this.context = context;
@@ -254,8 +255,9 @@ export class PKCELoopbackAuthService {
       ">": "&gt;",
       '"': "&quot;",
       "'": "&#039;",
+      "`": "&#96;",
     };
-    return text.replace(/[&<>"']/g, (m) => map[m]);
+    return text.replace(/[&<>"'`]/g, (m) => map[m]);
   }
 
   /**
@@ -461,18 +463,29 @@ export class PKCELoopbackAuthService {
 
       if (expiresIn < 60) {
         // Token expired or expiring soon, refresh it
+        // Check if refresh is already in progress to prevent race conditions
+        if (this.refreshing) {
+          return this.refreshing;
+        }
+
         const refreshToken = await this.context.secrets.get("auth0_refresh_token");
         if (refreshToken) {
-          try {
-            const tokens = await this.refreshAccessToken(refreshToken);
-            await this.storeTokens(tokens);
-            return tokens.access_token;
-          } catch (error) {
-            console.error("Token refresh failed:", error);
-            // Clear invalid tokens
-            await this.logout();
-            return undefined;
-          }
+          this.refreshing = (async () => {
+            try {
+              const tokens = await this.refreshAccessToken(refreshToken);
+              await this.storeTokens(tokens);
+              return tokens.access_token;
+            } catch (error) {
+              console.error("Token refresh failed:", error);
+              // Clear invalid tokens
+              await this.logout();
+              return undefined;
+            } finally {
+              this.refreshing = null;
+            }
+          })();
+
+          return this.refreshing;
         }
       }
     }
@@ -501,6 +514,9 @@ export class PKCELoopbackAuthService {
       clearTimeout(this.refreshTimer);
       this.refreshTimer = undefined;
     }
+
+    // Clear refresh lock
+    this.refreshing = null;
 
     vscode.window.showInformationMessage("Signed out successfully");
   }

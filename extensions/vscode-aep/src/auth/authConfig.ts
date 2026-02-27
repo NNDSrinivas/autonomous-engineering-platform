@@ -56,8 +56,15 @@ export function inferEnvironment(backendUrl: string): Environment {
     return 'staging';
   }
 
-  // Production: everything else
-  return 'production';
+  // Production: whitelist of known production domains
+  const PRODUCTION_DOMAINS = ['api.navralabs.com', 'app.navralabs.com', 'navralabs.com'];
+  if (PRODUCTION_DOMAINS.some(domain => url.includes(domain))) {
+    return 'production';
+  }
+
+  // Default to dev for safety (unrecognized URLs should not use production credentials)
+  console.warn(`Unrecognized backend URL: ${backendUrl}, defaulting to dev environment`);
+  return 'dev';
 }
 
 /**

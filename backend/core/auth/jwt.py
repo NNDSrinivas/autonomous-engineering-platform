@@ -113,15 +113,19 @@ def decode_jwt(token: str) -> dict:
             # SECURITY: Validate authorized party (azp/client_id) for PKCE tokens
             # Only tokens from our VS Code Native apps should be accepted
             azp = payload.get("azp") or payload.get("client_id")
-            if azp:
-                valid_client_ids = {
-                    "G5PtcWXaYKJ8JD2ktA9j40wwVnBuwOzu",  # NAVI VSCode (Dev)
-                    "ZtGrpbrjy6LuHHz1yeTiWwfb8FKZc5QT",  # NAVI VSCode (Staging)
-                    "VieiheBGMQu3rSq4fyqtjCZj3H9Q0Alq",  # NAVI VSCode (Production)
-                }
-                if azp not in valid_client_ids:
-                    logger.warning(f"Invalid authorized party rejected: {azp}")
-                    raise JWTVerificationError(f"Invalid authorized party: {azp}")
+            if not azp:
+                raise JWTVerificationError(
+                    "Token missing required authorized party claim (azp/client_id)"
+                )
+
+            valid_client_ids = {
+                "G5PtcWXaYKJ8JD2ktA9j40wwVnBuwOzu",  # NAVI VSCode (Dev)
+                "ZtGrpbrjy6LuHHz1yeTiWwfb8FKZc5QT",  # NAVI VSCode (Staging)
+                "VieiheBGMQu3rSq4fyqtjCZj3H9Q0Alq",  # NAVI VSCode (Production)
+            }
+            if azp not in valid_client_ids:
+                logger.warning(f"Invalid authorized party rejected: {azp}")
+                raise JWTVerificationError(f"Invalid authorized party: {azp}")
 
             return payload
         except ExpiredSignatureError as e:

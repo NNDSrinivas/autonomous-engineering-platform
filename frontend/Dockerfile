@@ -6,15 +6,18 @@
 # ── Stage 1: build ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+# Set workdir to parent so we can copy both frontend and packages as siblings
+WORKDIR /build
 
-# Install deps first (layer-cache friendly)
-COPY frontend/package.json frontend/package-lock.json ./
+# Copy frontend package.json for dependency installation
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+WORKDIR /build/frontend
 RUN npm install --prefer-offline
 
 # Copy frontend source and shared packages
-COPY frontend/ ./
-COPY packages/ ../packages/
+WORKDIR /build
+COPY frontend/ ./frontend/
+COPY packages/ ./packages/
 
 # Build-time env vars (Vite bakes these into the JS bundle).
 # WARNING: Defaults point to localhost — only valid for local dev builds.
@@ -40,6 +43,8 @@ RUN if [ "$NODE_ENV" = "production" ] && echo "$VITE_CORE_API" | grep -qiE "loca
       exit 1; \
     fi
 
+# Build from frontend directory
+WORKDIR /build/frontend
 RUN npm run build
 
 # ── Stage 2: serve ───────────────────────────────────────────────────────────
@@ -49,7 +54,7 @@ FROM nginx:1.27-alpine
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Copy Vite build output
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /build/frontend/dist /usr/share/nginx/html
 
 # nginx official image auto-runs envsubst on /etc/nginx/templates/*.template
 # and writes the result to /etc/nginx/conf.d/ before nginx starts.

@@ -205,9 +205,9 @@ def _is_scoped_path(path: str) -> bool:
     Examples treated as scoped:
       ./src, ../backend, backend/, src/components, src, backend
     Not scoped:
-      . , $PWD , ${PWD}, absolute paths (/, /usr), home paths (~, ~/dir)
+      . , .. , $PWD , ${PWD}, absolute paths (/, /usr), home paths (~, ~/dir)
     """
-    if path in [".", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
+    if path in [".", "..", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
         return False
     # Reject absolute paths and home expansions (unbounded)
     if path.startswith(("/", "~")):

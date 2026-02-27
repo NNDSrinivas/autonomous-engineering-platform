@@ -130,13 +130,20 @@ class TestCopilotP1Fixes:
 
         # Root indicators should NOT be scoped
         assert _is_scoped_path(".") is False
+        assert _is_scoped_path("..") is False  # Parent directory - outside workspace
         assert _is_scoped_path("$PWD") is False
         assert _is_scoped_path("${PWD}") is False
 
         # Directory-like paths should be scoped
         assert _is_scoped_path("./src") is True
+        assert _is_scoped_path("../backend") is True  # Parent with specific subdir is OK
         assert _is_scoped_path("backend/") is True
         assert _is_scoped_path("src/components") is True
+
+        # Parent directory scans should be detected
+        scan_info = is_scan_command("find .. -name '*.py'")
+        assert scan_info is not None, "find .. should be detected as unbounded scan"
+        assert scan_info.tool == "find"
 
     def test_p1_fix_2_rg_with_option_values_blocked(self):
         """P1 FIX #2: rg --max-count 10 TODO should be blocked (10 is option value, not path)."""

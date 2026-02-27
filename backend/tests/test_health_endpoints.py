@@ -95,7 +95,9 @@ def test_health_ready_includes_required_checks(client):
     check_names = {check["name"] for check in data["checks"]}
     assert "self" in check_names, "self check is mandatory for readiness"
     assert "db" in check_names, "db check is mandatory for readiness"
-    assert "redis" in check_names, "redis check is always included (may report ok=false)"
+    assert (
+        "redis" in check_names
+    ), "redis check is always included (may report ok=false)"
 
 
 @pytest.mark.integration

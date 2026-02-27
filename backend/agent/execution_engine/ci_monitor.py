@@ -311,7 +311,9 @@ class CIMonitor:
                 result.can_retry = False
 
             elif CIFailureType.INFRASTRUCTURE in failure_types:
-                result.suggested_action = "⚠️ Infrastructure failure - retry recommended"
+                result.suggested_action = (
+                    "⚠️ Infrastructure failure - retry recommended"
+                )
                 result.can_retry = True
 
             else:

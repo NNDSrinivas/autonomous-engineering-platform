@@ -478,7 +478,9 @@ async def test_real_llm_performance(llm_tester):
         ), f"Average cost ${avg_cost:.4f} exceeds threshold ${thresholds['avg_cost_per_request']}"
         print(f"✅ Cost tracking enabled - Average: ${avg_cost:.4f} per request")
     else:
-        print("⚠️  Cost tracking not available (tokens not being captured from backend)")
+        print(
+            "⚠️  Cost tracking not available (tokens not being captured from backend)"
+        )
 
     print("✅ All performance thresholds met!")
 

@@ -216,10 +216,13 @@ async def lifespan(app: FastAPI):
 
     # Initialize centralized Redis client for health checks
     from backend.services.redis_client import init_redis
+
     try:
         await init_redis()
     except Exception:
-        logger.warning("Redis client init failed (health checks will degrade)", exc_info=True)
+        logger.warning(
+            "Redis client init failed (health checks will degrade)", exc_info=True
+        )
 
     presence_lifecycle.start_cleanup_thread()
 
@@ -250,6 +253,7 @@ async def lifespan(app: FastAPI):
 
     # Close Redis client cleanly
     from backend.services.redis_client import close_redis
+
     try:
         await close_redis()
     except Exception:

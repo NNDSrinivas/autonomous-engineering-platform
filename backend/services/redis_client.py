@@ -4,6 +4,7 @@ Centralized Redis client lifecycle for health checks and shared services.
 Provides a singleton async Redis client with proper connection pool management.
 Prevents "transport closed" errors by ensuring clean init/shutdown lifecycle.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -53,7 +54,9 @@ def get_redis() -> Redis:
     Raises RuntimeError if init_redis() hasn't been called yet.
     """
     if _client is None:
-        raise RuntimeError("Redis client not initialized. Call init_redis() at startup.")
+        raise RuntimeError(
+            "Redis client not initialized. Call init_redis() at startup."
+        )
     return _client
 
 

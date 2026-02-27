@@ -257,7 +257,8 @@ export class PKCELoopbackAuthService {
       if (err.code === "EADDRINUSE") {
         // Port in use, try next port in range
         console.log(`Port ${port} in use, trying next port...`);
-        this.server?.removeAllListeners();
+        // Only remove error listeners, keep the request handler
+        this.server?.removeAllListeners("error");
         this.tryPortsInRange(timeout, resolve, reject, portIndex + 1);
       } else {
         clearTimeout(timeout);

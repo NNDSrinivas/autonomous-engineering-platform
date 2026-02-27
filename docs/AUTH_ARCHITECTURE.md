@@ -127,17 +127,32 @@ Extension auto-detects environment from `aep.navi.backendUrl` setting:
 ```typescript
 // extensions/vscode-aep/src/auth/authConfig.ts
 function inferEnvironment(backendUrl: string): Environment {
-  const url = backendUrl.toLowerCase();
+  try {
+    const url = new URL(backendUrl);
+    const hostname = url.hostname.toLowerCase();
 
-  if (url.includes('localhost') || url.includes('127.0.0.1')) {
+    // Dev: localhost or 127.0.0.1
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'dev';
+    }
+
+    // Staging: hostname contains "staging"
+    if (hostname.includes('staging')) {
+      return 'staging';
+    }
+
+    // Production: exact hostname match for known production domains
+    const PRODUCTION_DOMAINS = ['api.navralabs.com', 'app.navralabs.com', 'navralabs.com'];
+    if (PRODUCTION_DOMAINS.includes(hostname)) {
+      return 'production';
+    }
+
+    // Default to dev for safety
+    return 'dev';
+  } catch (error) {
+    // Invalid URL format - default to dev for safety
     return 'dev';
   }
-
-  if (url.includes('staging') || url.includes('api-staging')) {
-    return 'staging';
-  }
-
-  return 'production';
 }
 ```
 

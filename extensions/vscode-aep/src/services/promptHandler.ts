@@ -186,7 +186,7 @@ export class PromptHandler {
     try {
       const token = await this.getAuthToken();
       if (!token) {
-        console.error("[PromptHandler] No auth token available, sending cancellation");
+        console.error("[PromptHandler] No auth token available - cannot send prompt response");
 
         // Notify user about auth failure
         vscode.window.showErrorMessage(
@@ -194,23 +194,13 @@ export class PromptHandler {
           "Sign In"
         ).then(selection => {
           if (selection === "Sign In") {
-            vscode.commands.executeCommand("aep.auth.login");
+            vscode.commands.executeCommand("aep.signIn");
           }
         });
 
-        // Send cancellation to backend (no auth required for cancellation fallback)
-        // This ensures the backend doesn't wait indefinitely for a response
-        try {
-          const url = `${this.backendUrl}/api/navi/prompt/${promptId}`;
-          await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cancelled: true }),
-          });
-        } catch (fallbackError) {
-          console.error("[PromptHandler] Failed to send cancellation fallback:", fallbackError);
-        }
-
+        // NOTE: Cannot send cancellation without auth token.
+        // The /api/navi/prompt/{promptId} endpoint requires authentication (Role.VIEWER).
+        // Backend will timeout the prompt request after a reasonable period.
         return;
       }
 

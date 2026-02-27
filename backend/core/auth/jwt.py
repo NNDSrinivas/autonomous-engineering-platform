@@ -110,22 +110,25 @@ def decode_jwt(token: str) -> dict:
                 issuer=settings.JWT_ISSUER,
             )
 
-            # SECURITY: Validate authorized party (azp/client_id) for PKCE tokens
-            # Only tokens from our VS Code Native apps should be accepted
+            # SECURITY: Validate authorized party (azp/client_id) for PKCE native app tokens
+            # Only tokens from our allowlisted VS Code Native apps should be accepted
             azp = payload.get("azp") or payload.get("client_id")
             if not azp:
                 raise JWTVerificationError(
                     "Token missing required authorized party claim (azp/client_id)"
                 )
 
-            valid_client_ids = {
-                "G5PtcWXaYKJ8JD2ktA9j40wwVnBuwOzu",  # NAVI VSCode (Dev)
-                "ZtGrpbrjy6LuHHz1yeTiWwfb8FKZc5QT",  # NAVI VSCode (Staging)
-                "VieiheBGMQu3rSq4fyqtjCZj3H9Q0Alq",  # NAVI VSCode (Production)
-            }
+            # Load valid client IDs from config (comma-separated list)
+            valid_client_ids = set(parse_comma_separated(settings.auth0_valid_client_ids))
+            if not valid_client_ids:
+                logger.error("auth0_valid_client_ids not configured - rejecting all tokens")
+                raise JWTVerificationError("Server misconfiguration: no valid client IDs configured")
+
             if azp not in valid_client_ids:
-                logger.warning(f"Invalid authorized party rejected: {azp}")
-                raise JWTVerificationError(f"Invalid authorized party: {azp}")
+                # Log only prefix for security (avoid leaking full client IDs in logs)
+                azp_prefix = azp[:8] if len(azp) > 8 else "***"
+                logger.warning(f"Invalid authorized party rejected: {azp_prefix}...")
+                raise JWTVerificationError(f"Invalid authorized party")
 
             return payload
         except ExpiredSignatureError as e:

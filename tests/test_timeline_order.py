@@ -33,9 +33,9 @@ def test_timeline_is_ordered(api_client: Client, seeded_graph):
 
     # Verify strictly increasing (or equal for same-time events)
     for i in range(len(timestamps) - 1):
-        assert timestamps[i] <= timestamps[i + 1], (
-            f"Timeline not ordered: {timestamps[i]} > {timestamps[i + 1]}"
-        )
+        assert (
+            timestamps[i] <= timestamps[i + 1]
+        ), f"Timeline not ordered: {timestamps[i]} > {timestamps[i + 1]}"
 
     print(f"✅ Timeline ordered: {len(timestamps)} events in chronological order")
 
@@ -114,9 +114,9 @@ def test_timeline_window_filtering(api_client: Client, seeded_graph):
     data_7d = assert_response_ok(response_7d)
 
     # 7d window should not have more items than 30d
-    assert len(data_7d) <= len(data_30d), (
-        f"7d window ({len(data_7d)} items) should not exceed 30d window ({len(data_30d)} items)"
-    )
+    assert len(data_7d) <= len(
+        data_30d
+    ), f"7d window ({len(data_7d)} items) should not exceed 30d window ({len(data_30d)} items)"
 
     print(f"✅ Window filtering: 7d={len(data_7d)} events, 30d={len(data_30d)} events")
 
@@ -136,9 +136,9 @@ def test_timeline_includes_all_node_types(api_client: Client, seeded_graph):
 
     # Verify major types are present
     for expected_kind in expected_kinds:
-        assert expected_kind in kinds, (
-            f"Timeline missing expected node type: {expected_kind}"
-        )
+        assert (
+            expected_kind in kinds
+        ), f"Timeline missing expected node type: {expected_kind}"
 
     print(f"✅ Timeline includes all node types: {', '.join(sorted(kinds))}")
 
@@ -157,9 +157,9 @@ def test_timeline_has_required_fields(api_client: Client, seeded_graph):
             assert field in item, f"Timeline item {idx} missing required field: {field}"
 
         # Should have at least one timestamp field
-        assert "created_at" in item or "ts" in item, (
-            f"Timeline item {idx} missing timestamp field"
-        )
+        assert (
+            "created_at" in item or "ts" in item
+        ), f"Timeline item {idx} missing timestamp field"
 
     print(f"✅ All {len(data)} timeline items have required fields")
 

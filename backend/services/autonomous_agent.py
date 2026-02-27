@@ -304,7 +304,9 @@ class TaskContext:
     pending_prompt: Optional[PromptRequest] = None  # Prompt waiting for user input
     last_verification_failed: bool = False  # Track if last verification attempt failed
     # NEW: Diagnostic context tracking for safe autofixes
-    last_diagnostic_run: Optional[Dict[str, Any]] = None  # Track most recent diagnostic run (lint/test)
+    last_diagnostic_run: Optional[Dict[str, Any]] = (
+        None  # Track most recent diagnostic run (lint/test)
+    )
     # NEW: Read-only mode enforcement (set on clarification timeout)
     read_only_mode: bool = False  # When True, block all write operations
 
@@ -1726,8 +1728,19 @@ def create_user_prompt(
 
 # Directories to ignore during file discovery (prevents DoS in large repos)
 DISCOVERY_IGNORE_DIRS = {
-    ".git", "node_modules", "dist", "build", ".venv", "venv", "__pycache__",
-    ".next", ".cache", "coverage", ".pytest_cache", ".mypy_cache", "target"
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".next",
+    ".cache",
+    "coverage",
+    ".pytest_cache",
+    ".mypy_cache",
+    "target",
 }
 
 # Likely source code roots for disambiguation (prefer src/, backend/, etc.)
@@ -1736,21 +1749,58 @@ LIKELY_SOURCE_ROOTS = {"src", "backend", "app", "lib", "packages"}
 # Known file extensions for file evidence detection
 KNOWN_FILE_EXTENSIONS = {
     # Programming languages
-    ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".c", ".cpp", ".h", ".go", ".rs", ".rb", ".php",
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".java",
+    ".c",
+    ".cpp",
+    ".h",
+    ".go",
+    ".rs",
+    ".rb",
+    ".php",
     # Web
-    ".html", ".css", ".scss", ".sass", ".less", ".vue", ".svelte",
+    ".html",
+    ".css",
+    ".scss",
+    ".sass",
+    ".less",
+    ".vue",
+    ".svelte",
     # Config/Data
-    ".json", ".yml", ".yaml", ".toml", ".xml", ".ini", ".env",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".xml",
+    ".ini",
+    ".env",
     # Docs/Text
-    ".md", ".txt", ".rst",
+    ".md",
+    ".txt",
+    ".rst",
 }
 
 # Extensionless files that are real files (not concepts)
 # IMPORTANT: Stored in lowercase for case-insensitive matching
 KNOWN_FILE_BASENAMES = {
-    "dockerfile", "makefile", "rakefile", "gemfile", "procfile",
-    ".env", ".gitignore", ".dockerignore", ".npmignore", ".prettierignore",
-    "readme", "license", "changelog", "contributing"
+    "dockerfile",
+    "makefile",
+    "rakefile",
+    "gemfile",
+    "procfile",
+    ".env",
+    ".gitignore",
+    ".dockerignore",
+    ".npmignore",
+    ".prettierignore",
+    "readme",
+    "license",
+    "changelog",
+    "contributing",
 }
 
 
@@ -3042,9 +3092,9 @@ class AutonomousAgent:
             potential_files.add(match.group(1).lower())
 
         # Extract from path-like spans (contains / or \) or file-ish tokens
-        for match in re.finditer(r'[\w\-./\\]+', request):
+        for match in re.finditer(r"[\w\-./\\]+", request):
             span = match.group(0)
-            if '/' in span or '\\' in span:
+            if "/" in span or "\\" in span:
                 # It's a path - extract basename
                 basename = os.path.basename(span)
                 if basename:
@@ -3053,9 +3103,11 @@ class AutonomousAgent:
                 # It's a standalone token - only add if it looks file-ish
                 # File-ish: known basename, contains dot, or starts with dot
                 span_lower = span.lower()
-                if (span_lower in KNOWN_FILE_BASENAMES or
-                    '.' in span or
-                    span.startswith('.')):
+                if (
+                    span_lower in KNOWN_FILE_BASENAMES
+                    or "." in span
+                    or span.startswith(".")
+                ):
                     potential_files.add(span_lower)
                 # Otherwise skip random words like "update", "config", "please"
 
@@ -3064,7 +3116,7 @@ class AutonomousAgent:
             return True  # Strong: known extensionless file in quoted/path/token context
 
         # Check for filename with known extension
-        ext_pattern = r'\b\w[\w\-]*(\.\w+)\b'
+        ext_pattern = r"\b\w[\w\-]*(\.\w+)\b"
         for match in re.finditer(ext_pattern, request):
             ext = match.group(1).lower()
             if ext in KNOWN_FILE_EXTENSIONS:
@@ -3072,7 +3124,7 @@ class AutonomousAgent:
 
         # Pattern 2: path/to/file or path\to\file (path separator + something)
         # Matches: src/Button.tsx, backend\auth.py
-        path_pattern = r'[\w\-]+[/\\][\w\-./\\]+'
+        path_pattern = r"[\w\-]+[/\\][\w\-./\\]+"
         if re.search(path_pattern, request):
             # Has path separator - likely a file path
             # Extra check: does it end with an extension?
@@ -3093,7 +3145,7 @@ class AutonomousAgent:
                 return True
 
             # HARDENED: Quoted path WITHOUT extension only counts if it EXISTS
-            if '/' in quoted or '\\' in quoted:
+            if "/" in quoted or "\\" in quoted:
                 # Check if this path exists in workspace (with escape protection)
                 potential_path = os.path.join(self.workspace_path, quoted)
                 potential_path = os.path.normpath(potential_path)
@@ -3101,7 +3153,9 @@ class AutonomousAgent:
                 # SECURITY: Workspace escape check before exists()
                 real_potential = os.path.realpath(potential_path)
                 real_workspace = os.path.realpath(self.workspace_path)
-                if real_potential.startswith(real_workspace) and os.path.exists(real_potential):
+                if real_potential.startswith(real_workspace) and os.path.exists(
+                    real_potential
+                ):
                     return True  # Strong: quoted path that actually exists in workspace
                 # Otherwise: could be concept like "auth/security" → NOT file evidence
 
@@ -3118,10 +3172,22 @@ class AutonomousAgent:
 
         # EXCLUDE linting/diagnostic (keeps existing check)
         linting_markers = [
-            "lint", "eslint", "ruff", "flake8", "pylint", "prettier",
-            "check for error", "fix error", "linting error", "syntax error",
-            "check the whole", "check the entire", "check all", "check project",
-            "run test", "run build"
+            "lint",
+            "eslint",
+            "ruff",
+            "flake8",
+            "pylint",
+            "prettier",
+            "check for error",
+            "fix error",
+            "linting error",
+            "syntax error",
+            "check the whole",
+            "check the entire",
+            "check all",
+            "check project",
+            "run test",
+            "run build",
         ]
         if any(marker in request_lower for marker in linting_markers):
             return False
@@ -3149,13 +3215,17 @@ class AutonomousAgent:
         # Test intent: "run tests", "run the tests", "execute test suite", etc.
         if re.search(r"\b(run|rerun|execute)\b.*\b(test|spec)\b", request_lower):
             return "test"
-        if re.search(r"\b(tests?|test suite|pytest|jest|vitest|mocha)\b", request_lower):
+        if re.search(
+            r"\b(tests?|test suite|pytest|jest|vitest|mocha)\b", request_lower
+        ):
             return "test"
 
         # Build intent: "run build", "run the build", "build the project", etc.
         if re.search(r"\b(run|execute)\b.*\bbuild\b", request_lower):
             return "build"
-        if re.search(r"\bbuild\b.*\b(project|app|site|frontend|backend|server)\b", request_lower):
+        if re.search(
+            r"\bbuild\b.*\b(project|app|site|frontend|backend|server)\b", request_lower
+        ):
             return "build"
 
         # Install intent
@@ -3249,9 +3319,7 @@ class AutonomousAgent:
         return None
 
     async def _execute_readonly_discovery(
-        self,
-        tool_name: str,
-        arguments: Dict[str, Any]
+        self, tool_name: str, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Execute read-only tools for auto-discovery ONLY.
@@ -3273,7 +3341,10 @@ class AutonomousAgent:
         ALLOWED_DISCOVERY_TOOLS = {"search_files", "list_directory", "mtime_check"}
         if tool_name not in ALLOWED_DISCOVERY_TOOLS:
             logger.warning(f"[Discovery] Blocked disallowed tool: {tool_name}")
-            return {"success": False, "error": f"Tool {tool_name} not allowed in discovery"}
+            return {
+                "success": False,
+                "error": f"Tool {tool_name} not allowed in discovery",
+            }
 
         try:
             if tool_name == "search_files":
@@ -3288,22 +3359,25 @@ class AutonomousAgent:
 
                 # Prevent empty/broad search (would match everything)
                 if len(search_term) < 2:
-                    return {"success": False, "error": "Search term too broad (min 2 chars)"}
+                    return {
+                        "success": False,
+                        "error": "Search term too broad (min 2 chars)",
+                    }
 
                 # Determine if this is a filename-like query vs general substring
                 # Filename-like: contains "." or matches known basename or looks like path
                 is_filename_query = (
-                    "." in search_term or
-                    "/" in search_term or
-                    "\\" in search_term or
-                    search_term.lower() in KNOWN_FILE_BASENAMES
+                    "." in search_term
+                    or "/" in search_term
+                    or "\\" in search_term
+                    or search_term.lower() in KNOWN_FILE_BASENAMES
                 )
 
                 matches = []
                 files_scanned = 0
                 dirs_scanned = 0
                 max_files = 5000  # Budget: stop after 5k files
-                max_dirs = 1000   # Budget: stop after 1k directories (prevents deep walk in large monorepos)
+                max_dirs = 1000  # Budget: stop after 1k directories (prevents deep walk in large monorepos)
                 # Tighter cap for substring queries (non-filename-like)
                 max_results = 50 if is_filename_query else 20
                 start_time = time.time()
@@ -3312,17 +3386,23 @@ class AutonomousAgent:
                 # Normalize workspace root for escape detection
                 real_workspace = os.path.realpath(self.workspace_path)
 
-                for root, dirs, files in os.walk(self.workspace_path, followlinks=False):
+                for root, dirs, files in os.walk(
+                    self.workspace_path, followlinks=False
+                ):
                     dirs_scanned += 1
 
                     # Directory budget check
                     if dirs_scanned > max_dirs:
-                        logger.warning(f"[Discovery] Directory budget exceeded ({max_dirs} dirs)")
+                        logger.warning(
+                            f"[Discovery] Directory budget exceeded ({max_dirs} dirs)"
+                        )
                         break
 
                     # Time budget check
                     if time.time() - start_time > max_time:
-                        logger.warning(f"[Discovery] Time budget exceeded ({max_time}s)")
+                        logger.warning(
+                            f"[Discovery] Time budget exceeded ({max_time}s)"
+                        )
                         break
 
                     # Defense-in-depth: Skip if root itself is in ignored path
@@ -3344,7 +3424,9 @@ class AutonomousAgent:
                     for file_name in files:
                         files_scanned += 1
                         if files_scanned > max_files:
-                            logger.warning(f"[Discovery] File count budget exceeded ({max_files})")
+                            logger.warning(
+                                f"[Discovery] File count budget exceeded ({max_files})"
+                            )
                             break
 
                         # Substring match
@@ -3354,7 +3436,9 @@ class AutonomousAgent:
                             # SECURITY: Workspace escape protection
                             real_path = os.path.realpath(full_path)
                             if not real_path.startswith(real_workspace):
-                                logger.warning(f"[Discovery] Blocked path escape: {full_path}")
+                                logger.warning(
+                                    f"[Discovery] Blocked path escape: {full_path}"
+                                )
                                 continue
 
                             rel_path = os.path.relpath(full_path, self.workspace_path)
@@ -3376,21 +3460,26 @@ class AutonomousAgent:
                     is_exact_match = file_name.lower() == search_term.lower()
 
                     # Check if in likely source root
-                    in_likely_root = any(norm_path.startswith(root + "/") for root in LIKELY_SOURCE_ROOTS)
+                    in_likely_root = any(
+                        norm_path.startswith(root + "/") for root in LIKELY_SOURCE_ROOTS
+                    )
 
                     # Path depth (shallower is better)
                     path_depth = file_path.count("/") + file_path.count("\\")
 
                     # For non-filename queries, weigh likely_root more heavily
                     # by penalizing non-root paths with extra depth
-                    likely_root_weight = 0 if in_likely_root else (100 if not is_filename_query else 0)
+                    likely_root_weight = (
+                        0 if in_likely_root else (100 if not is_filename_query else 0)
+                    )
 
                     # Return sort key (negate bools for DESC, use depth as-is for ASC)
                     return (
-                        -int(is_exact_match),           # Exact matches first
-                        -int(in_likely_root),            # Likely roots second
-                        path_depth + likely_root_weight, # Shallower paths third (heavily penalize non-roots for substring queries)
-                        len(file_path)                   # Shorter paths fourth
+                        -int(is_exact_match),  # Exact matches first
+                        -int(in_likely_root),  # Likely roots second
+                        path_depth
+                        + likely_root_weight,  # Shallower paths third (heavily penalize non-roots for substring queries)
+                        len(file_path),  # Shorter paths fourth
                     )
 
                 matches.sort(key=rank_match)
@@ -3401,13 +3490,17 @@ class AutonomousAgent:
                     "count": len(matches),
                     "truncated": len(matches) >= max_results,
                     "files_scanned": files_scanned,
-                    "ranked": True  # Flag indicating results are ranked
+                    "ranked": True,  # Flag indicating results are ranked
                 }
 
             elif tool_name == "list_directory":
                 # SAFE: Uses os.listdir with type info, ignores junk
                 path = arguments.get("path", "")
-                full_path = os.path.join(self.workspace_path, path) if path else self.workspace_path
+                full_path = (
+                    os.path.join(self.workspace_path, path)
+                    if path
+                    else self.workspace_path
+                )
 
                 # SECURITY: Normalize and check workspace escape
                 full_path = os.path.normpath(full_path)
@@ -3431,11 +3524,13 @@ class AutonomousAgent:
                         if is_dir and name in DISCOVERY_IGNORE_DIRS:
                             continue
 
-                        entries.append({
-                            "name": name,
-                            "type": "directory" if is_dir else "file",
-                            "is_symlink": is_symlink
-                        })
+                        entries.append(
+                            {
+                                "name": name,
+                                "type": "directory" if is_dir else "file",
+                                "is_symlink": is_symlink,
+                            }
+                        )
                     except OSError:
                         # Skip entries we can't stat
                         continue
@@ -3462,7 +3557,9 @@ class AutonomousAgent:
                     # SECURITY: Workspace escape protection
                     real_path = os.path.realpath(full_path)
                     if not real_path.startswith(real_workspace):
-                        logger.warning(f"[Discovery] Blocked path escape in mtime: {file_path}")
+                        logger.warning(
+                            f"[Discovery] Blocked path escape in mtime: {file_path}"
+                        )
                         continue
 
                     if os.path.exists(real_path) and os.path.isfile(real_path):
@@ -3471,16 +3568,21 @@ class AutonomousAgent:
                         # Tie-breakers for when mtimes are close
                         # Normalize separators for cross-platform consistency
                         norm_path = file_path.replace("\\", "/")
-                        in_likely_root = any(norm_path.startswith(root + "/") for root in LIKELY_SOURCE_ROOTS)
+                        in_likely_root = any(
+                            norm_path.startswith(root + "/")
+                            for root in LIKELY_SOURCE_ROOTS
+                        )
                         path_depth = file_path.count("/") + file_path.count("\\")
 
-                        mtimes.append({
-                            "file": file_path,
-                            "mtime": mtime,
-                            "mtime_iso": datetime.fromtimestamp(mtime).isoformat(),
-                            "in_likely_root": in_likely_root,
-                            "path_depth": path_depth
-                        })
+                        mtimes.append(
+                            {
+                                "file": file_path,
+                                "mtime": mtime,
+                                "mtime_iso": datetime.fromtimestamp(mtime).isoformat(),
+                                "in_likely_root": in_likely_root,
+                                "path_depth": path_depth,
+                            }
+                        )
 
                 if not mtimes:
                     return {"success": False, "error": "No valid files found"}
@@ -3490,11 +3592,13 @@ class AutonomousAgent:
                 # DETERMINISTIC: Final tie-breaker is path string sort for stable results when mtimes are identical
                 mtimes.sort(
                     key=lambda x: (
-                        -x["mtime"],                    # Most recent first
-                        -int(x["in_likely_root"]),      # Likely roots second
-                        x["path_depth"],                # Shallower paths third
-                        len(x["file"]),                 # Shorter paths fourth
-                        x["file"]                       # DETERMINISTIC: Lexicographic sort as final tie-breaker
+                        -x["mtime"],  # Most recent first
+                        -int(x["in_likely_root"]),  # Likely roots second
+                        x["path_depth"],  # Shallower paths third
+                        len(x["file"]),  # Shorter paths fourth
+                        x[
+                            "file"
+                        ],  # DETERMINISTIC: Lexicographic sort as final tie-breaker
                     )
                 )
 
@@ -3502,7 +3606,7 @@ class AutonomousAgent:
                     "success": True,
                     "most_recent": mtimes[0]["file"],
                     "all_files": mtimes,
-                    "tie_breakers_used": True
+                    "tie_breakers_used": True,
                 }
 
             return {"success": False, "error": "Unknown discovery tool"}
@@ -3651,10 +3755,7 @@ class AutonomousAgent:
         return {"status": "not_found", "candidate": first_candidate or ""}
 
     async def _auto_discovery_attempt(
-        self,
-        preflight_status: str,
-        candidate: str,
-        matches: list
+        self, preflight_status: str, candidate: str, matches: list
     ) -> dict:
         """Run auto-discovery using read-only tools (no gates, no prompts)."""
 
@@ -3664,29 +3765,42 @@ class AutonomousAgent:
             # Use read-only runner (NOT _execute_tool)
             result = await self._execute_readonly_discovery(
                 "search_files",
-                {"pattern": candidate}  # Substring search (stars handled inside)
+                {"pattern": candidate},  # Substring search (stars handled inside)
             )
 
             if result.get("success") and result.get("files"):
                 found = result["files"]
                 if len(found) == 1:
-                    return {"status": "resolved", "targets": found, "auto_discovery": True}
+                    return {
+                        "status": "resolved",
+                        "targets": found,
+                        "auto_discovery": True,
+                    }
                 elif len(found) > 1:
-                    return {"status": "ambiguous", "matches": found[:10], "auto_discovery": True}
+                    return {
+                        "status": "ambiguous",
+                        "matches": found[:10],
+                        "auto_discovery": True,
+                    }
 
         elif preflight_status == "ambiguous" and matches and len(matches) <= 10:
-            logger.info(f"[AutoDiscovery] Disambiguating {len(matches)} matches via mtime")
+            logger.info(
+                f"[AutoDiscovery] Disambiguating {len(matches)} matches via mtime"
+            )
 
             # Use read-only runner (NOT _execute_tool)
             result = await self._execute_readonly_discovery(
-                "mtime_check",
-                {"files": matches}
+                "mtime_check", {"files": matches}
             )
 
             if result.get("success"):
                 most_recent = result["most_recent"]
                 logger.info(f"[AutoDiscovery] Picked most recent: {most_recent}")
-                return {"status": "resolved", "targets": [most_recent], "auto_discovery": True}
+                return {
+                    "status": "resolved",
+                    "targets": [most_recent],
+                    "auto_discovery": True,
+                }
 
         # Discovery didn't help
         return {"status": preflight_status, "matches": matches}
@@ -4059,6 +4173,7 @@ Use this context to understand existing patterns, dependencies, and architecture
         Generate a high-level plan for complex tasks before execution.
         This helps users understand what the agent will do.
         """
+
         def _normalize_step_text(value: Any) -> str:
             text = str(value or "")
             text = re.sub(r"\s+", " ", text).strip()
@@ -4276,7 +4391,9 @@ Use this context to understand existing patterns, dependencies, and architecture
                 cleaned = fenced.strip()
             return json.loads(cleaned)
 
-        async def _request_plan_from_llm(prompt: str, max_tokens: int = 500) -> Dict[str, Any]:
+        async def _request_plan_from_llm(
+            prompt: str, max_tokens: int = 500
+        ) -> Dict[str, Any]:
             if self.provider == "anthropic":
                 import anthropic
 
@@ -4436,9 +4553,7 @@ Use this context to understand existing patterns, dependencies, and architecture
                 pm = (
                     "npm"
                     if "npm" in request_lower
-                    else "yarn"
-                    if "yarn" in request_lower
-                    else "pnpm"
+                    else "yarn" if "yarn" in request_lower else "pnpm"
                 )
                 label = f"Install dependencies with {pm}"
                 desc = f"Running {pm} install to install project dependencies"
@@ -5235,7 +5350,10 @@ Respond with ONLY a JSON object:
                         f"{edit_payload_lines} payload lines)"
                     )
                     return (False, "autofix_from_diagnostic")
-                elif file_path in affected and edit_payload_lines > max_edit_payload_lines:
+                elif (
+                    file_path in affected
+                    and edit_payload_lines > max_edit_payload_lines
+                ):
                     # Edit payload is too large - require confirmation
                     logger.info(
                         f"[Gate] Autofix for {file_path} requires confirmation "
@@ -5268,7 +5386,10 @@ Respond with ONLY a JSON object:
             # If no autofix exception applies, check payload size
             edit_payload_lines = new_text.count("\n") if new_text else 0
             if edit_payload_lines > 50:
-                return (True, f"Large edit ({edit_payload_lines} lines) requires confirmation")
+                return (
+                    True,
+                    f"Large edit ({edit_payload_lines} lines) requires confirmation",
+                )
 
         # Write file: Check if overwriting protected paths or writing to protected names
         if tool_name == "write_file":
@@ -5295,9 +5416,15 @@ Respond with ONLY a JSON object:
                 file_exists = os.path.exists(full_path)
 
                 if file_exists:
-                    return (True, f"Overwriting protected file {file_basename} requires confirmation")
+                    return (
+                        True,
+                        f"Overwriting protected file {file_basename} requires confirmation",
+                    )
                 else:
-                    return (True, f"Creating protected file {file_basename} requires confirmation")
+                    return (
+                        True,
+                        f"Creating protected file {file_basename} requires confirmation",
+                    )
 
             # Check if overwriting existing file (even if not protected)
             full_path = os.path.join(self.workspace_path, file_path)
@@ -5307,7 +5434,10 @@ Respond with ONLY a JSON object:
                     with open(full_path, "r") as f:
                         existing_lines = len(f.readlines())
                         if existing_lines > 100:
-                            return (True, f"Overwriting large file ({existing_lines} lines) requires confirmation")
+                            return (
+                                True,
+                                f"Overwriting large file ({existing_lines} lines) requires confirmation",
+                            )
                 except Exception:
                     # Can't read file - safer to require confirmation
                     return (True, "Cannot verify file size - requiring confirmation")
@@ -5336,11 +5466,13 @@ Respond with ONLY a JSON object:
                 logger.warning(f"[ReadOnly] Blocked {tool_name} in read-only mode")
                 return {
                     "success": False,
-                    "error": f"Cannot {tool_name} in read-only mode (prompt timeout fallback)"
+                    "error": f"Cannot {tool_name} in read-only mode (prompt timeout fallback)",
                 }
 
         # STEP 2: Check destructive gates (only if not in read-only mode)
-        needs_confirm, reason = self._is_destructive_operation(tool_name, arguments, context)
+        needs_confirm, reason = self._is_destructive_operation(
+            tool_name, arguments, context
+        )
         if needs_confirm:
             # INVARIANT: Check for prompt stacking BEFORE creating new prompt
             if context.pending_prompt is not None:
@@ -5352,7 +5484,9 @@ Respond with ONLY a JSON object:
                     "error": f"Cannot create confirmation - prompt already pending: {context.pending_prompt.title}",
                 }
 
-            logger.info(f"[DestructiveGate] {tool_name} requires confirmation: {reason}")
+            logger.info(
+                f"[DestructiveGate] {tool_name} requires confirmation: {reason}"
+            )
             context.pending_prompt = create_user_prompt(
                 prompt_type="confirm",
                 title=f"Confirm {tool_name}",
@@ -5970,7 +6104,7 @@ Respond with ONLY a JSON object:
                         r"^ruff check(\s|$)",
                         r"^eslint(\s|$)",
                         r"^pylint(\s|$)",
-                        r"^prettier --check(\s|$)"
+                        r"^prettier --check(\s|$)",
                     ],
                     "test": [
                         r"^npm test(\s|$)",
@@ -5980,14 +6114,14 @@ Respond with ONLY a JSON object:
                         r"^vitest(\s|$)",
                         r"^cargo test(\s|$)",
                         r"^go test(\s|$)",
-                        r"^mvn test(\s|$)"
+                        r"^mvn test(\s|$)",
                     ],
                     "typecheck": [
                         r"^tsc --noEmit(\s|$)",
                         r"^npm run typecheck(\s|$)",
                         r"^mypy(\s|$)",
-                        r"^pyright(\s|$)"
-                    ]
+                        r"^pyright(\s|$)",
+                    ],
                 }
 
                 # ENFORCEMENT: diagnostic_intent must match command against regex family
@@ -5997,7 +6131,10 @@ Respond with ONLY a JSON object:
                 if diagnostic_intent and diagnostic_intent in DIAGNOSTIC_FAMILIES:
                     # Validate intent against command using regex families
                     family_patterns = DIAGNOSTIC_FAMILIES[diagnostic_intent]
-                    intent_matches_command = any(re.match(pattern, command.strip()) for pattern in family_patterns)
+                    intent_matches_command = any(
+                        re.match(pattern, command.strip())
+                        for pattern in family_patterns
+                    )
 
                     if intent_matches_command:
                         is_diagnostic = True
@@ -6010,7 +6147,10 @@ Respond with ONLY a JSON object:
                 else:
                     # No explicit intent - check if command matches ANY diagnostic family
                     for intent_type, family_patterns in DIAGNOSTIC_FAMILIES.items():
-                        if any(re.match(pattern, command.strip()) for pattern in family_patterns):
+                        if any(
+                            re.match(pattern, command.strip())
+                            for pattern in family_patterns
+                        ):
                             is_diagnostic = True
                             diagnostic_intent = intent_type  # Infer intent from command
                             break
@@ -6020,11 +6160,15 @@ Respond with ONLY a JSON object:
                     affected_files = []
                     real_workspace = os.path.realpath(self.workspace_path)
 
-                    for line in (stdout_text or "").split("\n")[:500]:  # Cap at 500 lines
+                    for line in (stdout_text or "").split("\n")[
+                        :500
+                    ]:  # Cap at 500 lines
                         # Look for file paths in output
-                        if any(ext in line for ext in [".ts", ".js", ".py", ".tsx", ".jsx"]):
+                        if any(
+                            ext in line for ext in [".ts", ".js", ".py", ".tsx", ".jsx"]
+                        ):
                             # Extract file path (naive extraction)
-                            match = re.search(r'([^\s:]+\.(ts|tsx|js|jsx|py))', line)
+                            match = re.search(r"([^\s:]+\.(ts|tsx|js|jsx|py))", line)
                             if match:
                                 file_path = match.group(1)
 
@@ -6034,21 +6178,30 @@ Respond with ONLY a JSON object:
                                 real_path = os.path.realpath(full_path)
 
                                 # Only include if exists and is in workspace
-                                if real_path.startswith(real_workspace) and os.path.exists(real_path):
+                                if real_path.startswith(
+                                    real_workspace
+                                ) and os.path.exists(real_path):
                                     affected_files.append(file_path)
 
                     # Increment diagnostic run counter to ensure single-run binding
-                    diagnostic_run_id = getattr(context, '_diagnostic_run_counter', 0) + 1
+                    diagnostic_run_id = (
+                        getattr(context, "_diagnostic_run_counter", 0) + 1
+                    )
                     context._diagnostic_run_counter = diagnostic_run_id
 
                     context.last_diagnostic_run = {
                         "run_id": diagnostic_run_id,  # NEW: unique ID for this specific run
-                        "type": diagnostic_intent or ("lint" if "lint" in command else "test"),
+                        "type": diagnostic_intent
+                        or ("lint" if "lint" in command else "test"),
                         "timestamp": time.time(),
                         "command": command,
-                        "affected_files": list(set(affected_files))[:20],  # Dedupe, cap at 20
+                        "affected_files": list(set(affected_files))[
+                            :20
+                        ],  # Dedupe, cap at 20
                     }
-                    logger.info(f"[Diagnostics] Tracked run #{diagnostic_run_id} with {len(list(set(affected_files)))} affected files")
+                    logger.info(
+                        f"[Diagnostics] Tracked run #{diagnostic_run_id} with {len(list(set(affected_files)))} affected files"
+                    )
 
                 # If this was a dev server command, verify the server is responding
                 if is_dev_server_cmd:
@@ -6109,9 +6262,9 @@ Respond with ONLY a JSON object:
                 )
 
                 if response.get("server_verified"):
-                    response["message"] += (
-                        f" | Server responding at {response.get('server_url')}"
-                    )
+                    response[
+                        "message"
+                    ] += f" | Server responding at {response.get('server_url')}"
 
                 # Post-process visual outputs (animations, videos) only for likely visual commands.
                 visual_command_patterns = [
@@ -6428,7 +6581,10 @@ Respond with ONLY a JSON object:
 
                 # Validate prompt_type
                 if prompt_type not in ["text", "select", "confirm"]:
-                    return {"success": False, "error": f"Invalid prompt_type: {prompt_type}. Must be text, select, or confirm"}
+                    return {
+                        "success": False,
+                        "error": f"Invalid prompt_type: {prompt_type}. Must be text, select, or confirm",
+                    }
 
                 # Create the prompt request
                 context.pending_prompt = create_user_prompt(
@@ -6436,7 +6592,11 @@ Respond with ONLY a JSON object:
                     title=arguments.get("title", "User input needed"),
                     description=question,
                     placeholder=arguments.get("placeholder"),
-                    options=arguments.get("options", []) if prompt_type == "select" else None,
+                    options=(
+                        arguments.get("options", [])
+                        if prompt_type == "select"
+                        else None
+                    ),
                 )
 
                 return {
@@ -7403,9 +7563,9 @@ Respond with ONLY a JSON object:
                                         logger.info(
                                             "[AutonomousAgent] 🚀 Auto-allowed, executing without consent"
                                         )
-                                        tool_info["arguments"]["consent_id"] = (
-                                            consent_id
-                                        )
+                                        tool_info["arguments"][
+                                            "consent_id"
+                                        ] = consent_id
                                         result = await self._execute_tool(
                                             tool_info["name"],
                                             tool_info["arguments"],
@@ -7473,14 +7633,14 @@ Respond with ONLY a JSON object:
                                             logger.info(
                                                 "[AutonomousAgent] 🔄 Retrying tool with consent approval"
                                             )
-                                            tool_info["arguments"]["consent_id"] = (
-                                                consent_id
-                                            )
+                                            tool_info["arguments"][
+                                                "consent_id"
+                                            ] = consent_id
                                             # If alternative command, update the args
                                             if decision.get("choice") == "alternative":
-                                                tool_info["arguments"]["command"] = (
-                                                    command_to_execute
-                                                )
+                                                tool_info["arguments"][
+                                                    "command"
+                                                ] = command_to_execute
                                             result = await self._execute_tool(
                                                 tool_info["name"],
                                                 tool_info["arguments"],
@@ -7614,9 +7774,9 @@ Respond with ONLY a JSON object:
                                         tc["arguments"]["consent_id"] = consent_id
                                         # If alternative command, update the args
                                         if decision.get("choice") == "alternative":
-                                            tc["arguments"]["command"] = (
-                                                command_to_execute
-                                            )
+                                            tc["arguments"][
+                                                "command"
+                                            ] = command_to_execute
                                         result = await self._execute_tool(
                                             tc["name"], tc["arguments"], context
                                         )
@@ -7912,10 +8072,11 @@ Respond with ONLY a JSON object:
                             scripts = pkg.get("scripts", {})
                             # Find matching script
                             for script_name, script_cmd in scripts.items():
-                                if command_intent in script_name or command_intent in script_cmd:
-                                    command_preflight_note = (
-                                        f"Found script `npm run {script_name}`. Use this."
-                                    )
+                                if (
+                                    command_intent in script_name
+                                    or command_intent in script_cmd
+                                ):
+                                    command_preflight_note = f"Found script `npm run {script_name}`. Use this."
                                     break
                     except Exception:
                         pass  # Ignore errors, will fall through to note

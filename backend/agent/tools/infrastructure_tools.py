@@ -1653,7 +1653,9 @@ spec:
             {{{{- toYaml .Values.resources | nindent 12 }}}}
           env:
             {{{{- toYaml .Values.env | nindent 12 }}}}
-""".format(name=chart_name)
+""".format(
+        name=chart_name
+    )
 
     lines = ["## Generated Helm Chart\n"]
     lines.append(f"**Chart Name**: {chart_name}")

@@ -867,12 +867,14 @@ async def run_validation_suite(
                 "passed": category_passed,
                 "failed": len(category_results) - category_passed,
                 "success_rate": (category_passed / len(category_results)) * 100,
-                "avg_latency_ms": statistics.mean(category_durations)
-                if category_durations
-                else 0,
-                "p95_latency_ms": statistics.quantiles(category_durations, n=20)[18]
-                if len(category_durations) >= 20
-                else (max(category_durations) if category_durations else 0),
+                "avg_latency_ms": (
+                    statistics.mean(category_durations) if category_durations else 0
+                ),
+                "p95_latency_ms": (
+                    statistics.quantiles(category_durations, n=20)[18]
+                    if len(category_durations) >= 20
+                    else (max(category_durations) if category_durations else 0)
+                ),
             }
 
     # Collect errors

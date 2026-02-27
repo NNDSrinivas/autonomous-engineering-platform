@@ -102,9 +102,9 @@ async def store_memory(
     try:
         # Generate embedding with timeout protection
         import asyncio
+
         embedding = await asyncio.wait_for(
-            generate_embedding(content),
-            timeout=timeout_seconds
+            generate_embedding(content), timeout=timeout_seconds
         )
 
         # Convert embedding to a string representation.

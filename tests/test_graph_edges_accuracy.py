@@ -42,16 +42,16 @@ def test_edges_accuracy(api_client: Client, seeded_graph):
     all_nodes = [data["node"]] + data["neighbors"]
 
     # Verify minimum node count (6 nodes in fixture, expect at least 3 in 1-hop)
-    assert len(all_nodes) >= 3, (
-        f"Expected ≥3 nodes in neighborhood, found {len(all_nodes)}"
-    )
+    assert (
+        len(all_nodes) >= 3
+    ), f"Expected ≥3 nodes in neighborhood, found {len(all_nodes)}"
 
     # Verify edge count threshold (12 edges expected in full graph, ≥4 in 1-hop)
     # 1-hop from ENG-102 should have: derived_from, implements, fixes, references
     min_edges = 4
-    assert len(data["edges"]) >= min_edges, (
-        f"Expected ≥{min_edges} edges in ENG-102 1-hop, found {len(data['edges'])}"
-    )
+    assert (
+        len(data["edges"]) >= min_edges
+    ), f"Expected ≥{min_edges} edges in ENG-102 1-hop, found {len(data['edges'])}"
 
     print(f"✅ Edge accuracy: {len(data['edges'])} edges in 1-hop neighborhood")
     print(f"✅ Relations found: {', '.join(sorted(relations))}")
@@ -66,19 +66,19 @@ def test_edge_weights_and_confidence(api_client: Client, seeded_graph):
         weight = edge.get("weight", 1.0)
         confidence = edge.get("confidence", 1.0)
 
-        assert 0.0 <= weight <= 1.0, (
-            f"Edge {edge['id']} weight {weight} out of range [0, 1]"
-        )
+        assert (
+            0.0 <= weight <= 1.0
+        ), f"Edge {edge['id']} weight {weight} out of range [0, 1]"
 
-        assert 0.0 <= confidence <= 1.0, (
-            f"Edge {edge['id']} confidence {confidence} out of range [0, 1]"
-        )
+        assert (
+            0.0 <= confidence <= 1.0
+        ), f"Edge {edge['id']} confidence {confidence} out of range [0, 1]"
 
         # High-confidence edges (fixes, implements) should have confidence ≥ 0.9
         if edge["relation"] in ["fixes", "implements"]:
-            assert confidence >= 0.9, (
-                f"High-confidence relation '{edge['relation']}' has low confidence: {confidence}"
-            )
+            assert (
+                confidence >= 0.9
+            ), f"High-confidence relation '{edge['relation']}' has low confidence: {confidence}"
 
 
 def test_no_duplicate_edges(api_client: Client, seeded_graph):
@@ -117,12 +117,12 @@ def test_bidirectional_edges_symmetric(api_client: Client, seeded_graph):
         if "next" in relations:
             # Should have corresponding "previous" edge in reverse
             reverse_key = (dst, src)
-            assert reverse_key in edges_by_nodes, (
-                f"'next' edge {src}→{dst} missing reverse 'previous' edge"
-            )
-            assert "previous" in edges_by_nodes[reverse_key], (
-                f"'next' edge {src}→{dst} has no 'previous' in reverse"
-            )
+            assert (
+                reverse_key in edges_by_nodes
+            ), f"'next' edge {src}→{dst} missing reverse 'previous' edge"
+            assert (
+                "previous" in edges_by_nodes[reverse_key]
+            ), f"'next' edge {src}→{dst} has no 'previous' in reverse"
 
     print("✅ Bidirectional edges are symmetric")
 
@@ -155,8 +155,8 @@ def test_specific_fixture_edges(api_client: Client, seeded_graph):
 
     # Verify expected edges exist
     for expected in expected_edges:
-        assert expected in actual_edges, (
-            f"Expected edge missing: {expected[0]} --[{expected[2]}]--> {expected[1]}"
-        )
+        assert (
+            expected in actual_edges
+        ), f"Expected edge missing: {expected[0]} --[{expected[2]}]--> {expected[1]}"
 
     print("✅ All critical fixture edges present")

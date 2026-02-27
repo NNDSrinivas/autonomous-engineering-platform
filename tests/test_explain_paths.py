@@ -29,9 +29,9 @@ def test_explain_contains_citations(api_client: Client, seeded_graph):
     # Verify narrative exists and is non-empty
     assert "narrative" in data, "Response missing 'narrative' field"
     narrative = data["narrative"]
-    assert narrative and len(narrative) > 50, (
-        f"Narrative too short or empty: {len(narrative)} chars"
-    )
+    assert (
+        narrative and len(narrative) > 50
+    ), f"Narrative too short or empty: {len(narrative)} chars"
 
     # Extract foreign IDs to check for citations
     foreign_ids = {node["foreign_id"] for node in data["nodes"]}
@@ -42,9 +42,9 @@ def test_explain_contains_citations(api_client: Client, seeded_graph):
     # Alternative: check for explicit citations field
     has_citations = "citations" in data or len(ids_in_narrative) > 0
 
-    assert has_citations, (
-        f"Narrative contains no citations to nodes. Narrative: {narrative[:200]}"
-    )
+    assert (
+        has_citations
+    ), f"Narrative contains no citations to nodes. Narrative: {narrative[:200]}"
 
     if ids_in_narrative:
         print(f"✅ Narrative cites: {', '.join(ids_in_narrative)}")
@@ -78,9 +78,9 @@ def test_explain_contains_causality_chain(api_client: Client, seeded_graph):
     found_keywords = [kw for kw in expected_keywords if kw in narrative]
 
     # Should mention at least 3 of the 5 key concepts
-    assert len(found_keywords) >= 3, (
-        f"Narrative missing causality keywords. Found: {found_keywords}, Narrative: {narrative[:300]}"
-    )
+    assert (
+        len(found_keywords) >= 3
+    ), f"Narrative missing causality keywords. Found: {found_keywords}, Narrative: {narrative[:300]}"
 
     print(f"✅ Narrative contains causality chain: {', '.join(found_keywords)}")
 
@@ -124,9 +124,9 @@ def test_explain_respects_k_parameter(api_client: Client, seeded_graph):
     data_limited = assert_response_ok(response_limited)
 
     # Should not exceed k nodes
-    assert len(data_limited["nodes"]) <= 3, (
-        f"Expected ≤3 nodes (k=3), found {len(data_limited['nodes'])}"
-    )
+    assert (
+        len(data_limited["nodes"]) <= 3
+    ), f"Expected ≤3 nodes (k=3), found {len(data_limited['nodes'])}"
 
     # Query with k=12 (larger)
     response_larger = api_client.post(
@@ -136,9 +136,9 @@ def test_explain_respects_k_parameter(api_client: Client, seeded_graph):
     data_larger = assert_response_ok(response_larger)
 
     # Should allow more nodes
-    assert len(data_larger["nodes"]) <= 12, (
-        f"Expected ≤12 nodes (k=12), found {len(data_larger['nodes'])}"
-    )
+    assert (
+        len(data_larger["nodes"]) <= 12
+    ), f"Expected ≤12 nodes (k=12), found {len(data_larger['nodes'])}"
 
     print(
         f"✅ k parameter: k=3 → {len(data_limited['nodes'])} nodes, k=12 → {len(data_larger['nodes'])} nodes"
@@ -161,12 +161,12 @@ def test_explain_returns_edges_for_subgraph(api_client: Client, seeded_graph):
     node_ids = {node["id"] for node in data["nodes"]}
 
     for edge in data["edges"]:
-        assert edge["src_id"] in node_ids, (
-            f"Edge src_id {edge['src_id']} not in node set"
-        )
-        assert edge["dst_id"] in node_ids, (
-            f"Edge dst_id {edge['dst_id']} not in node set"
-        )
+        assert (
+            edge["src_id"] in node_ids
+        ), f"Edge src_id {edge['src_id']} not in node set"
+        assert (
+            edge["dst_id"] in node_ids
+        ), f"Edge dst_id {edge['dst_id']} not in node set"
 
     print(
         f"✅ Subgraph has {len(data['edges'])} edges connecting {len(data['nodes'])} nodes"
@@ -184,13 +184,13 @@ def test_explain_narrative_is_coherent(api_client: Client, seeded_graph):
     narrative = data["narrative"]
 
     # Basic coherence checks
-    assert len(narrative) >= 100, (
-        f"Narrative too short to be coherent: {len(narrative)} chars"
-    )
+    assert (
+        len(narrative) >= 100
+    ), f"Narrative too short to be coherent: {len(narrative)} chars"
 
-    assert len(narrative) <= 5000, (
-        f"Narrative too long (possible error): {len(narrative)} chars"
-    )
+    assert (
+        len(narrative) <= 5000
+    ), f"Narrative too long (possible error): {len(narrative)} chars"
 
     # Should have multiple sentences
     sentence_count = narrative.count(".") + narrative.count("!") + narrative.count("?")

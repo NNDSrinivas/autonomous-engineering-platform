@@ -1506,9 +1506,7 @@ async def analyze_working_changes(
                             "severity": (
                                 "high"
                                 if any(i["severity"] == "high" for i in issues)
-                                else "medium"
-                                if issues
-                                else "low"
+                                else "medium" if issues else "low"
                             ),
                             "issues": issues,
                             "diff": change.get("diff", "")[:1000],

@@ -848,7 +848,9 @@ npm install
 yarn install
 # or
 pnpm install
-```""".format(name=project_info.name)
+```""".format(
+            name=project_info.name
+        )
 
     elif project_info.language == "python":
         return """```bash
@@ -862,7 +864,9 @@ source venv/bin/activate  # On Windows: venv\\Scripts\\activate
 
 # Install dependencies
 pip install -r requirements.txt
-```""".format(name=project_info.name)
+```""".format(
+            name=project_info.name
+        )
 
     return "TODO: Add installation instructions"
 

@@ -509,7 +509,9 @@ class Phase5System:
                         ),
                         "title": loop_execution.resolved_context.primary_object.get(
                             "title", ""
-                        )[:100],  # Truncate
+                        )[
+                            :100
+                        ],  # Truncate
                     }
 
             # Add execution plan details

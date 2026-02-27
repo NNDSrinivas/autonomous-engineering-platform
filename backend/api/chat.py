@@ -2188,9 +2188,7 @@ Would you like to try again with different settings?
                                     operation_icon = (
                                         "📄"
                                         if step.operation == "create"
-                                        else "✏️"
-                                        if step.operation == "modify"
-                                        else "🗑️"
+                                        else "✏️" if step.operation == "modify" else "🗑️"
                                     )
 
                                     # Try to get git diff stats for this file
@@ -3894,11 +3892,7 @@ async def _handle_task_query(
             status_emoji = (
                 "🔄"
                 if status == "In Progress"
-                else "📝"
-                if status == "To Do"
-                else "✅"
-                if status == "Done"
-                else "📌"
+                else "📝" if status == "To Do" else "✅" if status == "Done" else "📌"
             )
             jira_key = task.get("jira_key", "")
             title = task.get("title", "").replace(f"[Jira] {jira_key}: ", "")

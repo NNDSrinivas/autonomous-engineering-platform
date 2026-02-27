@@ -500,7 +500,9 @@ class IncidentStore:
                     """
                     DELETE FROM incidents 
                     WHERE resolved = 1 AND timestamp < datetime('now', '-{} days')
-                """.format(days_to_keep)
+                """.format(
+                        days_to_keep
+                    )
                 )
 
                 deleted_count = cursor.rowcount

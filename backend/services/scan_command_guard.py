@@ -476,16 +476,24 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
         # Single-char extensions like ".c" or ".r" are also allowed.
         MIN_PATTERN_LEN = 3
         ALLOW_LEN2_IF_LEADING_DOT = True
+        # Explicit whitelist of common single-char extensions
+        SINGLE_CHAR_EXTENSIONS = {".c", ".h", ".r", ".m", ".d", ".v"}
 
         if len(normalized) < MIN_PATTERN_LEN:
-            # Exception: allow 2-char patterns if they start with "." (extensions)
+            # Exception 1: 2-char patterns starting with "." (e.g., .py, .ts, .go)
+            # Rationale: file extensions are highly discriminative
             if (
                 len(normalized) == 2
                 and ALLOW_LEN2_IF_LEADING_DOT
                 and normalized.startswith(".")
             ):
-                pass  # Allow .py, .ts, .go
-            # Exception: allow single-char patterns if original was a dot-extension
+                pass  # Allow .py, .ts, .go, etc.
+            # Exception 2: single-char from whitelisted extensions (e.g., .c, .r, .h)
+            # Rationale: common in systems programming (C, R, Objective-C, Verilog)
+            elif len(normalized) == 1 and f".{normalized}" in SINGLE_CHAR_EXTENSIONS:
+                pass  # Allow .c → c, .r → r, .h → h
+            # Exception 3: single-char IF original pattern was a dot-extension
+            # Catches edge cases not in whitelist but clearly extension-based
             elif len(normalized) == 1:
                 is_single_char_extension = (
                     info.extracted_pattern is not None
@@ -518,12 +526,20 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
     if info.tool == "grep":
         return {
             "use_discovery": False,
+            "reason_code": "SCAN_BLOCKED_CONTENT_SEARCH",  # Machine-readable code
             "workflow_suggestion": (
                 "grep -R searches FILE CONTENT, not filenames. Safer workflow:\n"
                 "1) search_files to narrow candidate files by name/extension\n"
                 "2) read_file on candidates\n"
                 "3) (future) add a budgeted search_content tool for ripgrep"
             ),
+            "suggested_next_tool": "search_files",
+            "alternative_commands": [
+                "# First find files by extension:",
+                "search_files --pattern .py",
+                "# Then read candidates:",
+                "read_file path/to/candidate.py",
+            ],
         }
 
     if info.tool == "rg":
@@ -545,12 +561,20 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
 
         return {
             "use_discovery": False,
+            "reason_code": "SCAN_BLOCKED_UNBOUNDED_RG",  # Machine-readable code
             "alternative": f"rg {pattern!r} src -g'*.{{ts,tsx,js,py,go}}' --max-count 100",
             "workflow_suggestion": (
                 "rg searches FILE CONTENT. Either:\n"
                 "1) Add bounds: --glob/-g or --type/-t and explicit path\n"
                 "2) Use search_files for filename search, then read_file for content"
             ),
+            "suggested_next_tool": "search_files",
+            "alternative_commands": [
+                f"# Bounded rg with glob and path:",
+                f"rg {pattern!r} src/ -g'*.py' --max-count 100",
+                f"# Or use type filter:",
+                f"rg {pattern!r} backend/ --type python --max-count 100",
+            ],
         }
 
     return {"use_discovery": False}

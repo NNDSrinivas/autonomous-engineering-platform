@@ -3416,6 +3416,7 @@ class AutonomousAgent:
                 max_results = 50 if is_filename_query else 20
                 start_time = time.time()
                 max_time = 0.5  # Budget: 500ms max
+                limit_reason = None  # Track which budget was hit: time_budget, result_cap, scan_cap_dirs, scan_cap_files
 
                 # Normalize workspace root for escape detection
                 real_workspace = os.path.realpath(self.workspace_path)
@@ -3430,6 +3431,7 @@ class AutonomousAgent:
                         logger.warning(
                             f"[Discovery] Directory budget exceeded ({max_dirs} dirs)"
                         )
+                        limit_reason = "scan_cap_dirs"
                         break
 
                     # Time budget check
@@ -3437,6 +3439,7 @@ class AutonomousAgent:
                         logger.warning(
                             f"[Discovery] Time budget exceeded ({max_time}s)"
                         )
+                        limit_reason = "time_budget"
                         break
 
                     # Defense-in-depth: Skip if root itself is in ignored path
@@ -3461,6 +3464,7 @@ class AutonomousAgent:
                             logger.warning(
                                 f"[Discovery] File count budget exceeded ({max_files})"
                             )
+                            limit_reason = "scan_cap_files"
                             break
 
                         # Substring match
@@ -3479,6 +3483,7 @@ class AutonomousAgent:
                             matches.append(rel_path)
 
                             if len(matches) >= max_results:
+                                limit_reason = "result_cap"
                                 break
 
                     if len(matches) >= max_results or files_scanned > max_files:
@@ -3518,14 +3523,23 @@ class AutonomousAgent:
 
                 matches.sort(key=rank_match)
 
-                return {
+                # Determine if results were truncated
+                was_truncated = limit_reason is not None
+
+                result = {
                     "success": True,
                     "files": matches,
                     "count": len(matches),
-                    "truncated": len(matches) >= max_results,
+                    "truncated": was_truncated,
                     "files_scanned": files_scanned,
                     "ranked": True,  # Flag indicating results are ranked
                 }
+
+                # Add limit_reason if truncated (machine-readable reason)
+                if limit_reason:
+                    result["limit_reason"] = limit_reason
+
+                return result
 
             elif tool_name == "list_directory":
                 # SAFE: Uses os.listdir with type info, ignores junk
@@ -5773,16 +5787,21 @@ Respond with ONLY a JSON object:
                     # Fail-closed policy: only allow when user explicitly requested repo-wide scan
                     # AND command is bounded/scoped AND user confirmation flag is set.
                     if should_allow_scan_for_context(context, scan_info):
+                        # Structured telemetry: scan allowed
                         logger.info(
-                            f"[ScanGuard] Allowing scan tool={scan_info.tool} reason={scan_info.reason}"
+                            f"event=scan_guard_action action=allowed tool={scan_info.tool} "
+                            f"reason={scan_info.reason!r} task_id={context.task_id}"
                         )
                     else:
                         rewrite = rewrite_to_discovery(scan_info)
 
                         # Rewrite ONLY when filename semantics are preserved (find -name/-iname).
                         if rewrite.get("use_discovery"):
+                            # Structured telemetry: scan rewritten
                             logger.info(
-                                f"[ScanGuard] Rewriting {scan_info.tool}: {rewrite.get('explanation')}"
+                                f"event=scan_guard_action action=rewritten tool={scan_info.tool} "
+                                f"to_tool={rewrite['tool_name']} pattern={rewrite['arguments'].get('pattern')!r} "
+                                f"task_id={context.task_id}"
                             )
                             discovery_result = await self._execute_readonly_discovery(
                                 rewrite["tool_name"],
@@ -5797,8 +5816,11 @@ Respond with ONLY a JSON object:
                             return discovery_result
 
                         # Content scans (grep -R / unbounded rg) cannot be rewritten safely.
+                        # Structured telemetry: scan blocked
                         logger.warning(
-                            f"[ScanGuard] Blocking {scan_info.tool}: {scan_info.reason}"
+                            f"event=scan_guard_action action=blocked tool={scan_info.tool} "
+                            f"reason_code={rewrite.get('reason_code', 'SCAN_BLOCKED_UNBOUNDED')!r} "
+                            f"task_id={context.task_id}"
                         )
                         return {
                             "success": False,

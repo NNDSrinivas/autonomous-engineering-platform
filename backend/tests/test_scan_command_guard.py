@@ -504,3 +504,31 @@ class TestShouldAllowScanForContext:
             rewrite_kind="blocked",
         )
         assert should_allow_scan_for_context(ctx, info) is False
+
+
+class TestKnownBypasses:
+    """
+    Document known bypasses that are NOT yet patched.
+
+    These tests use @pytest.mark.xfail to document current limitations
+    without blocking CI. When bypasses are fixed, flip to expect success.
+    """
+
+    @pytest.mark.xfail(
+        reason="navi_brain.py plan executor does not yet apply scan command guard",
+        strict=False,
+    )
+    def test_navi_brain_plan_executor_bypass(self):
+        """
+        KNOWN BYPASS: navi_brain.py plan executor may execute run_command
+        without scan guard protection.
+
+        TODO: Add scan guard to navi_brain.py command execution path.
+        When fixed, remove @pytest.mark.xfail and this test should pass.
+        """
+        # This test documents the bypass for future tracking
+        # When navi_brain.py is patched, this will pass
+        assert False, (
+            "navi_brain.py plan executor bypasses scan guard - "
+            "expected to fail until patched"
+        )

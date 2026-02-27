@@ -218,6 +218,54 @@ class TestReadOnlyDiscovery:
         # Should complete quickly (< 1 second) even with budget
         # If it takes longer, budget limits might not be working
 
+    @pytest.mark.asyncio
+    async def test_discovery_truncation_flag(self, mock_agent, temp_workspace):
+        """
+        PRODUCTION INVARIANT: search_files must flag truncation with reason.
+
+        Critical for preventing agents from assuming completeness when
+        results are capped by time/scan/result budgets.
+        """
+        # Create many files to force result_cap truncation
+        import os
+
+        test_dir = os.path.join(temp_workspace, "many_files")
+        os.makedirs(test_dir, exist_ok=True)
+
+        # Create more files than the result cap (50 for filename queries, 20 for substring)
+        for i in range(60):
+            with open(os.path.join(test_dir, f"test_file_{i}.txt"), "w") as f:
+                f.write(f"file {i}")
+
+        # Search for pattern that matches all files (substring query -> cap of 20)
+        result = await mock_agent._execute_readonly_discovery(
+            "search_files", {"pattern": "test"}
+        )
+
+        # Must succeed
+        assert result.get("success"), "Discovery should succeed"
+
+        # Must indicate truncation
+        assert result.get("truncated") is True, (
+            "search_files must set truncated=True when hitting any budget cap"
+        )
+
+        # Must include machine-readable reason
+        assert "limit_reason" in result, (
+            "search_files must include limit_reason when truncated"
+        )
+
+        # Reason should be one of the expected values
+        valid_reasons = {"time_budget", "result_cap", "scan_cap_files", "scan_cap_dirs"}
+        assert result["limit_reason"] in valid_reasons, (
+            f"limit_reason must be one of {valid_reasons}, got {result['limit_reason']}"
+        )
+
+        # Should return count of what was actually returned
+        assert result.get("count") == len(result.get("files", [])), (
+            "count must match actual number of files returned"
+        )
+
 
 class TestDestructiveGates:
     """Test destructive operation gating."""
@@ -604,3 +652,27 @@ class TestScanCommandPolicy:
 
         # Must be blocked (piped scan)
         assert "blocked_command" in result, "Piped scan in bash -c must be blocked"
+
+    @pytest.mark.asyncio
+    async def test_nested_shell_wrapper(self, mock_agent, mock_context):
+        """
+        EDGE CASE: Nested shell wrappers (bash -lc "bash -c 'find...'").
+
+        Documents behavior when commands are wrapped in multiple shell layers.
+        Currently unwraps one layer; agent should handle or block gracefully.
+        """
+        mock_context.original_request = "find python files"
+        mock_context.iteration = 5
+
+        # Nested shell: bash -lc wrapping bash -c
+        cmd = """bash -lc "bash -c 'find . -name *.py'\" """
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": cmd},
+            mock_context,
+        )
+
+        # Should be handled (blocked, rewritten, or unwrapped)
+        # We don't require specific behavior, just document what happens
+        # If it passes through unwrapped, that's a known limitation
+        assert result is not None, "Command should return some result"

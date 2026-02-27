@@ -213,13 +213,17 @@ def _is_scoped_path(path: str) -> bool:
         return True
     if "/" in path and not path.startswith("."):
         return True
-    # P1 FIX: Treat plain directory names (src, backend, etc.) as scoped
-    # These are common directory names that indicate user intent to scope search,
-    # but avoid treating shell constructs (globs, vars, home shortcuts) as scoped.
-    # The startswith("-") check prevents treating command flags (e.g., "-name", "-type")
-    # as directory names. This should only be reached when callers pass actual path arguments,
-    # not option flags, but we defend-in-depth here.
-    if path and not path.startswith("-") and not re.search(r"[*?\[\]{}`$~]", path):
+    # P1 FIX: Treat plain directory names (src, backend, etc.) as scoped, but
+    # require at least two characters to avoid surprising behavior for
+    # single-character tokens like "a" or "1" that may be user mistakes.
+    # Avoid treating shell constructs (globs, vars, home shortcuts) or flags
+    # (e.g., "-name", "-type") as directory names.
+    if (
+        path
+        and len(path) > 1
+        and not path.startswith("-")
+        and not re.search(r"[*?\[\]{}`$~]", path)
+    ):
         return True
     return False
 
@@ -570,6 +574,10 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
             positionals = _extract_rg_positionals(info.tokens)
             if positionals:
                 pattern = positionals[0]
+
+        # If extraction failed entirely, fall back to a clear placeholder
+        if pattern == "PATTERN":
+            pattern = "<search-pattern>"
 
         return {
             "use_discovery": False,

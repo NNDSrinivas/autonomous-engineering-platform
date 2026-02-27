@@ -159,16 +159,20 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
 
 # ========== SECRET REDACTION FOR LOGGING ==========
 # Patterns to redact secrets from command strings in logs
+# Secret values should stop at common delimiters used in URLs and shells:
+# - '&' and whitespace (URL query params)
+# - shell metacharacters like ; | ( ) < > and quotes
+SECRET_VALUE_PATTERN = r"[^&\s;|()<>\"']+"
 SECRET_PATTERNS = [
     (re.compile(r"(authorization:\s*bearer\s+)[^\s]+", re.I), r"\1***"),
     (re.compile(r"(--api-key[=\s]+)[^\s]+", re.I), r"\1***"),
     (re.compile(r"(-H\s+['\"]?authorization:\s*bearer\s+)[^\s'\"]+", re.I), r"\1***"),
-    (re.compile(r"(token=)[^&\s]+", re.I), r"\1***"),
-    (re.compile(r"(password=)[^&\s]+", re.I), r"\1***"),
-    (re.compile(r"(api_key=)[^&\s]+", re.I), r"\1***"),
-    (re.compile(r"(apikey=)[^&\s]+", re.I), r"\1***"),
-    (re.compile(r"(access_token=)[^&\s]+", re.I), r"\1***"),
-    (re.compile(r"(secret=)[^&\s]+", re.I), r"\1***"),
+    (re.compile(rf"(token=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(password=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(api_key=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(apikey=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(access_token=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(secret=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
 ]
 
 
@@ -5718,12 +5722,22 @@ Respond with ONLY a JSON object:
                 # COPILOT FIX: Unwrap bash -c before scan detection
                 # bash -c 'rg TODO' should detect rg, not bash
                 # Use shlex.split() to handle nested quotes properly (e.g., bash -c "find . -name \"*.py\"")
+                # Extended to handle common flag combinations like `bash -lc` or `bash -ic`.
                 command_to_check = command
                 try:
                     parts = shlex.split(command.strip())
-                    # Check if it's bash/sh -c <command>
-                    if len(parts) >= 3 and parts[0] in ("bash", "sh") and parts[1] == "-c":
-                        command_to_check = parts[2]
+                    # Check if it's a bash/sh wrapper with a -c flag (e.g., "bash -c", "bash -lc", "bash -ic")
+                    if len(parts) >= 3 and parts[0] in ("bash", "sh"):
+                        cmd_index: Optional[int] = None
+                        # Search for any argument that is "-c" or contains "-c" (e.g., "-lc", "-ic")
+                        for i, arg in enumerate(parts[1:], start=1):
+                            if arg == "-c" or "c" in arg and arg.startswith("-"):
+                                # The wrapped command should be the token immediately after the -c flag
+                                if i + 1 < len(parts):
+                                    cmd_index = i + 1
+                                break
+                        if cmd_index is not None:
+                            command_to_check = parts[cmd_index]
                 except ValueError:
                     # If shlex fails, fall back to original command
                     pass
@@ -6181,10 +6195,11 @@ Respond with ONLY a JSON object:
                 stderr_task = asyncio.create_task(
                     read_stream(process.stderr, stderr_lines, "stderr")
                 )
-                deadline = time.time() + cmd_timeout
+                start_time = time.time()
+                deadline = start_time + cmd_timeout
                 timed_out = False
                 canceled = False
-                last_progress_time = time.time()  # NEW: Progress heartbeat tracking
+                last_progress_time = start_time  # NEW: Progress heartbeat tracking
                 progress_interval = 30.0  # NEW: Emit every 30s
                 try:
                     while process.returncode is None:
@@ -6199,7 +6214,7 @@ Respond with ONLY a JSON object:
                         # NEW: Progress heartbeat
                         now = time.time()
                         if now - last_progress_time >= progress_interval:
-                            elapsed_total = now - (deadline - cmd_timeout)
+                            elapsed_total = now - start_time
                             progress_pct = min(
                                 95, int((elapsed_total / cmd_timeout) * 100)
                             )

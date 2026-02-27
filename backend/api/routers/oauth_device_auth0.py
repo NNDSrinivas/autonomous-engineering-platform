@@ -29,11 +29,11 @@ logger = logging.getLogger(__name__)
 def _add_deprecation_headers(response: Response) -> None:
     """Add HTTP deprecation headers to signal legacy endpoint status."""
     response.headers["Deprecation"] = "true"
-    response.headers["Sunset"] = "Mon, 01 Jun 2026 00:00:00 GMT"  # RFC 8594 HTTP-date format
+    response.headers["Sunset"] = "Tue, 01 Dec 2026 00:00:00 GMT"  # RFC 8594 HTTP-date format (9 months notice for enterprise adoption)
     response.headers["Link"] = '<https://docs.navralabs.com/auth/pkce>; rel="sunset"'
     logger.warning(
         "DEPRECATED: Device flow endpoint called. "
-        "Extension v0.3.0+ uses PKCE. Device flow will be removed Mon, 01 Jun 2026 00:00:00 GMT."
+        "Extension v0.3.0+ uses PKCE. Device flow will be removed Tue, 01 Dec 2026 00:00:00 GMT."
     )
 
 

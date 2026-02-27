@@ -2,6 +2,10 @@
 # Two-stage: Node builds static assets, nginx serves them.
 # VITE_* vars are baked in at build time (Vite limitation).
 # Backend proxy URL is injected at runtime via BACKEND_URL env var.
+#
+# IMPORTANT: Build context must be repository root (not frontend/)
+# Usage: docker build -f frontend/Dockerfile .
+# This allows copying both frontend/ and packages/ directories
 
 # ── Stage 1: build ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder

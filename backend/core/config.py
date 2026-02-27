@@ -289,7 +289,9 @@ class Settings(BaseSettings):
     # Valid PKCE Native App Client IDs (comma-separated for all environments)
     # These are public client IDs (not secrets) for VS Code Native Apps
     # Format: "dev_client_id,staging_client_id,prod_client_id"
-    auth0_valid_client_ids: str = "G5PtcWXaYKJ8JD2ktA9j40wwVnBuwOzu,ZtGrpbrjy6LuHHz1yeTiWwfb8FKZc5QT,VieiheBGMQu3rSq4fyqtjCZj3H9Q0Alq"
+    # REQUIRED when JWT_ENABLED=true in production/staging (enforced by validator)
+    # Example: "G5PtcWXaYKJ8JD2ktA9j40wwVnBuwOzu,ZtGrpbrjy6LuHHz1yeTiWwfb8FKZc5QT,VieiheBGMQu3rSq4fyqtjCZj3H9Q0Alq"
+    auth0_valid_client_ids: str = ""
     auth0_action_secret: Optional[str] = (
         None  # Secret for Auth0 Actions webhook authentication
     )

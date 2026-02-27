@@ -219,11 +219,17 @@ export class PromptHandler {
       if (!httpResponse.ok) {
         const error = await httpResponse.text();
         console.error(`[PromptHandler] Failed to send response: ${error}`);
+        vscode.window.showErrorMessage(
+          "Failed to send your response to NAVI due to a server error. The agent may time out. Please try again."
+        );
       } else {
         console.log(`[PromptHandler] Response sent successfully for prompt ${promptId}`);
       }
     } catch (error) {
       console.error("[PromptHandler] Error sending prompt response:", error);
+      vscode.window.showErrorMessage(
+        "An error occurred while sending your response to NAVI. The agent may time out. Please check your connection and try again."
+      );
     }
   }
 }

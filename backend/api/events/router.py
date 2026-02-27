@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
+import asyncio
 import logging
 from datetime import timezone, datetime
 
@@ -121,6 +122,13 @@ async def _process_event_in_background(
             f"Background task: Successfully ingested event {event.source}:{event.event_type}:{event.external_id} as memory #{memory_id} for user {event.user_id}"
         )
 
+    except asyncio.TimeoutError:
+        # OpenAI embedding generation timed out (>10s default)
+        logger.error(
+            f"Background task: OpenAI embedding timeout for event {event.source}:{event.event_type}:{event.external_id} for user {event.user_id}. "
+            "Check OpenAI API latency or increase timeout_seconds parameter.",
+            exc_info=True
+        )
     except Exception as e:
         # Log error but don't re-raise since this is a background task
         # Memory ingestion is best-effort and shouldn't break the application
@@ -173,16 +181,15 @@ async def ingest_event(
         # Re-raise HTTP exceptions (validation errors)
         raise
     except Exception as e:
-        # Log unexpected errors but return graceful error response
+        # Log unexpected errors and return HTTP 503 for queueing failures
         logger.error(
             f"Failed to queue event {event.source}:{event.event_type}:{event.external_id} for user {event.user_id}: {str(e)}",
             exc_info=True
         )
-        # Return 202 Accepted even on queue failures - best-effort memory
-        return IngestResponse(
-            status="failed",
-            memory_id="error",
-            message=f"Failed to queue event: {str(e)}",
+        # Return HTTP 503 to signal temporary failure - allows client retry logic
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to queue event for ingestion: {str(e)}. Service temporarily unavailable, please retry."
         )
 
 

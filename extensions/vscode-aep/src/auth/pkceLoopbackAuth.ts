@@ -259,6 +259,8 @@ export class PKCELoopbackAuthService {
         console.log(`Port ${port} in use, trying next port...`);
         // Only remove error listeners, keep the request handler
         this.server?.removeAllListeners("error");
+        // Close the server to release the failed port before retrying
+        this.server?.close();
         this.tryPortsInRange(timeout, resolve, reject, portIndex + 1);
       } else {
         clearTimeout(timeout);

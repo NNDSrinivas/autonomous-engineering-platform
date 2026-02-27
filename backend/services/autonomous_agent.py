@@ -5756,11 +5756,11 @@ Respond with ONLY a JSON object:
                             }
                     # COPILOT FIX: Include || operator in split pattern (pattern order matters: \|\| before \|)
                     # Split by ALL operators detected by is_piped_or_chained()
-                    # including || (fallback), redirection (>, <), and -exec
-                    # Note: $() and backticks are handled above, xargs is detected but not a split delimiter
+                    # including || (fallback), redirection (>, <), -exec, and xargs
+                    # Note: $() and backticks are handled above. xargs is treated as a split delimiter so its subcommand is analyzed.
                     # Simplified: & handles all background cases uniformly (trailing, with space, etc.)
                     segments = re.split(
-                        r"\|\||\||&&|;|&|[<>]|-exec\b",
+                        r"\|\||\||&&|;|&|[<>]|-exec\b|\bxargs\b",
                         command_to_check,
                     )
                     for segment in segments:

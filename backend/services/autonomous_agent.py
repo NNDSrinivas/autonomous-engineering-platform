@@ -5516,6 +5516,81 @@ Respond with ONLY a JSON object:
                 command = arguments["command"]
                 command_raw = command
 
+                # ---------------------------------------------------------------------
+                # Scan Command Guard (PRE-WRAP / PRE-CONSENT)
+                #
+                # Prevent unbounded repo-wide scans (find . -type f, grep -R ... ., rg ...)
+                # that can hang large monorepos for minutes. Rewrite ONLY when semantics
+                # are preserved (filename -> filename): find -name/-iname -> search_files.
+                # Content scans (grep -R / unbounded rg) are BLOCKED (not rewritten).
+                # ---------------------------------------------------------------------
+                from backend.services.scan_command_guard import (
+                    is_scan_command,
+                    rewrite_to_discovery,
+                    should_allow_scan_for_context,
+                    is_piped_or_chained,
+                )
+
+                # Block scan commands inside pipes/chains/backgrounding/xargs/-exec early.
+                # We only inspect the first command segment for scan-class detection.
+                if is_piped_or_chained(command):
+                    first_cmd = re.split(r"\||&&|;|&\s|\bxargs\b", command)[0].strip()
+                    scan_info = is_scan_command(first_cmd)
+                    if scan_info:
+                        return {
+                            "success": False,
+                            "error": "⚠️ SCAN BLOCKED: Piped/chained scan detected. Break into steps.",
+                            "blocked_command": command,
+                            "reason": "Scan commands in pipes/chains cause multi-minute hangs in large repos.",
+                            "suggestion": (
+                                "Break into steps:\n"
+                                "1) Use search_files to find candidate files (bounded)\n"
+                                "2) Use read_file on candidates (or bounded commands per file)"
+                            ),
+                        }
+
+                scan_info = is_scan_command(command)
+                if scan_info:
+                    # Fail-closed policy: only allow when user explicitly requested repo-wide scan
+                    # AND command is bounded/scoped AND user confirmation flag is set.
+                    if should_allow_scan_for_context(context, scan_info):
+                        logger.info(
+                            f"[ScanGuard] Allowing scan tool={scan_info.tool} reason={scan_info.reason}"
+                        )
+                    else:
+                        rewrite = rewrite_to_discovery(scan_info)
+
+                        # Rewrite ONLY when filename semantics are preserved (find -name/-iname).
+                        if rewrite.get("use_discovery"):
+                            logger.info(
+                                f"[ScanGuard] Rewriting {scan_info.tool}: {rewrite.get('explanation')}"
+                            )
+                            discovery_result = await self._execute_readonly_discovery(
+                                rewrite["tool_name"],
+                                rewrite["arguments"],
+                            )
+                            # Annotate for transparency/debugging.
+                            if isinstance(discovery_result, dict):
+                                discovery_result["rewritten_from"] = command
+                                discovery_result["explanation"] = rewrite.get("explanation")
+                            return discovery_result
+
+                        # Content scans (grep -R / unbounded rg) cannot be rewritten safely.
+                        logger.warning(
+                            f"[ScanGuard] Blocking {scan_info.tool}: {scan_info.reason}"
+                        )
+                        return {
+                            "success": False,
+                            "error": f"⚠️ SCAN BLOCKED: {scan_info.reason}",
+                            "blocked_command": command,
+                            "alternative": rewrite.get("alternative"),
+                            "workflow_suggestion": rewrite.get("workflow_suggestion"),
+                            "reason": (
+                                f"{scan_info.tool} repo-wide scans can take 3–10 minutes and make the "
+                                "extension feel unresponsive. Use bounded discovery tools instead."
+                            ),
+                        }
+
                 def _is_background_command(cmd: str) -> bool:
                     stripped = cmd.strip()
                     if stripped.endswith("&"):
@@ -5868,6 +5943,8 @@ Respond with ONLY a JSON object:
                 deadline = time.time() + cmd_timeout
                 timed_out = False
                 canceled = False
+                last_progress_time = time.time()  # NEW: Progress heartbeat tracking
+                progress_interval = 30.0  # NEW: Emit every 30s
                 try:
                     while process.returncode is None:
                         if await self._is_cancel_requested():
@@ -5877,6 +5954,18 @@ Respond with ONLY a JSON object:
                         if remaining <= 0:
                             timed_out = True
                             break
+
+                        # NEW: Progress heartbeat
+                        now = time.time()
+                        if now - last_progress_time >= progress_interval:
+                            elapsed_total = now - (deadline - cmd_timeout)
+                            progress_pct = min(95, int((elapsed_total / cmd_timeout) * 100))
+                            logger.info(
+                                f"[CommandProgress] {command[:50]}... still running "
+                                f"({int(elapsed_total)}s / {cmd_timeout}s, ~{progress_pct}%)"
+                            )
+                            last_progress_time = now
+
                         try:
                             await asyncio.wait_for(
                                 process.wait(), timeout=min(0.5, remaining)

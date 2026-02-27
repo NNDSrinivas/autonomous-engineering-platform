@@ -472,3 +472,72 @@ class TestPolicyInvariants:
         assert hasattr(mock_context, "last_diagnostic_run")
         assert hasattr(mock_context, "read_only_mode")
         assert hasattr(mock_context, "pending_prompt")
+
+
+class TestScanCommandPolicy:
+    """
+    Policy invariant tests for scan command guard.
+
+    These tests validate that unbounded repo-wide scans are blocked/rewritten,
+    and that content searches are never rewritten to filename searches.
+    """
+
+    @pytest.mark.asyncio
+    async def test_unbounded_find_is_rewritten_or_blocked(self, mock_agent, mock_context):
+        """
+        INVARIANT 1: Unbounded find commands must be blocked or rewritten.
+        """
+        mock_context.original_request = "find the Button component"
+        mock_context.iteration = 1
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": "find . -name '*.tsx'"},
+            mock_context,
+        )
+
+        # Must be blocked or rewritten (not executed as-is)
+        assert result.get("blocked_command") or result.get("rewritten_from"), (
+            "Unbounded find command should be blocked or rewritten, not executed"
+        )
+
+    @pytest.mark.asyncio
+    async def test_content_search_not_rewritten_to_filename_search(self, mock_agent, mock_context):
+        """
+        INVARIANT 2: Content search (grep -R) must NOT be rewritten to filename search.
+        """
+        mock_context.original_request = "find TODOs in the code"
+        mock_context.iteration = 5
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": "grep -R 'TODO' ."},
+            mock_context,
+        )
+
+        # Must be blocked (not rewritten to filename search)
+        assert result.get("success") is False, "grep -R should be blocked"
+        assert "blocked" in (result.get("error") or "").lower(), (
+            "grep -R should show blocked error"
+        )
+        assert result.get("rewritten_from") is None, (
+            "Content search must NOT be rewritten to filename search"
+        )
+
+    @pytest.mark.asyncio
+    async def test_scoped_scans_pass_through(self, mock_agent, mock_context):
+        """
+        INVARIANT 3: Scoped scans (find ./src) should pass through to normal execution.
+        """
+        mock_context.original_request = "search in src only"
+        mock_context.iteration = 5
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": "find ./src -name '*.tsx'"},
+            mock_context,
+        )
+
+        # Should NOT be blocked or rewritten (scoped scans are safe)
+        assert "blocked_command" not in result, "Scoped find should not be blocked"
+        assert "rewritten_from" not in result, "Scoped find should not be rewritten"

@@ -3025,7 +3025,6 @@ class AutonomousAgent:
         """
         # SECURITY: Cap request length to prevent regex time surprises
         request = (request or "")[:2000]
-        request_lower = request.lower()
 
         # Check for known basenames (extensionless files) - case-insensitive with proper boundaries
         # SECURITY: Use explicit boundaries (not \b which fails for .env, .gitignore)
@@ -5274,7 +5273,6 @@ Respond with ONLY a JSON object:
         # Write file: Check if overwriting protected paths or writing to protected names
         if tool_name == "write_file":
             file_path = arguments.get("path", "")
-            content = arguments.get("content", "")
 
             # Check for protected paths (always, even when creating new files)
             PROTECTED_PATHS = {
@@ -6443,7 +6441,7 @@ Respond with ONLY a JSON object:
 
                 return {
                     "success": True,
-                    "message": f"User prompt created. Waiting for response...",
+                    "message": "User prompt created. Waiting for response...",
                     "prompt_id": context.pending_prompt.prompt_id,
                 }
 
@@ -7936,7 +7934,6 @@ Respond with ONLY a JSON object:
             # STRUCTURAL SKIP: This entire block only runs when command_intent == "unknown"
             file_preflight_note = ""
             if self._is_file_operation_request(request, context):
-                intent = self._classify_file_intent(request, context)
                 preflight = self._preflight_file_targets(request, context)
                 status = preflight.get("status")
 

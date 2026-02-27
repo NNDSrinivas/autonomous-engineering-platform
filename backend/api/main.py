@@ -153,7 +153,7 @@ from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
 from .routers.preview import (
     router as preview_router,
 )  # Phase 1: Loveable-style live preview
-from backend.core.auth0 import AUTH0_CLIENT_ID, AUTH0_DEVICE_CLIENT_ID
+from backend.core.auth0 import AUTH0_DEVICE_CLIENT_ID
 
 # Conditionally import in-memory OAuth device router for development mode
 # This router requires OAUTH_DEVICE_USE_IN_MEMORY_STORE=true to be set

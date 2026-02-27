@@ -6,7 +6,6 @@ from jwt.algorithms import RSAAlgorithm
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
 import jwt

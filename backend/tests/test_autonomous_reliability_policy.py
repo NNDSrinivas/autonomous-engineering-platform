@@ -16,11 +16,10 @@ import pytest
 import os
 import tempfile
 import time
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import patch, AsyncMock
 from backend.services.autonomous_agent import (
     AutonomousAgent,
     TaskContext,
-    TaskStatus,
 )
 
 
@@ -366,7 +365,6 @@ class TestDiagnosticTracking:
         """Diagnostic commands should be tracked with run_id."""
         # Create test files so the diagnostic tracking can find them
         import os
-        import asyncio
         src_dir = os.path.join(temp_workspace, "src")
         os.makedirs(src_dir, exist_ok=True)
         # Create both files that appear in the mock diagnostic output
@@ -405,7 +403,7 @@ class TestDiagnosticTracking:
 
         with patch("asyncio.create_subprocess_shell", return_value=mock_process):
             # Execute run_command with diagnostic_intent
-            result = await mock_agent._execute_tool(
+            await mock_agent._execute_tool(
                 "run_command",
                 {"command": "npm run lint", "diagnostic_intent": "lint"},
                 mock_context,

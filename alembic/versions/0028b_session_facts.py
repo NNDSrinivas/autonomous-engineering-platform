@@ -31,6 +31,7 @@ def upgrade():
     # Use UUID for PostgreSQL, String(36) for SQLite
     if dialect == "postgresql":
         from sqlalchemy.dialects.postgresql import UUID, JSONB
+
         uuid_type = UUID(as_uuid=True)
         json_type = JSONB
         uuid_default = sa.text("gen_random_uuid()")
@@ -358,7 +359,9 @@ def upgrade():
 
 def downgrade():
     # Drop tables in reverse order
-    op.drop_index("idx_installed_dep_workspace", table_name="navi_installed_dependencies")
+    op.drop_index(
+        "idx_installed_dep_workspace", table_name="navi_installed_dependencies"
+    )
     op.drop_table("navi_installed_dependencies")
 
     op.drop_index("idx_error_resolution_workspace", table_name="navi_error_resolutions")

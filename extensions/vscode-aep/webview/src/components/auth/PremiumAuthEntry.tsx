@@ -28,28 +28,6 @@ export function PremiumAuthEntry({
   signInStatus,
 }: PremiumAuthEntryProps) {
   const [logoFailed, setLogoFailed] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
-
-  const openExternal = (url: string) => {
-    if (!url) return;
-    if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: "openExternal", url }, "*");
-      return;
-    }
-    window.open(url, "_blank", "noopener,noreferrer");
-  };
-
-  const copyCode = async (code: string) => {
-    if (!code || typeof navigator === "undefined" || !navigator.clipboard) return;
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopiedCode(true);
-      window.setTimeout(() => setCopiedCode(false), 1500);
-    } catch {
-      setCopiedCode(false);
-    }
-  };
 
   const showStatus = signInStatus && signInStatus.message;
   const statusClass = showStatus ? `is-${signInStatus.state}` : "";
@@ -82,7 +60,7 @@ export function PremiumAuthEntry({
       <div className="premium-auth-entry__controls">
         <div className="premium-auth-entry__actions">
           <button type="button" className="premium-auth-entry__btn primary" onClick={onSignIn}>
-            Continue in browser
+            Sign in
           </button>
           <button type="button" className="premium-auth-entry__btn secondary" onClick={onSignUp}>
             Sign up
@@ -95,40 +73,6 @@ export function PremiumAuthEntry({
         {showStatus && (
           <div className={`premium-auth-entry__status ${statusClass}`}>
             <p>{signInStatus.message}</p>
-
-            {signInStatus.userCode && (
-              <div className="premium-auth-entry__troubleshoot">
-                <button
-                  type="button"
-                  className="premium-auth-entry__troubleshoot-toggle"
-                  onClick={() => setShowTroubleshoot(!showTroubleshoot)}
-                >
-                  <span className={`toggle-icon ${showTroubleshoot ? "open" : ""}`}>▸</span>
-                  Having trouble?
-                </button>
-
-                {showTroubleshoot && (
-                  <div className="premium-auth-entry__status-helper">
-                    <span className="helper-label">Your device code:</span>
-                    <div className="premium-auth-entry__status-code">
-                      <span className="code-pill">Code: {signInStatus.userCode}</span>
-                      <button type="button" onClick={() => copyCode(signInStatus.userCode || "")}>
-                        {copiedCode ? "✓ Copied" : "Copy"}
-                      </button>
-                    </div>
-                    {signInStatus.verificationUri && (
-                      <button
-                        type="button"
-                        className="premium-auth-entry__status-link"
-                        onClick={() => openExternal(signInStatus.verificationUri || "")}
-                      >
-                        Open sign-in page manually
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>

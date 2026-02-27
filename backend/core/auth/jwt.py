@@ -54,14 +54,16 @@ def _get_jwks_key(token: str, jwks_url: str) -> dict:
         raise JWTVerificationError("Invalid token header") from exc
 
     kid = headers.get("kid")
-    keys = _fetch_jwks(jwks_url)
-    if kid:
-        for key in keys:
-            if key.get("kid") == kid:
-                return key
+    if not kid:
+        raise JWTVerificationError("Token missing required 'kid' header")
 
-    # Fallback: if no kid match, try the first key
-    return keys[0]
+    keys = _fetch_jwks(jwks_url)
+    for key in keys:
+        if key.get("kid") == kid:
+            return key
+
+    # SECURITY: Fail if kid doesn't match any known key
+    raise JWTVerificationError(f"No matching key found for kid: {kid}")
 
 
 # Valid role values from Role enum - computed once at module load for performance
@@ -91,20 +93,58 @@ def decode_jwt(token: str) -> dict:
 
     if settings.JWT_JWKS_URL:
         try:
+            # SECURITY: Validate algorithm header before decoding
+            unverified_header = jwt.get_unverified_header(token)
+            alg = unverified_header.get("alg")
+            if not alg or alg.lower() == "none":
+                raise JWTVerificationError("Token algorithm cannot be 'none'")
+            if alg not in ["RS256", "RS384", "RS512"]:
+                raise JWTVerificationError(f"Unsupported algorithm: {alg}")
+
             jwk_key = _get_jwks_key(token, settings.JWT_JWKS_URL)
             payload = jwt.decode(
                 token,
                 jwk_key,
-                algorithms=["RS256"],
+                algorithms=["RS256", "RS384", "RS512"],
                 audience=settings.JWT_AUDIENCE,
                 issuer=settings.JWT_ISSUER,
             )
+
+            # SECURITY: Validate authorized party (azp/client_id) for PKCE native app tokens
+            # Only tokens from our allowlisted VS Code Native apps should be accepted
+            azp = payload.get("azp") or payload.get("client_id")
+            if not azp:
+                raise JWTVerificationError(
+                    "Token missing required authorized party claim (azp/client_id)"
+                )
+
+            # Load valid client IDs from config (comma-separated list)
+            valid_client_ids = set(parse_comma_separated(settings.auth0_valid_client_ids))
+            if not valid_client_ids:
+                logger.error("auth0_valid_client_ids not configured - rejecting all tokens")
+                raise JWTVerificationError("Server misconfiguration: no valid client IDs configured")
+
+            if azp not in valid_client_ids:
+                # Log only prefix for security (avoid leaking full client IDs in logs)
+                azp_prefix = azp[:8] if len(azp) > 8 else "***"
+                logger.warning(f"Invalid authorized party rejected: {azp_prefix}...")
+                raise JWTVerificationError("Invalid authorized party")
+
             return payload
         except ExpiredSignatureError as e:
+            logger.warning("JWT verification failed: token expired")
             raise JWTVerificationError("Token has expired") from e
         except JWTClaimsError as e:
+            logger.warning(
+                "JWT verification failed: invalid claims",
+                extra={
+                    "audience": settings.JWT_AUDIENCE,
+                    "issuer": settings.JWT_ISSUER,
+                }
+            )
             raise JWTVerificationError("Invalid token claims") from e
         except JWTError as e:
+            logger.warning(f"JWT verification failed: {type(e).__name__}")
             raise JWTVerificationError("Token verification failed") from e
 
     if not settings.JWT_SECRET:

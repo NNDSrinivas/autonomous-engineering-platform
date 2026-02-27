@@ -101,6 +101,11 @@ export class SSEClient {
         onEvent('heartbeat', { timestamp: Date.now() });
       });
 
+      this.eventSource.addEventListener('prompt_request', (e: any) => {
+        this.status.lastHeartbeat = Date.now();
+        onEvent('prompt_request', this.parseEventData(e.data));
+      });
+
       this.eventSource.onerror = (error) => {
         if (connectionTimeout) {
           clearTimeout(connectionTimeout);

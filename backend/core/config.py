@@ -177,6 +177,13 @@ class Settings(BaseSettings):
                     f"VSCODE_AUTH_REQUIRED must be true in {env} environment (currently: {self.vscode_auth_required})"
                 )
 
+            # Validate Auth0 client ID allowlist is configured when JWT is enabled
+            if self.jwt_enabled and not self.auth0_valid_client_ids.strip():
+                errors.append(
+                    f"AUTH0_VALID_CLIENT_IDS must be configured in {env} environment when JWT is enabled. "
+                    "This is required to validate the 'azp' (authorized party) claim and prevent token misuse."
+                )
+
             if errors:
                 raise ValueError(
                     f"Production security validation failed for environment '{env}':\n  - "
@@ -211,6 +218,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # OAuth Device Code Configuration
+    # DEPRECATED: Legacy OAuth device flow. PKCE is the recommended flow for the VS Code extension.
+    # Disabled by default in all environments; must be explicitly set to True to enable.
+    # Only enable this for backward compatibility or emergency recovery scenarios.
+    enable_legacy_device_flow: bool = False
     oauth_device_use_in_memory_store: bool = False
     oauth_device_auto_approve: bool = False
     oauth_device_code_ttl_seconds: int = 600
@@ -275,6 +286,12 @@ class Settings(BaseSettings):
     auth0_issuer_base_url: Optional[str] = (
         None  # Auth0 issuer URL (e.g., https://your-tenant.auth0.com)
     )
+    # Valid PKCE Native App Client IDs (comma-separated for all environments)
+    # These are public client IDs (not secrets) for VS Code Native Apps
+    # Format: "dev_client_id,staging_client_id,prod_client_id"
+    # REQUIRED when JWT_ENABLED=true in production/staging (enforced by validator)
+    # Example: "G5PtcWXaYKJ8JD2ktA9j40wwVnBuwOzu,ZtGrpbrjy6LuHHz1yeTiWwfb8FKZc5QT,VieiheBGMQu3rSq4fyqtjCZj3H9Q0Alq"
+    auth0_valid_client_ids: str = ""
     auth0_action_secret: Optional[str] = (
         None  # Secret for Auth0 Actions webhook authentication
     )

@@ -68,7 +68,7 @@ def run_once(run_id: int, *, max_retries: int, retry_delay: float) -> int:
             workspace = Path(tmpdir)
             file_path = "hello.txt"
             file_content = "hello from navi"
-            python_cmd = f"\"{sys.executable}\" -c 'print(\"ok\")'"
+            python_cmd = f'"{sys.executable}" -c \'print("ok")\''
 
             actions = [
                 {
@@ -219,7 +219,9 @@ def run_once(run_id: int, *, max_retries: int, retry_delay: float) -> int:
                 retry_delay,
             )
             if rollback_resp.status_code != 200:
-                print(f"Rollback apply failed: {rollback_resp.status_code} {rollback_resp.text}")
+                print(
+                    f"Rollback apply failed: {rollback_resp.status_code} {rollback_resp.text}"
+                )
                 return 1
             if created_path.exists():
                 print("Rollback did not remove created file")
@@ -231,9 +233,15 @@ def run_once(run_id: int, *, max_retries: int, retry_delay: float) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NAVI V2 E2E smoke test")
-    parser.add_argument("--runs", type=int, default=1, help="Number of consecutive runs")
-    parser.add_argument("--max-retries", type=int, default=2, help="Max retries per step")
-    parser.add_argument("--retry-delay", type=float, default=0.25, help="Delay between retries")
+    parser.add_argument(
+        "--runs", type=int, default=1, help="Number of consecutive runs"
+    )
+    parser.add_argument(
+        "--max-retries", type=int, default=2, help="Max retries per step"
+    )
+    parser.add_argument(
+        "--retry-delay", type=float, default=0.25, help="Delay between retries"
+    )
     args = parser.parse_args()
 
     total_runs = max(1, args.runs)

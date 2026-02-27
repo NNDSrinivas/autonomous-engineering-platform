@@ -75,6 +75,7 @@ async def store_memory(
     title: Optional[str] = None,
     tags: Optional[Dict[str, Any]] = None,
     importance: int = 3,
+    timeout_seconds: int = 10,
 ) -> int:
     """
     Store a memory in the navi_memory table.
@@ -88,13 +89,23 @@ async def store_memory(
         title: Optional human-readable title
         tags: Optional metadata dictionary
         importance: Importance score 1-5 (default: 3)
+        timeout_seconds: Max time to wait for OpenAI embedding (default: 10s)
 
     Returns:
         ID of the created memory
+
+    Raises:
+        asyncio.TimeoutError: If embedding generation exceeds timeout
+        RuntimeError: If OPENAI_API_KEY is not configured
+        Exception: For database or other errors
     """
     try:
-        # Generate embedding
-        embedding = await generate_embedding(content)
+        # Generate embedding with timeout protection
+        import asyncio
+        embedding = await asyncio.wait_for(
+            generate_embedding(content),
+            timeout=timeout_seconds
+        )
 
         # Convert embedding to a string representation.
         # On Postgres this is cast to vector, on SQLite it is just stored as TEXT.

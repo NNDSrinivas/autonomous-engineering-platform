@@ -50,6 +50,7 @@ def test_production_requires_vscode_auth(monkeypatch):
     monkeypatch.setenv("JWT_ENABLED", "true")
     monkeypatch.setenv("ALLOW_DEV_AUTH_BYPASS", "false")
     monkeypatch.setenv("VSCODE_AUTH_REQUIRED", "false")
+    monkeypatch.setenv("AUTH0_VALID_CLIENT_IDS", "test-client-id-1")
     _reset_env_cache()
 
     with pytest.raises(ValidationError) as exc_info:
@@ -58,6 +59,21 @@ def test_production_requires_vscode_auth(monkeypatch):
     assert "VSCODE_AUTH_REQUIRED must be true in production environment" in str(
         exc_info.value
     )
+
+
+def test_production_requires_auth0_client_ids(monkeypatch):
+    """Test that production environment requires AUTH0_VALID_CLIENT_IDS when JWT is enabled."""
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("JWT_ENABLED", "true")
+    monkeypatch.setenv("ALLOW_DEV_AUTH_BYPASS", "false")
+    monkeypatch.setenv("VSCODE_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("AUTH0_VALID_CLIENT_IDS", "")  # Empty string should fail
+    _reset_env_cache()
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings()
+
+    assert "AUTH0_VALID_CLIENT_IDS must be configured" in str(exc_info.value)
 
 
 def test_production_multiple_violations_all_reported(monkeypatch):
@@ -84,6 +100,7 @@ def test_production_valid_configuration(monkeypatch):
     monkeypatch.setenv("JWT_ENABLED", "true")
     monkeypatch.setenv("ALLOW_DEV_AUTH_BYPASS", "false")
     monkeypatch.setenv("VSCODE_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("AUTH0_VALID_CLIENT_IDS", "test-client-id-1,test-client-id-2")
     _reset_env_cache()
 
     # Should not raise any exception
@@ -114,6 +131,7 @@ def test_staging_valid_configuration(monkeypatch):
     monkeypatch.setenv("JWT_ENABLED", "true")
     monkeypatch.setenv("ALLOW_DEV_AUTH_BYPASS", "false")
     monkeypatch.setenv("VSCODE_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("AUTH0_VALID_CLIENT_IDS", "test-client-id-1,test-client-id-2")
     _reset_env_cache()
 
     # Should not raise any exception

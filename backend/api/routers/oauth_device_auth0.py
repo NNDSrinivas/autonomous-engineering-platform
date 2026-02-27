@@ -5,7 +5,7 @@ import time
 from jwt.algorithms import RSAAlgorithm
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 import httpx
 import jwt
@@ -24,6 +24,17 @@ from backend.core.jwt_session import SessionJWT
 
 router = APIRouter(prefix="/oauth/device", tags=["oauth-device"])
 logger = logging.getLogger(__name__)
+
+
+def _add_deprecation_headers(response: Response) -> None:
+    """Add HTTP deprecation headers to signal legacy endpoint status."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = "Tue, 01 Dec 2026 00:00:00 GMT"  # RFC 8594 HTTP-date format (9 months notice for enterprise adoption)
+    response.headers["Link"] = '<https://docs.navralabs.com/auth/pkce>; rel="sunset"'
+    logger.warning(
+        "DEPRECATED: Device flow endpoint called. "
+        "Extension v0.3.0+ uses PKCE. Device flow will be removed Tue, 01 Dec 2026 00:00:00 GMT."
+    )
 
 
 def _error_detail(
@@ -281,7 +292,8 @@ class StartOut(BaseModel):
 
 
 @router.post("/start", response_model=StartOut)
-async def start():
+async def start(response: Response):
+    _add_deprecation_headers(response)
     _validate_auth0_settings()
     try:
         async with httpx.AsyncClient(timeout=15.0) as http:
@@ -334,7 +346,8 @@ class TokenOut(BaseModel):
 
 
 @router.post("/poll", response_model=TokenOut)
-async def poll(body: PollIn):
+async def poll(body: PollIn, response: Response):
+    _add_deprecation_headers(response)
     _validate_auth0_settings()
     try:
         async with httpx.AsyncClient(timeout=15.0) as http:
@@ -412,7 +425,7 @@ async def poll(body: PollIn):
 
 
 @router.post("/refresh", response_model=TokenOut)
-async def refresh(body: RefreshIn, request: Request):
+async def refresh(body: RefreshIn, request: Request, response: Response):
     """
     Refresh an expired AEP session using Auth0 refresh token.
 
@@ -433,6 +446,7 @@ async def refresh(body: RefreshIn, request: Request):
     refresh_token has been manually revoked in Auth0, the exchange will fail with
     invalid_grant.
     """
+    _add_deprecation_headers(response)
     _validate_auth0_settings()
 
     # Rate limit refresh attempts per IP (20/min)

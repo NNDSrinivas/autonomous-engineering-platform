@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { ExternalLink } from 'lucide-react';
 import './NaviInlineCommand.css';
 import { stripEchoedCommand } from './stripEchoedCommand';
 
@@ -82,13 +83,14 @@ export const NaviInlineCommand: React.FC<NaviInlineCommandProps> = ({
         {commandId && onOpenActivity && (
           <button
             className="nic-activity-btn"
-            title="Open in Activity"
+            title="Open command activity"
+            aria-label="Open command activity"
             onClick={(event) => {
               event.stopPropagation();
               onOpenActivity(commandId);
             }}
           >
-            Activity ↗
+            <ExternalLink size={12} />
           </button>
         )}
         <span className={`nic-expand ${expanded ? 'is-open' : ''}`}>

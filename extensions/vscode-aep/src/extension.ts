@@ -38,8 +38,10 @@ import { GitService } from './services/GitService';
 import { TaskService } from './services/TaskService';
 import { createDefaultActionRegistry, ActionRegistry } from './actions';
 import type { ActivityEvent } from './types/activity';
-import { DeviceAuthService, AuthSignInStatus } from './auth/deviceAuth';
+import { PKCELoopbackAuthService } from './auth/pkceLoopbackAuth';
+import { getAuthConfig } from './auth/authConfig';
 import { buildUndoRestoreMetadataFromSnapshot } from './undoMetadata';
+import { PromptHandler } from './services/promptHandler';
 
 const exec = util.promisify(child_process.exec);
 
@@ -120,7 +122,7 @@ let globalContextService: ContextService | undefined;
 let globalGitService: GitService | undefined;
 let globalTaskService: TaskService | undefined;
 let globalActionRegistry: ActionRegistry | undefined;
-let globalAuthService: DeviceAuthService | undefined;
+let globalAuthService: PKCELoopbackAuthService | undefined;
 let cachedAuthToken: string | undefined;
 
 // Phase 1.4: Collect VS Code diagnostics for a set of files
@@ -927,30 +929,33 @@ export function activate(context: vscode.ExtensionContext) {
   globalActionRegistry = createDefaultActionRegistry();
   console.log('[AEP] ActionRegistry initialized with dynamic handlers');
 
-  // Initialize Auth Service for device code flow
-  globalAuthService = new DeviceAuthService(context);
-  console.log('[AEP] DeviceAuthService initialized');
+  // Initialize Auth Service for PKCE flow with environment detection
+  const authConfig = getAuthConfig(backendUrl);
+  globalAuthService = new PKCELoopbackAuthService(context, authConfig);
+  console.log(`[AEP] PKCELoopbackAuthService initialized for ${authConfig.environment} environment`);
   globalAuthService.getToken().then((token) => {
     if (token) {
       cachedAuthToken = token;
     }
   });
 
-  // Register auth commands
-  const emitSignInStatus = (status: AuthSignInStatus) => {
-    provider.postToWebview({
-      type: 'auth.signIn.status',
-      ...status,
-      timestamp: new Date().toISOString(),
-    });
-  };
+  // Initialize Prompt Handler for autonomous agent user prompts
+  const promptHandler = new PromptHandler(
+    backendUrl,
+    async () => await globalAuthService?.getToken()
+  );
+  provider.setPromptHandler(promptHandler);
+  console.log('[AEP] PromptHandler initialized for autonomous agent user prompts');
 
+  // Register auth commands
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.signIn', async () => {
       try {
-        await globalAuthService?.startLogin(emitSignInStatus);
+        await globalAuthService?.login();
       } catch (error) {
-        console.warn('[AEP] Sign-in flow finished with error:', error);
+        console.error('[AEP] Sign-in failed:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        vscode.window.showErrorMessage(`Sign in failed: ${errorMessage}`);
       }
       cachedAuthToken = await globalAuthService?.getToken();
       await vscode.commands.executeCommand('aep.notifyAuthStateChange', Boolean(cachedAuthToken));
@@ -973,13 +978,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.isLoggedIn', async () => {
-      return await globalAuthService?.isLoggedIn();
+      return await globalAuthService?.isAuthenticated();
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.getUserInfo', async () => {
-      return await globalAuthService?.getUserInfo();
+      return await globalAuthService?.getCurrentUser();
     })
   );
 
@@ -989,7 +994,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (authToken) {
         cachedAuthToken = authToken;
       }
-      const user = await globalAuthService?.getUserInfo();
+      const user = await globalAuthService?.getCurrentUser();
       // This command is called internally to notify the webview of auth changes
       provider.postToWebview({
         type: 'auth.stateChange',
@@ -1654,7 +1659,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private _naviTerminal?: vscode.Terminal;
   private _naviOutputChannel?: vscode.OutputChannel;
   private _webviewReady = false;
+  private _chatUiReady = false;
   private _pendingConsentMessages = new Map<string, any>();
+  private _pendingPromptMessages = new Map<string, any>();
 
   // Public accessors for external functions
   public get webviewAvailable(): boolean {
@@ -1680,6 +1687,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
   // SSE client for streaming
   private sse: SSEClient;
+
+  // Prompt handler for user input during autonomous execution
+  private promptHandler: PromptHandler | null = null;
 
   constructor(extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
     this._extensionUri = extensionUri;
@@ -1720,6 +1730,13 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   // 🚀 LLM-FIRST: Removed buildRepoAnalysisPrompt()
   // No longer needed - was only used by handleLocalExplainRepo which has been removed
   // LLM backend now handles all repo analysis without templated prompts
+
+  /**
+   * Set the prompt handler for user input during autonomous execution
+   */
+  public setPromptHandler(handler: PromptHandler): void {
+    this.promptHandler = handler;
+  }
 
   private getBackendBaseUrl(): string {
     const config = vscode.workspace.getConfiguration('aep');
@@ -2659,7 +2676,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
   private async emitCurrentAuthState(): Promise<void> {
     const authToken = await this.ensureLiveAuthToken();
-    const user = await globalAuthService?.getUserInfo();
+    const user = await globalAuthService?.getCurrentUser();
     this.postToWebview({
       type: 'auth.stateChange',
       isAuthenticated: Boolean(authToken),
@@ -3211,6 +3228,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   ) {
     this._view = webviewView;
     this._webviewReady = false;
+    this._chatUiReady = false;
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -3242,9 +3260,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           }
           case 'navi.chat.ready': {
             // Chat panel component is mounted - consent handlers are ready
-            // Safe to flush pending consent messages now that listeners are registered
+            // Safe to flush pending consent/prompt messages now that listeners are registered
             console.log('[AEP] Chat panel and consent handlers are ready');
+            this._chatUiReady = true;
             this.flushPendingConsentMessages();
+            this.flushPendingPromptMessages();
             break;
           }
           case 'requestWorkspaceContext': {
@@ -5393,43 +5413,166 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               // Create a prompt for the LLM to generate natural follow-up conversation
               let followUpPrompt = '';
               if (msg.actionType === 'allComplete') {
-                // Summary of all completed actions - generate a comprehensive wrap-up
+                // Enforced structured completion summary with deterministic variation.
                 const summary = msg.summary || {};
-                const commandCount = summary.commandCount || 0;
-                const fileCount = summary.fileCount || 0;
-                const commands = summary.commands || [];
-                const files = summary.files || [];
+                const commands = Array.isArray(summary.commands)
+                  ? summary.commands.map((c: unknown) => String(c)).filter(Boolean)
+                  : [];
+                const files = Array.isArray(summary.files)
+                  ? summary.files.map((f: unknown) => String(f)).filter(Boolean)
+                  : [];
 
-                followUpPrompt = 'All requested actions have been completed successfully. ';
+                const commandCount = Number.isFinite(summary.commandCount)
+                  ? Number(summary.commandCount)
+                  : commands.length;
+                const fileCount = Number.isFinite(summary.fileCount)
+                  ? Number(summary.fileCount)
+                  : files.length;
 
-                if (commandCount > 0 && fileCount > 0) {
-                  followUpPrompt += `The user ran ${commandCount} command${commandCount > 1 ? 's' : ''} (${commands.slice(0, 3).join(', ')}) and modified ${fileCount} file${fileCount > 1 ? 's' : ''} (${files.slice(0, 3).join(', ')}).`;
-                } else if (commandCount > 0) {
-                  followUpPrompt += `The user ran ${commandCount} command${commandCount > 1 ? 's' : ''}: ${commands.slice(0, 3).join(', ')}.`;
-                } else if (fileCount > 0) {
-                  followUpPrompt += `${fileCount} file${fileCount > 1 ? 's were' : ' was'} modified: ${files.slice(0, 3).join(', ')}.`;
-                }
+                const normalizedCommands = commands.map((cmd: string) => cmd.toLowerCase());
+                const hasInstall =
+                  Boolean(summary.hasInstall) ||
+                  normalizedCommands.some((cmd: string) => /\b(npm|pnpm|yarn|bun)\s+(install|i)\b|\bpip\s+install\b|\bpoetry\s+install\b/.test(cmd));
+                const hasLint =
+                  normalizedCommands.some((cmd: string) => /\blint\b|eslint|ruff|flake8|biome/.test(cmd));
+                const hasTypecheck =
+                  normalizedCommands.some((cmd: string) => /\btypecheck\b|\btsc\b|pyright|mypy/.test(cmd));
+                const hasTest =
+                  Boolean(summary.hasTest) ||
+                  normalizedCommands.some((cmd: string) => /\btest\b|jest|vitest|pytest|go\s+test|cargo\s+test/.test(cmd));
+                const hasBuild =
+                  Boolean(summary.hasBuild) ||
+                  normalizedCommands.some((cmd: string) => /\bbuild\b|compile|webpack|vite\s+build|next\s+build/.test(cmd));
+                const hasDev =
+                  Boolean(summary.hasDev) ||
+                  normalizedCommands.some((cmd: string) => /\bdev\b|\bstart\b|serve/.test(cmd));
 
-                // Add context about what type of commands were run
-                if (summary.hasDev) {
-                  followUpPrompt += ' A development server was started.';
-                }
-                if (summary.hasInstall) {
-                  followUpPrompt += ' Dependencies were installed.';
-                }
-                if (summary.hasTest) {
-                  followUpPrompt += ' Tests were executed.';
-                }
-                if (summary.hasBuild) {
-                  followUpPrompt += ' The project was built.';
-                }
+                const scenario =
+                  hasLint || hasTypecheck || hasTest || hasBuild
+                    ? 'fix_validation'
+                    : commandCount > 0 && fileCount > 0
+                      ? 'mixed'
+                      : fileCount > 0
+                        ? 'file_only'
+                        : 'command_only';
 
-                // Add project context
+                const signature = `${scenario}:${commands.join('|')}:${files.join('|')}:${msg.projectInfo?.framework || ''}`;
+                let hash = 0;
+                for (let i = 0; i < signature.length; i += 1) {
+                  hash = (hash * 31 + signature.charCodeAt(i)) >>> 0;
+                }
+                const pick = (options: string[], offset = 0): string => {
+                  if (options.length === 0) return '';
+                  return options[(hash + offset) % options.length]!;
+                };
+
+                const intro = pick([
+                  'Fix is complete. Here is a quick wrap-up.',
+                  'Completed. Summary of the changes below.',
+                  'Work finished. Here is what was addressed.',
+                ]);
+
+                const issueLine =
+                  scenario === 'fix_validation'
+                    ? pick([
+                      'Validation-related issues were blocking a clean pass.',
+                      'The task required resolving code issues and getting checks back to green.',
+                      'There were failing or risky checks that needed to be addressed.',
+                    ], 1)
+                    : scenario === 'mixed'
+                      ? pick([
+                        'The request required both code changes and command execution to finish cleanly.',
+                        'This needed a combined code-and-command pass to complete.',
+                        'The task depended on coordinated file edits and terminal actions.',
+                      ], 2)
+                      : scenario === 'file_only'
+                        ? pick([
+                          'The issue was isolated to code-level updates in project files.',
+                          'The task required direct file-level fixes.',
+                          'The requested outcome depended on source changes only.',
+                        ], 3)
+                        : pick([
+                          'The requested outcome depended on terminal-side actions.',
+                          'The task was primarily command-driven.',
+                          'No code edits were needed; command execution completed the work.',
+                        ], 4);
+
+                const changedItems: string[] = [];
+                if (fileCount > 0) {
+                  const filePreview = files.slice(0, 3).map((file: string) => `\`${file}\``).join(', ');
+                  changedItems.push(
+                    `Updated ${fileCount} file${fileCount === 1 ? '' : 's'}${filePreview ? `: ${filePreview}${files.length > 3 ? ', ...' : ''}.` : '.'}`
+                  );
+                } else {
+                  changedItems.push('No file edits were required for this run.');
+                }
+                if (commandCount > 0) {
+                  const commandPreview = commands.slice(0, 3).map((cmd: string) => `\`${cmd}\``).join(', ');
+                  changedItems.push(
+                    `Ran ${commandCount} command${commandCount === 1 ? '' : 's'}${commandPreview ? `: ${commandPreview}${commands.length > 3 ? ', ...' : ''}.` : '.'}`
+                  );
+                }
+                if (hasInstall) {
+                  changedItems.push('Installed or refreshed dependencies needed for this task.');
+                }
                 if (msg.projectInfo?.framework) {
-                  followUpPrompt += ` The project uses ${msg.projectInfo.framework}.`;
+                  changedItems.push(`Context: \`${msg.projectInfo.framework}\` project.`);
                 }
 
-                followUpPrompt += ' Generate a natural, conversational summary acknowledging everything that was done. If a dev server was started, mention the typical URL (like localhost:3000 or localhost:5173). Offer helpful next steps or ask if there\'s anything else to help with. Keep it friendly and concise, 2-4 sentences.';
+                const validationItems: string[] = [];
+                if (hasLint) validationItems.push('Lint checks completed successfully.');
+                if (hasTypecheck) validationItems.push('Type checks completed successfully.');
+                if (hasTest) validationItems.push('Tests completed successfully.');
+                if (hasBuild) validationItems.push('Build completed successfully.');
+                if (validationItems.length === 0) {
+                  validationItems.push('No explicit lint/test/build command was detected in this run.');
+                }
+
+                const expectedItems: string[] = [];
+                if (fileCount > 0) {
+                  expectedItems.push('The updated flow should behave correctly with the applied code changes.');
+                }
+                if (hasLint || hasTypecheck || hasTest || hasBuild) {
+                  expectedItems.push('Re-running validation commands should remain green.');
+                }
+                if (hasDev) {
+                  expectedItems.push('If a dev server was started, verify the app on your local URL (commonly `localhost:3000` or `localhost:5173`).');
+                }
+                if (expectedItems.length === 0) {
+                  expectedItems.push('Expected outcome: requested updates are in place and ready for your review.');
+                }
+                expectedItems.push(
+                  pick([
+                    'If you want, I can run one more verification pass.',
+                    'I can continue with follow-up checks if you want.',
+                    'I can proceed to the next task from here.',
+                  ], 5)
+                );
+
+                const toBullets = (items: string[]) => items.map((item: string) => `- ${item}`).join('\n');
+                const followUpText = [
+                  intro,
+                  '',
+                  '**What was wrong:**',
+                  toBullets([issueLine]),
+                  '',
+                  '**What changed:**',
+                  toBullets(changedItems),
+                  '',
+                  '**Validation:**',
+                  toBullets(validationItems),
+                  '',
+                  '**Expected behavior now:**',
+                  toBullets(expectedItems),
+                ].join('\n');
+
+                this.postToWebview({
+                  type: 'actionFollowUp',
+                  followUpText,
+                  actionType: msg.actionType,
+                  success: msg.success,
+                });
+                return;
 
               } else if (msg.actionType === 'runCommand') {
                 if (msg.success) {
@@ -7226,6 +7369,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         this._scanTimer = undefined;
       }
       this._webviewReady = false;
+      this._chatUiReady = false;
       this._view = undefined;
     });
 
@@ -9077,6 +9221,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       };
       // Collect actions during streaming (declared outside try for access in catch)
       let streamedActions: any[] = [];
+      let streamSummaryText = '';
       const toolCommandMap = new Map<string, { command: string; cwd?: string }>();
       const toolFileMap = new Map<string, { path: string; actionType: 'editFile' | 'createFile'; summary?: string; content?: string }>();
 
@@ -9234,20 +9379,24 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     elapsed_seconds: parsed.elapsed_seconds || 0,
                     heartbeat_count: parsed.heartbeat_count || 0,
                   });
-                  // Also emit as activity event so users can see progress
-                  this.postToWebview({
-                    type: 'navi.agent.event',
-                    event: {
-                      kind: 'heartbeat',
-                      data: {
-                        label: 'Working',
-                        detail: parsed.message || 'Processing your request...',
-                        status: 'running',
-                        elapsed: parsed.elapsed_seconds,
-                      }
-                    }
-                  });
                   continue; // Skip further processing for heartbeat events
+                }
+
+                // Handle user prompt requests from autonomous agent
+                if (parsed.type === 'prompt_request' && parsed.data) {
+                  console.log('[AEP] 💬 Prompt request received:', parsed.data);
+                  const route = this.routePromptRequest(parsed.data);
+                  if (route === 'fallback-native') {
+                    if (this.promptHandler) {
+                      // Handle prompt asynchronously - don't await to avoid blocking stream
+                      this.promptHandler.handlePromptRequest(parsed.data).catch((error) => {
+                        console.error('[AEP] Failed to handle native prompt request:', error);
+                      });
+                    } else {
+                      console.error('[AEP] Prompt handler not initialized');
+                    }
+                  }
+                  continue; // Skip further processing for prompt events
                 }
 
                 if (parsed.type === 'job_created' || parsed.type === 'job_started' || parsed.type === 'job_completed' || parsed.type === 'job_failed' || parsed.type === 'job_canceled' || parsed.type === 'job_paused') {
@@ -9630,10 +9779,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     timestamp: new Date().toISOString(),
                   };
 
-                  if (!this._webviewReady) {
+                  if (!this._webviewReady || !this._chatUiReady) {
                     const queueKey = consentId || `pending-consent-${Date.now()}`;
                     this._pendingConsentMessages.set(queueKey, consentMessage);
-                    console.log('[AEP] ⏳ Webview not ready. Queued consent message:', queueKey);
+                    console.log('[AEP] ⏳ Chat UI not ready. Queued consent message:', queueKey);
                   } else {
                     this.postToWebview(consentMessage);
                   }
@@ -9659,6 +9808,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   console.log('[AEP] 🏁 Task done with summary:', parsed.summary);
                   const summaryText = summarizeRunPayload(parsed.summary);
                   if (summaryText) {
+                    streamSummaryText = summaryText;
                     this._lastRunSummary = { content: summaryText, timestamp: Date.now() };
                   }
                   this.postToWebview({
@@ -9678,12 +9828,13 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 if (parsed.type === 'status') {
                   console.log('[AEP] 🤖 Autonomous status:', parsed.status);
                   const statusMessages: Record<string, string> = {
-                    'planning': '🧠 Planning approach...',
-                    'executing': '⚡ Executing changes...',
-                    'verifying': '🔍 Running verification...',
-                    'fixing': '🔧 Fixing issues...',
-                    'completed': '✅ Task completed!',
-                    'failed': '❌ Task failed after max attempts',
+                    'planning': 'Planning approach...',
+                    'replanning': 'Refining plan quality...',
+                    'executing': 'Executing changes...',
+                    'verifying': 'Running verification...',
+                    'fixing': 'Fixing issues...',
+                    'completed': 'Task completed.',
+                    'failed': 'Task failed after max attempts.',
                   };
                   this.postToWebview({
                     type: 'navi.agent.event',
@@ -9693,6 +9844,22 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                         label: parsed.status,
                         detail: statusMessages[parsed.status] || parsed.status,
                         status: parsed.status === 'completed' ? 'done' : 'running',
+                      }
+                    }
+                  });
+                }
+
+                // Real-time backend thinking/progress updates
+                if (parsed.type === 'thinking_progress') {
+                  const detail = String(parsed.message || 'Working on your request...');
+                  this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                      kind: 'thinking',
+                      data: {
+                        label: 'Thinking',
+                        detail,
+                        status: 'running',
                       }
                     }
                   });
@@ -9732,6 +9899,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   console.log('[AEP] 🏁 Task complete:', parsed.summary);
                   const summaryText = summarizeRunPayload(parsed.summary);
                   if (summaryText) {
+                    streamSummaryText = summaryText;
                     this._lastRunSummary = { content: summaryText, timestamp: Date.now() };
                   }
                   this.postToWebview({
@@ -9924,6 +10092,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   console.log('[AEP] 🏢 Enterprise task completed:', parsed.task_id);
                   const summaryText = summarizeRunPayload(parsed.result);
                   if (summaryText) {
+                    streamSummaryText = summaryText;
                     this._lastRunSummary = { content: summaryText, timestamp: Date.now() };
                   }
                   this.postToWebview({
@@ -10020,6 +10189,27 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               }
             }
           }
+        }
+
+        if (!streamedContent.trim()) {
+          const fileActionCount = streamedActions.filter((action) =>
+            ['edit_file', 'create_file', 'write_file', 'replace_in_file', 'delete_file', 'edit', 'create', 'delete']
+              .includes(String(action?.type || '').toLowerCase())
+          ).length;
+          const commandActionCount = streamedActions.filter((action) =>
+            ['run_command', 'command', 'bash', 'terminal']
+              .includes(String(action?.type || '').toLowerCase())
+          ).length;
+          const actionSummary = streamedActions.length > 0
+            ? [
+                fileActionCount > 0 ? `Updated ${fileActionCount} file${fileActionCount === 1 ? '' : 's'}.` : '',
+                commandActionCount > 0 ? `Ran ${commandActionCount} command${commandActionCount === 1 ? '' : 's'}.` : '',
+                fileActionCount === 0 && commandActionCount === 0
+                  ? `Completed ${streamedActions.length} action${streamedActions.length === 1 ? '' : 's'}.`
+                  : '',
+              ].filter(Boolean).join(' ')
+            : '';
+          streamedContent = (streamSummaryText || actionSummary || 'Completed the request.').trim();
         }
 
         // Finalize the streamed message with collected actions
@@ -11293,7 +11483,6 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     let accumulated = '';
 
     try {
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -11419,6 +11608,19 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               type: 'review.heartbeat',
               timestamp: data?.timestamp || Date.now()
             });
+            break;
+
+          case 'prompt_request':
+            // Handle user prompt request from autonomous agent
+            if (this.routePromptRequest(data) === 'fallback-native') {
+              if (this.promptHandler) {
+                this.promptHandler.handlePromptRequest(data).catch((error) => {
+                  console.error('[AEP] Failed to handle native prompt request:', error);
+                });
+              } else {
+                console.error('[AEP] Prompt handler not initialized');
+              }
+            }
             break;
 
           default:
@@ -12323,6 +12525,43 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       this.postToWebview(message);
     }
     this._pendingConsentMessages.clear();
+  }
+
+  private routePromptRequest(promptData: any): 'sent-inline' | 'queued-inline' | 'fallback-native' {
+    const promptId =
+      typeof promptData?.prompt_id === 'string' && promptData.prompt_id.trim().length > 0
+        ? promptData.prompt_id.trim()
+        : `prompt-${Date.now()}`;
+
+    const promptMessage = {
+      type: 'prompt_request',
+      data: promptData,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Webview exists but chat surface isn't mounted yet: queue for inline rendering.
+    if (this._view && (!this._webviewReady || !this._chatUiReady)) {
+      this._pendingPromptMessages.set(promptId, promptMessage);
+      console.log('[AEP] ⏳ Chat UI not ready. Queued prompt message:', promptId);
+      return 'queued-inline';
+    }
+
+    // Webview is active: always route prompt requests inline in chat.
+    if (this._view && this._webviewReady && this._chatUiReady) {
+      this.postToWebview(promptMessage);
+      return 'sent-inline';
+    }
+
+    // No webview available (background/non-chat usage): keep native fallback.
+    return 'fallback-native';
+  }
+
+  private flushPendingPromptMessages(): void {
+    if (!this._view || !this._webviewReady || !this._chatUiReady || this._pendingPromptMessages.size === 0) return;
+    for (const message of this._pendingPromptMessages.values()) {
+      this.postToWebview(message);
+    }
+    this._pendingPromptMessages.clear();
   }
 
   public postToWebview(message: any) {
@@ -15186,7 +15425,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       const liveAuthToken = await this.ensureLiveAuthToken();
-      const authUser = await globalAuthService?.getUserInfo();
+      const authUser = await globalAuthService?.getCurrentUser();
       const webviewConfig = {
         backendBaseUrl: this.getBackendBaseUrl(),
         orgId: authUser?.org || this.getOrgId(),

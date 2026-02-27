@@ -51,7 +51,9 @@ def analyze_by_scenario(metrics: List[Dict]) -> Dict:
                 "count": data["count"],
                 "latency_avg": statistics.mean(data["latencies"]),
                 "latency_median": statistics.median(data["latencies"]),
-                "latency_stdev": statistics.stdev(data["latencies"]) if len(data["latencies"]) > 1 else 0,
+                "latency_stdev": statistics.stdev(data["latencies"])
+                if len(data["latencies"]) > 1
+                else 0,
                 "tokens_avg": statistics.mean(data["tokens"]),
                 "cost_avg": statistics.mean(data["costs"]),
                 "cost_total": sum(data["costs"]),
@@ -79,7 +81,9 @@ def print_analysis(results: Dict):
     summary = results["summary"]
     print(f"\n🎯 Overall Performance:")
     print(f"  Total Tests: {summary['total_tests']}")
-    print(f"  Success Rate: {(summary['passed_tests']/summary['total_tests']*100):.1f}%")
+    print(
+        f"  Success Rate: {(summary['passed_tests'] / summary['total_tests'] * 100):.1f}%"
+    )
     print(f"  Error Rate: {summary['error_rate']:.2f}%")
     print(f"  Duration: {summary['total_duration_sec']:.1f}s")
     print(f"  Throughput: {summary['throughput_rps']:.2f} req/s")
@@ -94,23 +98,33 @@ def print_analysis(results: Dict):
     # Cost breakdown
     print(f"\n💰 Cost Analysis:")
     print(f"  Total:   ${summary['total_cost']:.4f}")
-    print(f"  Average: ${(summary['total_cost']/summary['total_tests']):.4f} per request")
-    print(f"  Estimated monthly (10K req/day): ${(summary['total_cost']/summary['total_tests']*10000*30):.2f}")
+    print(
+        f"  Average: ${(summary['total_cost'] / summary['total_tests']):.4f} per request"
+    )
+    print(
+        f"  Estimated monthly (10K req/day): ${(summary['total_cost'] / summary['total_tests'] * 10000 * 30):.2f}"
+    )
 
     # Scenario-specific analysis
     scenario_analysis = analyze_by_scenario(results["metrics"])
 
     print(f"\n📋 Performance by Scenario:")
     print("-" * 80)
-    print(f"{'Scenario':<20} {'Count':>6} {'Avg Latency':>12} {'Avg Cost':>10} {'Error Rate':>11}")
+    print(
+        f"{'Scenario':<20} {'Count':>6} {'Avg Latency':>12} {'Avg Cost':>10} {'Error Rate':>11}"
+    )
     print("-" * 80)
 
     for scenario, data in sorted(scenario_analysis.items()):
-        latency = f"{data.get('latency_avg', 0):.0f}ms" if 'latency_avg' in data else "N/A"
-        cost = f"${data.get('cost_avg', 0):.4f}" if 'cost_avg' in data else "N/A"
+        latency = (
+            f"{data.get('latency_avg', 0):.0f}ms" if "latency_avg" in data else "N/A"
+        )
+        cost = f"${data.get('cost_avg', 0):.4f}" if "cost_avg" in data else "N/A"
         error_rate = f"{data['error_rate']:.1f}%"
 
-        print(f"{scenario:<20} {data['count']:>6} {latency:>12} {cost:>10} {error_rate:>11}")
+        print(
+            f"{scenario:<20} {data['count']:>6} {latency:>12} {cost:>10} {error_rate:>11}"
+        )
 
     print("-" * 80)
 
@@ -131,24 +145,38 @@ def print_analysis(results: Dict):
             symbol = "✓" if passed else "✗"
             comparison = ">" if passed else "≤"
 
-        print(f"  {symbol} {metric_name}: {value:.2f} {comparison} {threshold} {'✓' if passed else '✗ FAILED'}")
+        print(
+            f"  {symbol} {metric_name}: {value:.2f} {comparison} {threshold} {'✓' if passed else '✗ FAILED'}"
+        )
         return passed
 
     all_passed = True
-    all_passed &= check_threshold("p50 Latency (ms)", summary["latency_p50"], thresholds["p50_latency_ms"])
-    all_passed &= check_threshold("p95 Latency (ms)", summary["latency_p95"], thresholds["p95_latency_ms"])
-    all_passed &= check_threshold("p99 Latency (ms)", summary["latency_p99"], thresholds["p99_latency_ms"])
-    all_passed &= check_threshold("Error Rate (%)", summary["error_rate"], thresholds["error_rate_percent"])
+    all_passed &= check_threshold(
+        "p50 Latency (ms)", summary["latency_p50"], thresholds["p50_latency_ms"]
+    )
+    all_passed &= check_threshold(
+        "p95 Latency (ms)", summary["latency_p95"], thresholds["p95_latency_ms"]
+    )
+    all_passed &= check_threshold(
+        "p99 Latency (ms)", summary["latency_p99"], thresholds["p99_latency_ms"]
+    )
+    all_passed &= check_threshold(
+        "Error Rate (%)", summary["error_rate"], thresholds["error_rate_percent"]
+    )
 
     avg_cost = summary["total_cost"] / summary["total_tests"]
-    all_passed &= check_threshold("Avg Cost ($)", avg_cost, thresholds["avg_cost_per_request"])
+    all_passed &= check_threshold(
+        "Avg Cost ($)", avg_cost, thresholds["avg_cost_per_request"]
+    )
 
     print("-" * 80)
 
     if all_passed:
         print(f"\n✅ All performance thresholds met! Ready for production.")
     else:
-        print(f"\n❌ Some thresholds exceeded. Review performance before production deployment.")
+        print(
+            f"\n❌ Some thresholds exceeded. Review performance before production deployment."
+        )
 
     print("=" * 80 + "\n")
 

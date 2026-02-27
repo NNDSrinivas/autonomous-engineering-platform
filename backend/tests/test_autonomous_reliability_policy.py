@@ -566,3 +566,41 @@ class TestScanCommandPolicy:
         # Should NOT be blocked or rewritten (scoped scans are safe)
         assert "blocked_command" not in result, "Scoped find should not be blocked"
         assert "rewritten_from" not in result, "Scoped find should not be rewritten"
+
+    @pytest.mark.asyncio
+    async def test_bash_c_unwrap_detects_scan(self, mock_agent, mock_context):
+        """
+        REGRESSION INVARIANT: bash -c 'find . -name ...' must unwrap and detect the inner scan.
+        Critical for preventing scan command bypass via shell wrappers.
+        """
+        mock_context.original_request = "find python files"
+        mock_context.iteration = 5
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": "bash -c \"find . -name '*.py'\""},
+            mock_context,
+        )
+
+        # Must be blocked OR rewritten (inner scan must be detected)
+        assert "blocked_command" in result or "rewritten_from" in result, (
+            "bash -c wrapper must not bypass scan detection"
+        )
+
+    @pytest.mark.asyncio
+    async def test_bash_c_piped_scan_blocked(self, mock_agent, mock_context):
+        """
+        REGRESSION INVARIANT: bash -c with piped scan must be detected and blocked.
+        Example: bash -c 'find . -name *.py | xargs grep TODO'
+        """
+        mock_context.original_request = "find todos"
+        mock_context.iteration = 5
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": 'bash -c "find . -name *.py | xargs grep TODO"'},
+            mock_context,
+        )
+
+        # Must be blocked (piped scan)
+        assert "blocked_command" in result, "Piped scan in bash -c must be blocked"

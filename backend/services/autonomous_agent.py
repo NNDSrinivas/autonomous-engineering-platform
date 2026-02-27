@@ -156,6 +156,40 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
     # return None
 
 
+# ========== SECRET REDACTION FOR LOGGING ==========
+# Patterns to redact secrets from command strings in logs
+SECRET_PATTERNS = [
+    (re.compile(r"(authorization:\s*bearer\s+)[^\s]+", re.I), r"\1***"),
+    (re.compile(r"(--api-key[=\s]+)[^\s]+", re.I), r"\1***"),
+    (re.compile(r"(-H\s+['\"]?authorization:\s*bearer\s+)[^\s'\"]+", re.I), r"\1***"),
+    (re.compile(r"(token=)[^&\s]+", re.I), r"\1***"),
+    (re.compile(r"(password=)[^&\s]+", re.I), r"\1***"),
+    (re.compile(r"(api_key=)[^&\s]+", re.I), r"\1***"),
+    (re.compile(r"(apikey=)[^&\s]+", re.I), r"\1***"),
+    (re.compile(r"(access_token=)[^&\s]+", re.I), r"\1***"),
+    (re.compile(r"(secret=)[^&\s]+", re.I), r"\1***"),
+]
+
+
+def _redact_secrets_for_logs(s: str) -> str:
+    """
+    Redact sensitive information from command strings before logging.
+
+    Protects against accidental logging of:
+    - Authorization headers (Bearer tokens)
+    - API keys (--api-key, api_key=)
+    - Passwords (password=)
+    - Access tokens (token=, access_token=)
+    - Generic secrets (secret=)
+
+    Returns sanitized string safe for logs.
+    """
+    out = s
+    for pattern, replacement in SECRET_PATTERNS:
+        out = pattern.sub(replacement, out)
+    return out
+
+
 class TaskStatus(Enum):
     """Status of an autonomous task."""
 
@@ -6149,8 +6183,10 @@ Respond with ONLY a JSON object:
                             progress_pct = min(
                                 95, int((elapsed_total / cmd_timeout) * 100)
                             )
+                            # Redact secrets before logging command
+                            safe_cmd = _redact_secrets_for_logs(command)[:50]
                             logger.info(
-                                f"[CommandProgress] {command[:50]}... still running "
+                                f"[CommandProgress] {safe_cmd}... still running "
                                 f"({int(elapsed_total)}s / {cmd_timeout}s, ~{progress_pct}%)"
                             )
                             last_progress_time = now

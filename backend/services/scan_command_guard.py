@@ -471,19 +471,37 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
         normalized = normalize_find_name_to_substring(info.extracted_pattern)
 
         # Safety: too broad after normalization.
-        # We normally require at least 2 characters to avoid very broad substring matches,
-        # but allow single-character patterns when they clearly come from a file extension
-        # like ".c" or ".r" (which normalize to "c" / "r").
-        if len(normalized) < 2:
-            is_single_char_extension = (
-                len(normalized) == 1
-                and info.extracted_pattern is not None
-                and re.match(r"^\.\w$", info.extracted_pattern.strip()) is not None
-            )
-            if not is_single_char_extension:
+        # PRODUCTION RULE: min_len=3 to avoid "py", "js" substring blasts,
+        # but allow 2-char patterns if they start with "." (e.g., ".py", ".ts", ".go").
+        # Single-char extensions like ".c" or ".r" are also allowed.
+        MIN_PATTERN_LEN = 3
+        ALLOW_LEN2_IF_LEADING_DOT = True
+
+        if len(normalized) < MIN_PATTERN_LEN:
+            # Exception: allow 2-char patterns if they start with "." (extensions)
+            if (
+                len(normalized) == 2
+                and ALLOW_LEN2_IF_LEADING_DOT
+                and normalized.startswith(".")
+            ):
+                pass  # Allow .py, .ts, .go
+            # Exception: allow single-char patterns if original was a dot-extension
+            elif len(normalized) == 1:
+                is_single_char_extension = (
+                    info.extracted_pattern is not None
+                    and re.match(r"^\.\w$", info.extracted_pattern.strip()) is not None
+                )
+                if not is_single_char_extension:
+                    return {
+                        "use_discovery": False,
+                        "reason": f"Pattern '{info.extracted_pattern}' normalizes to '{normalized}' which is too broad (min {MIN_PATTERN_LEN}, except dot-extensions)",
+                        "alternative": "Use a more specific pattern (e.g., '.py', 'Dockerfile', 'Button.tsx').",
+                    }
+            else:
+                # Patterns with len < 3 that don't meet exceptions
                 return {
                     "use_discovery": False,
-                    "reason": f"Pattern '{info.extracted_pattern}' normalizes to '{normalized}' which is too broad",
+                    "reason": f"Pattern '{info.extracted_pattern}' normalizes to '{normalized}' which is too broad (min {MIN_PATTERN_LEN}, except dot-extensions)",
                     "alternative": "Use a more specific pattern (e.g., '.py', 'Dockerfile', 'Button.tsx').",
                 }
 

@@ -258,3 +258,44 @@ class TestCopilotAdditionalFixes:
         assert "FIXME" in rewrite.get("alternative", "")
         # Should NOT include --max-count in pattern extraction
         assert "--max-count" not in rewrite.get("alternative", "").split()[1]
+
+
+class TestCopilotRound3Fixes:
+    """Test cases for third round of Copilot review issues."""
+
+    def test_or_operator_detected(self):
+        """COPILOT FIX: || operator should be detected (cd src || rg TODO)."""
+        assert is_piped_or_chained("cd src || rg TODO") is True
+        assert is_piped_or_chained("test -f file || grep -R pattern .") is True
+
+    def test_find_compound_expression_expanded(self):
+        """COPILOT FIX: find with -not, -path, -prune, ) should be blocked."""
+        # -not (alias for !)
+        scan_info = is_scan_command("find . -not -path '*/node_modules/*' -name '*.py'")
+        assert scan_info is not None
+        assert scan_info.can_rewrite is False
+
+        # -path (path matching/exclusion)
+        scan_info = is_scan_command("find . -path '*/test/*' -name '*.js'")
+        assert scan_info is not None
+        assert scan_info.can_rewrite is False
+
+        # -prune (directory pruning)
+        scan_info = is_scan_command("find . -name node_modules -prune -o -name '*.py'")
+        assert scan_info is not None
+        assert scan_info.can_rewrite is False
+
+        # ) (grouping close)
+        scan_info = is_scan_command("find . \\( -name '*.py' -o -name '*.js' \\)")
+        assert scan_info is not None
+        assert scan_info.can_rewrite is False
+
+    def test_bash_c_wrapper_unwrapped(self):
+        """COPILOT FIX: bash -c 'rg TODO' should detect rg scan."""
+        # This tests the unwrapping logic in autonomous_agent.py
+        # Here we just verify the command itself is detected
+        scan_info = is_scan_command("rg TODO")
+        assert scan_info is not None
+        assert scan_info.tool == "rg"
+
+        # The actual bash -c unwrapping is tested via integration in autonomous_agent

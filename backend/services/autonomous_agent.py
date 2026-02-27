@@ -5531,6 +5531,19 @@ Respond with ONLY a JSON object:
                     is_piped_or_chained,
                 )
 
+                # COPILOT FIX: Unwrap bash -c before scan detection
+                # bash -c 'rg TODO' should detect rg, not bash
+                command_to_check = command
+                bash_c_match = re.match(r"(?:bash|sh)\s+-c\s+(.+)", command.strip())
+                if bash_c_match:
+                    # Extract inner command (may be quoted)
+                    inner = bash_c_match.group(1).strip()
+                    # Remove outer quotes if present
+                    if (inner.startswith('"') and inner.endswith('"')) or \
+                       (inner.startswith("'") and inner.endswith("'")):
+                        inner = inner[1:-1]
+                    command_to_check = inner
+
                 # COPILOT FIX: Block scan commands in ANY segment, including redirection/subshell.
                 # P1 FIX #3: Block scan commands in ANY segment of pipes/chains/backgrounding/xargs/-exec.
                 # Previously only checked first segment - now we check ALL segments.
@@ -5538,12 +5551,14 @@ Respond with ONLY a JSON object:
                 # - "cd . && rg TODO" should be caught (rg in second segment)
                 # - "rg TODO > out.txt" should be caught (redirection operator)
                 # - "rg TODO $(cat files)" should be caught (command substitution)
-                if is_piped_or_chained(command):
-                    # COPILOT FIX: Split by ALL operators detected by is_piped_or_chained()
-                    # including redirection (>, <), subshell ($(), backticks), -exec
+                # - "cd src || rg TODO" should be caught (|| fallback operator)
+                if is_piped_or_chained(command_to_check):
+                    # COPILOT FIX: Include || operator in split pattern (pattern order matters: \|\| before \|)
+                    # Split by ALL operators detected by is_piped_or_chained()
+                    # including || (fallback), redirection (>, <), subshell ($(), backticks), -exec
                     segments = re.split(
-                        r"\||&&|;|&\s+|&\s*$|\bxargs\b|[<>]|`|\$\(|-exec\b",
-                        command,
+                        r"\|\||\||&&|;|&\s+|&\s*$|\bxargs\b|[<>]|`|\$\(|-exec\b",
+                        command_to_check,
                     )
                     for segment in segments:
                         segment = segment.strip()
@@ -5564,7 +5579,7 @@ Respond with ONLY a JSON object:
                                 ),
                             }
 
-                scan_info = is_scan_command(command)
+                scan_info = is_scan_command(command_to_check)
                 if scan_info:
                     # Fail-closed policy: only allow when user explicitly requested repo-wide scan
                     # AND command is bounded/scoped AND user confirmation flag is set.

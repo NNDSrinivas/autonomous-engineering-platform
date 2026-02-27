@@ -23,7 +23,9 @@ class ScanCommandInfo:
     extracted_pattern: Optional[str] = None  # Only for find -name/-iname
 
 
-_PIPE_CHAIN_RE = re.compile(r"\||&&|;|&\s*$|&\s+|`|\$\(|>|<|\bxargs\b|-exec\b")
+# COPILOT FIX: Include || operator for bash fallback chains (cmd1 || cmd2)
+# Pattern order matters: \|\| must come before \| to match two-char operator first
+_PIPE_CHAIN_RE = re.compile(r"\|\||\||&&|;|&\s*$|&\s+|`|\$\(|>|<|\bxargs\b|-exec\b")
 
 
 def split_command(cmd: str) -> Optional[List[str]]:
@@ -244,8 +246,17 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         if "-maxdepth" in tokens or "-mindepth" in tokens:
             return None
 
-        # Hard-block compound expressions
-        if any(tok in tokens for tok in ["-o", "-or", "!", "("]):
+        # COPILOT FIX: Hard-block compound expressions and semantic-changing predicates
+        # Expanded to include -not, -path, -prune, -a/-and, ) to prevent semantic violations
+        # Example: find . -not -path '*/node_modules/*' -name '*.py' should NOT be rewritten
+        if any(tok in tokens for tok in [
+            "-o", "-or",     # OR operator
+            "!", "-not",     # NOT operator
+            "(", ")",        # Grouping
+            "-a", "-and",    # AND operator (explicit)
+            "-path",         # Path matching (can exclude subtrees)
+            "-prune",        # Prune directories (changes traversal)
+        ]):
             return ScanCommandInfo(
                 tool="find",
                 raw=cmd,
@@ -531,12 +542,16 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
         return False
 
     if info.tool == "grep":
-        # recursive grep allowed only if path scoped (not ".")
-        for tok in reversed(info.tokens):
-            if tok.startswith("-"):
-                continue
-            if tok == ".":
-                return False
-            return _is_scoped_path(tok)
+        # COPILOT FIX: Use proper positional parsing to avoid misclassifying
+        # option values (--exclude-dir node_modules) or PATTERN as PATH
+        # Require at least PATTERN + explicit PATH (2+ positionals)
+        positionals = _extract_grep_positionals(info.tokens)
+        if len(positionals) < 2:
+            return False  # No explicit path (defaults to .)
+        path = positionals[-1]
+        # Do not allow unbounded scans of root
+        if not path or path == ".":
+            return False
+        return _is_scoped_path(path)
 
     return False

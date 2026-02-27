@@ -26,7 +26,8 @@ class ScanCommandInfo:
 
 # COPILOT FIX: Include || operator for bash fallback chains (cmd1 || cmd2)
 # Pattern order matters: \|\| must come before \| to match two-char operator first
-_PIPE_CHAIN_RE = re.compile(r"\|\||\||&&|;|&\s*$|&\s+|`|\$\(|>|<|\bxargs\b|-exec\b")
+# Simplified: &(?:\s|$) handles all background cases uniformly
+_PIPE_CHAIN_RE = re.compile(r"\|\||\||&&|;|&(?:\s|$)|`|\$\(|>|<|\bxargs\b|-exec\b")
 
 
 def split_command(cmd: str) -> Optional[List[str]]:
@@ -73,6 +74,8 @@ def _extract_grep_positionals(tokens: List[str]) -> List[str]:
     """
     # Options that take a value as the next token
     # Based on GNU grep and BSD grep common options
+    # IMPORTANT: Keep this list up-to-date with new grep options to avoid
+    # false negatives (unbounded scans being allowed due to misidentified paths)
     opts_with_values = {
         "-e",
         "--regexp",
@@ -136,6 +139,8 @@ def _extract_rg_positionals(tokens: List[str]) -> List[str]:
     """
     # Options that take a value as the next token
     # Best-effort list covering common ripgrep options (ripgrep 13+)
+    # IMPORTANT: Keep this list up-to-date with new rg options to avoid
+    # false negatives (unbounded scans being allowed due to misidentified paths)
     opts_with_values = {
         "--max-count",
         "-m",
@@ -504,7 +509,9 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
                     info.extracted_pattern is not None
                     and re.match(r"^\.\w$", info.extracted_pattern.strip()) is not None
                 )
-                if not is_single_char_extension:
+                if is_single_char_extension:
+                    pass  # Allow non-whitelisted dot-extensions (.e, .o, etc.)
+                else:
                     return {
                         "use_discovery": False,
                         "reason": f"Pattern '{info.extracted_pattern}' normalizes to '{normalized}' which is too broad (min {MIN_PATTERN_LEN}, except dot-extensions)",

@@ -575,9 +575,9 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
             ),
             "suggested_next_tool": "search_files",
             "alternative_commands": [
-                f"# Bounded rg with glob and path:",
+                "# Bounded rg with glob and path:",
                 f"rg {pattern!r} src/ -g'*.py' --max-count 100",
-                f"# Or use type filter:",
+                "# Or use type filter:",
                 f"rg {pattern!r} backend/ --type python --max-count 100",
             ],
         }

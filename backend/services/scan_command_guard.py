@@ -219,13 +219,14 @@ def _is_scoped_path(path: str) -> bool:
     # P1 FIX: Treat plain directory names (src, backend, etc.) as scoped, but
     # require at least two characters to avoid surprising behavior for
     # single-character tokens like "a" or "1" that may be user mistakes.
-    # Avoid treating shell constructs (globs, vars, home shortcuts) or flags
+    # Avoid treating shell constructs (globs, vars, home shortcuts), shell
+    # metacharacters (parentheses, pipes, redirections, etc.), or flags
     # (e.g., "-name", "-type") as directory names.
     if (
         path
         and len(path) > 1
         and not path.startswith("-")
-        and not re.search(r"[*?\[\]{}`$~]", path)
+        and not re.search(r"[*?\[\]{}`$~()<>;&|]", path)
     ):
         return True
     return False

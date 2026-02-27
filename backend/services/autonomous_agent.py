@@ -5729,9 +5729,14 @@ Respond with ONLY a JSON object:
                     # Check if it's a bash/sh wrapper with a -c flag (e.g., "bash -c", "bash -lc", "bash -ic")
                     if len(parts) >= 3 and parts[0] in ("bash", "sh"):
                         cmd_index: Optional[int] = None
-                        # Search for any argument that is "-c" or contains "-c" (e.g., "-lc", "-ic")
+                        # Search for any argument that is "-c" or short-option group containing "c" (e.g., "-lc", "-ic")
+                        # Exclude long options (--norc, --rcfile) to avoid false matches
                         for i, arg in enumerate(parts[1:], start=1):
-                            if arg == "-c" or "c" in arg and arg.startswith("-"):
+                            if arg == "-c" or (
+                                arg.startswith("-")
+                                and not arg.startswith("--")
+                                and "c" in arg
+                            ):
                                 # The wrapped command should be the token immediately after the -c flag
                                 if i + 1 < len(parts):
                                     cmd_index = i + 1
@@ -5753,9 +5758,13 @@ Respond with ONLY a JSON object:
                 if is_piped_or_chained(command_to_check):
                     # Special handling: commands using backticks or $(...) should not be split on those
                     # characters, but scan commands that use them should still be blocked.
+                    # FAIL CLOSED: If command substitution/backticks are present AND a scan tool is mentioned,
+                    # block immediately (don't rely on is_scan_command's path parsing which can be bypassed).
                     if "`" in command_to_check or "$(" in command_to_check:
-                        scan_info = is_scan_command(command_to_check)
-                        if scan_info:
+                        # Check for scan tool keywords (fail closed approach)
+                        scan_tools = ["find", "grep", "egrep", "rg"]
+                        tokens = command_to_check.split()
+                        if any(tool in tokens for tool in scan_tools):
                             return {
                                 "success": False,
                                 "error": "⚠️ SCAN BLOCKED: Scan command using command substitution/backticks detected.",

@@ -211,9 +211,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # OAuth Device Code Configuration
-    # DEPRECATED: Device flow is legacy. PKCE is the recommended flow for VS Code extension.
-    # Only enable this for backward compatibility or emergency recovery.
-    enable_legacy_device_flow: bool = False  # Feature flag: OFF by default in production
+    # DEPRECATED: Legacy OAuth device flow. PKCE is the recommended flow for the VS Code extension.
+    # Disabled by default in all environments; must be explicitly set to True to enable.
+    # Only enable this for backward compatibility or emergency recovery scenarios.
+    enable_legacy_device_flow: bool = False
     oauth_device_use_in_memory_store: bool = False
     oauth_device_auto_approve: bool = False
     oauth_device_code_ttl_seconds: int = 600

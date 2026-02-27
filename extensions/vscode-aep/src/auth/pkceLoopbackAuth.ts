@@ -468,6 +468,12 @@ export class PKCELoopbackAuthService {
           return this.refreshing;
         }
 
+        // Clear any pending refresh timer to prevent race conditions
+        if (this.refreshTimer) {
+          clearTimeout(this.refreshTimer);
+          this.refreshTimer = undefined;
+        }
+
         const refreshToken = await this.context.secrets.get("auth0_refresh_token");
         if (refreshToken) {
           this.refreshing = (async () => {

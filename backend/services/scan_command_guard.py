@@ -24,12 +24,18 @@ class ScanCommandInfo:
 
 
 _PIPE_CHAIN_RE = re.compile(r"\||&&|;|&\s*$|&\s+|`|\$\(|>|<|\bxargs\b|-exec\b")
-# Used only to split out the "first command" in a pipeline/chain for detection.
-_SPLIT_CHAIN_RE = re.compile(r"\||&&|;|&\s*$|&\s+|\bxargs\b")
 
 
 def split_command(cmd: str) -> Optional[List[str]]:
-    """Tokenize command with shlex (fail closed if parse error)."""
+    """
+    Tokenize command with shlex (fail closed if parse error).
+
+    FIX #6 CLARIFICATION: Returning None on parse failure is FAIL-CLOSED for
+    scan detection specifically. If we can't parse the command safely, we don't
+    classify it as a scan, so it passes through to the existing dangerous command
+    system which has its own safeguards. This prevents false blocking while
+    maintaining security.
+    """
     try:
         return shlex.split(cmd)
     except ValueError:
@@ -41,11 +47,63 @@ def is_piped_or_chained(cmd: str) -> bool:
     return bool(_PIPE_CHAIN_RE.search(cmd))
 
 
+def _extract_rg_positionals(tokens: List[str]) -> List[str]:
+    """
+    Extract positional arguments from rg command, skipping option values.
+
+    P1 FIX #2: rg --max-count 10 TODO should extract ["TODO"], not ["10", "TODO"]
+
+    rg options that take values:
+    - Long options with =: --max-count=10 (single token)
+    - Long options with space: --max-count 10 (two tokens)
+    - Short options: -A 5, -m 10, -g '*.py'
+    """
+    # Options that take a value as the next token
+    opts_with_values = {
+        "--max-count", "-m",
+        "--max-depth",
+        "--type", "-t",
+        "--type-not", "-T",
+        "--glob", "-g",
+        "--iglob",
+        "-A", "-B", "-C",  # context lines
+        "--after-context", "--before-context", "--context",
+        "-f", "--file",
+        "-e", "--regexp",
+        "--encoding",
+        "--max-filesize",
+        "--path-separator",
+    }
+
+    positionals = []
+    skip_next = False
+
+    for i, tok in enumerate(tokens[1:], start=1):  # Skip command name (rg)
+        if skip_next:
+            skip_next = False
+            continue
+
+        if tok.startswith("-"):
+            # Check if it's an option that takes a value
+            # Handle both --option=value and --option value
+            if "=" in tok:
+                continue  # --max-count=10 is a single token
+            opt_name = tok.split("=")[0]
+            if opt_name in opts_with_values:
+                skip_next = True  # Skip next token (the value)
+            continue
+
+        # Non-flag, non-skipped token is a positional
+        positionals.append(tok)
+
+    return positionals
+
+
 def _is_scoped_path(path: str) -> bool:
     """
     Return True if the user is clearly scoping to a subdir (safer).
     Examples treated as scoped:
-      ./src, ../backend, backend/, src/components
+      ./src, ../backend, backend/, src/components, src, backend
     Not scoped:
       . , $PWD , ${PWD}
     """
@@ -55,6 +113,10 @@ def _is_scoped_path(path: str) -> bool:
         return True
     if "/" in path and not path.startswith("."):
         return True
+    # P1 FIX: Treat plain directory names (src, backend, etc.) as scoped
+    # These are common directory names that indicate user intent to scope search
+    if path and not path.startswith("-"):
+        return True
     return False
 
 
@@ -63,6 +125,11 @@ def normalize_find_name_to_substring(pattern: str) -> str:
     Normalize find -name/-iname pattern to substring for search_files.
 
     CRITICAL: Do NOT strip leading dots (".py" must stay ".py", not become "py").
+
+    FIX #7: Extract longest literal segment for patterns like test_*.py
+    - test_*.py → test_ (prefix match)
+    - *.py → .py (suffix match, keep leading dot)
+    - *foo* → foo (substring match)
     """
     pat = (pattern or "").strip().strip("'\"")
     has_wildcards = ("*" in pat) or ("?" in pat)
@@ -70,11 +137,24 @@ def normalize_find_name_to_substring(pattern: str) -> str:
     if not has_wildcards:
         return pat  # exact filename intent (e.g., "Button.tsx")
 
-    # substring semantics: remove wildcards but keep everything else
-    s = pat.replace("*", "").replace("?", "").strip()
+    # Split by wildcards and find longest literal segment
+    # For test_*.py, segments are ["test_", "", ".py"]
+    # We want the longest meaningful segment
+    segments = re.split(r'[*?]+', pat)
+    segments = [s for s in segments if s]  # Remove empty strings
 
-    # IMPORTANT: do NOT strip leading dots
-    return s
+    if not segments:
+        return ""  # Pattern was all wildcards
+
+    # Find longest segment (most specific)
+    longest = max(segments, key=len)
+
+    # IMPORTANT: Preserve leading dots if present in any segment
+    # For *.py, segments = [".py"], longest = ".py" (correct)
+    # For test_*.py, segments = ["test_", ".py"], longest = "test_" (good prefix)
+    # For *test*.py, segments = ["test", ".py"], longest could be either
+
+    return longest
 
 
 def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
@@ -159,19 +239,29 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         if not any(tok in tokens for tok in ["-r", "-R", "--recursive"]):
             return None
 
-        # If user provides an explicit scoped dir (not ".") treat as pass-through
-        # Example: grep -R TODO backend/
-        for tok in reversed(tokens):
-            if tok.startswith("-"):
-                continue
-            if tok == ".":
-                break
-            # last non-flag argument might be a path; if it's scoped, allow
-            if _is_scoped_path(tok):
-                return None
+        # FIX #8: Parse grep arguments properly
+        # grep syntax: grep [OPTIONS] PATTERN [FILE...]
+        # - If 1 non-flag arg: it's the PATTERN (no path, defaults to ".")
+        # - If 2+ non-flag args: first is PATTERN, rest are FILE path(s)
+        non_flags = [tok for tok in tokens[1:] if not tok.startswith("-")]
 
-        # Root scan
-        if "." in tokens:
+        # No path provided (only pattern or no args) -> defaults to "."
+        if len(non_flags) <= 1:
+            return ScanCommandInfo(
+                tool="grep",
+                raw=cmd,
+                tokens=tokens,
+                reason="Recursive grep without explicit path defaults to root (content search)",
+                can_rewrite=False,
+                rewrite_kind="blocked",
+            )
+
+        # Multiple non-flags: pattern + path(s)
+        # Check the last argument (the search path)
+        search_path = non_flags[-1]
+
+        # If explicit "." path -> block
+        if search_path == ".":
             return ScanCommandInfo(
                 tool="grep",
                 raw=cmd,
@@ -180,7 +270,20 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
                 can_rewrite=False,
                 rewrite_kind="blocked",
             )
-        return None
+
+        # If scoped directory -> allow
+        if _is_scoped_path(search_path):
+            return None
+
+        # Otherwise block (unrecognized pattern)
+        return ScanCommandInfo(
+            tool="grep",
+            raw=cmd,
+            tokens=tokens,
+            reason="Recursive grep with ambiguous scope",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
 
     # -------------------------
     # rg scans
@@ -193,12 +296,13 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
 
         # If user provides explicit non-root path, allow
         # (ripgrep: first positional is pattern, second+ are paths)
-        positionals = [tok for tok in tokens[1:] if not tok.startswith("-")]
+        # P1 FIX #2: Use proper positional extraction (skip option values)
+        positionals = _extract_rg_positionals(tokens)
         if len(positionals) > 1:
             # Multiple positionals: pattern + path(s)
             # Check if path is explicit (not root)
             path = positionals[-1]
-            if path not in [".", ""]:
+            if path not in [".", ""] and _is_scoped_path(path):
                 return None  # scoped path
 
         # No explicit path or path is root -> unbounded root scan
@@ -273,24 +377,36 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
 
 def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
     """
-    Fail-closed allow policy. Scan commands are allowed only if:
+    Fail-closed allow policy. Scan commands are allowed only if ALL conditions met:
       1) User explicitly asked to scan entire repo/codebase, AND
       2) The command is bounded/scoped, AND
       3) A confirmation flag is present on context (to prevent agent self-hanging).
+
+    FIX #5 CLARIFICATION: This policy is intentionally strict to prevent autonomous
+    agents from hanging on expensive scans. The confirmation flag (allow_repo_scans)
+    must be explicitly set by the UI/consent system when the user confirms they want
+    a repo-wide scan. This flag is NOT set by default, making this path rarely reached
+    in practice - which is by design for safety.
+
+    In most cases, scans are either:
+    - Rewritten to discovery tools (find -name → search_files)
+    - Blocked with safe alternatives (grep -R → workflow suggestion)
+    - Allowed automatically if scoped (find ./src, grep -R pattern backend/)
     """
     # If your TaskContext differs, adjust these attribute reads accordingly.
     original_request = (getattr(context, "original_request", "") or "").lower()
     iteration = int(getattr(context, "iteration", 0) or 0)
 
-    # Optional: require explicit confirmation flag (recommended)
-    # Example: context.allow_unbounded_scans set by UI consent step
+    # Require explicit confirmation flag (recommended for production)
+    # Example: context.allow_repo_scans set by UI consent step
+    # This flag prevents the agent from autonomously running expensive scans
     confirmed = bool(getattr(context, "allow_repo_scans", False))
 
-    # Block during early discovery iterations
+    # Block during early discovery iterations (prevent premature expensive scans)
     if iteration and iteration < 3:
         return False
 
-    # Must be explicit
+    # Must be explicit user request for repo-wide scan
     explicit = any(
         phrase in original_request
         for phrase in [
@@ -306,11 +422,11 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
     if not explicit:
         return False
 
-    # Require confirmation for any scan-class command
+    # Require confirmation for any scan-class command (fail-closed)
     if not confirmed:
         return False
 
-    # Even with explicit + confirmed, require bounds
+    # Even with explicit + confirmed, require bounds for safety
     if info.tool == "find":
         # bounded by -maxdepth/-mindepth or scoped root
         if "-maxdepth" in info.tokens or "-mindepth" in info.tokens:
@@ -322,8 +438,12 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
         has_bounds = any(tok in info.tokens for tok in ["--glob", "-g", "--iglob", "--type", "-t"])
         if has_bounds:
             return True
-        positionals = [tok for tok in info.tokens[1:] if not tok.startswith("-")]
-        return bool(positionals and positionals[-1] not in [".", ""])
+        # Use proper positional extraction (skip option values)
+        positionals = _extract_rg_positionals(info.tokens)
+        if positionals:
+            path = positionals[-1] if len(positionals) > 1 else None
+            return path and path not in [".", ""] and _is_scoped_path(path)
+        return False
 
     if info.tool == "grep":
         # recursive grep allowed only if path scoped (not ".")

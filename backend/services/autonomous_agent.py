@@ -5531,23 +5531,30 @@ Respond with ONLY a JSON object:
                     is_piped_or_chained,
                 )
 
-                # Block scan commands inside pipes/chains/backgrounding/xargs/-exec early.
-                # We only inspect the first command segment for scan-class detection.
+                # P1 FIX #3: Block scan commands in ANY segment of pipes/chains/backgrounding/xargs/-exec.
+                # Previously only checked first segment - now we check ALL segments.
+                # Example: "cd . && rg TODO" should be caught (rg TODO is in second segment).
                 if is_piped_or_chained(command):
-                    first_cmd = re.split(r"\||&&|;|&\s|\bxargs\b", command)[0].strip()
-                    scan_info = is_scan_command(first_cmd)
-                    if scan_info:
-                        return {
-                            "success": False,
-                            "error": "⚠️ SCAN BLOCKED: Piped/chained scan detected. Break into steps.",
-                            "blocked_command": command,
-                            "reason": "Scan commands in pipes/chains cause multi-minute hangs in large repos.",
-                            "suggestion": (
-                                "Break into steps:\n"
-                                "1) Use search_files to find candidate files (bounded)\n"
-                                "2) Use read_file on candidates (or bounded commands per file)"
-                            ),
-                        }
+                    # Split by all chain/pipe operators and check each segment
+                    segments = re.split(r"\||&&|;|&\s+|&\s*$|\bxargs\b", command)
+                    for segment in segments:
+                        segment = segment.strip()
+                        if not segment:
+                            continue
+                        scan_info = is_scan_command(segment)
+                        if scan_info:
+                            return {
+                                "success": False,
+                                "error": "⚠️ SCAN BLOCKED: Piped/chained scan detected. Break into steps.",
+                                "blocked_command": command,
+                                "blocked_segment": segment,
+                                "reason": "Scan commands in pipes/chains cause multi-minute hangs in large repos.",
+                                "suggestion": (
+                                    "Break into steps:\n"
+                                    "1) Use search_files to find candidate files (bounded)\n"
+                                    "2) Use read_file on candidates (or bounded commands per file)"
+                                ),
+                            }
 
                 scan_info = is_scan_command(command)
                 if scan_info:

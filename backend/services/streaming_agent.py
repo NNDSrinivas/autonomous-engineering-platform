@@ -882,6 +882,45 @@ NAVI_TOOLS = [
         },
     },
     {
+        "name": "ask_user",
+        "description": "Request user input when you genuinely need clarification and CANNOT proceed without it. Use sparingly - only when truly necessary. Examples: multiple files match and you can't determine which one, user's request is ambiguous with no context, need to choose between mutually exclusive approaches.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The specific question to ask the user. Be clear and concise.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Short title for the prompt (e.g., 'Select file', 'Confirm action')",
+                },
+                "prompt_type": {
+                    "type": "string",
+                    "enum": ["text", "select", "confirm"],
+                    "description": "Type of input: 'text' (free text), 'select' (choose one option), 'confirm' (yes/no)",
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "value": {"type": "string"},
+                            "label": {"type": "string"}
+                        },
+                        "required": ["value", "label"]
+                    },
+                    "description": "List of options (required for 'select' type, ignored for others)",
+                },
+                "placeholder": {
+                    "type": "string",
+                    "description": "Placeholder text (for 'text' type only)",
+                }
+            },
+            "required": ["question", "prompt_type"],
+        },
+    },
+    {
         "name": "fetch_url",
         "description": "Fetch and read the content of a web page. Use this when the user provides a URL or wants you to analyze a website. Returns the page title and text content extracted from HTML.",
         "input_schema": {

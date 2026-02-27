@@ -128,7 +128,7 @@ def decode_jwt(token: str) -> dict:
                 # Log only prefix for security (avoid leaking full client IDs in logs)
                 azp_prefix = azp[:8] if len(azp) > 8 else "***"
                 logger.warning(f"Invalid authorized party rejected: {azp_prefix}...")
-                raise JWTVerificationError(f"Invalid authorized party")
+                raise JWTVerificationError("Invalid authorized party")
 
             return payload
         except ExpiredSignatureError as e:

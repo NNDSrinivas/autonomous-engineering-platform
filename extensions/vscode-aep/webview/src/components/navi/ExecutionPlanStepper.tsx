@@ -75,7 +75,8 @@ export const ExecutionPlanStepper: React.FC<ExecutionPlanStepperProps> = ({
   const progressPercent =
     steps.length > 0 ? (progressCount / steps.length) * 100 : 0;
   const markerPosition = steps.length > 0 ? Math.max(0, Math.min(progressPercent, 100)) : 0;
-  const progressBadgeCount = allCompleted || hasError ? progressCount : completedCount;
+  // Use progressCount consistently for badge to match progress bar
+  const progressBadgeCount = progressCount;
 
   // Handle toggle - support both controlled and uncontrolled modes
   const handleToggle = () => {

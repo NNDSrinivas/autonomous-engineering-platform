@@ -231,14 +231,21 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
                   type="button"
                   className={`fcs-file-main ${!canOpenDiff ? "fcs-file-main--disabled" : ""}`}
                   onClick={() => canOpenDiff && openFileDiff(file)}
-                  title={canOpenDiff ? "Open changes in diff editor" : undefined}
+                  title={file.path}
                 >
                   <div className="fcs-file-info">
                     {getFileIcon(file.path)}
-                    <span className={`fcs-filename ${isDeleted ? "fcs-filename--deleted" : ""}`}>
+                    <span
+                      className={`fcs-filename ${isDeleted ? "fcs-filename--deleted" : ""}`}
+                      title={file.path}
+                    >
                       {filename}
                     </span>
-                    {directory && <span className="fcs-directory">{directory}</span>}
+                    {directory && (
+                      <span className="fcs-directory" title={file.path}>
+                        {directory}
+                      </span>
+                    )}
                   </div>
                   <div className="fcs-file-stats">
                     {isDeleted ? (
@@ -499,7 +506,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
 
         .fcs-file-main {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: space-between;
           flex: 1;
           min-width: 0;
@@ -522,8 +529,9 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
 
         .fcs-file-info {
           display: inline-flex;
-          align-items: center;
+          align-items: flex-start;
           gap: 8px;
+          flex: 1;
           min-width: 0;
           overflow: hidden;
         }
@@ -553,11 +561,15 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         .fcs-filename {
           font-size: 12px;
           font-weight: 540;
+          line-height: 1.2;
           color: var(--vscode-foreground, #e5e7eb);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 40%;
+          white-space: normal;
+          overflow: visible;
+          text-overflow: clip;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+          max-width: none;
+          flex-shrink: 0;
         }
 
         .fcs-filename--deleted {
@@ -567,10 +579,13 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
 
         .fcs-directory {
           font-size: 11px;
+          line-height: 1.2;
           color: rgba(255, 255, 255, 0.4);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          min-width: 0;
+          flex: 1;
         }
 
         .fcs-file-stats {

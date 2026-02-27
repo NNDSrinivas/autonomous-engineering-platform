@@ -27,14 +27,15 @@ interface UserInfo {
 
 export class PKCELoopbackAuthService {
   private readonly loopbackHost = "127.0.0.1";
-  private readonly loopbackPort = 4312;
-  private readonly redirectUri: string;
+  private readonly loopbackPortRange = { start: 4312, end: 4322 }; // Support multiple VS Code windows
+  private redirectUri: string; // Will be updated with actual port
   private readonly auth0Domain: string;
   private readonly clientId: string;
   private readonly audience: string;
   private readonly context: vscode.ExtensionContext;
 
   private server?: http.Server;
+  private actualPort?: number; // Track which port was successfully bound
   private refreshTimer?: NodeJS.Timeout;
   private refreshing: Promise<string | undefined> | null = null;
 
@@ -43,7 +44,8 @@ export class PKCELoopbackAuthService {
     this.auth0Domain = config.auth0Domain;
     this.clientId = config.clientId;
     this.audience = config.audience;
-    this.redirectUri = `http://${this.loopbackHost}:${this.loopbackPort}/callback`;
+    // Initialize with default port, will be updated when server starts
+    this.redirectUri = `http://${this.loopbackHost}:${this.loopbackPortRange.start}/callback`;
   }
 
   /**
@@ -212,26 +214,55 @@ export class PKCELoopbackAuthService {
         }
       });
 
-      this.server.listen(this.loopbackPort, this.loopbackHost, () => {
-        console.log(`Loopback server listening on ${this.redirectUri}`);
-      });
+      // Try ports in the configured range
+      this.tryPortsInRange(timeout, resolve, reject);
+    });
+  }
 
-      this.server.on("error", (err: NodeJS.ErrnoException) => {
+  /**
+   * Try binding to ports in the configured range until one succeeds
+   */
+  private tryPortsInRange(
+    timeout: NodeJS.Timeout,
+    resolve: (value: { code: string; state: string }) => void,
+    reject: (reason: Error) => void,
+    portIndex = 0
+  ): void {
+    if (!this.server) {
+      reject(new Error("Server not initialized"));
+      return;
+    }
+
+    const port = this.loopbackPortRange.start + portIndex;
+    const maxPort = this.loopbackPortRange.end;
+
+    if (port > maxPort) {
+      clearTimeout(timeout);
+      vscode.window.showErrorMessage(
+        `Unable to start login redirect listener. All ports in range ${this.loopbackPortRange.start}-${maxPort} are in use. ` +
+          `This may occur if multiple VS Code windows are running the NAVI/AEP extension or other applications are using these ports. ` +
+          `Please close other instances or applications and try again.`
+      );
+      reject(new Error(`All ports in range ${this.loopbackPortRange.start}-${maxPort} are in use`));
+      return;
+    }
+
+    this.server.listen(port, this.loopbackHost, () => {
+      this.actualPort = port;
+      this.redirectUri = `http://${this.loopbackHost}:${port}/callback`;
+      console.log(`Loopback server listening on ${this.redirectUri}`);
+    });
+
+    this.server.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        // Port in use, try next port in range
+        console.log(`Port ${port} in use, trying next port...`);
+        this.server?.removeAllListeners();
+        this.tryPortsInRange(timeout, resolve, reject, portIndex + 1);
+      } else {
         clearTimeout(timeout);
-        if (err.code === "EADDRINUSE") {
-          vscode.window.showErrorMessage(
-            `Unable to start login redirect listener on http://${this.loopbackHost}:${this.loopbackPort} because the port is already in use. ` +
-              "Please close any other instance of the Adobe Experience Platform extension or any application using this port and try again."
-          );
-          reject(
-            new Error(
-              `Loopback server failed to start: port ${this.loopbackPort} is already in use.`
-            )
-          );
-        } else {
-          reject(err);
-        }
-      });
+        reject(err);
+      }
     });
   }
 
@@ -485,7 +516,8 @@ export class PKCELoopbackAuthService {
               console.error("Token refresh failed:", error);
               // Clear invalid tokens
               await this.logout();
-              return undefined;
+              // Throw error so callers know refresh failed and can prompt re-auth
+              throw new Error("Token refresh failed. Please sign in again.");
             } finally {
               this.refreshing = null;
             }

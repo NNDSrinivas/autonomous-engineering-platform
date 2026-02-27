@@ -3204,7 +3204,7 @@ html.light .navi-status-text--done {
 .navi-scroll-nav {
   position: absolute;
   right: 16px;
-  bottom: 132px;
+  bottom: clamp(190px, 24vh, 260px);
   display: flex;
   flex-direction: column;
   gap: 8px;

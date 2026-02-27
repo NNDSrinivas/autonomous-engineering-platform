@@ -656,7 +656,25 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
             ],
         }
 
-    return {"use_discovery": False}
+    # Fallback for blocked find commands (compound expressions, -type f without -name, etc.)
+    return {
+        "use_discovery": False,
+        "reason_code": "SCAN_BLOCKED_UNREWRITEABLE_FIND",
+        "workflow_suggestion": (
+            "This scan command cannot be safely rewritten. Instead of running an "
+            "unbounded or complex `find` over the repository, use:\n"
+            "1) search_files with a filename pattern to locate relevant files\n"
+            "2) list_directory to inspect directory contents if you just need a listing\n"
+            "3) read_file on specific files you want to inspect"
+        ),
+        "suggested_next_tool": "search_files",
+        "alternative_commands": [
+            "# Example: search for Python files by name:",
+            "search_files --pattern '*.py'",
+            "# Example: list the contents of a directory:",
+            "list_directory --path .",
+        ],
+    }
 
 
 def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
@@ -716,7 +734,23 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
         # bounded by -maxdepth/-mindepth or scoped root
         if "-maxdepth" in info.tokens or "-mindepth" in info.tokens:
             return True
-        search_root = info.tokens[1] if len(info.tokens) > 1 else "."
+
+        # Extract search root, skipping global options like -H, -L, -P, -O, -D
+        # (same logic as is_scan_command to avoid false negatives)
+        tokens = info.tokens
+        idx = 1
+        global_opts_with_values = {"-O", "-D"}
+        while idx < len(tokens):
+            tok = tokens[idx]
+            if tok in ("-H", "-L", "-P", "--"):
+                idx += 1
+            elif tok in global_opts_with_values:
+                idx += 2
+            elif tok.startswith(("-O", "-D")):
+                idx += 1
+            else:
+                break
+        search_root = tokens[idx] if idx < len(tokens) else "."
         return _is_scoped_path(search_root)
 
     if info.tool == "rg":

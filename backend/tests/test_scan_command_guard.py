@@ -7,37 +7,36 @@ from backend.services.scan_command_guard import (
     rewrite_to_discovery,
     normalize_find_name_to_substring,
     is_piped_or_chained,
+    should_allow_scan_for_context,
+    ScanCommandInfo,
 )
 
 
 class TestTokenAwareDetection:
-    @pytest.mark.parametrize("command,should_detect,tool", [
-        ("find . -name '*.py'", True, "find"),
-        ("find . -type f", True, "find"),
-        ("find $PWD -name test", True, "find"),
-        ("find ${PWD} -name '*.tsx'", True, "find"),
-
-        ("find . -maxdepth 2 -name '*.py'", False, None),
-        ("find ./src -name '*.tsx'", False, None),
-        ("find backend/ -type f", False, None),
-
-        ("find . -name '*.py' -o -name '*.md'", True, "find"),
-
-        ("grep -R 'TODO' .", True, "grep"),
-        ("grep -r 'test' .", True, "grep"),
-        ("egrep --recursive 'pattern' .", True, "grep"),
-
-        ("grep 'pattern' file.txt", False, None),
-        ("grep -R 'test' src/", False, None),
-
-        ("rg 'pattern'", True, "rg"),
-        ("rg TODO", True, "rg"),
-
-        ("rg 'pattern' --glob '*.py'", False, None),
-        ("rg 'test' -g '*.ts'", False, None),
-        ("rg TODO --type python", False, None),
-        ("rg TODO src", False, None),
-    ])
+    @pytest.mark.parametrize(
+        "command,should_detect,tool",
+        [
+            ("find . -name '*.py'", True, "find"),
+            ("find . -type f", True, "find"),
+            ("find $PWD -name test", True, "find"),
+            ("find ${PWD} -name '*.tsx'", True, "find"),
+            ("find . -maxdepth 2 -name '*.py'", False, None),
+            ("find ./src -name '*.tsx'", False, None),
+            ("find backend/ -type f", False, None),
+            ("find . -name '*.py' -o -name '*.md'", True, "find"),
+            ("grep -R 'TODO' .", True, "grep"),
+            ("grep -r 'test' .", True, "grep"),
+            ("egrep --recursive 'pattern' .", True, "grep"),
+            ("grep 'pattern' file.txt", False, None),
+            ("grep -R 'test' src/", False, None),
+            ("rg 'pattern'", True, "rg"),
+            ("rg TODO", True, "rg"),
+            ("rg 'pattern' --glob '*.py'", False, None),
+            ("rg 'test' -g '*.ts'", False, None),
+            ("rg TODO --type python", False, None),
+            ("rg TODO src", False, None),
+        ],
+    )
     def test_scan_detection(self, command, should_detect, tool):
         result = is_scan_command(command)
         if should_detect:
@@ -48,15 +47,21 @@ class TestTokenAwareDetection:
 
 
 class TestPatternNormalization:
-    @pytest.mark.parametrize("input_pattern,expected", [
-        ("*.py", ".py"),
-        ("*.tsx", ".tsx"),
-        ("Button.tsx", "Button.tsx"),
-        ("Dockerfile", "Dockerfile"),
-        ("test_*.py", "test_"),  # FIX #7: Extract longest literal segment, not concatenation
-        ("*", ""),
-        ("???", ""),
-    ])
+    @pytest.mark.parametrize(
+        "input_pattern,expected",
+        [
+            ("*.py", ".py"),
+            ("*.tsx", ".tsx"),
+            ("Button.tsx", "Button.tsx"),
+            ("Dockerfile", "Dockerfile"),
+            (
+                "test_*.py",
+                "test_",
+            ),  # FIX #7: Extract longest literal segment (test_) rather than concatenating all segments (test_.py)
+            ("*", ""),
+            ("???", ""),
+        ],
+    )
     def test_normalize_find_name_to_substring(self, input_pattern, expected):
         assert normalize_find_name_to_substring(input_pattern) == expected
 
@@ -98,12 +103,15 @@ class TestSemanticPreservation:
 
 
 class TestPipeChainDetection:
-    @pytest.mark.parametrize("command", [
-        "find . -name '*.py' | xargs grep TODO",
-        "cd src && find . -name '*.tsx'",
-        "find . -name '*.log' &",
-        "find . -type f -exec grep TODO {} \\;",
-    ])
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "find . -name '*.py' | xargs grep TODO",
+            "cd src && find . -name '*.tsx'",
+            "find . -name '*.log' &",
+            "find . -type f -exec grep TODO {} \\;",
+        ],
+    )
     def test_pipes_chains_detected(self, command):
         assert is_piped_or_chained(command) is True
 
@@ -299,3 +307,200 @@ class TestCopilotRound3Fixes:
         assert scan_info.tool == "rg"
 
         # The actual bash -c unwrapping is tested via integration in autonomous_agent
+
+
+class TestShouldAllowScanForContext:
+    """Tests for should_allow_scan_for_context fail-closed policy."""
+
+    class MockContext:
+        """Mock context for testing."""
+
+        def __init__(
+            self,
+            original_request: str = "",
+            iteration: int = 0,
+            allow_repo_scans: bool = False,
+        ):
+            self.original_request = original_request
+            self.iteration = iteration
+            self.allow_repo_scans = allow_repo_scans
+
+    def test_blocks_when_iteration_less_than_3(self):
+        """Scans are blocked when iteration < 3."""
+        ctx = self.MockContext(
+            original_request="scan the entire repository",
+            iteration=2,
+            allow_repo_scans=True,
+        )
+        info = ScanCommandInfo(
+            tool="find",
+            raw="find . -name '*.py'",
+            tokens=["find", ".", "-name", "*.py"],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx, info) is False
+
+    def test_blocks_when_explicit_phrases_missing(self):
+        """Scans are blocked when explicit phrases are missing from original_request."""
+        ctx = self.MockContext(
+            original_request="find python files",  # No explicit phrase
+            iteration=5,
+            allow_repo_scans=True,
+        )
+        info = ScanCommandInfo(
+            tool="find",
+            raw="find . -name '*.py'",
+            tokens=["find", ".", "-maxdepth", "1", "-name", "*.py"],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx, info) is False
+
+    def test_blocks_when_allow_repo_scans_false(self):
+        """Scans are blocked when allow_repo_scans flag is False."""
+        ctx = self.MockContext(
+            original_request="scan the entire codebase",
+            iteration=5,
+            allow_repo_scans=False,
+        )
+        info = ScanCommandInfo(
+            tool="find",
+            raw="find . -name '*.py'",
+            tokens=["find", ".", "-maxdepth", "1", "-name", "*.py"],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx, info) is False
+
+    def test_allows_when_all_conditions_met_find_maxdepth(self):
+        """Scans are allowed when ALL conditions are met (find with -maxdepth)."""
+        ctx = self.MockContext(
+            original_request="scan the entire repository",
+            iteration=5,
+            allow_repo_scans=True,
+        )
+        info = ScanCommandInfo(
+            tool="find",
+            raw="find . -maxdepth 2 -name '*.py'",
+            tokens=["find", ".", "-maxdepth", "2", "-name", "*.py"],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx, info) is True
+
+    def test_allows_when_all_conditions_met_find_scoped(self):
+        """Scans are allowed when ALL conditions are met (find with scoped path)."""
+        ctx = self.MockContext(
+            original_request="search all files in the repository",
+            iteration=5,
+            allow_repo_scans=True,
+        )
+        info = ScanCommandInfo(
+            tool="find",
+            raw="find ./src -name '*.py'",
+            tokens=["find", "./src", "-name", "*.py"],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx, info) is True
+
+    def test_allows_when_all_conditions_met_rg_with_bounds(self):
+        """Scans are allowed when ALL conditions are met (rg with --glob)."""
+        ctx = self.MockContext(
+            original_request="scan entire repo for TODO",
+            iteration=5,
+            allow_repo_scans=True,
+        )
+        info = ScanCommandInfo(
+            tool="rg",
+            raw="rg TODO --glob '*.py'",
+            tokens=["rg", "TODO", "--glob", "*.py"],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx, info) is True
+
+    def test_allows_when_all_conditions_met_grep_with_path(self):
+        """Scans are allowed when ALL conditions are met (grep with explicit scoped path)."""
+        ctx = self.MockContext(
+            original_request="search entire codebase",
+            iteration=5,
+            allow_repo_scans=True,
+        )
+        info = ScanCommandInfo(
+            tool="grep",
+            raw="grep -R TODO backend/",
+            tokens=["grep", "-R", "TODO", "backend/"],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx, info) is True
+
+    def test_edge_case_phrase_variations(self):
+        """Edge cases in phrase detection - variations of explicit phrases."""
+        # Test "scan the repo" (without "entire")
+        ctx1 = self.MockContext(
+            original_request="scan the repo for errors",
+            iteration=5,
+            allow_repo_scans=True,
+        )
+        info = ScanCommandInfo(
+            tool="find",
+            raw="find . -maxdepth 1 -name '*.log'",
+            tokens=["find", ".", "-maxdepth", "1", "-name", "*.log"],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx1, info) is True
+
+        # Test "entire repository" (different phrase)
+        ctx2 = self.MockContext(
+            original_request="check the entire repository",
+            iteration=5,
+            allow_repo_scans=True,
+        )
+        assert should_allow_scan_for_context(ctx2, info) is True
+
+    def test_blocks_grep_without_explicit_path(self):
+        """grep without explicit path (defaults to .) should be blocked."""
+        ctx = self.MockContext(
+            original_request="scan entire codebase",
+            iteration=5,
+            allow_repo_scans=True,
+        )
+        # Only pattern, no path - defaults to . (should be blocked)
+        info = ScanCommandInfo(
+            tool="grep",
+            raw="grep -R TODO",
+            tokens=["grep", "-R", "TODO"],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx, info) is False
+
+    def test_blocks_grep_with_root_path(self):
+        """grep with explicit root path (.) should be blocked."""
+        ctx = self.MockContext(
+            original_request="scan the repository",
+            iteration=5,
+            allow_repo_scans=True,
+        )
+        info = ScanCommandInfo(
+            tool="grep",
+            raw="grep -R TODO .",
+            tokens=["grep", "-R", "TODO", "."],
+            reason="test",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+        assert should_allow_scan_for_context(ctx, info) is False

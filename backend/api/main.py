@@ -216,10 +216,13 @@ async def lifespan(app: FastAPI):
 
     # Initialize centralized Redis client for health checks
     from backend.services.redis_client import init_redis
+
     try:
         await init_redis()
     except Exception:
-        logger.warning("Redis client init failed (health checks will degrade)", exc_info=True)
+        logger.warning(
+            "Redis client init failed (health checks will degrade)", exc_info=True
+        )
 
     presence_lifecycle.start_cleanup_thread()
 
@@ -250,6 +253,7 @@ async def lifespan(app: FastAPI):
 
     # Close Redis client cleanly
     from backend.services.redis_client import close_redis
+
     try:
         await close_redis()
     except Exception:
@@ -645,7 +649,11 @@ app.include_router(
 # Register Auth0 device flow router (LEGACY - gated by feature flag)
 # DEPRECATED: Device flow is replaced by PKCE for VS Code extension.
 # Only enable ENABLE_LEGACY_DEVICE_FLOW=true for backward compatibility.
-if settings.enable_legacy_device_flow and AUTH0_DEVICE_CLIENT_ID and not settings.oauth_device_use_in_memory_store:
+if (
+    settings.enable_legacy_device_flow
+    and AUTH0_DEVICE_CLIENT_ID
+    and not settings.oauth_device_use_in_memory_store
+):
     app.include_router(oauth_device_auth0_router)
     logger.warning(
         "⚠️  LEGACY MODE: Device flow endpoints enabled. "

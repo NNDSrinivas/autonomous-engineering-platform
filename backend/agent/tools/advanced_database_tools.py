@@ -412,7 +412,7 @@ async def db_configure_sharding(
 // 3. Start mongos routers
 
 // Enable sharding on database
-sh.enableSharding("{collection_name.split('.')[0] if '.' in collection_name else 'mydb'}")
+sh.enableSharding("{collection_name.split(".")[0] if "." in collection_name else "mydb"}")
 
 // Shard collection with hashed key for even distribution
 sh.shardCollection("{collection_name}", {{ "{shard_key}": "hashed" }})

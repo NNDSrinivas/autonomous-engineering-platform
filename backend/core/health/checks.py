@@ -10,6 +10,7 @@ text = None
 get_engine = None
 try:
     from sqlalchemy import text
+
     try:
         from backend.core.db import get_engine  # Docker / repo-root PYTHONPATH
     except ImportError as e:
@@ -41,7 +42,9 @@ except ImportError as e:
 cache = None
 try:
     try:
-        from backend.infra.cache.redis_cache import cache  # Docker / repo-root PYTHONPATH
+        from backend.infra.cache.redis_cache import (
+            cache,
+        )  # Docker / repo-root PYTHONPATH
     except ImportError as e:
         # Only fall back to alternate import path if backend.* module itself is missing.
         if isinstance(e, ModuleNotFoundError) and e.name in (
@@ -130,10 +133,12 @@ def check_redis() -> CheckResult:
 
     Self-heals from stale connections by resetting the pool on first failure.
     """
+
     async def _ping():
         # Try centralized Redis client (preferred)
         try:
             from backend.services.redis_client import get_redis, reset_redis
+
             try:
                 await get_redis().ping()
             except Exception:

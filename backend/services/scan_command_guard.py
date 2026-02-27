@@ -14,6 +14,7 @@ ScanTool = Literal["find", "grep", "rg"]
 @dataclass(frozen=True)
 class ScanCommandInfo:
     """Info about detected scan command."""
+
     tool: ScanTool
     raw: str
     tokens: List[str]
@@ -71,17 +72,32 @@ def _extract_grep_positionals(tokens: List[str]) -> List[str]:
     - Short options: -A 5, -m 10
     """
     # Options that take a value as the next token
+    # Based on GNU grep and BSD grep common options
     opts_with_values = {
-        "-e", "--regexp",
-        "-f", "--file",
-        "--include", "--exclude",
-        "--include-dir", "--exclude-dir",
-        "-A", "-B", "-C",  # context lines
-        "--after-context", "--before-context", "--context",
-        "-m", "--max-count",
+        "-e",
+        "--regexp",
+        "-f",
+        "--file",
+        "--include",
+        "--exclude",
+        "--include-dir",
+        "--exclude-dir",
+        "-A",
+        "-B",
+        "-C",  # context lines
+        "--after-context",
+        "--before-context",
+        "--context",
+        "-m",
+        "--max-count",
         "--label",
-        "-d", "--directories",
-        "-D", "--devices",
+        "-d",
+        "--directories",
+        "-D",
+        "--devices",
+        "--color",
+        "--colour",  # color output control (always, never, auto)
+        "--binary-files",  # binary file handling (binary, text, without-match)
     }
 
     positionals = []
@@ -97,8 +113,7 @@ def _extract_grep_positionals(tokens: List[str]) -> List[str]:
             # Handle both --option=value and --option value
             if "=" in tok:
                 continue  # --exclude=*.log is a single token
-            opt_name = tok.split("=")[0]
-            if opt_name in opts_with_values:
+            if tok in opts_with_values:
                 skip_next = True  # Skip next token (the value)
             continue
 
@@ -120,20 +135,40 @@ def _extract_rg_positionals(tokens: List[str]) -> List[str]:
     - Short options: -A 5, -m 10, -g '*.py'
     """
     # Options that take a value as the next token
+    # Best-effort list covering common ripgrep options (ripgrep 13+)
     opts_with_values = {
-        "--max-count", "-m",
+        "--max-count",
+        "-m",
         "--max-depth",
-        "--type", "-t",
-        "--type-not", "-T",
-        "--glob", "-g",
+        "--type",
+        "-t",
+        "--type-not",
+        "-T",
+        "--glob",
+        "-g",
         "--iglob",
-        "-A", "-B", "-C",  # context lines
-        "--after-context", "--before-context", "--context",
-        "-f", "--file",
-        "-e", "--regexp",
+        "-A",
+        "-B",
+        "-C",  # context lines
+        "--after-context",
+        "--before-context",
+        "--context",
+        "-f",
+        "--file",
+        "-e",
+        "--regexp",
         "--encoding",
         "--max-filesize",
         "--path-separator",
+        "--color",
+        "--colour",  # color output control (always, never, auto)
+        "-j",
+        "--threads",  # thread count
+        "--sort",  # sort results (path, modified, accessed, created)
+        "--sortr",  # reverse sort
+        "-M",
+        "--max-columns",  # max columns per line
+        "--max-columns-preview",  # preview for long lines
     }
 
     positionals = []
@@ -149,8 +184,7 @@ def _extract_rg_positionals(tokens: List[str]) -> List[str]:
             # Handle both --option=value and --option value
             if "=" in tok:
                 continue  # --max-count=10 is a single token
-            opt_name = tok.split("=")[0]
-            if opt_name in opts_with_values:
+            if tok in opts_with_values:
                 skip_next = True  # Skip next token (the value)
             continue
 
@@ -175,8 +209,9 @@ def _is_scoped_path(path: str) -> bool:
     if "/" in path and not path.startswith("."):
         return True
     # P1 FIX: Treat plain directory names (src, backend, etc.) as scoped
-    # These are common directory names that indicate user intent to scope search
-    if path and not path.startswith("-"):
+    # These are common directory names that indicate user intent to scope search,
+    # but avoid treating shell constructs (globs, vars, home shortcuts) as scoped.
+    if path and not path.startswith("-") and not re.search(r"[*?\[\]{}`$~]", path):
         return True
     return False
 
@@ -201,7 +236,7 @@ def normalize_find_name_to_substring(pattern: str) -> str:
     # Split by wildcards and find longest literal segment
     # For test_*.py, segments are ["test_", "", ".py"]
     # We want the longest meaningful segment
-    segments = re.split(r'[*?]+', pat)
+    segments = re.split(r"[*?]+", pat)
     segments = [s for s in segments if s]  # Remove empty strings
 
     if not segments:
@@ -236,7 +271,15 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
     # find scans
     # -------------------------
     if tool_cmd == "find":
-        search_root = tokens[1] if len(tokens) > 1 else "."
+        # Determine the search root, accounting for global options before the path.
+        # POSIX find allows -H, -L, -P before any path operands.
+        search_root = "."
+        idx = 1
+        while idx < len(tokens) and tokens[idx] in ("-H", "-L", "-P"):
+            idx += 1
+        if idx < len(tokens) and not tokens[idx].startswith("-"):
+            search_root = tokens[idx]
+
         if search_root in [".", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
             search_root = "."
 
@@ -249,14 +292,21 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         # COPILOT FIX: Hard-block compound expressions and semantic-changing predicates
         # Expanded to include -not, -path, -prune, -a/-and, ) to prevent semantic violations
         # Example: find . -not -path '*/node_modules/*' -name '*.py' should NOT be rewritten
-        if any(tok in tokens for tok in [
-            "-o", "-or",     # OR operator
-            "!", "-not",     # NOT operator
-            "(", ")",        # Grouping
-            "-a", "-and",    # AND operator (explicit)
-            "-path",         # Path matching (can exclude subtrees)
-            "-prune",        # Prune directories (changes traversal)
-        ]):
+        if any(
+            tok in tokens
+            for tok in [
+                "-o",
+                "-or",  # OR operator
+                "!",
+                "-not",  # NOT operator
+                "(",
+                ")",  # Grouping
+                "-a",
+                "-and",  # AND operator (explicit)
+                "-path",  # Path matching (can exclude subtrees)
+                "-prune",  # Prune directories (changes traversal)
+            ]
+        ):
             return ScanCommandInfo(
                 tool="find",
                 raw=cmd,
@@ -289,7 +339,7 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
                     reason="Unbounded find from repo root",
                     can_rewrite=True,
                     rewrite_kind="filename_search",
-                    extracted_pattern=pattern.strip('"\''),
+                    extracted_pattern=pattern.strip("\"'"),
                 )
 
         # find from root without -name/-iname (e.g., find . -type f)
@@ -361,14 +411,19 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
     # -------------------------
     if tool_cmd == "rg":
         # If user adds bounds, allow
-        has_bounds = any(tok in tokens for tok in ["--glob", "-g", "--iglob", "--type", "-t", "--type-add"])
+        has_bounds = any(
+            tok in tokens
+            for tok in ["--glob", "-g", "--iglob", "--type", "-t", "--type-add"]
+        )
         if has_bounds:
             return None
 
         # COPILOT FIX: Handle -e/--regexp pattern form
         # rg -e TODO src should NOT be blocked (pattern from -e, path is src)
         # If pattern comes from -e/--regexp/-f/--file, ALL positionals are paths
-        pattern_from_option = any(tok in tokens for tok in ["-e", "--regexp", "-f", "--file"])
+        pattern_from_option = any(
+            tok in tokens for tok in ["-e", "--regexp", "-f", "--file"]
+        )
 
         # P1 FIX #2: Use proper positional extraction (skip option values)
         positionals = _extract_rg_positionals(tokens)
@@ -408,17 +463,29 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
     """
     if info.tool == "find" and info.can_rewrite:
         if not info.extracted_pattern:
-            return {"use_discovery": False, "alternative": "Use search_files with a filename pattern."}
+            return {
+                "use_discovery": False,
+                "alternative": "Use search_files with a filename pattern.",
+            }
 
         normalized = normalize_find_name_to_substring(info.extracted_pattern)
 
-        # Safety: too broad after normalization
+        # Safety: too broad after normalization.
+        # We normally require at least 2 characters to avoid very broad substring matches,
+        # but allow single-character patterns when they clearly come from a file extension
+        # like ".c" or ".r" (which normalize to "c" / "r").
         if len(normalized) < 2:
-            return {
-                "use_discovery": False,
-                "reason": f"Pattern '{info.extracted_pattern}' normalizes to '{normalized}' which is too broad",
-                "alternative": "Use a more specific pattern (e.g., '.py', 'Dockerfile', 'Button.tsx').",
-            }
+            is_single_char_extension = (
+                len(normalized) == 1
+                and info.extracted_pattern is not None
+                and re.match(r"^\.\w$", info.extracted_pattern.strip()) is not None
+            )
+            if not is_single_char_extension:
+                return {
+                    "use_discovery": False,
+                    "reason": f"Pattern '{info.extracted_pattern}' normalizes to '{normalized}' which is too broad",
+                    "alternative": "Use a more specific pattern (e.g., '.py', 'Dockerfile', 'Button.tsx').",
+                }
 
         return {
             "use_discovery": True,
@@ -531,7 +598,9 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
         return _is_scoped_path(search_root)
 
     if info.tool == "rg":
-        has_bounds = any(tok in info.tokens for tok in ["--glob", "-g", "--iglob", "--type", "-t"])
+        has_bounds = any(
+            tok in info.tokens for tok in ["--glob", "-g", "--iglob", "--type", "-t"]
+        )
         if has_bounds:
             return True
         # Use proper positional extraction (skip option values)

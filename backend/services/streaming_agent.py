@@ -906,16 +906,16 @@ NAVI_TOOLS = [
                         "type": "object",
                         "properties": {
                             "value": {"type": "string"},
-                            "label": {"type": "string"}
+                            "label": {"type": "string"},
                         },
-                        "required": ["value", "label"]
+                        "required": ["value", "label"],
                     },
                     "description": "List of options (required for 'select' type, ignored for others)",
                 },
                 "placeholder": {
                     "type": "string",
                     "description": "Placeholder text (for 'text' type only)",
-                }
+                },
             },
             "required": ["question", "prompt_type"],
         },

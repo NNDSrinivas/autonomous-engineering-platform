@@ -105,11 +105,15 @@ class TestCommandFirstRouting:
 
         # Test command intent detection
         command_intent = mock_agent._detect_command_intent(user_request)
-        assert command_intent != "unknown", f"Failed to detect command intent in: {user_request}"
+        assert command_intent != "unknown", (
+            f"Failed to detect command intent in: {user_request}"
+        )
 
         # Test that file operation check returns False (command, not file-op)
         is_file_op = mock_agent._is_file_operation_request(user_request, mock_context)
-        assert not is_file_op, f"Incorrectly classified '{user_request}' as file operation"
+        assert not is_file_op, (
+            f"Incorrectly classified '{user_request}' as file operation"
+        )
 
 
 class TestFileEvidence:
@@ -140,9 +144,9 @@ class TestFileEvidence:
     ):
         """Test that file evidence detection is conservative and accurate."""
         has_evidence = mock_agent._has_file_evidence(user_request)
-        assert (
-            has_evidence == should_have_evidence
-        ), f"File evidence check failed for: {user_request}"
+        assert has_evidence == should_have_evidence, (
+            f"File evidence check failed for: {user_request}"
+        )
 
 
 class TestReadOnlyDiscovery:
@@ -165,19 +169,25 @@ class TestReadOnlyDiscovery:
         forbidden_tools = ["write_file", "edit_file", "delete_file", "run_command"]
         for tool in forbidden_tools:
             result = await mock_agent._execute_readonly_discovery(tool, {})
-            assert not result.get("success"), f"Discovery allowed forbidden tool: {tool}"
+            assert not result.get("success"), (
+                f"Discovery allowed forbidden tool: {tool}"
+            )
             assert "not allowed" in result.get("error", "").lower()
 
     @pytest.mark.asyncio
     async def test_search_files_ranking(self, mock_agent, temp_workspace):
         """Search results should be ranked (exact > likely_root > shallow)."""
         # Create test files at different depths
-        os.makedirs(os.path.join(temp_workspace, "src", "components", "nested"), exist_ok=True)
+        os.makedirs(
+            os.path.join(temp_workspace, "src", "components", "nested"), exist_ok=True
+        )
         with open(os.path.join(temp_workspace, "test.tsx"), "w") as f:
             f.write("// root")
         with open(os.path.join(temp_workspace, "src", "test.tsx"), "w") as f:
             f.write("// src")
-        with open(os.path.join(temp_workspace, "src", "components", "nested", "test.tsx"), "w") as f:
+        with open(
+            os.path.join(temp_workspace, "src", "components", "nested", "test.tsx"), "w"
+        ) as f:
             f.write("// nested")
 
         result = await mock_agent._execute_readonly_discovery(
@@ -190,7 +200,9 @@ class TestReadOnlyDiscovery:
 
         # First result should be from src/ (likely root) or root itself (exact match)
         # Should NOT be the deeply nested one
-        assert "src/components/nested" not in files[0], "Ranked deeply nested file first"
+        assert "src/components/nested" not in files[0], (
+            "Ranked deeply nested file first"
+        )
 
     @pytest.mark.asyncio
     async def test_discovery_budget_limits(self, mock_agent, temp_workspace):
@@ -232,9 +244,9 @@ class TestDestructiveGates:
             tool_name, arguments, mock_context
         )
 
-        assert (
-            needs_confirm == should_require_confirm
-        ), f"Gate check failed for {tool_name}: {reason}"
+        assert needs_confirm == should_require_confirm, (
+            f"Gate check failed for {tool_name}: {reason}"
+        )
 
     def test_autofix_from_diagnostic_no_confirmation(self, mock_agent, mock_context):
         """Autofixes from recent diagnostic runs should not require confirmation."""
@@ -336,13 +348,13 @@ class TestReadOnlyModeEnforcement:
         for tool_name, arguments in write_tools:
             result = await mock_agent._execute_tool(tool_name, arguments, mock_context)
 
-            assert not result.get(
-                "success"
-            ), f"Read-only mode allowed {tool_name}"
+            assert not result.get("success"), f"Read-only mode allowed {tool_name}"
             assert "read-only mode" in result.get("error", "").lower()
 
     @pytest.mark.asyncio
-    async def test_read_only_allows_reads(self, mock_agent, mock_context, temp_workspace):
+    async def test_read_only_allows_reads(
+        self, mock_agent, mock_context, temp_workspace
+    ):
         """Read-only mode should still allow read operations."""
         # Enable read-only mode
         mock_context.read_only_mode = True
@@ -361,10 +373,13 @@ class TestDiagnosticTracking:
     """Test diagnostic context tracking."""
 
     @pytest.mark.asyncio
-    async def test_diagnostic_command_tracking(self, mock_agent, mock_context, temp_workspace):
+    async def test_diagnostic_command_tracking(
+        self, mock_agent, mock_context, temp_workspace
+    ):
         """Diagnostic commands should be tracked with run_id."""
         # Create test files so the diagnostic tracking can find them
         import os
+
         src_dir = os.path.join(temp_workspace, "src")
         os.makedirs(src_dir, exist_ok=True)
         # Create both files that appear in the mock diagnostic output
@@ -388,10 +403,9 @@ class TestDiagnosticTracking:
 
         # Mock subprocess execution
         mock_process = AsyncMock()
-        mock_process.stdout = MockStream([
-            b"src/Button.tsx:10:5 - error TS2304",
-            b"src/App.tsx:20:3 - error TS2322"
-        ])
+        mock_process.stdout = MockStream(
+            [b"src/Button.tsx:10:5 - error TS2304", b"src/App.tsx:20:3 - error TS2322"]
+        )
         mock_process.stderr = MockStream([])
         mock_process.returncode = None
 
@@ -399,6 +413,7 @@ class TestDiagnosticTracking:
         async def mock_wait():
             mock_process.returncode = 1
             return 1
+
         mock_process.wait = mock_wait
 
         with patch("asyncio.create_subprocess_shell", return_value=mock_process):
@@ -410,9 +425,15 @@ class TestDiagnosticTracking:
             )
 
         # Check that diagnostic run was tracked
-        assert mock_context.last_diagnostic_run is not None, "Diagnostic run should be tracked"
-        assert mock_context.last_diagnostic_run.get("type") == "lint", "Diagnostic type should be 'lint'"
-        assert "run_id" in mock_context.last_diagnostic_run, "Diagnostic run should have run_id"
+        assert mock_context.last_diagnostic_run is not None, (
+            "Diagnostic run should be tracked"
+        )
+        assert mock_context.last_diagnostic_run.get("type") == "lint", (
+            "Diagnostic type should be 'lint'"
+        )
+        assert "run_id" in mock_context.last_diagnostic_run, (
+            "Diagnostic run should have run_id"
+        )
         # Note: affected_files may be empty in mocked tests if file parsing doesn't match perfectly
         # The important invariant is that the diagnostic tracking exists with a run_id
 
@@ -483,7 +504,9 @@ class TestScanCommandPolicy:
     """
 
     @pytest.mark.asyncio
-    async def test_unbounded_find_is_rewritten_or_blocked(self, mock_agent, mock_context):
+    async def test_unbounded_find_is_rewritten_or_blocked(
+        self, mock_agent, mock_context
+    ):
         """
         INVARIANT 1: Unbounded find commands must be blocked or rewritten.
         """
@@ -502,7 +525,9 @@ class TestScanCommandPolicy:
         )
 
     @pytest.mark.asyncio
-    async def test_content_search_not_rewritten_to_filename_search(self, mock_agent, mock_context):
+    async def test_content_search_not_rewritten_to_filename_search(
+        self, mock_agent, mock_context
+    ):
         """
         INVARIANT 2: Content search (grep -R) must NOT be rewritten to filename search.
         """

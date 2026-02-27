@@ -303,6 +303,10 @@ class TaskContext:
     pending_gate: Optional[GateTrigger] = None  # Gate waiting for human decision
     pending_prompt: Optional[PromptRequest] = None  # Prompt waiting for user input
     last_verification_failed: bool = False  # Track if last verification attempt failed
+    # NEW: Diagnostic context tracking for safe autofixes
+    last_diagnostic_run: Optional[Dict[str, Any]] = None  # Track most recent diagnostic run (lint/test)
+    # NEW: Read-only mode enforcement (set on clarification timeout)
+    read_only_mode: bool = False  # When True, block all write operations
 
     @classmethod
     def with_adaptive_limits(
@@ -709,6 +713,93 @@ For ANY task, follow this pattern:
 "Memory leak fixed in EventEmitter cleanup. Memory stable at 150MB."
 
 The pattern works for EVERYTHING: "restart servers", "deploy to AWS", "add caching", "fix bug", "optimize query", "set up CI/CD"
+
+## SPECIAL HANDLING: LINTING & ERROR FIXING
+
+When user asks to "fix linting errors", "fix eslint errors", "check for errors", etc:
+
+**DO NOT ASK FOR FILE PATHS**. Instead:
+
+1. **Check package.json** for lint command:
+   ```
+   [read_file: package.json]
+   ```
+
+2. **Run the linter** on the entire project:
+   ```
+   [run_command: npm run lint]  (if npm project)
+   [run_command: eslint .]      (if no lint script)
+   [run_command: ruff check .]  (if Python)
+   ```
+
+3. **Parse the output** to find files with errors
+
+4. **Fix each file** automatically:
+   ```
+   [read_file: src/components/Button.tsx]
+   [edit_file: Fix the linting error on line 42]
+   ```
+
+5. **Verify the fixes** by running linter again
+
+**Example - User asks: "fix any linting errors"**
+
+✅ CORRECT:
+```
+[read_file: package.json]
+[run_command: npm run lint]
+"Found 3 files with lint errors. Fixing them now..."
+[read_file: src/app/page.tsx]
+[edit_file: Remove unused import]
+[read_file: src/components/Header.tsx]
+[edit_file: Add missing semicolon]
+[run_command: npm run lint]
+"Fixed all linting errors. Linter passing."
+```
+
+❌ WRONG:
+```
+"Which file would you like me to lint?"  ← NEVER ask this!
+```
+
+**Rules for lint/error fixing:**
+- NEVER ask the user which file to check
+- ALWAYS run the linter on the ENTIRE project first
+- Let the linter tell you which files have errors
+- Fix ALL files reported by the linter
+- Re-run linter to verify fixes
+
+## WHEN TO USE `ask_user` TOOL
+
+You have an `ask_user` tool to request user input. **Use it SPARINGLY** - only when you CANNOT proceed without clarification.
+
+**✅ Good reasons to use `ask_user`:**
+1. **Ambiguous files**: Multiple files match (e.g., "fix Button.tsx" but there are 3 Button.tsx files) AND you can't determine the correct one from context
+2. **Destructive actions**: User asks to "delete the database" or similar - confirm first
+3. **Mutually exclusive choices**: "Should I use PostgreSQL or MongoDB?" when both are equally valid
+4. **Missing critical info**: User says "fix the bug" with absolutely zero context
+
+**❌ BAD reasons to use `ask_user` (DON'T do this):**
+1. Linting/error checking - just run the linter on the whole project
+2. "Which file?" when you can search_files or list_directory to find it
+3. "What command?" when you can check package.json
+4. Anything the preflight notes already answered
+5. Questions you can answer by reading code or running commands
+
+**How to use:**
+```
+[ask_user: {
+  "question": "Multiple Button.tsx files found. Which one?\n1. src/components/Button.tsx\n2. src/shared/Button.tsx",
+  "prompt_type": "select",
+  "title": "Select file",
+  "options": [
+    {"value": "src/components/Button.tsx", "label": "src/components/Button.tsx"},
+    {"value": "src/shared/Button.tsx", "label": "src/shared/Button.tsx"}
+  ]
+}]
+```
+
+**Remember:** Users prefer autonomous agents that JUST DO THE WORK over chatbots that ask endless questions.
 
 🚨 **CRITICAL: NO EXECUTION PLANS WITH NUMBERED LISTS**
 - NEVER write "Here's my plan:" followed by numbered steps
@@ -1627,6 +1718,40 @@ def create_user_prompt(
         context=kwargs.get("context", {}),
         timeout_seconds=kwargs.get("timeout_seconds"),
     )
+
+
+# ===================================================================
+# CONSTANTS FOR SAFE DISCOVERY (Fortune-10 Grade Hardening)
+# ===================================================================
+
+# Directories to ignore during file discovery (prevents DoS in large repos)
+DISCOVERY_IGNORE_DIRS = {
+    ".git", "node_modules", "dist", "build", ".venv", "venv", "__pycache__",
+    ".next", ".cache", "coverage", ".pytest_cache", ".mypy_cache", "target"
+}
+
+# Likely source code roots for disambiguation (prefer src/, backend/, etc.)
+LIKELY_SOURCE_ROOTS = {"src", "backend", "app", "lib", "packages"}
+
+# Known file extensions for file evidence detection
+KNOWN_FILE_EXTENSIONS = {
+    # Programming languages
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".c", ".cpp", ".h", ".go", ".rs", ".rb", ".php",
+    # Web
+    ".html", ".css", ".scss", ".sass", ".less", ".vue", ".svelte",
+    # Config/Data
+    ".json", ".yml", ".yaml", ".toml", ".xml", ".ini", ".env",
+    # Docs/Text
+    ".md", ".txt", ".rst",
+}
+
+# Extensionless files that are real files (not concepts)
+# IMPORTANT: Stored in lowercase for case-insensitive matching
+KNOWN_FILE_BASENAMES = {
+    "dockerfile", "makefile", "rakefile", "gemfile", "procfile",
+    ".env", ".gitignore", ".dockerignore", ".npmignore", ".prettierignore",
+    "readme", "license", "changelog", "contributing"
+}
 
 
 class AutonomousAgent:
@@ -2881,51 +3006,175 @@ class AutonomousAgent:
             return "edit"
         return "unknown"
 
+    def _has_file_evidence(self, request: str) -> bool:
+        """
+        Check if request explicitly mentions a file.
+
+        Cap input to prevent regex DoS from pathological input.
+
+        STRONG evidence (counts as file-op):
+        - filename.ext with known extension
+        - path/to/file.ext (has path separator + extension)
+        - "file.ts" or 'path/to/file.js' (quoted with extension)
+        - "src/auth" or "backend/config" (quoted path that EXISTS in workspace)
+
+        WEAK evidence (does NOT count):
+        - "file button" (no extension)
+        - "auth/security" (no extension, doesn't exist, concept not file)
+        - "path to auth" (no clear file)
+        """
+        # SECURITY: Cap request length to prevent regex time surprises
+        request = (request or "")[:2000]
+        request_lower = request.lower()
+
+        # Check for known basenames (extensionless files) - case-insensitive with proper boundaries
+        # SECURITY: Use explicit boundaries (not \b which fails for .env, .gitignore)
+        # Match only in: quoted spans, path-like spans, or as standalone file-ish tokens
+
+        # Extract potential filename tokens from request
+        # 1. Quoted strings: "Dockerfile", '.env', "README"
+        # 2. Path-like spans: src/Dockerfile, config/.env
+        # 3. Standalone file-ish tokens: "Dockerfile", ".env" (but NOT random words like "update", "config")
+
+        potential_files = set()
+
+        # Extract from quoted strings
+        for match in re.finditer(r'["\']([^"\']+)["\']', request):
+            potential_files.add(match.group(1).lower())
+
+        # Extract from path-like spans (contains / or \) or file-ish tokens
+        for match in re.finditer(r'[\w\-./\\]+', request):
+            span = match.group(0)
+            if '/' in span or '\\' in span:
+                # It's a path - extract basename
+                basename = os.path.basename(span)
+                if basename:
+                    potential_files.add(basename.lower())
+            else:
+                # It's a standalone token - only add if it looks file-ish
+                # File-ish: known basename, contains dot, or starts with dot
+                span_lower = span.lower()
+                if (span_lower in KNOWN_FILE_BASENAMES or
+                    '.' in span or
+                    span.startswith('.')):
+                    potential_files.add(span_lower)
+                # Otherwise skip random words like "update", "config", "please"
+
+        # Check if any potential file matches KNOWN_FILE_BASENAMES
+        if potential_files & KNOWN_FILE_BASENAMES:
+            return True  # Strong: known extensionless file in quoted/path/token context
+
+        # Check for filename with known extension
+        ext_pattern = r'\b\w[\w\-]*(\.\w+)\b'
+        for match in re.finditer(ext_pattern, request):
+            ext = match.group(1).lower()
+            if ext in KNOWN_FILE_EXTENSIONS:
+                return True  # Strong: filename with known extension
+
+        # Pattern 2: path/to/file or path\to\file (path separator + something)
+        # Matches: src/Button.tsx, backend\auth.py
+        path_pattern = r'[\w\-]+[/\\][\w\-./\\]+'
+        if re.search(path_pattern, request):
+            # Has path separator - likely a file path
+            # Extra check: does it end with an extension?
+            path_match = re.search(path_pattern, request)
+            if path_match:
+                path = path_match.group(0)
+                if any(path.endswith(ext) for ext in KNOWN_FILE_EXTENSIONS):
+                    return True  # Strong: path + extension
+
+        # Pattern 3: quoted strings that look like paths
+        # Matches: "src/auth.ts", 'config/database.yml'
+        quoted_pattern = r'["\']([^"\']+)["\']'
+        for match in re.finditer(quoted_pattern, request):
+            quoted = match.group(1)
+
+            # Strong evidence: quoted string with extension
+            if any(quoted.endswith(ext) for ext in KNOWN_FILE_EXTENSIONS):
+                return True
+
+            # HARDENED: Quoted path WITHOUT extension only counts if it EXISTS
+            if '/' in quoted or '\\' in quoted:
+                # Check if this path exists in workspace (with escape protection)
+                potential_path = os.path.join(self.workspace_path, quoted)
+                potential_path = os.path.normpath(potential_path)
+
+                # SECURITY: Workspace escape check before exists()
+                real_potential = os.path.realpath(potential_path)
+                real_workspace = os.path.realpath(self.workspace_path)
+                if real_potential.startswith(real_workspace) and os.path.exists(real_potential):
+                    return True  # Strong: quoted path that actually exists in workspace
+                # Otherwise: could be concept like "auth/security" → NOT file evidence
+
+        # No strong file evidence found
+        return False
+
     def _is_file_operation_request(
         self, request: str, context: Optional[TaskContext] = None
     ) -> bool:
+        """Only classify as file-op if file evidence exists."""
         request_lower = (request or "").lower()
         if not request_lower:
             return False
-        if self._classify_file_intent(request, context) != "unknown":
-            return True
-        # If it mentions "file" and includes any file-like tokens, treat as file op
-        candidates = self._extract_file_candidates(request, context)
-        return "file" in request_lower and len(candidates) > 0
+
+        # EXCLUDE linting/diagnostic (keeps existing check)
+        linting_markers = [
+            "lint", "eslint", "ruff", "flake8", "pylint", "prettier",
+            "check for error", "fix error", "linting error", "syntax error",
+            "check the whole", "check the entire", "check all", "check project",
+            "run test", "run build"
+        ]
+        if any(marker in request_lower for marker in linting_markers):
+            return False
+
+        # REQUIRE file evidence (NEW CHECK - prevents regex whack-a-mole)
+        if not self._has_file_evidence(request):
+            # No file mentioned → not a file operation
+            # This request should go to command-intent or search-first
+            return False
+
+        # Only then check intent
+        return self._classify_file_intent(request, context) != "unknown"
 
     def _detect_command_intent(self, request: str) -> str:
         request_lower = (request or "").lower()
         if not request_lower:
             return "unknown"
 
+        # Lint intent: "fix linting errors", "check for lint", "run eslint", etc.
+        if re.search(r"\b(lint|eslint|ruff|flake8|pylint|prettier)\b", request_lower):
+            return "lint"
+        if re.search(r"\blint(ing|er)?\s+(error|issue|problem|warning)", request_lower):
+            return "lint"
+
+        # Test intent: "run tests", "run the tests", "execute test suite", etc.
+        if re.search(r"\b(run|rerun|execute)\b.*\b(test|spec)\b", request_lower):
+            return "test"
+        if re.search(r"\b(tests?|test suite|pytest|jest|vitest|mocha)\b", request_lower):
+            return "test"
+
+        # Build intent: "run build", "run the build", "build the project", etc.
+        if re.search(r"\b(run|execute)\b.*\bbuild\b", request_lower):
+            return "build"
+        if re.search(r"\bbuild\b.*\b(project|app|site|frontend|backend|server)\b", request_lower):
+            return "build"
+
+        # Install intent
         if re.search(r"\binstall( dependencies| deps)?\b", request_lower):
             return "install"
 
+        # Dev server intent
         if re.search(
             r"\b(run|start|launch|serve)\b.*\b(dev server|server|app|site|frontend|backend)\b",
             request_lower,
         ):
             return "dev"
 
-        if re.search(
-            r"\b(run|rerun|execute)?\s*(tests?|test suite|pytest|jest|vitest)\b",
-            request_lower,
-        ):
-            return "test"
-
-        if re.search(
-            r"\b(run|execute)\s+(build|compile|bundle)\b", request_lower
-        ) or re.search(
-            r"\bbuild\b.*\b(project|app|site|frontend|backend|server)\b", request_lower
-        ):
-            return "build"
-
-        if re.search(r"\b(run|execute)?\s*(lint|eslint)\b", request_lower):
-            return "lint"
-
-        if re.search(r"\b(type ?check|tsc)\b", request_lower):
+        # Typecheck intent
+        if re.search(r"\b(type ?check|tsc|mypy)\b", request_lower):
             return "typecheck"
 
+        # Format intent
         if re.search(r"\b(format|prettier|black|ruff format)\b", request_lower):
             return "format"
 
@@ -2999,6 +3248,269 @@ class AutonomousAgent:
             return None
 
         return None
+
+    async def _execute_readonly_discovery(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute read-only tools for auto-discovery ONLY.
+
+        Allowed: search_files (os.walk only), list_directory, mtime_check
+        Disallowed: write_file, edit_file, delete_file, run_command, network tools
+
+        Hardened against: path traversal, symlink escape, DoS from large repos.
+
+        Returns CONSISTENT dict format matching _execute_tool():
+        - Always includes "success": bool
+        - On success: tool-specific result fields (files, entries, most_recent, etc.)
+        - On failure: "error": str with reason
+        - Optional metadata: truncated, files_scanned, tie_breakers_used, etc.
+
+        CANNOT create prompts, CANNOT trigger gates, CANNOT modify workspace.
+        """
+        # Whitelist enforcement
+        ALLOWED_DISCOVERY_TOOLS = {"search_files", "list_directory", "mtime_check"}
+        if tool_name not in ALLOWED_DISCOVERY_TOOLS:
+            logger.warning(f"[Discovery] Blocked disallowed tool: {tool_name}")
+            return {"success": False, "error": f"Tool {tool_name} not allowed in discovery"}
+
+        try:
+            if tool_name == "search_files":
+                # SAFE: Uses os.walk with ignore list, budget limits
+                # NO recursive glob (too expensive in large repos)
+                pattern = arguments.get("pattern", "").lower()
+                if not pattern:
+                    return {"success": False, "error": "Pattern required"}
+
+                # Strip wildcards for substring matching
+                search_term = pattern.replace("*", "").replace("?", "").strip()
+
+                # Prevent empty/broad search (would match everything)
+                if len(search_term) < 2:
+                    return {"success": False, "error": "Search term too broad (min 2 chars)"}
+
+                # Determine if this is a filename-like query vs general substring
+                # Filename-like: contains "." or matches known basename or looks like path
+                is_filename_query = (
+                    "." in search_term or
+                    "/" in search_term or
+                    "\\" in search_term or
+                    search_term.lower() in KNOWN_FILE_BASENAMES
+                )
+
+                matches = []
+                files_scanned = 0
+                dirs_scanned = 0
+                max_files = 5000  # Budget: stop after 5k files
+                max_dirs = 1000   # Budget: stop after 1k directories (prevents deep walk in large monorepos)
+                # Tighter cap for substring queries (non-filename-like)
+                max_results = 50 if is_filename_query else 20
+                start_time = time.time()
+                max_time = 0.5  # Budget: 500ms max
+
+                # Normalize workspace root for escape detection
+                real_workspace = os.path.realpath(self.workspace_path)
+
+                for root, dirs, files in os.walk(self.workspace_path, followlinks=False):
+                    dirs_scanned += 1
+
+                    # Directory budget check
+                    if dirs_scanned > max_dirs:
+                        logger.warning(f"[Discovery] Directory budget exceeded ({max_dirs} dirs)")
+                        break
+
+                    # Time budget check
+                    if time.time() - start_time > max_time:
+                        logger.warning(f"[Discovery] Time budget exceeded ({max_time}s)")
+                        break
+
+                    # Defense-in-depth: Skip if root itself is in ignored path
+                    rel_root = os.path.relpath(root, self.workspace_path)
+
+                    # Explicit check: skip if not at workspace root
+                    if rel_root != ".":
+                        # SECURITY: Use path segment comparison ONLY (not substring)
+                        # This prevents false matches like "my_node_modules_backup" matching "node_modules"
+                        # Split path into segments and check for EXACT matches against ignore set
+                        parts = set(rel_root.split(os.sep))
+                        if parts & DISCOVERY_IGNORE_DIRS:
+                            dirs[:] = []  # Don't descend further
+                            continue
+
+                    # Remove ignored dirs in-place to prevent descent (EXACT match only, not substring)
+                    dirs[:] = [d for d in dirs if d not in DISCOVERY_IGNORE_DIRS]
+
+                    for file_name in files:
+                        files_scanned += 1
+                        if files_scanned > max_files:
+                            logger.warning(f"[Discovery] File count budget exceeded ({max_files})")
+                            break
+
+                        # Substring match
+                        if search_term in file_name.lower():
+                            full_path = os.path.join(root, file_name)
+
+                            # SECURITY: Workspace escape protection
+                            real_path = os.path.realpath(full_path)
+                            if not real_path.startswith(real_workspace):
+                                logger.warning(f"[Discovery] Blocked path escape: {full_path}")
+                                continue
+
+                            rel_path = os.path.relpath(full_path, self.workspace_path)
+                            matches.append(rel_path)
+
+                            if len(matches) >= max_results:
+                                break
+
+                    if len(matches) >= max_results or files_scanned > max_files:
+                        break
+
+                # RANKING: Sort results before returning to reduce "wrong file picked" incidents
+                # Priority: exact match > likely root (weighted) > shallow path > shorter path
+                def rank_match(file_path: str) -> tuple:
+                    file_name = os.path.basename(file_path)
+                    norm_path = file_path.replace("\\", "/")
+
+                    # Check if filename is EXACT match (not just substring)
+                    is_exact_match = file_name.lower() == search_term.lower()
+
+                    # Check if in likely source root
+                    in_likely_root = any(norm_path.startswith(root + "/") for root in LIKELY_SOURCE_ROOTS)
+
+                    # Path depth (shallower is better)
+                    path_depth = file_path.count("/") + file_path.count("\\")
+
+                    # For non-filename queries, weigh likely_root more heavily
+                    # by penalizing non-root paths with extra depth
+                    likely_root_weight = 0 if in_likely_root else (100 if not is_filename_query else 0)
+
+                    # Return sort key (negate bools for DESC, use depth as-is for ASC)
+                    return (
+                        -int(is_exact_match),           # Exact matches first
+                        -int(in_likely_root),            # Likely roots second
+                        path_depth + likely_root_weight, # Shallower paths third (heavily penalize non-roots for substring queries)
+                        len(file_path)                   # Shorter paths fourth
+                    )
+
+                matches.sort(key=rank_match)
+
+                return {
+                    "success": True,
+                    "files": matches,
+                    "count": len(matches),
+                    "truncated": len(matches) >= max_results,
+                    "files_scanned": files_scanned,
+                    "ranked": True  # Flag indicating results are ranked
+                }
+
+            elif tool_name == "list_directory":
+                # SAFE: Uses os.listdir with type info, ignores junk
+                path = arguments.get("path", "")
+                full_path = os.path.join(self.workspace_path, path) if path else self.workspace_path
+
+                # SECURITY: Normalize and check workspace escape
+                full_path = os.path.normpath(full_path)
+                real_path = os.path.realpath(full_path)
+                real_workspace = os.path.realpath(self.workspace_path)
+
+                if not real_path.startswith(real_workspace):
+                    return {"success": False, "error": "Path escape attempt blocked"}
+
+                if not os.path.exists(real_path) or not os.path.isdir(real_path):
+                    return {"success": False, "error": "Directory not found"}
+
+                entries = []
+                for name in os.listdir(real_path):
+                    entry_path = os.path.join(real_path, name)
+                    try:
+                        is_dir = os.path.isdir(entry_path)
+                        is_symlink = os.path.islink(entry_path)
+
+                        # Skip junk directories
+                        if is_dir and name in DISCOVERY_IGNORE_DIRS:
+                            continue
+
+                        entries.append({
+                            "name": name,
+                            "type": "directory" if is_dir else "file",
+                            "is_symlink": is_symlink
+                        })
+                    except OSError:
+                        # Skip entries we can't stat
+                        continue
+
+                return {"success": True, "entries": entries, "count": len(entries)}
+
+            elif tool_name == "mtime_check":
+                # SAFE: Uses os.path.getmtime with tie-breakers
+                # TIE-BREAKERS: prefer src/backend/app roots, prefer shorter paths
+                files = arguments.get("files", [])
+                if not files or not isinstance(files, list):
+                    return {"success": False, "error": "files list required"}
+
+                if len(files) > 20:  # Prevent abuse
+                    return {"success": False, "error": "Too many files (max 20)"}
+
+                real_workspace = os.path.realpath(self.workspace_path)
+                mtimes = []
+
+                for file_path in files:
+                    full_path = os.path.join(self.workspace_path, file_path)
+                    full_path = os.path.normpath(full_path)
+
+                    # SECURITY: Workspace escape protection
+                    real_path = os.path.realpath(full_path)
+                    if not real_path.startswith(real_workspace):
+                        logger.warning(f"[Discovery] Blocked path escape in mtime: {file_path}")
+                        continue
+
+                    if os.path.exists(real_path) and os.path.isfile(real_path):
+                        mtime = os.path.getmtime(real_path)
+
+                        # Tie-breakers for when mtimes are close
+                        # Normalize separators for cross-platform consistency
+                        norm_path = file_path.replace("\\", "/")
+                        in_likely_root = any(norm_path.startswith(root + "/") for root in LIKELY_SOURCE_ROOTS)
+                        path_depth = file_path.count("/") + file_path.count("\\")
+
+                        mtimes.append({
+                            "file": file_path,
+                            "mtime": mtime,
+                            "mtime_iso": datetime.fromtimestamp(mtime).isoformat(),
+                            "in_likely_root": in_likely_root,
+                            "path_depth": path_depth
+                        })
+
+                if not mtimes:
+                    return {"success": False, "error": "No valid files found"}
+
+                # Sort by: mtime DESC, then in_likely_root DESC, then path_depth ASC, then path length ASC, then path lexicographic
+                # (Don't use reverse=True - negate the DESC fields instead)
+                # DETERMINISTIC: Final tie-breaker is path string sort for stable results when mtimes are identical
+                mtimes.sort(
+                    key=lambda x: (
+                        -x["mtime"],                    # Most recent first
+                        -int(x["in_likely_root"]),      # Likely roots second
+                        x["path_depth"],                # Shallower paths third
+                        len(x["file"]),                 # Shorter paths fourth
+                        x["file"]                       # DETERMINISTIC: Lexicographic sort as final tie-breaker
+                    )
+                )
+
+                return {
+                    "success": True,
+                    "most_recent": mtimes[0]["file"],
+                    "all_files": mtimes,
+                    "tie_breakers_used": True
+                }
+
+            return {"success": False, "error": "Unknown discovery tool"}
+
+        except Exception as e:
+            logger.error(f"[Discovery] Exception in {tool_name}: {e}")
+            return {"success": False, "error": str(e)}
 
     def _extract_file_candidates(
         self, request: str, context: Optional[TaskContext] = None
@@ -3138,6 +3650,47 @@ class AutonomousAgent:
             }
 
         return {"status": "not_found", "candidate": first_candidate or ""}
+
+    async def _auto_discovery_attempt(
+        self,
+        preflight_status: str,
+        candidate: str,
+        matches: list
+    ) -> dict:
+        """Run auto-discovery using read-only tools (no gates, no prompts)."""
+
+        if preflight_status == "not_found" and candidate:
+            logger.info(f"[AutoDiscovery] Searching for '{candidate}'")
+
+            # Use read-only runner (NOT _execute_tool)
+            result = await self._execute_readonly_discovery(
+                "search_files",
+                {"pattern": candidate}  # Substring search (stars handled inside)
+            )
+
+            if result.get("success") and result.get("files"):
+                found = result["files"]
+                if len(found) == 1:
+                    return {"status": "resolved", "targets": found, "auto_discovery": True}
+                elif len(found) > 1:
+                    return {"status": "ambiguous", "matches": found[:10], "auto_discovery": True}
+
+        elif preflight_status == "ambiguous" and matches and len(matches) <= 10:
+            logger.info(f"[AutoDiscovery] Disambiguating {len(matches)} matches via mtime")
+
+            # Use read-only runner (NOT _execute_tool)
+            result = await self._execute_readonly_discovery(
+                "mtime_check",
+                {"files": matches}
+            )
+
+            if result.get("success"):
+                most_recent = result["most_recent"]
+                logger.info(f"[AutoDiscovery] Picked most recent: {most_recent}")
+                return {"status": "resolved", "targets": [most_recent], "auto_discovery": True}
+
+        # Discovery didn't help
+        return {"status": preflight_status, "matches": matches}
 
     def _is_run_start_command(self, command: str) -> bool:
         if not command:
@@ -4630,6 +5183,140 @@ Respond with ONLY a JSON object:
             "timestamp": get_event_timestamp(),
         }
 
+    def _is_destructive_operation(
+        self, tool_name: str, arguments: Dict[str, Any], context: TaskContext
+    ) -> tuple[bool, str]:
+        """
+        Check if operation is destructive and requires confirmation.
+
+        Returns:
+            (needs_confirmation, reason)
+        """
+        # Always destructive: delete, move
+        if tool_name == "delete_file":
+            return (True, "File deletion requires confirmation")
+
+        if tool_name == "move_file":
+            return (True, "File move requires confirmation")
+
+        # Edit file: Check for autofix exception
+        if tool_name == "edit_file":
+            file_path = arguments.get("path", "")
+            new_text = arguments.get("new_text", "")
+
+            # EXCEPTION: Safe autofix if file was in EXACT diagnostic run
+            # (within 5 min, max 20 files, max 50-line payload)
+            # CRITICAL: Bind to SINGLE diagnostic run using run_id
+            if context.last_diagnostic_run:
+                diagnostic_run = context.last_diagnostic_run
+                age = time.time() - diagnostic_run.get("timestamp", 0)
+                affected = diagnostic_run.get("affected_files", [])
+
+                # PAYLOAD SIZE LIMITER (not true diff lines - just new content line count)
+                # NOTE: This is new_text.count("\n"), which is payload size, not lines changed
+                # If you want true diff-based limiting, use a patch/unified diff tool instead
+                max_edit_payload_lines = 50
+                edit_payload_lines = new_text.count("\n") if new_text else 0
+
+                # STRICT BINDING: Must be from the MOST RECENT diagnostic run
+                # - Within 5 minutes (not stale)
+                # - File is in the exact affected_files list (max 20 files)
+                # - Same run_id (prevents mixing edits from different diagnostic runs)
+                # - Edit payload <= 50 lines (prevents aggressive rewrites - payload size, not diff)
+                if (
+                    age < 300
+                    and len(affected) <= 20
+                    and file_path in affected
+                    and edit_payload_lines <= max_edit_payload_lines
+                ):
+                    run_id = diagnostic_run.get("run_id", "unknown")
+                    logger.info(
+                        f"[Gate] Allowing autofix for {file_path} "
+                        f"(from diagnostic run #{run_id}, {len(affected)} files, "
+                        f"{edit_payload_lines} payload lines)"
+                    )
+                    return (False, "autofix_from_diagnostic")
+                elif file_path in affected and edit_payload_lines > max_edit_payload_lines:
+                    # Edit payload is too large - require confirmation
+                    logger.info(
+                        f"[Gate] Autofix for {file_path} requires confirmation "
+                        f"(payload {edit_payload_lines} lines exceeds {max_edit_payload_lines}-line limit)"
+                    )
+                    return (
+                        True,
+                        f"Large autofix payload ({edit_payload_lines} lines) requires confirmation",
+                    )
+
+            # Check for protected paths (always require confirmation)
+            PROTECTED_PATHS = {
+                "package.json",
+                "package-lock.json",
+                ".env",
+                ".env.local",
+                ".env.production",
+                "docker-compose.yml",
+                "Dockerfile",
+                ".gitignore",
+            }
+
+            # Normalize path for comparison (handle both relative and absolute)
+            normalized_path = file_path.replace("\\", "/").lower()
+            file_basename = os.path.basename(normalized_path)
+
+            if file_basename in {p.lower() for p in PROTECTED_PATHS}:
+                return (True, f"Protected file {file_basename} requires confirmation")
+
+            # If no autofix exception applies, check payload size
+            edit_payload_lines = new_text.count("\n") if new_text else 0
+            if edit_payload_lines > 50:
+                return (True, f"Large edit ({edit_payload_lines} lines) requires confirmation")
+
+        # Write file: Check if overwriting protected paths or writing to protected names
+        if tool_name == "write_file":
+            file_path = arguments.get("path", "")
+            content = arguments.get("content", "")
+
+            # Check for protected paths (always, even when creating new files)
+            PROTECTED_PATHS = {
+                "package.json",
+                "package-lock.json",
+                ".env",
+                ".env.local",
+                ".env.production",
+                "docker-compose.yml",
+                "Dockerfile",
+                ".gitignore",
+            }
+
+            normalized_path = file_path.replace("\\", "/").lower()
+            file_basename = os.path.basename(normalized_path)
+
+            if file_basename in {p.lower() for p in PROTECTED_PATHS}:
+                # Check if file already exists
+                full_path = os.path.join(self.workspace_path, file_path)
+                file_exists = os.path.exists(full_path)
+
+                if file_exists:
+                    return (True, f"Overwriting protected file {file_basename} requires confirmation")
+                else:
+                    return (True, f"Creating protected file {file_basename} requires confirmation")
+
+            # Check if overwriting existing file (even if not protected)
+            full_path = os.path.join(self.workspace_path, file_path)
+            if os.path.exists(full_path):
+                # Check if overwriting large file (>100 lines)
+                try:
+                    with open(full_path, "r") as f:
+                        existing_lines = len(f.readlines())
+                        if existing_lines > 100:
+                            return (True, f"Overwriting large file ({existing_lines} lines) requires confirmation")
+                except Exception:
+                    # Can't read file - safer to require confirmation
+                    return (True, "Cannot verify file size - requiring confirmation")
+
+        # Not destructive
+        return (False, "")
+
     async def _execute_tool(
         self, tool_name: str, arguments: Dict[str, Any], context: TaskContext
     ) -> Dict[str, Any]:
@@ -4642,6 +5329,43 @@ Respond with ONLY a JSON object:
         )
         logger.info(f"[AutonomousAgent] Iteration: {context.iteration}")
         logger.info("-" * 40)
+
+        # STEP 1: ENFORCE read-only mode FIRST (before gates)
+        # This prevents new prompts after timeout fallback
+        if context.read_only_mode:
+            WRITE_TOOLS = {"write_file", "edit_file", "delete_file", "move_file"}
+            if tool_name in WRITE_TOOLS:
+                logger.warning(f"[ReadOnly] Blocked {tool_name} in read-only mode")
+                return {
+                    "success": False,
+                    "error": f"Cannot {tool_name} in read-only mode (prompt timeout fallback)"
+                }
+
+        # STEP 2: Check destructive gates (only if not in read-only mode)
+        needs_confirm, reason = self._is_destructive_operation(tool_name, arguments, context)
+        if needs_confirm:
+            # INVARIANT: Check for prompt stacking BEFORE creating new prompt
+            if context.pending_prompt is not None:
+                logger.error(
+                    f"[BUG] Prompt stacking detected: {context.pending_prompt.title}"
+                )
+                return {
+                    "success": False,
+                    "error": f"Cannot create confirmation - prompt already pending: {context.pending_prompt.title}",
+                }
+
+            logger.info(f"[DestructiveGate] {tool_name} requires confirmation: {reason}")
+            context.pending_prompt = create_user_prompt(
+                prompt_type="confirm",
+                title=f"Confirm {tool_name}",
+                description=f"About to {tool_name} on {arguments.get('path', 'N/A')}. {reason}. Proceed?",
+            )
+            return {
+                "success": False,
+                "requires_confirmation": True,
+                "message": f"Awaiting confirmation for {tool_name}",
+                "prompt_id": context.pending_prompt.prompt_id,
+            }
 
         # Normalize common alias tool names returned by some models.
         tool_aliases = {
@@ -5233,6 +5957,101 @@ Respond with ONLY a JSON object:
                 if error_analysis:
                     response["error_analysis"] = error_analysis
 
+                # DIAGNOSTIC TRACKING: Track lint/test runs for safe autofixes
+                # Use regex families (not substring matching) to prevent false positives
+                diagnostic_intent = arguments.get("diagnostic_intent")
+                command = arguments["command"]
+
+                # Diagnostic command families (regex patterns for each intent type)
+                # INTENTIONALLY STRICT: Patterns start with ^, so "cd backend && npm run lint" won't match
+                # This is SAFER (prevents accidental tracking of wrapped commands)
+                # If you want to allow safe wrappers, add separate validator for "cd <dir> && <allowed>"
+                DIAGNOSTIC_FAMILIES = {
+                    "lint": [
+                        r"^npm run lint(\s|$)",
+                        r"^ruff check(\s|$)",
+                        r"^eslint(\s|$)",
+                        r"^pylint(\s|$)",
+                        r"^prettier --check(\s|$)"
+                    ],
+                    "test": [
+                        r"^npm test(\s|$)",
+                        r"^npm run test(\s|$)",
+                        r"^pytest(\s|$)",
+                        r"^jest(\s|$)",
+                        r"^vitest(\s|$)",
+                        r"^cargo test(\s|$)",
+                        r"^go test(\s|$)",
+                        r"^mvn test(\s|$)"
+                    ],
+                    "typecheck": [
+                        r"^tsc --noEmit(\s|$)",
+                        r"^npm run typecheck(\s|$)",
+                        r"^mypy(\s|$)",
+                        r"^pyright(\s|$)"
+                    ]
+                }
+
+                # ENFORCEMENT: diagnostic_intent must match command against regex family
+                # This prevents "self-labeling attacks" AND avoids accidental tracking of "test_utils.py"
+                is_diagnostic = False
+
+                if diagnostic_intent and diagnostic_intent in DIAGNOSTIC_FAMILIES:
+                    # Validate intent against command using regex families
+                    family_patterns = DIAGNOSTIC_FAMILIES[diagnostic_intent]
+                    intent_matches_command = any(re.match(pattern, command.strip()) for pattern in family_patterns)
+
+                    if intent_matches_command:
+                        is_diagnostic = True
+                    else:
+                        # SECURITY: Intent doesn't match command family - ignore self-labeling
+                        logger.warning(
+                            f"[Diagnostics] Rejected diagnostic_intent='{diagnostic_intent}' "
+                            f"for command '{command}' (doesn't match regex family)"
+                        )
+                else:
+                    # No explicit intent - check if command matches ANY diagnostic family
+                    for intent_type, family_patterns in DIAGNOSTIC_FAMILIES.items():
+                        if any(re.match(pattern, command.strip()) for pattern in family_patterns):
+                            is_diagnostic = True
+                            diagnostic_intent = intent_type  # Infer intent from command
+                            break
+
+                if is_diagnostic:
+                    # Parse output for affected files (conservative extraction)
+                    affected_files = []
+                    real_workspace = os.path.realpath(self.workspace_path)
+
+                    for line in (stdout_text or "").split("\n")[:500]:  # Cap at 500 lines
+                        # Look for file paths in output
+                        if any(ext in line for ext in [".ts", ".js", ".py", ".tsx", ".jsx"]):
+                            # Extract file path (naive extraction)
+                            match = re.search(r'([^\s:]+\.(ts|tsx|js|jsx|py))', line)
+                            if match:
+                                file_path = match.group(1)
+
+                                # VALIDATE: Path must exist in workspace
+                                full_path = os.path.join(self.workspace_path, file_path)
+                                full_path = os.path.normpath(full_path)
+                                real_path = os.path.realpath(full_path)
+
+                                # Only include if exists and is in workspace
+                                if real_path.startswith(real_workspace) and os.path.exists(real_path):
+                                    affected_files.append(file_path)
+
+                    # Increment diagnostic run counter to ensure single-run binding
+                    diagnostic_run_id = getattr(context, '_diagnostic_run_counter', 0) + 1
+                    context._diagnostic_run_counter = diagnostic_run_id
+
+                    context.last_diagnostic_run = {
+                        "run_id": diagnostic_run_id,  # NEW: unique ID for this specific run
+                        "type": diagnostic_intent or ("lint" if "lint" in command else "test"),
+                        "timestamp": time.time(),
+                        "command": command,
+                        "affected_files": list(set(affected_files))[:20],  # Dedupe, cap at 20
+                    }
+                    logger.info(f"[Diagnostics] Tracked run #{diagnostic_run_id} with {len(list(set(affected_files)))} affected files")
+
                 # If this was a dev server command, verify the server is responding
                 if is_dev_server_cmd:
                     server_port = _determine_server_port(cwd)
@@ -5587,10 +6406,51 @@ Respond with ONLY a JSON object:
                 except Exception as e:
                     return {"success": False, "error": str(e)}
 
+            elif tool_name == "ask_user":
+                """
+                Request user input when you genuinely need clarification.
+
+                Use this sparingly - only when you cannot proceed without user input.
+                Examples:
+                  - Multiple files match and you can't determine which one
+                  - User's request is ambiguous (e.g., "fix the bug" with no context)
+                  - Need to choose between mutually exclusive approaches
+
+                Arguments:
+                  - question: The question to ask (be specific and clear)
+                  - prompt_type: "text" (free text), "select" (choose one), "confirm" (yes/no)
+                  - options: List of options (for select type only)
+                  - placeholder: Placeholder text (for text type only)
+                """
+                question = arguments.get("question", "")
+                prompt_type = arguments.get("prompt_type", "text")
+
+                if not question:
+                    return {"success": False, "error": "Question is required"}
+
+                # Validate prompt_type
+                if prompt_type not in ["text", "select", "confirm"]:
+                    return {"success": False, "error": f"Invalid prompt_type: {prompt_type}. Must be text, select, or confirm"}
+
+                # Create the prompt request
+                context.pending_prompt = create_user_prompt(
+                    prompt_type=prompt_type,
+                    title=arguments.get("title", "User input needed"),
+                    description=question,
+                    placeholder=arguments.get("placeholder"),
+                    options=arguments.get("options", []) if prompt_type == "select" else None,
+                )
+
+                return {
+                    "success": True,
+                    "message": f"User prompt created. Waiting for response...",
+                    "prompt_id": context.pending_prompt.prompt_id,
+                }
+
             else:
                 logger.error(f"[AutonomousAgent] ❌ UNKNOWN TOOL: {tool_name}")
                 logger.error(
-                    "[AutonomousAgent] Available tools: read_file, write_file, edit_file, run_command, search_files, list_directory, start_server, check_endpoint, stop_server"
+                    "[AutonomousAgent] Available tools: read_file, write_file, edit_file, run_command, search_files, list_directory, start_server, check_endpoint, stop_server, ask_user"
                 )
                 return {"success": False, "error": f"Unknown tool: {tool_name}"}
 
@@ -7031,80 +7891,103 @@ Respond with ONLY a JSON object:
                 },
             }
 
-        # File path preflight (single deterministic check for file operations)
-        file_preflight_note = ""
-        if self._is_file_operation_request(request, context):
-            intent = self._classify_file_intent(request, context)
-            preflight = self._preflight_file_targets(request, context)
-            status = preflight.get("status")
-
-            if status == "resolved":
-                targets = preflight.get("targets", [])
-                if targets:
-                    if len(targets) == 1:
-                        file_preflight_note = (
-                            f"Resolved file target: `{targets[0]}`. "
-                            "Use this exact path. Do not guess."
-                        )
-                    else:
-                        joined = ", ".join(f"`{t}`" for t in targets[:5])
-                        file_preflight_note = (
-                            f"Resolved file targets: {joined}. "
-                            "Use these exact paths. Do not guess."
-                        )
-            elif status == "ambiguous":
-                matches = preflight.get("matches", [])
-                candidate = preflight.get("candidate", "") or "the requested file"
-                if (
-                    matches
-                    and intent in ("delete", "move", "edit")
-                    and context.pending_prompt is None
-                ):
-                    context.pending_prompt = create_user_prompt(
-                        prompt_type="select",
-                        title="Select file",
-                        description=(
-                            f"Multiple matches found for {candidate}. "
-                            "Which file should I use?"
-                        ),
-                        options=[{"value": m, "label": m} for m in matches[:10]],
-                    )
-            elif status == "not_found":
-                candidate = preflight.get("candidate", "") or ""
-                if (
-                    intent in ("delete", "move", "edit")
-                    and context.pending_prompt is None
-                ):
-                    context.pending_prompt = create_user_prompt(
-                        prompt_type="text",
-                        title="File path",
-                        description=(
-                            f"I couldn't find {candidate or 'that file'} in the workspace. "
-                            "Please provide the exact relative path."
-                        ),
-                        placeholder="path/to/file.ext",
-                    )
-
-        # Command preflight (single deterministic check for command-centric requests)
+        # COMMAND PREFLIGHT FIRST (check command intent BEFORE file intent)
+        # This prevents "fix linting errors" from being routed to file preflight
         command_preflight_note = ""
         command_intent = self._detect_command_intent(request)
+
         if command_intent != "unknown":
+            # This is a COMMAND request - skip file preflight entirely
             resolved_command = self._resolve_command_for_intent(command_intent)
             if resolved_command:
                 command_preflight_note = (
                     f"Resolved command for {command_intent}: `{resolved_command}`. "
                     "Use this exact command. Do not guess."
                 )
-            elif context.pending_prompt is None:
-                context.pending_prompt = create_user_prompt(
-                    prompt_type="text",
-                    title="Command to run",
-                    description=(
-                        f"I couldn't determine the exact command to {command_intent}. "
-                        "Please provide the command you want me to run."
-                    ),
-                    placeholder="e.g. npm run dev",
-                )
+            else:
+                # Auto-check package.json for scripts (no shell, just file read)
+                pkg_json = os.path.join(self.workspace_path, "package.json")
+                if os.path.exists(pkg_json):
+                    try:
+                        with open(pkg_json) as f:
+                            pkg = json.load(f)
+                            scripts = pkg.get("scripts", {})
+                            # Find matching script
+                            for script_name, script_cmd in scripts.items():
+                                if command_intent in script_name or command_intent in script_cmd:
+                                    command_preflight_note = (
+                                        f"Found script `npm run {script_name}`. Use this."
+                                    )
+                                    break
+                    except Exception:
+                        pass  # Ignore errors, will fall through to note
+
+                if not command_preflight_note:
+                    command_preflight_note = (
+                        f"⚠️ COMMAND UNCLEAR: Intent '{command_intent}' detected. "
+                        "Check package.json scripts or use standard commands."
+                    )
+
+            # SKIP file preflight when command intent found
+            file_preflight_note = ""
+
+        else:
+            # Only check file intent if command intent is unknown
+            # STRUCTURAL SKIP: This entire block only runs when command_intent == "unknown"
+            file_preflight_note = ""
+            if self._is_file_operation_request(request, context):
+                intent = self._classify_file_intent(request, context)
+                preflight = self._preflight_file_targets(request, context)
+                status = preflight.get("status")
+
+                # AUTO-DISCOVERY ATTEMPT (try to resolve before LLM sees it)
+                if status in ("not_found", "ambiguous"):
+                    candidate = preflight.get("candidate", "")
+                    matches = preflight.get("matches", [])
+                    discovery_result = await self._auto_discovery_attempt(
+                        status, candidate, matches
+                    )
+                    # Update preflight with discovery results if better
+                    if discovery_result.get("status") != status:
+                        preflight = discovery_result
+                        status = preflight.get("status")
+                        logger.info(f"[AutoDiscovery] Updated status to: {status}")
+
+                if status == "resolved":
+                    targets = preflight.get("targets", [])
+                    if targets:
+                        if len(targets) == 1:
+                            file_preflight_note = (
+                                f"Resolved file target: `{targets[0]}`. "
+                                "Use this exact path. Do not guess."
+                            )
+                        else:
+                            joined = ", ".join(f"`{t}`" for t in targets[:5])
+                            file_preflight_note = (
+                                f"Resolved file targets: {joined}. "
+                                "Use these exact paths. Do not guess."
+                            )
+                elif status == "ambiguous":
+                    matches = preflight.get("matches", [])
+                    candidate = preflight.get("candidate", "") or "the requested file"
+                    if matches:
+                        # Provide advisory note to LLM - let it decide how to proceed
+                        joined_matches = "\n".join(f"  - {m}" for m in matches[:10])
+                        file_preflight_note = (
+                            f"⚠️ AMBIGUOUS: Multiple files match {candidate}:\n{joined_matches}\n"
+                            f"Use the correct path from the list above, OR ask the user which one they meant."
+                        )
+                elif status == "not_found":
+                    candidate = preflight.get("candidate", "") or ""
+                    if candidate:
+                        # Provide advisory note to LLM - let it decide how to proceed
+                        file_preflight_note = (
+                            f"⚠️ NOT FOUND: Could not find '{candidate}' in workspace.\n"
+                            f"Either:\n"
+                            f"  1. Search for similar files using [search_files: {candidate}]\n"
+                            f"  2. Ask the user for the correct path if you're unsure\n"
+                            f"  3. Create it if the request is to add a new file"
+                        )
 
         # Include environment info in the initial request
         preflight_blocks = []

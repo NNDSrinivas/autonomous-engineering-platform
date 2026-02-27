@@ -215,9 +215,21 @@ export class PKCELoopbackAuthService {
         console.log(`Loopback server listening on ${this.redirectUri}`);
       });
 
-      this.server.on("error", (err) => {
+      this.server.on("error", (err: NodeJS.ErrnoException) => {
         clearTimeout(timeout);
-        reject(err);
+        if (err.code === "EADDRINUSE") {
+          vscode.window.showErrorMessage(
+            `Unable to start login redirect listener on http://${this.loopbackHost}:${this.loopbackPort} because the port is already in use. ` +
+              "Please close any other instance of the Adobe Experience Platform extension or any application using this port and try again."
+          );
+          reject(
+            new Error(
+              `Loopback server failed to start: port ${this.loopbackPort} is already in use.`
+            )
+          );
+        } else {
+          reject(err);
+        }
       });
     });
   }

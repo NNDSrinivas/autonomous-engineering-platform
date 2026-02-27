@@ -21,6 +21,7 @@ import asyncio
 import uuid
 import re
 import glob
+import shlex
 import threading
 import time
 from typing import (
@@ -5612,7 +5613,6 @@ Respond with ONLY a JSON object:
                     logger.info(
                         f"[AutonomousAgent] ⚠️ write_file with empty content during delete request. Deleting instead: {file_path}"
                     )
-                    import shlex
                     from backend.agent.tools.run_command import run_command as run_cmd
 
                     return await run_cmd(
@@ -5717,17 +5717,16 @@ Respond with ONLY a JSON object:
 
                 # COPILOT FIX: Unwrap bash -c before scan detection
                 # bash -c 'rg TODO' should detect rg, not bash
+                # Use shlex.split() to handle nested quotes properly (e.g., bash -c "find . -name \"*.py\"")
                 command_to_check = command
-                bash_c_match = re.match(r"(?:bash|sh)\s+-c\s+(.+)", command.strip())
-                if bash_c_match:
-                    # Extract inner command (may be quoted)
-                    inner = bash_c_match.group(1).strip()
-                    # Remove outer quotes if present
-                    if (inner.startswith('"') and inner.endswith('"')) or (
-                        inner.startswith("'") and inner.endswith("'")
-                    ):
-                        inner = inner[1:-1]
-                    command_to_check = inner
+                try:
+                    parts = shlex.split(command.strip())
+                    # Check if it's bash/sh -c <command>
+                    if len(parts) >= 3 and parts[0] in ("bash", "sh") and parts[1] == "-c":
+                        command_to_check = parts[2]
+                except ValueError:
+                    # If shlex fails, fall back to original command
+                    pass
 
                 # COPILOT FIX: Block scan commands in ANY segment, including redirection/subshell.
                 # P1 FIX #3: Block scan commands in ANY segment of pipes/chains/backgrounding/xargs/-exec.
@@ -5759,8 +5758,9 @@ Respond with ONLY a JSON object:
                     # Split by ALL operators detected by is_piped_or_chained()
                     # including || (fallback), redirection (>, <), and -exec
                     # Note: $() and backticks are handled above, xargs is detected but not a split delimiter
+                    # Simplified: & handles all background cases uniformly (trailing, with space, etc.)
                     segments = re.split(
-                        r"\|\||\||&&|;|&\s+|&\s*$|[<>]|-exec\b",
+                        r"\|\||\||&&|;|&|[<>]|-exec\b",
                         command_to_check,
                     )
                     for segment in segments:
@@ -5969,8 +5969,6 @@ Respond with ONLY a JSON object:
                 # to avoid double-wrapping issues
                 if command.strip().startswith("bash -c"):
                     # Extract command from bash -c '...' or bash -c "..."
-                    import shlex
-
                     try:
                         parts = shlex.split(command)
                         if len(parts) >= 3 and parts[0] == "bash" and parts[1] == "-c":

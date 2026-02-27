@@ -211,6 +211,9 @@ def _is_scoped_path(path: str) -> bool:
     # P1 FIX: Treat plain directory names (src, backend, etc.) as scoped
     # These are common directory names that indicate user intent to scope search,
     # but avoid treating shell constructs (globs, vars, home shortcuts) as scoped.
+    # The startswith("-") check prevents treating command flags (e.g., "-name", "-type")
+    # as directory names. This should only be reached when callers pass actual path arguments,
+    # not option flags, but we defend-in-depth here.
     if path and not path.startswith("-") and not re.search(r"[*?\[\]{}`$~]", path):
         return True
     return False
@@ -330,6 +333,8 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
 
         if len(name_flags) == 1:
             idx = name_flags[0]
+            # Guard against malformed commands (e.g., "find . -name" with missing pattern).
+            # If pattern is None, we fall through to return can_rewrite=False below.
             pattern = tokens[idx + 1] if idx + 1 < len(tokens) else None
             if pattern:
                 return ScanCommandInfo(

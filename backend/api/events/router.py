@@ -12,15 +12,66 @@ router = APIRouter(prefix="/events", tags=["events"])
 logger = logging.getLogger(__name__)
 
 
-@router.post("/ingest", response_model=IngestResponse)
-async def ingest_event(
-    event: IngestEvent, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
-) -> IngestResponse:
+@router.get("/health")
+async def health_check(db: Session = Depends(get_db)) -> dict:
     """
-    Ingest a single event from any connector (Jira, Slack, GitHub, etc.) into NAVI memory.
+    Health check endpoint for memory ingestion service.
 
-    This is the universal ingestion endpoint that normalizes events from different
-    sources into consistent NAVI memory entries.
+    Returns status of database connection and memory service availability.
+    Used by monitoring and load balancers to verify service health.
+    """
+    health_status = {
+        "service": "events-ingestion",
+        "status": "healthy",
+        "checks": []
+    }
+
+    # Check database connection
+    try:
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
+        health_status["checks"].append({
+            "name": "database",
+            "status": "ok",
+            "message": "Database connection successful"
+        })
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["checks"].append({
+            "name": "database",
+            "status": "error",
+            "message": f"Database connection failed: {str(e)}"
+        })
+        logger.error(f"Database health check failed: {e}")
+
+    # Check OpenAI API key configuration
+    import os
+    if os.getenv("OPENAI_API_KEY"):
+        health_status["checks"].append({
+            "name": "openai_config",
+            "status": "ok",
+            "message": "OpenAI API key configured"
+        })
+    else:
+        health_status["status"] = "degraded"
+        health_status["checks"].append({
+            "name": "openai_config",
+            "status": "warning",
+            "message": "OpenAI API key not configured - embeddings will fail"
+        })
+
+    return health_status
+
+
+async def _process_event_in_background(
+    event: IngestEvent,
+    db: Session,
+) -> None:
+    """
+    Background task to process event ingestion asynchronously.
+
+    This prevents slow OpenAI embedding API calls from blocking the HTTP response.
+    Errors are logged but don't propagate to the caller since this runs async.
     """
     try:
         # Determine memory category based on source and event type
@@ -54,7 +105,7 @@ async def ingest_event(
         if event.occurred_at:
             tags["occurred_at"] = event.occurred_at.isoformat()
 
-        # Store in NAVI memory
+        # Store in NAVI memory (this includes slow OpenAI embedding call)
         memory_id = await store_memory(
             db=db,
             user_id=event.user_id,
@@ -67,21 +118,71 @@ async def ingest_event(
         )
 
         logger.info(
-            f"Successfully ingested event {event.source}:{event.event_type}:{event.external_id} as memory #{memory_id} for user {event.user_id}"
-        )
-
-        return IngestResponse(
-            status="success",
-            memory_id=str(memory_id),
-            message=f"Ingested {event.source} {event.event_type} as memory #{memory_id}",
+            f"Background task: Successfully ingested event {event.source}:{event.event_type}:{event.external_id} as memory #{memory_id} for user {event.user_id}"
         )
 
     except Exception as e:
+        # Log error but don't re-raise since this is a background task
+        # Memory ingestion is best-effort and shouldn't break the application
         logger.error(
-            f"Failed to ingest event {event.source}:{event.event_type}:{event.external_id} for user {event.user_id}: {str(e)}"
+            f"Background task: Failed to ingest event {event.source}:{event.event_type}:{event.external_id} for user {event.user_id}: {str(e)}",
+            exc_info=True
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to ingest {event.source} event: {str(e)}"
+
+
+@router.post("/ingest", response_model=IngestResponse)
+async def ingest_event(
+    event: IngestEvent, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
+) -> IngestResponse:
+    """
+    Ingest a single event from any connector (Jira, Slack, GitHub, etc.) into NAVI memory.
+
+    This is the universal ingestion endpoint that normalizes events from different
+    sources into consistent NAVI memory entries.
+
+    PERFORMANCE: Returns immediately and processes ingestion in the background to avoid
+    timeout issues from slow OpenAI embedding API calls (1-3 seconds per event).
+
+    RELIABILITY: Memory ingestion is best-effort - failures are logged but don't block
+    the response. This prevents timeout errors in the VS Code extension.
+    """
+    try:
+        # Validate event immediately (fast - no IO)
+        if not event.user_id or not event.source or not event.event_type:
+            raise HTTPException(
+                status_code=422,
+                detail="Missing required fields: user_id, source, or event_type"
+            )
+
+        # Queue background task for async processing
+        # This returns immediately without waiting for OpenAI embedding generation
+        background_tasks.add_task(_process_event_in_background, event, db)
+
+        # Return success immediately - actual processing happens in background
+        logger.info(
+            f"Queued event ingestion: {event.source}:{event.event_type}:{event.external_id} for user {event.user_id}"
+        )
+
+        return IngestResponse(
+            status="queued",
+            memory_id="pending",
+            message=f"Event {event.source} {event.event_type} queued for ingestion",
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions (validation errors)
+        raise
+    except Exception as e:
+        # Log unexpected errors but return graceful error response
+        logger.error(
+            f"Failed to queue event {event.source}:{event.event_type}:{event.external_id} for user {event.user_id}: {str(e)}",
+            exc_info=True
+        )
+        # Return 202 Accepted even on queue failures - best-effort memory
+        return IngestResponse(
+            status="failed",
+            memory_id="error",
+            message=f"Failed to queue event: {str(e)}",
         )
 
 

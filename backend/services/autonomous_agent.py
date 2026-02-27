@@ -5786,11 +5786,29 @@ Respond with ONLY a JSON object:
                         r"\|\||\||&&|;|&|[<>]|-exec\b|\bxargs\b",
                         command_to_check,
                     )
+
+                    def _unwrap_shell_c_segment(seg: str) -> str:
+                        """
+                        Unwrap simple 'bash -c "<cmd>"' / 'sh -c "<cmd>"' segments so that
+                        scan detection can see the underlying command. This mirrors the
+                        bash/sh -c unwrapping used for the top-level command.
+                        """
+                        # Match leading bash/sh (with optional whitespace) followed by -c and the rest
+                        m = re.match(r"^\s*(?:bash|sh)\s+-c\s+(.*)$", seg)
+                        if not m:
+                            return seg
+                        inner = m.group(1).strip()
+                        # Strip a single layer of matching quotes around the inner command
+                        if inner and inner[0] == inner[-1] and inner[0] in ("'", '"'):
+                            inner = inner[1:-1]
+                        return inner
+
                     for segment in segments:
                         segment = segment.strip()
                         if not segment:
                             continue
-                        scan_info = is_scan_command(segment)
+                        unwrapped_segment = _unwrap_shell_c_segment(segment)
+                        scan_info = is_scan_command(unwrapped_segment)
                         if scan_info:
                             return {
                                 "success": False,

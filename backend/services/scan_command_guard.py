@@ -420,34 +420,39 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
                 rewrite_kind="blocked",
             )
 
-        # Multiple positionals: pattern + path(s)
-        # Check the last argument (the search path)
-        search_path = positionals[-1]
+        # Determine which positionals are path operands:
+        # - If pattern comes from an option: all positionals are paths.
+        # - Otherwise: first positional is the pattern, remaining are paths.
+        if pattern_from_option:
+            path_operands = positionals
+        else:
+            path_operands = positionals[1:]
 
-        # If explicit "." path -> block
-        if search_path == ".":
-            return ScanCommandInfo(
-                tool="grep",
-                raw=cmd,
-                tokens=tokens,
-                reason="Recursive grep from repo root is a content search (not filename search)",
-                can_rewrite=False,
-                rewrite_kind="blocked",
-            )
+        # Validate all explicit path operands:
+        # - If any is ".", this is effectively a repo-root recursive scan -> block.
+        # - If any is not a scoped path, treat scope as ambiguous -> block.
+        for path in path_operands:
+            if path == ".":
+                return ScanCommandInfo(
+                    tool="grep",
+                    raw=cmd,
+                    tokens=tokens,
+                    reason="Recursive grep from repo root is a content search (not filename search)",
+                    can_rewrite=False,
+                    rewrite_kind="blocked",
+                )
+            if not _is_scoped_path(path):
+                return ScanCommandInfo(
+                    tool="grep",
+                    raw=cmd,
+                    tokens=tokens,
+                    reason="Recursive grep with ambiguous scope",
+                    can_rewrite=False,
+                    rewrite_kind="blocked",
+                )
 
-        # If scoped directory -> allow
-        if _is_scoped_path(search_path):
-            return None
-
-        # Otherwise block (unrecognized pattern)
-        return ScanCommandInfo(
-            tool="grep",
-            raw=cmd,
-            tokens=tokens,
-            reason="Recursive grep with ambiguous scope",
-            can_rewrite=False,
-            rewrite_kind="blocked",
-        )
+        # All explicit paths are scoped -> allow
+        return None
 
     # -------------------------
     # rg scans
@@ -471,21 +476,24 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         # P1 FIX #2: Use proper positional extraction (skip option values)
         positionals = _extract_rg_positionals(tokens)
 
+        # Determine which positionals are paths based on where the pattern comes from.
         if pattern_from_option:
-            # All remaining positionals are paths (pattern came from option)
-            if len(positionals) >= 1:
-                path = positionals[-1]
-                if path not in [".", ""] and _is_scoped_path(path):
-                    return None  # scoped path
+            # Pattern comes from -e/--regexp/-f/--file -> all positionals are paths.
+            paths = positionals
         else:
-            # Positional pattern: first positional is pattern, second+ are paths
-            if len(positionals) > 1:
-                # Multiple positionals: pattern + path(s)
-                path = positionals[-1]
-                if path not in [".", ""] and _is_scoped_path(path):
-                    return None  # scoped path
+            # Positional pattern: first positional is pattern, second+ are paths.
+            # If there is only one positional, then there are no explicit paths.
+            paths = positionals[1:] if len(positionals) > 1 else []
 
-        # No explicit path or path is root -> unbounded root scan
+        # When PATH arguments are present, evaluate all of them:
+        # if any is "."/empty/unscoped, treat as an unbounded scan and block.
+        if paths:
+            if all(
+                (path not in [".", ""]) and _is_scoped_path(path) for path in paths
+            ):
+                return None  # all paths are scoped
+
+        # No explicit path or at least one unscoped/root path -> unbounded root scan
         return ScanCommandInfo(
             tool="rg",
             raw=cmd,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 from dataclasses import dataclass
@@ -212,6 +213,17 @@ def _is_scoped_path(path: str) -> bool:
     # Reject absolute paths and home expansions (unbounded)
     if path.startswith(("/", "~")):
         return False
+
+    # Normalize path to detect hidden parent directory escapes
+    # Examples: ./.., src/../../etc (but ../backend is OK per docstring)
+    normalized = os.path.normpath(path)
+    # Reject if path doesn't start with ../ but normalizes to parent escape
+    # (e.g., ./.., src/../../etc) OR if it becomes absolute
+    if not path.startswith("../") and (
+        normalized.startswith("..") or os.path.isabs(normalized)
+    ):
+        return False
+
     if path.startswith(("./", "../")) and len(path) > 2:
         return True
     if "/" in path and not path.startswith("."):
@@ -385,7 +397,17 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
     # grep scans
     # -------------------------
     if tool_cmd in ["grep", "egrep"]:
-        if not any(tok in tokens for tok in ["-r", "-R", "--recursive"]):
+        # Check for recursive flag: -r, -R, --recursive, or combined like -rl, -Rn
+        def _has_recursive_flag(tokens: List[str]) -> bool:
+            for tok in tokens:
+                if tok == "--recursive":
+                    return True
+                if tok.startswith("-") and not tok.startswith("--"):
+                    if "r" in tok or "R" in tok:
+                        return True
+            return False
+
+        if not _has_recursive_flag(tokens):
             return None
 
         # COPILOT FIX: Use proper positional extraction to avoid option value bypass
@@ -665,7 +687,8 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
     confirmed = bool(getattr(context, "allow_repo_scans", False))
 
     # Block during early discovery iterations (prevent premature expensive scans)
-    if iteration and iteration < 3:
+    # Note: iteration 0 is also an early iteration and should be blocked
+    if iteration < 3:
         return False
 
     # Must be explicit user request for repo-wide scan

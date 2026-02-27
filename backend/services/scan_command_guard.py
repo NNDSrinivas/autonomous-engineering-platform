@@ -26,8 +26,8 @@ class ScanCommandInfo:
 
 # COPILOT FIX: Include || operator for bash fallback chains (cmd1 || cmd2)
 # Pattern order matters: \|\| must come before \| to match two-char operator first
-# Simplified: &(?:\s|$) handles all background cases uniformly
-_PIPE_CHAIN_RE = re.compile(r"\|\||\||&&|;|&(?:\s|$)|`|\$\(|>|<|\bxargs\b|-exec\b")
+# Match background operator & (but not &&) regardless of following whitespace
+_PIPE_CHAIN_RE = re.compile(r"\|\||\||&&|;|&(?!&)|`|\$\(|>|<|\bxargs\b|-exec\b")
 
 
 def split_command(cmd: str) -> Optional[List[str]]:
@@ -205,9 +205,12 @@ def _is_scoped_path(path: str) -> bool:
     Examples treated as scoped:
       ./src, ../backend, backend/, src/components, src, backend
     Not scoped:
-      . , $PWD , ${PWD}
+      . , $PWD , ${PWD}, absolute paths (/, /usr), home paths (~, ~/dir)
     """
     if path in [".", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
+        return False
+    # Reject absolute paths and home expansions (unbounded)
+    if path.startswith(("/", "~")):
         return False
     if path.startswith(("./", "../")) and len(path) > 2:
         return True
@@ -285,10 +288,21 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
     if tool_cmd == "find":
         # Determine the search root, accounting for global options before the path.
         # POSIX find allows -H, -L, -P before any path operands.
+        # GNU find also supports -O (optimization), -D (debug), -- (end of options)
         search_root = "."
         idx = 1
-        while idx < len(tokens) and tokens[idx] in ("-H", "-L", "-P"):
-            idx += 1
+        global_opts_with_values = {"-O", "-D"}
+        while idx < len(tokens):
+            tok = tokens[idx]
+            if tok in ("-H", "-L", "-P", "--"):
+                idx += 1
+            elif tok in global_opts_with_values:
+                idx += 2  # Skip option and its value
+            elif tok.startswith(("-O", "-D")):
+                # Handle combined form like -O3 or -Dhelp
+                idx += 1
+            else:
+                break
         if idx < len(tokens) and not tokens[idx].startswith("-"):
             search_root = tokens[idx]
 
@@ -376,12 +390,26 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         # COPILOT FIX: Use proper positional extraction to avoid option value bypass
         # grep -R TODO --exclude-dir node_modules should NOT treat node_modules as path
         # grep syntax: grep [OPTIONS] PATTERN [FILE...]
-        # - If 1 positional: it's the PATTERN (no path, defaults to ".")
-        # - If 2+ positionals: first is PATTERN, rest are FILE path(s)
+        # - If pattern from -e/--regexp or -f/--file: all positionals are paths
+        # - Otherwise: first positional is PATTERN, rest are FILE path(s)
         positionals = _extract_grep_positionals(tokens)
 
-        # No path provided (only pattern or no args) -> defaults to "."
-        if len(positionals) <= 1:
+        # Check if pattern comes from -e/--regexp or -f/--file
+        pattern_from_option = any(
+            tok in tokens for tok in ["-e", "--regexp", "-f", "--file"]
+        )
+
+        # Determine if path is provided
+        # - If pattern from option: any positionals are paths
+        # - Otherwise: need 2+ positionals (first is pattern, rest are paths)
+        has_explicit_path = (
+            len(positionals) >= 1
+            if pattern_from_option
+            else len(positionals) >= 2
+        )
+
+        # No path provided -> defaults to "."
+        if not has_explicit_path:
             return ScanCommandInfo(
                 tool="grep",
                 raw=cmd,

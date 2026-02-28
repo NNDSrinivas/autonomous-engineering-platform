@@ -348,6 +348,8 @@ class TaskContext:
     ] = None  # Track most recent diagnostic run (lint/test)
     # NEW: Read-only mode enforcement (set on clarification timeout)
     read_only_mode: bool = False  # When True, block all write operations
+    # NEW: Scan command guard authorization (fail-closed: requires explicit consent)
+    allow_repo_scans: bool = False  # When True, allows expensive repo-wide scans
 
     @classmethod
     def with_adaptive_limits(

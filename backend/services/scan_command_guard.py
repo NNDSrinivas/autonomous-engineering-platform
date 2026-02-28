@@ -703,21 +703,30 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
 
 def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
     """
+    DEPRECATED: This function is no longer called in production code.
+
+    Architectural note: is_scan_command() only returns ScanCommandInfo for UNBOUNDED
+    scans. Bounded/scoped commands (with -maxdepth, --glob, scoped paths, etc.) are
+    auto-allowed by returning None. Since this function only returns True for
+    bounded/scoped commands, and unbounded commands are the only ones that reach it,
+    this function always returns False in practice.
+
+    The "allow" path in autonomous_agent.py has been removed as structurally unreachable.
+    Bounded/scoped commands are allowed earlier in the flow (is_scan_command returns None).
+
+    This function and its tests are kept for documentation purposes and potential future
+    restructuring where scan classification is separated from danger detection.
+
+    Original intent:
     Fail-closed allow policy. Scan commands are allowed only if ALL conditions met:
       1) User explicitly asked to scan entire repo/codebase, AND
       2) The command is bounded/scoped, AND
       3) A confirmation flag is present on context (to prevent agent self-hanging).
 
-    FIX #5 CLARIFICATION: This policy is intentionally strict to prevent autonomous
-    agents from hanging on expensive scans. The confirmation flag (allow_repo_scans)
-    must be explicitly set by the UI/consent system when the user confirms they want
-    a repo-wide scan. This flag is NOT set by default, making this path rarely reached
-    in practice - which is by design for safety.
-
-    In most cases, scans are either:
+    In practice, scans are:
+    - Allowed automatically if bounded/scoped (is_scan_command returns None)
     - Rewritten to discovery tools (find -name → search_files)
     - Blocked with safe alternatives (grep -R → workflow suggestion)
-    - Allowed automatically if scoped (find ./src, grep -R pattern backend/)
     """
     # If your TaskContext differs, adjust these attribute reads accordingly.
     original_request = (getattr(context, "original_request", "") or "").lower()

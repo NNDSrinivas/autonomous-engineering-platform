@@ -5717,7 +5717,6 @@ Respond with ONLY a JSON object:
                 from backend.services.scan_command_guard import (
                     is_scan_command,
                     rewrite_to_discovery,
-                    should_allow_scan_for_context,
                     is_piped_or_chained,
                 )
 
@@ -5830,55 +5829,49 @@ Respond with ONLY a JSON object:
 
                 scan_info = is_scan_command(command_to_check)
                 if scan_info:
-                    # Fail-closed policy: only allow when user explicitly requested repo-wide scan
-                    # AND command is bounded/scoped AND user confirmation flag is set.
-                    if should_allow_scan_for_context(context, scan_info):
-                        # Structured telemetry: scan allowed
+                    # is_scan_command() only returns info for unbounded/dangerous scans.
+                    # Bounded/scoped commands are auto-allowed (returns None).
+                    # Therefore, if we reach here, we must rewrite or block.
+                    rewrite = rewrite_to_discovery(scan_info)
+
+                    # Rewrite ONLY when filename semantics are preserved (find -name/-iname).
+                    if rewrite.get("use_discovery"):
+                        # Structured telemetry: scan rewritten
                         logger.info(
-                            f"event=scan_guard_action action=allowed tool={scan_info.tool} "
-                            f"reason={scan_info.reason!r} task_id={context.task_id}"
-                        )
-                    else:
-                        rewrite = rewrite_to_discovery(scan_info)
-
-                        # Rewrite ONLY when filename semantics are preserved (find -name/-iname).
-                        if rewrite.get("use_discovery"):
-                            # Structured telemetry: scan rewritten
-                            logger.info(
-                                f"event=scan_guard_action action=rewritten tool={scan_info.tool} "
-                                f"to_tool={rewrite['tool_name']} pattern={rewrite['arguments'].get('pattern')!r} "
-                                f"task_id={context.task_id}"
-                            )
-                            discovery_result = await self._execute_readonly_discovery(
-                                rewrite["tool_name"],
-                                rewrite["arguments"],
-                            )
-                            # Annotate for transparency/debugging.
-                            if isinstance(discovery_result, dict):
-                                discovery_result["rewritten_from"] = command
-                                discovery_result["explanation"] = rewrite.get(
-                                    "explanation"
-                                )
-                            return discovery_result
-
-                        # Content scans (grep -R / unbounded rg) cannot be rewritten safely.
-                        # Structured telemetry: scan blocked
-                        logger.warning(
-                            f"event=scan_guard_action action=blocked tool={scan_info.tool} "
-                            f"reason_code={rewrite.get('reason_code', 'SCAN_BLOCKED_UNBOUNDED')!r} "
+                            f"event=scan_guard_action action=rewritten tool={scan_info.tool} "
+                            f"to_tool={rewrite['tool_name']} pattern={rewrite['arguments'].get('pattern')!r} "
                             f"task_id={context.task_id}"
                         )
-                        return {
-                            "success": False,
-                            "error": f"⚠️ SCAN BLOCKED: {scan_info.reason}",
-                            "blocked_command": command,
-                            "alternative": rewrite.get("alternative"),
-                            "workflow_suggestion": rewrite.get("workflow_suggestion"),
-                            "reason": (
-                                f"{scan_info.tool} repo-wide scans can take 3–10 minutes and make the "
-                                "extension feel unresponsive. Use bounded discovery tools instead."
-                            ),
-                        }
+                        discovery_result = await self._execute_readonly_discovery(
+                            rewrite["tool_name"],
+                            rewrite["arguments"],
+                        )
+                        # Annotate for transparency/debugging.
+                        if isinstance(discovery_result, dict):
+                            discovery_result["rewritten_from"] = command
+                            discovery_result["explanation"] = rewrite.get(
+                                "explanation"
+                            )
+                        return discovery_result
+
+                    # Content scans (grep -R / unbounded rg) cannot be rewritten safely.
+                    # Structured telemetry: scan blocked
+                    logger.warning(
+                        f"event=scan_guard_action action=blocked tool={scan_info.tool} "
+                        f"reason_code={rewrite.get('reason_code', 'SCAN_BLOCKED_UNBOUNDED')!r} "
+                        f"task_id={context.task_id}"
+                    )
+                    return {
+                        "success": False,
+                        "error": f"⚠️ SCAN BLOCKED: {scan_info.reason}",
+                        "blocked_command": command,
+                        "alternative": rewrite.get("alternative"),
+                        "workflow_suggestion": rewrite.get("workflow_suggestion"),
+                        "reason": (
+                            f"{scan_info.tool} repo-wide scans can take 3–10 minutes and make the "
+                            "extension feel unresponsive. Use bounded discovery tools instead."
+                        ),
+                    }
 
                 def _is_background_command(cmd: str) -> bool:
                     stripped = cmd.strip()

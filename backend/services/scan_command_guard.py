@@ -225,7 +225,20 @@ def _is_scoped_path(path: str) -> bool:
     ):
         return False
 
-    if path.startswith(("./", "../")) and len(path) > 2:
+    # CRITICAL FIX: Block deep parent directory traversal (../.., ../../etc, etc.)
+    # Only allow one level up to a specific directory (../backend is OK, ../.. is NOT)
+    if path.startswith("../"):
+        # Check if normalized path has multiple ".." components
+        # Normalized "../.." becomes "../..", "../../etc" becomes "../../etc"
+        # We want to allow "../backend" (normalizes to "../backend") but block "../.."
+        if normalized.startswith("../.."):
+            return False  # Blocks ../.., ../../etc, ../../../foo, etc.
+        # Also check the raw path for obvious multi-level traversals
+        if path.startswith("../../") or path == "../..":
+            return False
+        return len(path) > 2  # Allow "../backend" but not just "../"
+
+    if path.startswith("./") and len(path) > 2:
         return True
     if "/" in path and not path.startswith("."):
         return True

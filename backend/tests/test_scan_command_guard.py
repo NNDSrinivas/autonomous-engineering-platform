@@ -153,6 +153,27 @@ class TestCopilotP1Fixes:
         assert scan_info is not None, "find .. should be detected as unbounded scan"
         assert scan_info.tool == "find"
 
+        # CRITICAL: Deep parent directory traversal must be blocked
+        assert (
+            _is_scoped_path("../..") is False
+        ), "CRITICAL: ../.. allows escape outside workspace"
+        assert (
+            _is_scoped_path("../../etc") is False
+        ), "CRITICAL: ../../etc allows escape outside workspace"
+        assert (
+            _is_scoped_path("../../../foo") is False
+        ), "CRITICAL: ../../../foo allows deep traversal"
+
+        # Verify deep traversal is detected as unbounded scan
+        scan_deep = is_scan_command("find ../.. -name '*.py'")
+        assert (
+            scan_deep is not None
+        ), "CRITICAL: find ../.. must be detected as unbounded scan"
+        scan_deeper = is_scan_command("find ../../etc -name '*.py'")
+        assert (
+            scan_deeper is not None
+        ), "CRITICAL: find ../../etc must be detected as unbounded scan"
+
     def test_p1_fix_2_rg_with_option_values_blocked(self):
         """P1 FIX #2: rg --max-count 10 TODO should be blocked (10 is option value, not path)."""
         # This should be detected as unbounded scan (no path after pattern)

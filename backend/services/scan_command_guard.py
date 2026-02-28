@@ -263,7 +263,7 @@ def normalize_find_name_to_substring(pattern: str) -> str:
         return pat  # exact filename intent (e.g., "Button.tsx")
 
     # Split by wildcards and find longest literal segment
-    # For test_*.py, segments are ["test_", "", ".py"]
+    # For test_*.py, segments are ["test_", ".py"]
     # We want the longest meaningful segment
     segments = re.split(r"[*?]+", pat)
     segments = [s for s in segments if s]  # Remove empty strings
@@ -797,7 +797,10 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
         positionals = _extract_rg_positionals(info.tokens)
         if positionals:
             path = positionals[-1] if len(positionals) > 1 else None
-            return path and path not in [".", ""] and _is_scoped_path(path)
+            # FIX: Return explicit False instead of None to match bool return type
+            if not path or path in [".", ""]:
+                return False
+            return _is_scoped_path(path)
         return False
 
     if info.tool == "grep":

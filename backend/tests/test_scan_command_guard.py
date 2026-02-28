@@ -35,6 +35,14 @@ class TestTokenAwareDetection:
             ("rg 'test' -g '*.ts'", False, None),
             ("rg TODO --type python", False, None),
             ("rg TODO src", False, None),
+            # FIX: Test --flag=value form (equals syntax)
+            ("rg TODO --glob=*.py", False, None),
+            ("rg TODO --type=python", False, None),
+            ("rg TODO --type-add=python", False, None),
+            # FIX: Test "./" bypass (should be detected as unbounded scan)
+            ("find ./ -name '*.py'", True, "find"),
+            ("grep -R TODO ./", True, "grep"),
+            ("rg TODO ./", True, "rg"),
         ],
     )
     def test_scan_detection(self, command, should_detect, tool):

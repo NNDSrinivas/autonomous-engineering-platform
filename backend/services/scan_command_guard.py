@@ -206,9 +206,10 @@ def _is_scoped_path(path: str) -> bool:
     Examples treated as scoped:
       ./src, ../backend, backend/, src/components, src, backend
     Not scoped:
-      . , .. , $PWD , ${PWD}, absolute paths (/, /usr), home paths (~, ~/dir)
+      . , ./ , .. , $PWD , ${PWD}, absolute paths (/, /usr), home paths (~, ~/dir)
     """
-    if path in [".", "..", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
+    # FIX: Treat "./" as equivalent to "." (current directory)
+    if path in [".", "./", "..", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
         return False
     # Reject absolute paths and home expansions (unbounded)
     if path.startswith(("/", "~")):
@@ -319,7 +320,8 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         if idx < len(tokens) and not tokens[idx].startswith("-"):
             search_root = tokens[idx]
 
-        if search_root in [".", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
+        # FIX: Normalize "./" to "." to prevent bypass
+        if search_root in [".", "./", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
             search_root = "."
 
         # If explicitly scoped or bounded by an upper depth limit, treat as safe (pass-through)
@@ -472,10 +474,11 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
             path_operands = positionals[1:]
 
         # Validate all explicit path operands:
-        # - If any is ".", this is effectively a repo-root recursive scan -> block.
+        # - If any is "." or "./", this is effectively a repo-root recursive scan -> block.
         # - If any is not a scoped path, treat scope as ambiguous -> block.
         for path in path_operands:
-            if path == ".":
+            # FIX: Normalize "./" to "." to prevent bypass
+            if path in [".", "./"]:
                 return ScanCommandInfo(
                     tool="grep",
                     raw=cmd,
@@ -502,9 +505,11 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
     # -------------------------
     if tool_cmd == "rg":
         # If user adds bounds, allow
+        # FIX: Also check for --flag=value form (e.g., --glob=*.py, --type=python)
+        bound_flags = ["--glob", "-g", "--iglob", "--type", "-t", "--type-add"]
         has_bounds = any(
-            tok in tokens
-            for tok in ["--glob", "-g", "--iglob", "--type", "-t", "--type-add"]
+            any(token == flag or token.startswith(flag + "=") for token in tokens)
+            for flag in bound_flags
         )
         if has_bounds:
             return None
@@ -529,10 +534,11 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
             paths = positionals[1:] if len(positionals) > 1 else []
 
         # When PATH arguments are present, evaluate all of them:
-        # if any is "."/empty/unscoped, treat as an unbounded scan and block.
+        # if any is "."/"./"/empty/unscoped, treat as an unbounded scan and block.
+        # FIX: Normalize "./" to "." to prevent bypass
         if paths:
             if all(
-                (path not in [".", ""]) and _is_scoped_path(path) for path in paths
+                (path not in [".", "./", ""]) and _is_scoped_path(path) for path in paths
             ):
                 return None  # all paths are scoped
 
@@ -582,10 +588,13 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
                 and normalized.startswith(".")
             ):
                 pass  # Allow .py, .ts, .go, etc.
-            # Exception 2: single-char from whitelisted extensions (e.g., .c, .r, .h)
+            # Exception 2: single-char normalized substring whose dot-extension form
+            # is in the whitelist (e.g., normalized == "c" and ".c" is whitelisted).
+            # This handles patterns like "*c" (without dot) where the normalized form
+            # is "c" and we want to allow it because ".c" is a common extension.
             # Rationale: common in systems programming (C, R, Objective-C, Verilog)
             elif len(normalized) == 1 and f".{normalized}" in SINGLE_CHAR_EXTENSIONS:
-                pass  # Allow .c → c, .r → r, .h → h
+                pass  # Allow single-char substrings derived from whitelisted extensions
             # Exception 3: single-char IF original pattern was a dot-extension
             # Catches edge cases not in whitelist but clearly extension-based
             elif len(normalized) == 1:
@@ -776,8 +785,11 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
         return _is_scoped_path(search_root)
 
     if info.tool == "rg":
+        # FIX: Check for both exact match and --flag=value form, and include --type-add
+        bound_flags = ["--glob", "-g", "--iglob", "--type", "-t", "--type-add"]
         has_bounds = any(
-            tok in info.tokens for tok in ["--glob", "-g", "--iglob", "--type", "-t"]
+            any(tok == flag or tok.startswith(flag + "=") for tok in info.tokens)
+            for flag in bound_flags
         )
         if has_bounds:
             return True

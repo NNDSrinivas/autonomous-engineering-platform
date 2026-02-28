@@ -519,7 +519,9 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
     if tool_cmd == "rg":
         # If user adds bounds, allow
         # FIX: Also check for --flag=value form (e.g., --glob=*.py, --type=python)
-        bound_flags = ["--glob", "-g", "--iglob", "--type", "-t", "--type-add"]
+        # CRITICAL: --type-add only DEFINES a type alias, it does NOT apply it as a filter!
+        # So "rg TODO --type-add=python:*.py" still scans ALL files, not just Python files.
+        bound_flags = ["--glob", "-g", "--iglob", "--type", "-t"]
         has_bounds = any(
             any(token == flag or token.startswith(flag + "=") for token in tokens)
             for flag in bound_flags
@@ -798,8 +800,9 @@ def should_allow_scan_for_context(context: Any, info: ScanCommandInfo) -> bool:
         return _is_scoped_path(search_root)
 
     if info.tool == "rg":
-        # FIX: Check for both exact match and --flag=value form, and include --type-add
-        bound_flags = ["--glob", "-g", "--iglob", "--type", "-t", "--type-add"]
+        # FIX: Check for both exact match and --flag=value form
+        # CRITICAL: --type-add only DEFINES a type alias, it does NOT apply it as a filter!
+        bound_flags = ["--glob", "-g", "--iglob", "--type", "-t"]
         has_bounds = any(
             any(tok == flag or tok.startswith(flag + "=") for tok in info.tokens)
             for flag in bound_flags

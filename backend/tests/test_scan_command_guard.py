@@ -38,7 +38,8 @@ class TestTokenAwareDetection:
             # FIX: Test --flag=value form (equals syntax)
             ("rg TODO --glob=*.py", False, None),
             ("rg TODO --type=python", False, None),
-            ("rg TODO --type-add=python", False, None),
+            # CRITICAL: --type-add only DEFINES a type, doesn't apply it as filter
+            ("rg TODO --type-add=python:*.py", True, "rg"),
             # FIX: Test "./" bypass (should be detected as unbounded scan)
             ("find ./ -name '*.py'", True, "find"),
             ("grep -R TODO ./", True, "grep"),

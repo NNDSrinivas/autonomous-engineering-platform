@@ -344,15 +344,8 @@ class TestCopilotRound3Fixes:
         assert scan_info is not None
         assert scan_info.can_rewrite is False
 
-    def test_bash_c_wrapper_unwrapped(self):
-        """COPILOT FIX: bash -c 'rg TODO' should detect rg scan."""
-        # This tests the unwrapping logic in autonomous_agent.py
-        # Here we just verify the command itself is detected
-        scan_info = is_scan_command("rg TODO")
-        assert scan_info is not None
-        assert scan_info.tool == "rg"
-
-        # The actual bash -c unwrapping is tested via integration in autonomous_agent
+    # Note: bash -c unwrapping is tested via integration in test_autonomous_reliability_policy.py
+    # TestScanCommandPolicy.test_bash_c_unwrap_detects_scan, not here in unit tests
 
 
 class TestShouldAllowScanForContext:

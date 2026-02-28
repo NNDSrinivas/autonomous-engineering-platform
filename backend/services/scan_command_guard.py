@@ -588,45 +588,24 @@ def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
         # Safety: too broad after normalization.
         # PRODUCTION RULE: min_len=3 to avoid "py", "js" substring blasts,
         # but allow 2-char patterns if they start with "." (e.g., ".py", ".ts", ".go").
-        # Single-char extensions like ".c" or ".r" are also allowed.
+        # FIX: Align with executor requirement (min 2 chars). Single-char patterns
+        # are rejected by _execute_readonly_discovery, so don't allow them here.
         MIN_PATTERN_LEN = 3
         ALLOW_LEN2_IF_LEADING_DOT = True
-        # Explicit whitelist of common single-char extensions
-        SINGLE_CHAR_EXTENSIONS = {".c", ".h", ".r", ".m", ".d", ".v"}
 
         if len(normalized) < MIN_PATTERN_LEN:
-            # Exception 1: 2-char patterns starting with "." (e.g., .py, .ts, .go)
-            # Rationale: file extensions are highly discriminative
+            # Exception: 2-char patterns starting with "." (e.g., .py, .ts, .go)
+            # Rationale: File extensions are highly discriminative and meet the
+            # executor's minimum length requirement (>= 2 characters).
             if (
                 len(normalized) == 2
                 and ALLOW_LEN2_IF_LEADING_DOT
                 and normalized.startswith(".")
             ):
-                pass  # Allow .py, .ts, .go, etc.
-            # Exception 2: single-char normalized substring whose dot-extension form
-            # is in the whitelist (e.g., normalized == "c" and ".c" is whitelisted).
-            # This handles patterns like "*c" (without dot) where the normalized form
-            # is "c" and we want to allow it because ".c" is a common extension.
-            # Rationale: common in systems programming (C, R, Objective-C, Verilog)
-            elif len(normalized) == 1 and f".{normalized}" in SINGLE_CHAR_EXTENSIONS:
-                pass  # Allow single-char substrings derived from whitelisted extensions
-            # Exception 3: single-char IF original pattern was a dot-extension
-            # Catches edge cases not in whitelist but clearly extension-based
-            elif len(normalized) == 1:
-                is_single_char_extension = (
-                    info.extracted_pattern is not None
-                    and re.match(r"^\.\w$", info.extracted_pattern.strip()) is not None
-                )
-                if is_single_char_extension:
-                    pass  # Allow non-whitelisted dot-extensions (.e, .o, etc.)
-                else:
-                    return {
-                        "use_discovery": False,
-                        "reason": f"Pattern '{info.extracted_pattern}' normalizes to '{normalized}' which is too broad (min {MIN_PATTERN_LEN}, except dot-extensions)",
-                        "alternative": "Use a more specific pattern (e.g., '.py', 'Dockerfile', 'Button.tsx').",
-                    }
+                pass  # Allow .py, .ts, .go, .c, .h, .r, .m, .d, .v, etc.
             else:
-                # Patterns with len < 3 that don't meet exceptions
+                # All other patterns with len < MIN_PATTERN_LEN (including single-char)
+                # are too broad and would also be rejected by the executor.
                 return {
                     "use_discovery": False,
                     "reason": f"Pattern '{info.extracted_pattern}' normalizes to '{normalized}' which is too broad (min {MIN_PATTERN_LEN}, except dot-extensions)",

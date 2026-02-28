@@ -28,7 +28,8 @@ class ScanCommandInfo:
 # COPILOT FIX: Include || operator for bash fallback chains (cmd1 || cmd2)
 # Pattern order matters: \|\| must come before \| to match two-char operator first
 # Match background operator & (but not &&) regardless of following whitespace
-_PIPE_CHAIN_RE = re.compile(r"\|\||\||&&|;|&(?!&)|`|\$\(|>|<|\bxargs\b|-exec\b")
+# FIX: Match both -exec and -execdir for consistency with compound predicate list
+_PIPE_CHAIN_RE = re.compile(r"\|\||\||&&|;|&(?!&)|`|\$\(|>|<|\bxargs\b|-exec(?:dir)?\b")
 
 
 def split_command(cmd: str) -> Optional[List[str]]:
@@ -99,9 +100,8 @@ def _extract_grep_positionals(tokens: List[str]) -> List[str]:
         "--directories",
         "-D",
         "--devices",
-        "--color",
-        "--colour",  # color output control (always, never, auto)
-        "--binary-files",  # binary file handling (binary, text, without-match)
+        # NOTE: --color, --colour, --binary-files use optional-value form (--color[=WHEN])
+        # Value is with = if present, not as separate token, so don't include here
     }
 
     positionals = []
@@ -166,8 +166,8 @@ def _extract_rg_positionals(tokens: List[str]) -> List[str]:
         "--encoding",
         "--max-filesize",
         "--path-separator",
-        "--color",
-        "--colour",  # color output control (always, never, auto)
+        # NOTE: --color, --colour use optional-value form (--color[=WHEN])
+        # Value is with = if present, not as separate token, so don't include here
         "-j",
         "--threads",  # thread count
         "--sort",  # sort results (path, modified, accessed, created)

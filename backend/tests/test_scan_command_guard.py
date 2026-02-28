@@ -139,6 +139,9 @@ class TestCopilotP1Fixes:
         # Root indicators should NOT be scoped
         assert _is_scoped_path(".") is False
         assert _is_scoped_path("..") is False  # Parent directory - outside workspace
+        assert (
+            _is_scoped_path("../") is False
+        ), "CRITICAL: ../ (parent with trailing slash) must be blocked"
         assert _is_scoped_path("$PWD") is False
         assert _is_scoped_path("${PWD}") is False
 
@@ -173,6 +176,12 @@ class TestCopilotP1Fixes:
         assert (
             scan_deeper is not None
         ), "CRITICAL: find ../../etc must be detected as unbounded scan"
+
+        # CRITICAL: Parent with trailing slash must be blocked
+        scan_parent_slash = is_scan_command("find ../ -name '*.py'")
+        assert (
+            scan_parent_slash is not None
+        ), "CRITICAL: find ../ must be detected as unbounded scan"
 
     def test_p1_fix_2_rg_with_option_values_blocked(self):
         """P1 FIX #2: rg --max-count 10 TODO should be blocked (10 is option value, not path)."""

@@ -12,6 +12,7 @@ on:
       - 'frontend/tsconfig*.json'
       - 'frontend/package*.json'
       - 'frontend/Dockerfile'
+      - 'packages/**'
       - '.dockerignore'
       - '.github/workflows/frontend-deploy-staging.yml'
 

@@ -42,6 +42,10 @@ class TestTokenAwareDetection:
             ("find ./ -name '*.py'", True, "find"),
             ("grep -R TODO ./", True, "grep"),
             ("rg TODO ./", True, "rg"),
+            # CRITICAL: Test "./." and "././" bypass (normalize to "." repo root)
+            ("find ./. -name '*.py'", True, "find"),
+            ("find ././ -name '*.py'", True, "find"),
+            ("find ./././ -type f", True, "find"),
         ],
     )
     def test_scan_detection(self, command, should_detect, tool):

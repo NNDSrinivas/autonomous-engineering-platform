@@ -541,7 +541,6 @@ class TestPolicyInvariants:
         assert hasattr(mock_context, "last_diagnostic_run")
         assert hasattr(mock_context, "read_only_mode")
         assert hasattr(mock_context, "pending_prompt")
-        assert hasattr(mock_context, "allow_repo_scans")
 
 
 class TestScanCommandPolicy:

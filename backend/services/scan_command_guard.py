@@ -333,8 +333,13 @@ def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
         if idx < len(tokens) and not tokens[idx].startswith("-"):
             search_root = tokens[idx]
 
-        # FIX: Normalize "./" to "." to prevent bypass
+        # FIX: Normalize "./" and equivalent PWD variants to "." to prevent bypass
         if search_root in [".", "./", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
+            search_root = "."
+        # CRITICAL: Additional normalization to catch variants like "./." or "././" that are equivalent to repo root
+        # Without this, "find ./. -name '*.py'" would bypass the guard (starts with "./" and len > 2)
+        normalized_root = os.path.normpath(search_root)
+        if normalized_root == ".":
             search_root = "."
 
         # If explicitly scoped or bounded by an upper depth limit, treat as safe (pass-through)

@@ -181,7 +181,7 @@ jobs:
           echo "::notice::Service is stable"
 
       - name: Capture failure diagnostics
-        if: failure() && steps.wait-stable.outcome == 'failure'
+        if: failure() && steps.wait-stable.conclusion != 'success'
         run: |
           echo "::error::Service failed to stabilize. Capturing diagnostics..."
 
@@ -193,7 +193,7 @@ jobs:
             --query 'services[0].events[:10]' \
             --output json | jq .
 
-          # Get stopped tasks from the last 15 minutes
+          # Get recent stopped tasks (up to 5 most recent)
           echo ""
           echo "=== Recent Stopped Tasks ==="
           STOPPED_TASKS=$(aws ecs list-tasks \
@@ -203,12 +203,13 @@ jobs:
             --query 'taskArns[:5]' \
             --output text)
 
-          if [ -n "$STOPPED_TASKS" ]; then
+          # Guard against AWS CLI returning "None" for empty results
+          if [ -n "$STOPPED_TASKS" ] && [ "$STOPPED_TASKS" != "None" ]; then
             aws ecs describe-tasks \
               --cluster ${{ env.ECS_CLUSTER }} \
               --tasks $STOPPED_TASKS \
               --query 'tasks[].{TaskArn:taskArn,StoppedReason:stoppedReason,StopCode:stopCode,Containers:containers[].{Name:name,Reason:reason,ExitCode:exitCode}}' \
-              --output json | jq .
+              --output json | jq . || echo "Failed to describe stopped tasks"
           else
             echo "No stopped tasks found"
           fi

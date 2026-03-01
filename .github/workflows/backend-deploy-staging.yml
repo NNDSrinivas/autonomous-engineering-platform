@@ -131,7 +131,19 @@ jobs:
           # Update container image
           jq --arg IMAGE "$NEW_IMAGE" \
             '.containerDefinitions[0].image = $IMAGE' \
-            task-definition-clean.json > task-definition-updated.json
+            task-definition-clean.json > task-definition-image.json
+
+          # Inject required environment variables for staging
+          # Remove existing JWT_ENABLED and AUTH0_VALID_CLIENT_IDS to avoid duplicates, then add new values
+          jq '.containerDefinitions[0].environment |=
+            (map(select(.name != "JWT_ENABLED" and .name != "AUTH0_VALID_CLIENT_IDS"))) +
+            [
+              {"name": "JWT_ENABLED", "value": "true"},
+              {"name": "AUTH0_VALID_CLIENT_IDS", "value": "tWcHeAvn3uGAsRnwp1Bt4uhgto9GLplu"}
+            ]' \
+            task-definition-image.json > task-definition-updated.json
+
+          echo "::notice::Injected environment variables: JWT_ENABLED=true, AUTH0_VALID_CLIENT_IDS=tWcHeAvn3uGAsRnwp1Bt4uhgto9GLplu"
 
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \

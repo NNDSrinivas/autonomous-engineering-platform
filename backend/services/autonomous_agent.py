@@ -5829,9 +5829,11 @@ Respond with ONLY a JSON object:
 
                 scan_info = is_scan_command(command_to_check)
                 if scan_info:
-                    # is_scan_command() only returns info for unbounded/dangerous scans.
-                    # Bounded/scoped commands are auto-allowed (returns None).
-                    # Therefore, if we reach here, we must rewrite or block.
+                    # Scan guard invariant:
+                    # - is_scan_command() returns ScanCommandInfo ONLY for *dangerous unbounded repo-wide scans*.
+                    # - Bounded/scoped scans return None and are allowed by design (no explicit "allow" branch).
+                    # - If scan_info is present, we must either rewrite safely (filename-only find -name/-iname)
+                    #   or block with guidance (content scans like grep -R / unbounded rg).
                     rewrite = rewrite_to_discovery(scan_info)
 
                     # Rewrite ONLY when filename semantics are preserved (find -name/-iname).

@@ -218,6 +218,54 @@ class TestReadOnlyDiscovery:
         # Should complete quickly (< 1 second) even with budget
         # If it takes longer, budget limits might not be working
 
+    @pytest.mark.asyncio
+    async def test_discovery_truncation_flag(self, mock_agent, temp_workspace):
+        """
+        PRODUCTION INVARIANT: search_files must flag truncation with reason.
+
+        Critical for preventing agents from assuming completeness when
+        results are capped by time/scan/result budgets.
+        """
+        # Create many files to force result_cap truncation
+        import os
+
+        test_dir = os.path.join(temp_workspace, "many_files")
+        os.makedirs(test_dir, exist_ok=True)
+
+        # Create more files than the result cap (50 for filename queries, 20 for substring)
+        for i in range(60):
+            with open(os.path.join(test_dir, f"test_file_{i}.txt"), "w") as f:
+                f.write(f"file {i}")
+
+        # Search for pattern that matches all files (substring query -> cap of 20)
+        result = await mock_agent._execute_readonly_discovery(
+            "search_files", {"pattern": "test"}
+        )
+
+        # Must succeed
+        assert result.get("success"), "Discovery should succeed"
+
+        # Must indicate truncation
+        assert result.get("truncated") is True, (
+            "search_files must set truncated=True when hitting any budget cap"
+        )
+
+        # Must include machine-readable reason
+        assert "limit_reason" in result, (
+            "search_files must include limit_reason when truncated"
+        )
+
+        # Reason should be one of the expected values
+        valid_reasons = {"time_budget", "result_cap", "scan_cap_files", "scan_cap_dirs"}
+        assert result["limit_reason"] in valid_reasons, (
+            f"limit_reason must be one of {valid_reasons}, got {result['limit_reason']}"
+        )
+
+        # Should return count of what was actually returned
+        assert result.get("count") == len(result.get("files", [])), (
+            "count must match actual number of files returned"
+        )
+
 
 class TestDestructiveGates:
     """Test destructive operation gating."""
@@ -493,3 +541,138 @@ class TestPolicyInvariants:
         assert hasattr(mock_context, "last_diagnostic_run")
         assert hasattr(mock_context, "read_only_mode")
         assert hasattr(mock_context, "pending_prompt")
+
+
+class TestScanCommandPolicy:
+    """
+    Policy invariant tests for scan command guard.
+
+    These tests validate that unbounded repo-wide scans are blocked/rewritten,
+    and that content searches are never rewritten to filename searches.
+    """
+
+    @pytest.mark.asyncio
+    async def test_unbounded_find_is_rewritten_or_blocked(
+        self, mock_agent, mock_context
+    ):
+        """
+        INVARIANT 1: Unbounded find commands must be blocked or rewritten.
+        """
+        mock_context.original_request = "find the Button component"
+        mock_context.iteration = 1
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": "find . -name '*.tsx'"},
+            mock_context,
+        )
+
+        # Must be blocked or rewritten (not executed as-is)
+        assert result.get("blocked_command") or result.get("rewritten_from"), (
+            "Unbounded find command should be blocked or rewritten, not executed"
+        )
+
+    @pytest.mark.asyncio
+    async def test_content_search_not_rewritten_to_filename_search(
+        self, mock_agent, mock_context
+    ):
+        """
+        INVARIANT 2: Content search (grep -R) must NOT be rewritten to filename search.
+        """
+        mock_context.original_request = "find TODOs in the code"
+        mock_context.iteration = 5
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": "grep -R 'TODO' ."},
+            mock_context,
+        )
+
+        # Must be blocked (not rewritten to filename search)
+        assert result.get("success") is False, "grep -R should be blocked"
+        assert "blocked" in (result.get("error") or "").lower(), (
+            "grep -R should show blocked error"
+        )
+        assert result.get("rewritten_from") is None, (
+            "Content search must NOT be rewritten to filename search"
+        )
+
+    @pytest.mark.asyncio
+    async def test_scoped_scans_pass_through(self, mock_agent, mock_context):
+        """
+        INVARIANT 3: Scoped scans (find ./src) should pass through to normal execution.
+        """
+        mock_context.original_request = "search in src only"
+        mock_context.iteration = 5
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": "find ./src -name '*.tsx'"},
+            mock_context,
+        )
+
+        # Should NOT be blocked or rewritten (scoped scans are safe)
+        assert "blocked_command" not in result, "Scoped find should not be blocked"
+        assert "rewritten_from" not in result, "Scoped find should not be rewritten"
+
+    @pytest.mark.asyncio
+    async def test_bash_c_unwrap_detects_scan(self, mock_agent, mock_context):
+        """
+        REGRESSION INVARIANT: bash -c 'find . -name ...' must unwrap and detect the inner scan.
+        Critical for preventing scan command bypass via shell wrappers.
+        """
+        mock_context.original_request = "find python files"
+        mock_context.iteration = 5
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": 'bash -c "find . -name \'*.py\'"'},
+            mock_context,
+        )
+
+        # Must be blocked OR rewritten (inner scan must be detected)
+        assert "blocked_command" in result or "rewritten_from" in result, (
+            "bash -c wrapper must not bypass scan detection"
+        )
+
+    @pytest.mark.asyncio
+    async def test_bash_c_piped_scan_blocked(self, mock_agent, mock_context):
+        """
+        REGRESSION INVARIANT: bash -c with piped scan must be detected and blocked.
+        Example: bash -c 'find . -name *.py | xargs grep TODO'
+        """
+        mock_context.original_request = "find todos"
+        mock_context.iteration = 5
+
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": 'bash -c "find . -name *.py | xargs grep TODO"'},
+            mock_context,
+        )
+
+        # Must be blocked (piped scan)
+        assert "blocked_command" in result, "Piped scan in bash -c must be blocked"
+
+    @pytest.mark.asyncio
+    async def test_nested_shell_wrapper(self, mock_agent, mock_context):
+        """
+        EDGE CASE: Nested shell wrappers (bash -lc "bash -c 'find...'").
+
+        Documents behavior when commands are wrapped in multiple shell layers.
+        Currently unwraps one layer; agent should handle or block gracefully.
+        """
+        mock_context.original_request = "find python files"
+        mock_context.iteration = 5
+
+        # Nested shell: bash -lc wrapping bash -c
+        cmd = """bash -lc "bash -c 'find . -name *.py'\" """
+        result = await mock_agent._execute_tool(
+            "run_command",
+            {"command": cmd},
+            mock_context,
+        )
+
+        # Should be handled (blocked, rewritten, or unwrapped)
+        # We don't require specific behavior, just document what happens
+        # If it passes through unwrapped, that's a known limitation
+        assert result is not None, "Command should return some result"

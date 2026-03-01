@@ -21,6 +21,7 @@ import asyncio
 import uuid
 import re
 import glob
+import shlex
 import threading
 import time
 from typing import (
@@ -154,6 +155,44 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
     # if len(steps) >= 2:
     #     return {"plan_id": f"plan-{uuid.uuid4().hex[:8]}", "steps": steps}
     # return None
+
+
+# ========== SECRET REDACTION FOR LOGGING ==========
+# Patterns to redact secrets from command strings in logs
+# Secret values should stop at common delimiters used in URLs and shells:
+# - '&' and whitespace (URL query params)
+# - shell metacharacters like ; | ( ) < > and quotes
+SECRET_VALUE_PATTERN = r"[^&\s;|()<>\"']+"
+SECRET_PATTERNS = [
+    (re.compile(r"(authorization:\s*bearer\s+)[^\s]+", re.I), r"\1***"),
+    (re.compile(r"(--api-key[=\s]+)[^\s]+", re.I), r"\1***"),
+    (re.compile(r"(-H\s+['\"]?authorization:\s*bearer\s+)[^\s'\"]+", re.I), r"\1***"),
+    (re.compile(rf"(token=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(password=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(api_key=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(apikey=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(access_token=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+    (re.compile(rf"(secret=){SECRET_VALUE_PATTERN}", re.I), r"\1***"),
+]
+
+
+def _redact_secrets_for_logs(s: str) -> str:
+    """
+    Redact sensitive information from command strings before logging.
+
+    Protects against accidental logging of:
+    - Authorization headers (Bearer tokens)
+    - API keys (--api-key, api_key=)
+    - Passwords (password=)
+    - Access tokens (token=, access_token=)
+    - Generic secrets (secret=)
+
+    Returns sanitized string safe for logs.
+    """
+    out = s
+    for pattern, replacement in SECRET_PATTERNS:
+        out = pattern.sub(replacement, out)
+    return out
 
 
 class TaskStatus(Enum):
@@ -3382,6 +3421,7 @@ class AutonomousAgent:
                 max_results = 50 if is_filename_query else 20
                 start_time = time.time()
                 max_time = 0.5  # Budget: 500ms max
+                limit_reason = None  # Track which budget was hit: time_budget, result_cap, scan_cap_dirs, scan_cap_files
 
                 # Normalize workspace root for escape detection
                 real_workspace = os.path.realpath(self.workspace_path)
@@ -3396,6 +3436,7 @@ class AutonomousAgent:
                         logger.warning(
                             f"[Discovery] Directory budget exceeded ({max_dirs} dirs)"
                         )
+                        limit_reason = "scan_cap_dirs"
                         break
 
                     # Time budget check
@@ -3403,6 +3444,7 @@ class AutonomousAgent:
                         logger.warning(
                             f"[Discovery] Time budget exceeded ({max_time}s)"
                         )
+                        limit_reason = "time_budget"
                         break
 
                     # Defense-in-depth: Skip if root itself is in ignored path
@@ -3427,6 +3469,7 @@ class AutonomousAgent:
                             logger.warning(
                                 f"[Discovery] File count budget exceeded ({max_files})"
                             )
+                            limit_reason = "scan_cap_files"
                             break
 
                         # Substring match
@@ -3445,6 +3488,7 @@ class AutonomousAgent:
                             matches.append(rel_path)
 
                             if len(matches) >= max_results:
+                                limit_reason = "result_cap"
                                 break
 
                     if len(matches) >= max_results or files_scanned > max_files:
@@ -3484,14 +3528,23 @@ class AutonomousAgent:
 
                 matches.sort(key=rank_match)
 
-                return {
+                # Determine if results were truncated
+                was_truncated = limit_reason is not None
+
+                result = {
                     "success": True,
                     "files": matches,
                     "count": len(matches),
-                    "truncated": len(matches) >= max_results,
+                    "truncated": was_truncated,
                     "files_scanned": files_scanned,
                     "ranked": True,  # Flag indicating results are ranked
                 }
+
+                # Add limit_reason if truncated (machine-readable reason)
+                if limit_reason:
+                    result["limit_reason"] = limit_reason
+
+                return result
 
             elif tool_name == "list_directory":
                 # SAFE: Uses os.listdir with type info, ignores junk
@@ -5564,7 +5617,6 @@ Respond with ONLY a JSON object:
                     logger.info(
                         f"[AutonomousAgent] ⚠️ write_file with empty content during delete request. Deleting instead: {file_path}"
                     )
-                    import shlex
                     from backend.agent.tools.run_command import run_command as run_cmd
 
                     return await run_cmd(
@@ -5651,6 +5703,175 @@ Respond with ONLY a JSON object:
 
                 command = arguments["command"]
                 command_raw = command
+
+                # ---------------------------------------------------------------------
+                # Scan Command Guard (PRE-WRAP / PRE-CONSENT)
+                #
+                # Prevent unbounded repo-wide scans (find . -type f, grep -R ... ., rg ...)
+                # that can hang large monorepos for minutes. Rewrite ONLY when semantics
+                # are preserved (filename -> filename): find -name/-iname -> search_files.
+                # Content scans (grep -R / unbounded rg) are BLOCKED (not rewritten).
+                # ---------------------------------------------------------------------
+                from backend.services.scan_command_guard import (
+                    is_scan_command,
+                    rewrite_to_discovery,
+                    is_piped_or_chained,
+                )
+
+                # COPILOT FIX: Unwrap bash -c before scan detection
+                # bash -c 'rg TODO' should detect rg, not bash
+                # Use shlex.split() to handle nested quotes properly (e.g., bash -c "find . -name \"*.py\"")
+                # Extended to handle common flag combinations like `bash -lc` or `bash -ic`.
+                command_to_check = command
+                try:
+                    parts = shlex.split(command.strip())
+                    # Check if it's a bash/sh wrapper with a -c flag (e.g., "bash -c", "bash -lc", "bash -ic")
+                    if len(parts) >= 3 and parts[0] in ("bash", "sh"):
+                        cmd_index: Optional[int] = None
+                        # Search for any argument that is "-c" or short-option group containing "c" (e.g., "-lc", "-ic")
+                        # Exclude long options (--norc, --rcfile) to avoid false matches
+                        for i, arg in enumerate(parts[1:], start=1):
+                            if arg == "-c" or (
+                                arg.startswith("-")
+                                and not arg.startswith("--")
+                                and "c" in arg
+                            ):
+                                # The wrapped command should be the token immediately after the -c flag
+                                if i + 1 < len(parts):
+                                    cmd_index = i + 1
+                                break
+                        if cmd_index is not None:
+                            command_to_check = parts[cmd_index]
+                except ValueError:
+                    # If shlex fails, fall back to original command
+                    pass
+
+                # COPILOT FIX: Block scan commands in ANY segment, including redirection/subshell.
+                # P1 FIX #3: Block scan commands in ANY segment of pipes/chains/backgrounding/xargs/-exec.
+                # Previously only checked first segment - now we check ALL segments.
+                # Examples:
+                # - "cd . && rg TODO" should be caught (rg in second segment)
+                # - "rg TODO > out.txt" should be caught (redirection operator)
+                # - "rg TODO $(cat files)" should be caught (command substitution)
+                # - "cd src || rg TODO" should be caught (|| fallback operator)
+                if is_piped_or_chained(command_to_check):
+                    # Special handling: commands using backticks or $(...) should not be split on those
+                    # characters, but scan commands that use them should still be blocked.
+                    # FAIL CLOSED: If command substitution/backticks are present AND a scan tool is mentioned,
+                    # block immediately (don't rely on is_scan_command's path parsing which can be bypassed).
+                    if "`" in command_to_check or "$(" in command_to_check:
+                        # Check for scan tool keywords (fail closed approach)
+                        # Check both exact tokens AND substrings to catch $(find ...) forms
+                        scan_tools = ["find", "grep", "egrep", "rg"]
+                        tokens = command_to_check.split()
+                        if any(tool in tokens for tool in scan_tools) or any(
+                            tool in command_to_check for tool in scan_tools
+                        ):
+                            return {
+                                "success": False,
+                                "error": "⚠️ SCAN BLOCKED: Scan command using command substitution/backticks detected.",
+                                "blocked_command": command,
+                                "blocked_segment": command_to_check,
+                                "reason": "Scan commands using command substitution/backticks can cause multi-minute hangs in large repos.",
+                                "suggestion": (
+                                    "Break into steps:\n"
+                                    "1) Use search_files to find candidate files (bounded)\n"
+                                    "2) Use read_file on candidates (or bounded commands per file)"
+                                ),
+                            }
+                    # COPILOT FIX: Include || operator in split pattern (pattern order matters: \|\| before \|)
+                    # Split by ALL operators detected by is_piped_or_chained()
+                    # including || (fallback), redirection (>, <), -exec / -execdir, and xargs
+                    # Note: $() and backticks are handled above. xargs is treated as a split delimiter so its subcommand is analyzed.
+                    # Simplified: & handles all background cases uniformly (trailing, with space, etc.)
+                    segments = re.split(
+                        r"\|\||\||&&|;|&|[<>]|-exec(?:dir)?\b|\bxargs\b",
+                        command_to_check,
+                    )
+
+                    def _unwrap_shell_c_segment(seg: str) -> str:
+                        """
+                        Unwrap simple 'bash -c "<cmd>"' / 'sh -c "<cmd>"' segments so that
+                        scan detection can see the underlying command. This mirrors the
+                        bash/sh -c unwrapping used for the top-level command.
+                        """
+                        # Match leading bash/sh (with optional whitespace) followed by -c and the rest
+                        m = re.match(r"^\s*(?:bash|sh)\s+-c\s+(.*)$", seg)
+                        if not m:
+                            return seg
+                        inner = m.group(1).strip()
+                        # Strip a single layer of matching quotes around the inner command
+                        if inner and inner[0] == inner[-1] and inner[0] in ("'", '"'):
+                            inner = inner[1:-1]
+                        return inner
+
+                    for segment in segments:
+                        segment = segment.strip()
+                        if not segment:
+                            continue
+                        unwrapped_segment = _unwrap_shell_c_segment(segment)
+                        scan_info = is_scan_command(unwrapped_segment)
+                        if scan_info:
+                            return {
+                                "success": False,
+                                "error": "⚠️ SCAN BLOCKED: Piped/chained scan detected. Break into steps.",
+                                "blocked_command": command,
+                                "blocked_segment": segment,
+                                "reason": "Scan commands in pipes/chains cause multi-minute hangs in large repos.",
+                                "suggestion": (
+                                    "Break into steps:\n"
+                                    "1) Use search_files to find candidate files (bounded)\n"
+                                    "2) Use read_file on candidates (or bounded commands per file)"
+                                ),
+                            }
+
+                scan_info = is_scan_command(command_to_check)
+                if scan_info:
+                    # Scan guard invariant:
+                    # - is_scan_command() returns ScanCommandInfo ONLY for *dangerous unbounded repo-wide scans*.
+                    # - Bounded/scoped scans return None and are allowed by design (no explicit "allow" branch).
+                    # - If scan_info is present, we must either rewrite safely (filename-only find -name/-iname)
+                    #   or block with guidance (content scans like grep -R / unbounded rg).
+                    rewrite = rewrite_to_discovery(scan_info)
+
+                    # Rewrite ONLY when filename semantics are preserved (find -name/-iname).
+                    if rewrite.get("use_discovery"):
+                        # Structured telemetry: scan rewritten
+                        logger.info(
+                            f"event=scan_guard_action action=rewritten tool={scan_info.tool} "
+                            f"to_tool={rewrite['tool_name']} pattern={rewrite['arguments'].get('pattern')!r} "
+                            f"task_id={context.task_id}"
+                        )
+                        discovery_result = await self._execute_readonly_discovery(
+                            rewrite["tool_name"],
+                            rewrite["arguments"],
+                        )
+                        # Annotate for transparency/debugging.
+                        if isinstance(discovery_result, dict):
+                            discovery_result["rewritten_from"] = command
+                            discovery_result["explanation"] = rewrite.get(
+                                "explanation"
+                            )
+                        return discovery_result
+
+                    # Content scans (grep -R / unbounded rg) cannot be rewritten safely.
+                    # Structured telemetry: scan blocked
+                    logger.warning(
+                        f"event=scan_guard_action action=blocked tool={scan_info.tool} "
+                        f"reason_code={rewrite.get('reason_code', 'SCAN_BLOCKED_UNBOUNDED')!r} "
+                        f"task_id={context.task_id}"
+                    )
+                    return {
+                        "success": False,
+                        "error": f"⚠️ SCAN BLOCKED: {scan_info.reason}",
+                        "blocked_command": command,
+                        "alternative": rewrite.get("alternative"),
+                        "workflow_suggestion": rewrite.get("workflow_suggestion"),
+                        "reason": (
+                            f"{scan_info.tool} repo-wide scans can take 3–10 minutes and make the "
+                            "extension feel unresponsive. Use bounded discovery tools instead."
+                        ),
+                    }
 
                 def _is_background_command(cmd: str) -> bool:
                     stripped = cmd.strip()
@@ -5787,8 +6008,6 @@ Respond with ONLY a JSON object:
                 # to avoid double-wrapping issues
                 if command.strip().startswith("bash -c"):
                     # Extract command from bash -c '...' or bash -c "..."
-                    import shlex
-
                     try:
                         parts = shlex.split(command)
                         if len(parts) >= 3 and parts[0] == "bash" and parts[1] == "-c":
@@ -6001,9 +6220,12 @@ Respond with ONLY a JSON object:
                 stderr_task = asyncio.create_task(
                     read_stream(process.stderr, stderr_lines, "stderr")
                 )
-                deadline = time.time() + cmd_timeout
+                start_time = time.time()
+                deadline = start_time + cmd_timeout
                 timed_out = False
                 canceled = False
+                last_progress_time = start_time  # NEW: Progress heartbeat tracking
+                progress_interval = 30.0  # NEW: Emit every 30s
                 try:
                     while process.returncode is None:
                         if await self._is_cancel_requested():
@@ -6013,6 +6235,22 @@ Respond with ONLY a JSON object:
                         if remaining <= 0:
                             timed_out = True
                             break
+
+                        # NEW: Progress heartbeat
+                        now = time.time()
+                        if now - last_progress_time >= progress_interval:
+                            elapsed_total = now - start_time
+                            progress_pct = min(
+                                95, int((elapsed_total / cmd_timeout) * 100)
+                            )
+                            # Redact secrets before logging command
+                            safe_cmd = _redact_secrets_for_logs(command)[:50]
+                            logger.info(
+                                f"[CommandProgress] {safe_cmd}... still running "
+                                f"({int(elapsed_total)}s / {cmd_timeout}s, ~{progress_pct}%)"
+                            )
+                            last_progress_time = now
+
                         try:
                             await asyncio.wait_for(
                                 process.wait(), timeout=min(0.5, remaining)

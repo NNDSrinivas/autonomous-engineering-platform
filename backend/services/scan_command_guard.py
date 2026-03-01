@@ -1,0 +1,706 @@
+# backend/services/scan_command_guard.py
+
+from __future__ import annotations
+
+import os
+import re
+import shlex
+from dataclasses import dataclass
+from typing import List, Optional, Literal, Dict, Any
+
+
+ScanTool = Literal["find", "grep", "rg"]
+
+
+@dataclass(frozen=True)
+class ScanCommandInfo:
+    """Info about detected scan command."""
+
+    tool: ScanTool
+    raw: str
+    tokens: List[str]
+    reason: str
+    can_rewrite: bool
+    rewrite_kind: Literal["filename_search", "blocked"]
+    extracted_pattern: Optional[str] = None  # Only for find -name/-iname
+
+
+# COPILOT FIX: Include || operator for bash fallback chains (cmd1 || cmd2)
+# Pattern order matters: \|\| must come before \| to match two-char operator first
+# Match background operator & (but not &&) regardless of following whitespace
+# FIX: Match both -exec and -execdir for consistency with compound predicate list
+_PIPE_CHAIN_RE = re.compile(r"\|\||\||&&|;|&(?!&)|`|\$\(|>|<|\bxargs\b|-exec(?:dir)?\b")
+
+
+def split_command(cmd: str) -> Optional[List[str]]:
+    """
+    Tokenize command with shlex, with conservative fallback on parse error.
+
+    COPILOT FIX: Returning None on parse error is fail-open for scan detection.
+    Instead, fall back to simple whitespace split to maintain fail-closed posture.
+
+    We try to use shlex for accurate shell-like tokenization. If shlex raises
+    ValueError (e.g., due to malformed quoting), we fall back to a simple
+    whitespace-based split. This ensures that scan detection still has tokens
+    to inspect and does not silently treat parse errors as "not a scan",
+    maintaining a fail-closed posture for scan-specific safeguards.
+    """
+    try:
+        return shlex.split(cmd)
+    except ValueError:
+        # Best-effort fallback: basic whitespace split. This may be less precise
+        # than shlex, but it preserves the ability to recognize scan tools like
+        # find/grep/rg in the first token and apply appropriate safeguards.
+        fallback_tokens = cmd.strip().split()
+        if not fallback_tokens:
+            return None
+        return fallback_tokens
+
+
+def is_piped_or_chained(cmd: str) -> bool:
+    """Detect pipes, chains, backgrounding, xargs, exec, redirection, subshell."""
+    return bool(_PIPE_CHAIN_RE.search(cmd))
+
+
+def _extract_grep_positionals(tokens: List[str]) -> List[str]:
+    """
+    Extract positional arguments from grep command, skipping option values.
+
+    COPILOT FIX: grep -R TODO --exclude-dir node_modules incorrectly treats
+    'node_modules' as search path. Must skip option values like --exclude-dir.
+
+    grep options that take values:
+    - Long options with =: --exclude=*.log (single token)
+    - Long options with space: --exclude *.log (two tokens)
+    - Short options: -A 5, -m 10
+    """
+    # Options that take a value as the next token
+    # Based on GNU grep and BSD grep common options
+    # IMPORTANT: Keep this list up-to-date with new grep options to avoid
+    # false negatives (unbounded scans being allowed due to misidentified paths)
+    opts_with_values = {
+        "-e",
+        "--regexp",
+        "-f",
+        "--file",
+        "--include",
+        "--exclude",
+        "--include-dir",
+        "--exclude-dir",
+        "-A",
+        "-B",
+        "-C",  # context lines
+        "--after-context",
+        "--before-context",
+        "--context",
+        "-m",
+        "--max-count",
+        "--label",
+        "-d",
+        "--directories",
+        "-D",
+        "--devices",
+        # NOTE: --color, --colour, --binary-files use optional-value form (--color[=WHEN])
+        # Value is with = if present, not as separate token, so don't include here
+    }
+
+    positionals = []
+    skip_next = False
+
+    for i, tok in enumerate(tokens[1:], start=1):  # Skip command name (grep)
+        if skip_next:
+            skip_next = False
+            continue
+
+        if tok.startswith("-"):
+            # Check if it's an option that takes a value
+            # Handle both --option=value and --option value
+            if "=" in tok:
+                continue  # --exclude=*.log is a single token
+            if tok in opts_with_values:
+                skip_next = True  # Skip next token (the value)
+            continue
+
+        # Non-flag, non-skipped token is a positional
+        positionals.append(tok)
+
+    return positionals
+
+
+def _extract_rg_positionals(tokens: List[str]) -> List[str]:
+    """
+    Extract positional arguments from rg command, skipping option values.
+
+    P1 FIX #2: rg --max-count 10 TODO should extract ["TODO"], not ["10", "TODO"]
+
+    rg options that take values:
+    - Long options with =: --max-count=10 (single token)
+    - Long options with space: --max-count 10 (two tokens)
+    - Short options: -A 5, -m 10, -g '*.py'
+    """
+    # Options that take a value as the next token
+    # Best-effort list covering common ripgrep options (ripgrep 13+)
+    # IMPORTANT: Keep this list up-to-date with new rg options to avoid
+    # false negatives (unbounded scans being allowed due to misidentified paths)
+    opts_with_values = {
+        "--max-count",
+        "-m",
+        "--max-depth",
+        "--type",
+        "-t",
+        "--type-not",
+        "-T",
+        "--glob",
+        "-g",
+        "--iglob",
+        "-A",
+        "-B",
+        "-C",  # context lines
+        "--after-context",
+        "--before-context",
+        "--context",
+        "-f",
+        "--file",
+        "-e",
+        "--regexp",
+        "--encoding",
+        "--max-filesize",
+        "--path-separator",
+        # NOTE: --color, --colour use optional-value form (--color[=WHEN])
+        # Value is with = if present, not as separate token, so don't include here
+        "-j",
+        "--threads",  # thread count
+        "--sort",  # sort results (path, modified, accessed, created)
+        "--sortr",  # reverse sort
+        "-M",
+        "--max-columns",  # max columns per line
+        "--max-columns-preview",  # preview for long lines
+    }
+
+    positionals = []
+    skip_next = False
+
+    for i, tok in enumerate(tokens[1:], start=1):  # Skip command name (rg)
+        if skip_next:
+            skip_next = False
+            continue
+
+        if tok.startswith("-"):
+            # Check if it's an option that takes a value
+            # Handle both --option=value and --option value
+            if "=" in tok:
+                continue  # --max-count=10 is a single token
+            if tok in opts_with_values:
+                skip_next = True  # Skip next token (the value)
+            continue
+
+        # Non-flag, non-skipped token is a positional
+        positionals.append(tok)
+
+    return positionals
+
+
+def _is_scoped_path(path: str) -> bool:
+    """
+    Return True if the user is clearly scoping to a subdir (safer).
+    Examples treated as scoped:
+      ./src, ../backend, backend/, src/components, src, backend
+    Not scoped:
+      . , ./ , .. , $PWD , ${PWD}, absolute paths (/, /usr), home paths (~, ~/dir)
+    """
+    # FIX: Treat "./" as equivalent to "." (current directory)
+    if path in [".", "./", "..", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
+        return False
+    # Reject absolute paths and home expansions (unbounded)
+    if path.startswith(("/", "~")):
+        return False
+
+    # Normalize path to detect hidden parent directory escapes
+    # Examples: ./.., src/../../etc (but ../backend is OK per docstring)
+    normalized = os.path.normpath(path)
+    # Reject if path doesn't start with ../ but normalizes to parent escape
+    # (e.g., ./.., src/../../etc) OR if it becomes absolute
+    if not path.startswith("../") and (
+        normalized.startswith("..") or os.path.isabs(normalized)
+    ):
+        return False
+
+    # CRITICAL FIX: Block deep parent directory traversal (../.., ../../etc, etc.)
+    # Only allow one level up to a specific directory (../backend is OK, ../.. and ../ are NOT)
+    if path.startswith("../"):
+        # Check if normalized path has multiple ".." components
+        # Normalized "../.." becomes "../..", "../../etc" becomes "../../etc"
+        # We want to allow "../backend" (normalizes to "../backend") but block "../.."
+        if normalized.startswith("../.."):
+            return False  # Blocks ../.., ../../etc, ../../../foo, etc.
+        # Also check the raw path for obvious multi-level traversals and bare parent
+        if path.startswith("../../") or path in ["..", "../", "../."]:
+            return False
+        return len(path) > 3  # Allow "../backend" (9 chars) but not "../" (3 chars)
+
+    if path.startswith("./") and len(path) > 2:
+        return True
+    if "/" in path and not path.startswith("."):
+        return True
+    # P1 FIX: Treat plain directory names (src, backend, etc.) as scoped, but
+    # require at least two characters to avoid surprising behavior for
+    # single-character tokens like "a" or "1" that may be user mistakes.
+    # Avoid treating shell constructs (globs, vars, home shortcuts), shell
+    # metacharacters (parentheses, pipes, redirections, etc.), or flags
+    # (e.g., "-name", "-type") as directory names.
+    if (
+        path
+        and len(path) > 1
+        and not path.startswith("-")
+        and not re.search(r"[*?\[\]{}`$~()<>;&|]", path)
+    ):
+        return True
+    return False
+
+
+def normalize_find_name_to_substring(pattern: str) -> str:
+    """
+    Normalize find -name/-iname pattern to substring for search_files.
+
+    CRITICAL: Do NOT strip leading dots (".py" must stay ".py", not become "py").
+
+    FIX #7: Extract longest literal segment for patterns like test_*.py
+    - test_*.py → test_ (prefix match)
+    - *.py → .py (suffix match, keep leading dot)
+    - *foo* → foo (substring match)
+    """
+    pat = (pattern or "").strip().strip("'\"")
+    has_wildcards = ("*" in pat) or ("?" in pat)
+
+    if not has_wildcards:
+        return pat  # exact filename intent (e.g., "Button.tsx")
+
+    # Split by wildcards and find longest literal segment
+    # For test_*.py, segments are ["test_", ".py"]
+    # We want the longest meaningful segment
+    segments = re.split(r"[*?]+", pat)
+    segments = [s for s in segments if s]  # Remove empty strings
+
+    if not segments:
+        return ""  # Pattern was all wildcards
+
+    # Find longest segment (most specific)
+    longest = max(segments, key=len)
+
+    # IMPORTANT: Preserve leading dots if present in any segment
+    # For *.py, segments = [".py"], longest = ".py" (correct)
+    # For test_*.py, segments = ["test_", ".py"], longest = "test_" (good prefix)
+    # For *test*.py, segments = ["test", ".py"], longest could be either
+
+    return longest
+
+
+def is_scan_command(cmd: str) -> Optional[ScanCommandInfo]:
+    """
+    Token-aware detection: fail closed if tokenization fails.
+
+    Returns ScanCommandInfo only for unbounded *root* scans.
+    """
+    tokens = split_command(cmd)
+    if not tokens:
+        # Fail closed: if parse fails, we do NOT attempt to classify it as scan here.
+        # (The existing dangerous-command system should still handle it.)
+        return None
+
+    tool_cmd = tokens[0]
+
+    # -------------------------
+    # find scans
+    # -------------------------
+    if tool_cmd == "find":
+        # Determine the search root, accounting for global options before the path.
+        # POSIX find allows -H, -L, -P before any path operands.
+        # GNU find also supports -O (optimization), -D (debug), -- (end of options)
+        search_root = "."
+        idx = 1
+        global_opts_with_values = {"-O", "-D"}
+        while idx < len(tokens):
+            tok = tokens[idx]
+            if tok in ("-H", "-L", "-P", "--"):
+                idx += 1
+            elif tok in global_opts_with_values:
+                idx += 2  # Skip option and its value
+            elif tok.startswith(("-O", "-D")):
+                # Handle combined form like -O3 or -Dhelp
+                idx += 1
+            else:
+                break
+        if idx < len(tokens) and not tokens[idx].startswith("-"):
+            search_root = tokens[idx]
+
+        # FIX: Normalize "./" and equivalent PWD variants to "." to prevent bypass
+        if search_root in [".", "./", "$PWD", "${PWD}", '"$PWD"', "'$PWD'"]:
+            search_root = "."
+        # CRITICAL: Additional normalization to catch variants like "./." or "././" that are equivalent to repo root
+        # Without this, "find ./. -name '*.py'" would bypass the guard (starts with "./" and len > 2)
+        normalized_root = os.path.normpath(search_root)
+        if normalized_root == ".":
+            search_root = "."
+
+        # If explicitly scoped or bounded by an upper depth limit, treat as safe (pass-through)
+        if _is_scoped_path(search_root):
+            return None
+        if "-maxdepth" in tokens:
+            return None
+
+        # COPILOT FIX: Hard-block compound expressions and semantic-changing predicates
+        # Block any find command with predicates that would be dropped during rewrite
+        # Examples that MUST NOT be rewritten:
+        # - find . -name '*.log' -delete (drops destructive action!)
+        # - find . -name '*.py' -mtime -7 (drops time filter)
+        # - find . -name '*.py' -exec grep TODO {} \; (drops exec action)
+        if any(
+            tok in tokens
+            for tok in [
+                # Logical operators
+                "-o",
+                "-or",  # OR operator
+                "!",
+                "-not",  # NOT operator
+                "(",
+                ")",  # Grouping
+                "-a",
+                "-and",  # AND operator (explicit)
+                # Path/traversal predicates
+                "-path",  # Path matching (can exclude subtrees)
+                "-prune",  # Prune directories (changes traversal)
+                # Action predicates (CRITICAL - dropping these is dangerous!)
+                "-delete",  # Delete files
+                "-exec",  # Execute command
+                "-execdir",  # Execute in directory
+                "-ok",  # Prompt before exec
+                "-okdir",  # Prompt before execdir
+                # Filter predicates (dropping these changes semantics)
+                "-type",  # File type filter
+                "-size",  # Size filter
+                "-perm",  # Permission filter
+                "-mtime",  # Modification time
+                "-atime",  # Access time
+                "-ctime",  # Change time
+                "-newer",  # Newer than file
+                "-user",  # User filter
+                "-group",  # Group filter
+            ]
+        ):
+            return ScanCommandInfo(
+                tool="find",
+                raw=cmd,
+                tokens=tokens,
+                reason="Compound find expression cannot be rewritten safely",
+                can_rewrite=False,
+                rewrite_kind="blocked",
+            )
+
+        # Only rewrite if there is exactly one -name/-iname
+        name_flags = [i for i, tok in enumerate(tokens) if tok in ["-name", "-iname"]]
+        if len(name_flags) > 1:
+            return ScanCommandInfo(
+                tool="find",
+                raw=cmd,
+                tokens=tokens,
+                reason="Multiple -name/-iname patterns cannot be rewritten safely",
+                can_rewrite=False,
+                rewrite_kind="blocked",
+            )
+
+        if len(name_flags) == 1:
+            idx = name_flags[0]
+            # Guard against malformed commands (e.g., "find . -name" with missing pattern).
+            # If pattern is None, we fall through to return can_rewrite=False below.
+            pattern = tokens[idx + 1] if idx + 1 < len(tokens) else None
+            if pattern:
+                return ScanCommandInfo(
+                    tool="find",
+                    raw=cmd,
+                    tokens=tokens,
+                    reason="Unbounded find from repo root",
+                    can_rewrite=True,
+                    rewrite_kind="filename_search",
+                    extracted_pattern=pattern.strip("\"'"),
+                )
+
+        # find from root without -name/-iname (e.g., find . -type f)
+        return ScanCommandInfo(
+            tool="find",
+            raw=cmd,
+            tokens=tokens,
+            reason="Unbounded find from repo root without -name/-iname",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+
+    # -------------------------
+    # grep scans
+    # -------------------------
+    if tool_cmd in ["grep", "egrep"]:
+        # Check for recursive flag: -r, -R, --recursive, or combined like -rl, -Rn
+        def _has_recursive_flag(tokens: List[str]) -> bool:
+            for tok in tokens:
+                if tok == "--recursive":
+                    return True
+                if tok.startswith("-") and not tok.startswith("--"):
+                    if "r" in tok or "R" in tok:
+                        return True
+            return False
+
+        if not _has_recursive_flag(tokens):
+            return None
+
+        # COPILOT FIX: Use proper positional extraction to avoid option value bypass
+        # grep -R TODO --exclude-dir node_modules should NOT treat node_modules as path
+        # grep syntax: grep [OPTIONS] PATTERN [FILE...]
+        # - If pattern from -e/--regexp or -f/--file: all positionals are paths
+        # - Otherwise: first positional is PATTERN, rest are FILE path(s)
+        positionals = _extract_grep_positionals(tokens)
+
+        # Check if pattern comes from -e/--regexp or -f/--file
+        pattern_from_option = any(
+            tok in tokens for tok in ["-e", "--regexp", "-f", "--file"]
+        )
+
+        # Determine if path is provided
+        # - If pattern from option: any positionals are paths
+        # - Otherwise: need 2+ positionals (first is pattern, rest are paths)
+        has_explicit_path = (
+            len(positionals) >= 1
+            if pattern_from_option
+            else len(positionals) >= 2
+        )
+
+        # No path provided -> defaults to "."
+        if not has_explicit_path:
+            return ScanCommandInfo(
+                tool="grep",
+                raw=cmd,
+                tokens=tokens,
+                reason="Recursive grep without explicit path defaults to root (content search)",
+                can_rewrite=False,
+                rewrite_kind="blocked",
+            )
+
+        # Determine which positionals are path operands:
+        # - If pattern comes from an option: all positionals are paths.
+        # - Otherwise: first positional is the pattern, remaining are paths.
+        if pattern_from_option:
+            path_operands = positionals
+        else:
+            path_operands = positionals[1:]
+
+        # Validate all explicit path operands:
+        # - If any is "." or "./", this is effectively a repo-root recursive scan -> block.
+        # - If any is not a scoped path, treat scope as ambiguous -> block.
+        for path in path_operands:
+            # FIX: Normalize "./" to "." to prevent bypass
+            if path in [".", "./"]:
+                return ScanCommandInfo(
+                    tool="grep",
+                    raw=cmd,
+                    tokens=tokens,
+                    reason="Recursive grep from repo root is a content search (not filename search)",
+                    can_rewrite=False,
+                    rewrite_kind="blocked",
+                )
+            if not _is_scoped_path(path):
+                return ScanCommandInfo(
+                    tool="grep",
+                    raw=cmd,
+                    tokens=tokens,
+                    reason="Recursive grep with ambiguous scope",
+                    can_rewrite=False,
+                    rewrite_kind="blocked",
+                )
+
+        # All explicit paths are scoped -> allow
+        return None
+
+    # -------------------------
+    # rg scans
+    # -------------------------
+    if tool_cmd == "rg":
+        # If user adds bounds, allow
+        # FIX: Also check for --flag=value form (e.g., --glob=*.py, --type=python)
+        # CRITICAL: --type-add only DEFINES a type alias, it does NOT apply it as a filter!
+        # So "rg TODO --type-add=python:*.py" still scans ALL files, not just Python files.
+        bound_flags = ["--glob", "-g", "--iglob", "--type", "-t"]
+        has_bounds = any(
+            any(token == flag or token.startswith(flag + "=") for token in tokens)
+            for flag in bound_flags
+        )
+        if has_bounds:
+            return None
+
+        # COPILOT FIX: Handle -e/--regexp pattern form
+        # rg -e TODO src should NOT be blocked (pattern from -e, path is src)
+        # If pattern comes from -e/--regexp/-f/--file, ALL positionals are paths
+        pattern_from_option = any(
+            tok in tokens for tok in ["-e", "--regexp", "-f", "--file"]
+        )
+
+        # P1 FIX #2: Use proper positional extraction (skip option values)
+        positionals = _extract_rg_positionals(tokens)
+
+        # Determine which positionals are paths based on where the pattern comes from.
+        if pattern_from_option:
+            # Pattern comes from -e/--regexp/-f/--file -> all positionals are paths.
+            paths = positionals
+        else:
+            # Positional pattern: first positional is pattern, second+ are paths.
+            # If there is only one positional, then there are no explicit paths.
+            paths = positionals[1:] if len(positionals) > 1 else []
+
+        # When PATH arguments are present, evaluate all of them:
+        # if any is "."/"./"/empty/unscoped, treat as an unbounded scan and block.
+        # FIX: Normalize "./" to "." to prevent bypass
+        if paths:
+            if all(
+                (path not in [".", "./", ""]) and _is_scoped_path(path) for path in paths
+            ):
+                return None  # all paths are scoped
+
+        # No explicit path or at least one unscoped/root path -> unbounded root scan
+        return ScanCommandInfo(
+            tool="rg",
+            raw=cmd,
+            tokens=tokens,
+            reason="Unbounded ripgrep from repo root is a content search and can be very slow",
+            can_rewrite=False,
+            rewrite_kind="blocked",
+        )
+
+    return None
+
+
+def rewrite_to_discovery(info: ScanCommandInfo) -> Dict[str, Any]:
+    """
+    Rewrite ONLY if semantics are preserved (filename → filename).
+
+    Uses existing readonly discovery tool search_files (filename substring matching).
+    """
+    if info.tool == "find" and info.can_rewrite:
+        if not info.extracted_pattern:
+            return {
+                "use_discovery": False,
+                "alternative": "Use search_files with a filename pattern.",
+            }
+
+        normalized = normalize_find_name_to_substring(info.extracted_pattern)
+
+        # Safety: too broad after normalization.
+        # PRODUCTION RULE: min_len=3 to avoid "py", "js" substring blasts,
+        # but allow 2-char patterns if they start with "." (e.g., ".py", ".ts", ".go").
+        # FIX: Align with executor requirement (min 2 chars). Single-char patterns
+        # are rejected by _execute_readonly_discovery, so don't allow them here.
+        MIN_PATTERN_LEN = 3
+        ALLOW_LEN2_IF_LEADING_DOT = True
+
+        if len(normalized) < MIN_PATTERN_LEN:
+            # Exception: 2-char patterns starting with "." (e.g., .py, .ts, .go)
+            # Rationale: File extensions are highly discriminative and meet the
+            # executor's minimum length requirement (>= 2 characters).
+            if (
+                len(normalized) == 2
+                and ALLOW_LEN2_IF_LEADING_DOT
+                and normalized.startswith(".")
+            ):
+                pass  # Allow .py, .ts, .go, .c, .h, .r, .m, .d, .v, etc.
+            else:
+                # All other patterns with len < MIN_PATTERN_LEN (including single-char)
+                # are too broad and would also be rejected by the executor.
+                return {
+                    "use_discovery": False,
+                    "reason": f"Pattern '{info.extracted_pattern}' normalizes to '{normalized}' which is too broad (min {MIN_PATTERN_LEN}, except dot-extensions)",
+                    "alternative": "Use a more specific pattern (e.g., '.py', 'Dockerfile', 'Button.tsx').",
+                }
+
+        return {
+            "use_discovery": True,
+            "tool_name": "search_files",
+            "arguments": {"pattern": normalized},
+            "explanation": (
+                f"Rewrote unbounded find -name '{info.extracted_pattern}' "
+                f"to safe filename substring search: '{normalized}'"
+            ),
+        }
+
+    if info.tool == "grep":
+        return {
+            "use_discovery": False,
+            "reason_code": "SCAN_BLOCKED_CONTENT_SEARCH",  # Machine-readable code
+            "workflow_suggestion": (
+                "grep -R searches FILE CONTENT, not filenames. Safer workflow:\n"
+                "1) search_files to narrow candidate files by name/extension\n"
+                "2) read_file on candidates\n"
+                "3) (future) add a budgeted search_content tool for ripgrep"
+            ),
+            "suggested_next_tool": "search_files",
+            "alternative_commands": [
+                "# First find files by extension:",
+                "search_files --pattern .py",
+                "# Then read candidates:",
+                "read_file path/to/candidate.py",
+            ],
+        }
+
+    if info.tool == "rg":
+        # COPILOT FIX: Extract pattern properly from positionals or -e flag
+        # info.tokens[1] could be a flag, not the pattern
+        pattern = "PATTERN"
+
+        # Check if pattern comes from -e/--regexp
+        for i, tok in enumerate(info.tokens):
+            if tok in ["-e", "--regexp"] and i + 1 < len(info.tokens):
+                pattern = info.tokens[i + 1]
+                break
+
+        # Otherwise, pattern is first positional
+        if pattern == "PATTERN":
+            positionals = _extract_rg_positionals(info.tokens)
+            if positionals:
+                pattern = positionals[0]
+
+        # If extraction failed entirely, fall back to a clear placeholder
+        if pattern == "PATTERN":
+            pattern = "<search-pattern>"
+
+        return {
+            "use_discovery": False,
+            "reason_code": "SCAN_BLOCKED_UNBOUNDED_RG",  # Machine-readable code
+            "alternative": f"rg {pattern!r} src -g'*.{{ts,tsx,js,py,go}}' --max-count 100",
+            "workflow_suggestion": (
+                "rg searches FILE CONTENT. Either:\n"
+                "1) Add bounds: --glob/-g or --type/-t and explicit path\n"
+                "2) Use search_files for filename search, then read_file for content"
+            ),
+            "suggested_next_tool": "search_files",
+            "alternative_commands": [
+                "# Bounded rg with glob and path:",
+                f"rg {pattern!r} src/ -g'*.py' --max-count 100",
+                "# Or use type filter:",
+                f"rg {pattern!r} backend/ --type python --max-count 100",
+            ],
+        }
+
+    # Fallback for blocked find commands (compound expressions, -type f without -name, etc.)
+    return {
+        "use_discovery": False,
+        "reason_code": "SCAN_BLOCKED_UNREWRITEABLE_FIND",
+        "workflow_suggestion": (
+            "This scan command cannot be safely rewritten. Instead of running an "
+            "unbounded or complex `find` over the repository, use:\n"
+            "1) search_files with a filename pattern to locate relevant files\n"
+            "2) list_directory to inspect directory contents if you just need a listing\n"
+            "3) read_file on specific files you want to inspect"
+        ),
+        "suggested_next_tool": "search_files",
+        "alternative_commands": [
+            "# Example: search for Python files by name:",
+            "search_files --pattern '*.py'",
+            "# Example: list the contents of a directory:",
+            "list_directory --path .",
+        ],
+    }

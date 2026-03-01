@@ -7,7 +7,6 @@ from backend.services.scan_command_guard import (
     rewrite_to_discovery,
     normalize_find_name_to_substring,
     is_piped_or_chained,
-    ScanCommandInfo,
 )
 
 

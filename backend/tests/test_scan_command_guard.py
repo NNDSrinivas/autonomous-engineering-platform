@@ -365,11 +365,14 @@ class TestKnownBypasses:
         without scan guard protection.
 
         TODO: Add scan guard to navi_brain.py command execution path.
-        When fixed, remove @pytest.mark.xfail and this test should pass.
+        When fixed, replace this xfail with assertions that verify the
+        scan guard is applied by the navi_brain plan executor, or remove
+        this test if it is no longer relevant.
         """
-        # This test documents the bypass for future tracking
-        # When navi_brain.py is patched, this will pass
-        assert False, (
+        # This test currently documents the bypass for future tracking.
+        # It is expected to xfail until navi_brain.py is patched and the
+        # body is rewritten to perform real assertions.
+        pytest.xfail(
             "navi_brain.py plan executor bypasses scan guard - "
-            "expected to fail until patched"
+            "replace this with actual assertions when patched"
         )

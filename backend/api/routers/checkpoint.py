@@ -7,6 +7,7 @@ Provides REST endpoints for managing task checkpoints, enabling:
 - Cross-device session continuity
 """
 
+import hashlib
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -20,6 +21,36 @@ from backend.services.checkpoint_service import CheckpointService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/navi/checkpoint", tags=["navi-checkpoint"])
+
+
+def _hash_user_id(user_id: str) -> int:
+    """
+    Convert string user_id to stable integer for database storage.
+
+    Supports Auth0 OAuth user IDs (e.g., "google-oauth2|123456789"),
+    traditional numeric strings, and special values like "default_user".
+
+    Args:
+        user_id: String user ID from frontend/Auth0
+
+    Returns:
+        Stable integer for database storage
+    """
+    # Special case: "default_user" always maps to 1
+    if user_id == "default_user":
+        return 1
+
+    # If it's already a numeric string, use it directly
+    try:
+        return int(user_id)
+    except ValueError:
+        pass
+
+    # Hash OAuth/string IDs to stable 32-bit signed integer (PostgreSQL compatible)
+    # Use MD5 for speed (not cryptographic - just need deterministic mapping)
+    hash_bytes = hashlib.md5(user_id.encode('utf-8')).digest()
+    # Convert to signed 32-bit int to avoid PostgreSQL bigint issues
+    return int.from_bytes(hash_bytes[:4], byteorder='big', signed=True)
 
 
 # =============================================================================
@@ -145,7 +176,7 @@ class CheckpointResponse(BaseModel):
 
 @router.post("", response_model=CheckpointResponse)
 async def create_checkpoint(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     request: CreateCheckpointRequest,
     db: Session = Depends(get_db),
 ) -> CheckpointResponse:
@@ -157,7 +188,7 @@ async def create_checkpoint(
     service = CheckpointService(db)
 
     checkpoint = service.create_checkpoint(
-        user_id=user_id,
+        user_id=_hash_user_id(user_id),
         session_id=request.session_id,
         message_id=request.message_id,
         user_message=request.user_message,
@@ -170,14 +201,14 @@ async def create_checkpoint(
 
 @router.get("", response_model=Optional[CheckpointResponse])
 async def get_checkpoint(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     session_id: str,
     db: Session = Depends(get_db),
 ) -> Optional[CheckpointResponse]:
     """Get the checkpoint for a session."""
     service = CheckpointService(db)
 
-    checkpoint = service.get_checkpoint(user_id, session_id)
+    checkpoint = service.get_checkpoint(_hash_user_id(user_id), session_id)
     if not checkpoint:
         return None
 
@@ -187,13 +218,13 @@ async def get_checkpoint(
 @router.get("/{checkpoint_id}", response_model=CheckpointResponse)
 async def get_checkpoint_by_id(
     checkpoint_id: str,
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     db: Session = Depends(get_db),
 ) -> CheckpointResponse:
     """Get a checkpoint by ID."""
     service = CheckpointService(db)
 
-    checkpoint = service.get_checkpoint_by_id(checkpoint_id, user_id)
+    checkpoint = service.get_checkpoint_by_id(checkpoint_id, _hash_user_id(user_id))
     if not checkpoint:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
@@ -202,7 +233,7 @@ async def get_checkpoint_by_id(
 
 @router.patch("/progress", response_model=CheckpointResponse)
 async def update_progress(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     session_id: str,
     request: UpdateProgressRequest,
     db: Session = Depends(get_db),
@@ -216,7 +247,7 @@ async def update_progress(
         steps_dicts = [s.model_dump() for s in request.steps]
 
     checkpoint = service.update_progress(
-        user_id=user_id,
+        user_id=_hash_user_id(user_id),
         session_id=session_id,
         current_step_index=request.current_step_index,
         steps=steps_dicts,
@@ -232,7 +263,7 @@ async def update_progress(
 
 @router.post("/file", response_model=CheckpointResponse)
 async def add_modified_file(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     session_id: str,
     request: AddFileRequest,
     db: Session = Depends(get_db),
@@ -241,7 +272,7 @@ async def add_modified_file(
     service = CheckpointService(db)
 
     checkpoint = service.add_modified_file(
-        user_id=user_id,
+        user_id=_hash_user_id(user_id),
         session_id=session_id,
         file_path=request.file_path,
         operation=request.operation,
@@ -256,7 +287,7 @@ async def add_modified_file(
 
 @router.post("/command", response_model=CheckpointResponse)
 async def add_executed_command(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     session_id: str,
     request: AddCommandRequest,
     db: Session = Depends(get_db),
@@ -265,7 +296,7 @@ async def add_executed_command(
     service = CheckpointService(db)
 
     checkpoint = service.add_executed_command(
-        user_id=user_id,
+        user_id=_hash_user_id(user_id),
         session_id=session_id,
         command=request.command,
         exit_code=request.exit_code,
@@ -280,7 +311,7 @@ async def add_executed_command(
 
 @router.post("/interrupt", response_model=CheckpointResponse)
 async def mark_interrupted(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     session_id: str,
     request: MarkInterruptedRequest = MarkInterruptedRequest(),
     db: Session = Depends(get_db),
@@ -289,7 +320,7 @@ async def mark_interrupted(
     service = CheckpointService(db)
 
     checkpoint = service.mark_interrupted(
-        user_id=user_id,
+        user_id=_hash_user_id(user_id),
         session_id=session_id,
         reason=request.reason,
     )
@@ -302,7 +333,7 @@ async def mark_interrupted(
 
 @router.post("/complete", response_model=CheckpointResponse)
 async def mark_completed(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     session_id: str,
     db: Session = Depends(get_db),
 ) -> CheckpointResponse:
@@ -310,7 +341,7 @@ async def mark_completed(
     service = CheckpointService(db)
 
     checkpoint = service.mark_completed(
-        user_id=user_id,
+        user_id=_hash_user_id(user_id),
         session_id=session_id,
     )
 
@@ -322,7 +353,7 @@ async def mark_completed(
 
 @router.post("/fail", response_model=CheckpointResponse)
 async def mark_failed(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     session_id: str,
     reason: str = "Task failed",
     db: Session = Depends(get_db),
@@ -331,7 +362,7 @@ async def mark_failed(
     service = CheckpointService(db)
 
     checkpoint = service.mark_failed(
-        user_id=user_id,
+        user_id=_hash_user_id(user_id),
         session_id=session_id,
         reason=reason,
     )
@@ -344,7 +375,7 @@ async def mark_failed(
 
 @router.post("/retry", response_model=CheckpointResponse)
 async def increment_retry(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     session_id: str,
     db: Session = Depends(get_db),
 ) -> CheckpointResponse:
@@ -352,7 +383,7 @@ async def increment_retry(
     service = CheckpointService(db)
 
     checkpoint = service.increment_retry(
-        user_id=user_id,
+        user_id=_hash_user_id(user_id),
         session_id=session_id,
     )
 
@@ -364,28 +395,28 @@ async def increment_retry(
 
 @router.get("/interrupted/list", response_model=List[CheckpointResponse])
 async def get_interrupted_checkpoints(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs like "google-oauth2|..."
     limit: int = Query(default=10, le=50),
     db: Session = Depends(get_db),
 ) -> List[CheckpointResponse]:
     """Get all interrupted checkpoints for a user."""
     service = CheckpointService(db)
 
-    checkpoints = service.get_interrupted_checkpoints(user_id, limit)
+    checkpoints = service.get_interrupted_checkpoints(_hash_user_id(user_id), limit)
 
     return [CheckpointResponse(**cp.to_dict()) for cp in checkpoints]
 
 
 @router.delete("")
 async def delete_checkpoint(
-    user_id: int,
+    user_id: str,  # Accept string to support OAuth user IDs
     session_id: str,
     db: Session = Depends(get_db),
 ) -> Dict[str, str]:
     """Delete a checkpoint."""
     service = CheckpointService(db)
 
-    success = service.delete_checkpoint(user_id, session_id)
+    success = service.delete_checkpoint(_hash_user_id(user_id), session_id)
     if not success:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
@@ -394,7 +425,7 @@ async def delete_checkpoint(
 
 @router.post("/sync", response_model=CheckpointResponse)
 async def sync_from_frontend(
-    user_id: str,  # Accept string to support "default_user" and numeric IDs
+    user_id: str,  # Accept string to support OAuth user IDs like "google-oauth2|..."
     session_id: str,
     request: SyncCheckpointRequest,
     db: Session = Depends(get_db),
@@ -403,24 +434,12 @@ async def sync_from_frontend(
     Sync checkpoint data from frontend localStorage.
 
     This allows the frontend to push its checkpoint state to the backend
-    for cross-device persistence.
+    for cross-device persistence. Supports Auth0 OAuth user IDs.
     """
-    # Convert string user_id to int for database storage
-    # "default_user" maps to user_id 1, numeric strings are converted directly
-    if user_id == "default_user":
-        numeric_user_id = 1
-    else:
-        try:
-            numeric_user_id = int(user_id)
-        except ValueError:
-            # For any other non-numeric string, use default user ID
-            numeric_user_id = 1
-            logger.warning(f"Unknown user_id '{user_id}', using default user_id=1")
-
     service = CheckpointService(db)
 
     checkpoint = service.sync_from_frontend(
-        user_id=numeric_user_id,
+        user_id=_hash_user_id(user_id),
         session_id=session_id,
         checkpoint_data=request.model_dump(),
     )

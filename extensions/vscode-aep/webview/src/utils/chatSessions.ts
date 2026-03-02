@@ -413,6 +413,9 @@ export type TaskCheckpoint = {
   // For retry logic
   retryCount: number;
   lastRetryAt?: string;
+
+  // Streaming state for resume capability
+  streamingState?: StreamingState;
 };
 
 /**
@@ -473,6 +476,7 @@ export const createCheckpoint = (
     modifiedFiles: [],
     executedCommands: [],
     partialContent: '',
+    streamingState: undefined,
     retryCount: 0,
   };
   saveCheckpoint(checkpoint);
@@ -482,7 +486,7 @@ export const createCheckpoint = (
 export const updateCheckpointProgress = (
   sessionId: string,
   updates: Partial<Pick<TaskCheckpoint,
-    'currentStepIndex' | 'partialContent' | 'status' | 'modifiedFiles' | 'executedCommands' | 'steps'
+    'currentStepIndex' | 'partialContent' | 'status' | 'modifiedFiles' | 'executedCommands' | 'steps' | 'streamingState'
   >>
 ): TaskCheckpoint | null => {
   const checkpoint = loadCheckpoint(sessionId);
@@ -644,7 +648,7 @@ export const createDebouncedSave = (
  */
 export type CheckpointSyncConfig = {
   apiBaseUrl: string;
-  userId: number;
+  userId: string | number;  // Accept both string ("default_user") and number
   onError?: (error: Error) => void;
 };
 
@@ -681,7 +685,7 @@ export const syncCheckpointToBackend = async (
           modifiedFiles: checkpoint.modifiedFiles,
           executedCommands: checkpoint.executedCommands,
           partialContent: checkpoint.partialContent,
-          streamingState: {},
+          streamingState: checkpoint.streamingState || {},
           retryCount: checkpoint.retryCount,
           interruptedAt: checkpoint.interruptedAt,
         }),

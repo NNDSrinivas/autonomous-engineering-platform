@@ -131,7 +131,24 @@ jobs:
           # Update container image
           jq --arg IMAGE "$NEW_IMAGE" \
             '.containerDefinitions[0].image = $IMAGE' \
-            task-definition-clean.json > task-definition-updated.json
+            task-definition-clean.json > task-definition-image.json
+
+          # Inject required environment variables for staging
+          # Coalesce null/missing environment to [] to handle task definitions without env vars
+          # Remove existing JWT_ENABLED and AUTH0_VALID_CLIENT_IDS to avoid duplicates, then add new values
+          AUTH0_CLIENT_IDS="${{ secrets.AUTH0_VALID_CLIENT_IDS || 'tWcHeAvn3uGAsRnwp1Bt4uhgto9GLplu' }}"
+
+          jq --arg CLIENT_IDS "$AUTH0_CLIENT_IDS" \
+            '.containerDefinitions[0].environment =
+            ((.containerDefinitions[0].environment // []) |
+             map(select(.name != "JWT_ENABLED" and .name != "AUTH0_VALID_CLIENT_IDS"))) +
+            [
+              {"name": "JWT_ENABLED", "value": "true"},
+              {"name": "AUTH0_VALID_CLIENT_IDS", "value": $CLIENT_IDS}
+            ]' \
+            task-definition-image.json > task-definition-updated.json
+
+          echo "::notice::Injected environment variables: JWT_ENABLED=true, AUTH0_VALID_CLIENT_IDS=***"
 
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
@@ -165,6 +182,57 @@ jobs:
             --services ${{ env.ECS_SERVICE }}
 
           echo "::notice::Service is stable"
+
+      - name: Capture failure diagnostics
+        if: failure() && steps.wait-stable.conclusion != 'success'
+        continue-on-error: true
+        run: |
+          echo "::error::Service failed to stabilize. Capturing diagnostics..."
+
+          # Get service events (last 10)
+          echo "=== ECS Service Events ==="
+          aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].events[:10]' \
+            --output json | jq .
+
+          # Get recent stopped tasks (up to 5 most recent)
+          echo ""
+          echo "=== Recent Stopped Tasks ==="
+          STOPPED_TASKS=$(aws ecs list-tasks \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service-name ${{ env.ECS_SERVICE }} \
+            --desired-status STOPPED \
+            --query 'taskArns[:5]' \
+            --output text)
+
+          # Guard against AWS CLI returning "None" for empty results
+          if [ -n "$STOPPED_TASKS" ] && [ "$STOPPED_TASKS" != "None" ]; then
+            aws ecs describe-tasks \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --tasks $STOPPED_TASKS \
+              --query 'tasks[].{TaskArn:taskArn,StoppedReason:stoppedReason,StopCode:stopCode,Containers:containers[].{Name:name,Reason:reason,ExitCode:exitCode}}' \
+              --output json | jq . || echo "Failed to describe stopped tasks"
+          else
+            echo "No stopped tasks found"
+          fi
+
+          # Get ALB target health
+          echo ""
+          echo "=== ALB Target Health ==="
+          TG_ARN=$(aws elbv2 describe-target-groups \
+            --names aep-staging-tg-backend \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text 2>/dev/null || echo "")
+
+          if [ -n "$TG_ARN" ]; then
+            aws elbv2 describe-target-health \
+              --target-group-arn $TG_ARN \
+              --output json | jq .
+          else
+            echo "Target group not found"
+          fi
 
       - name: Verify deployment health
         id: health-check

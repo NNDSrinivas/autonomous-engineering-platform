@@ -15443,8 +15443,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       html = html
         .replace('./panel.js', `${jsUri.toString()}?v=${buildVersion}`)
-        .replace('./assets/', `${assetsUri.toString()}/`)
-        .replace('./chunks/', `${chunksUri.toString()}/`)
+        .replace(/\.\/assets\//g, `${assetsUri.toString()}/`)
+        .replace(/\.\/chunks\//g, `${chunksUri.toString()}/`)
         .replace(
           new RegExp(`(href|src)=\"(${assetsUri.toString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/[^\"']+)\"`, 'g'),
           `$1="$2?v=${buildVersion}"`

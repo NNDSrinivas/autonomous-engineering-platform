@@ -803,20 +803,32 @@ export const markCompletedOnBackend = async (
  * Get interrupted checkpoints from backend
  */
 export const getInterruptedCheckpointsFromBackend = async (): Promise<TaskCheckpoint[]> => {
-  if (!syncConfig) return [];
+  console.log('[Checkpoint] Fetching interrupted checkpoints...');
+  if (!syncConfig) {
+    console.warn('[Checkpoint] Sync config not initialized, skipping fetch');
+    return [];
+  }
 
   try {
-    const response = await fetch(
-      `${syncConfig.apiBaseUrl}/api/navi/checkpoint/interrupted/list?user_id=${syncConfig.userId}`,
-      { headers: buildHeaders() }
-    );
+    const url = `${syncConfig.apiBaseUrl}/api/navi/checkpoint/interrupted/list?user_id=${syncConfig.userId}`;
+    console.log('[Checkpoint] Fetching from:', url);
+    const response = await fetch(url, { headers: buildHeaders() });
 
-    if (!response.ok) return [];
+    console.log('[Checkpoint] Response status:', response.status);
+    if (!response.ok) {
+      console.warn('[Checkpoint] Response not OK:', response.status, response.statusText);
+      return [];
+    }
 
     const data = await response.json();
-    if (!Array.isArray(data)) return [];
+    console.log('[Checkpoint] Received data:', data);
+    if (!Array.isArray(data)) {
+      console.warn('[Checkpoint] Data is not an array:', typeof data);
+      return [];
+    }
 
-    return data.map((item: any) => ({
+    console.log('[Checkpoint] Mapping', data.length, 'checkpoints');
+    const checkpoints = data.map((item: any) => ({
       id: item.id,
       sessionId: item.session_id,
       messageId: item.message_id,
@@ -835,7 +847,10 @@ export const getInterruptedCheckpointsFromBackend = async (): Promise<TaskCheckp
       retryCount: item.retry_count || 0,
       lastRetryAt: item.last_retry_at,
     }));
+    console.log('[Checkpoint] Returning', checkpoints.length, 'checkpoints');
+    return checkpoints;
   } catch (error) {
+    console.error('[Checkpoint] Error fetching interrupted checkpoints:', error);
     if (syncConfig.onError) {
       syncConfig.onError(error instanceof Error ? error : new Error(String(error)));
     }

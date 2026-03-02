@@ -1683,6 +1683,7 @@ export default function NaviChatPanel({
   openSettingsTrigger,
 }: NaviChatPanelProps = {}) {
   const { workspaceRoot, repoName, isLoading } = useWorkspace();
+  console.log("[DEBUG] NaviChatPanel component is mounting!");
   const activityPanelRef = useRef(activityPanelState);
 
   useEffect(() => {
@@ -11663,6 +11664,12 @@ export default function NaviChatPanel({
                       // Merge both arrays and sort by sequence/timestamp for chronological order
                       const allItems: StreamItem[] = [...narrativeItems, ...activityItems];
 
+                      // DEBUG: Log sequence numbers before sorting
+                      console.log('[CHRONOLOGICAL DEBUG] Items before sort:', {
+                        narrativeSequences: narrativeItems.map(n => ({ seq: n.sequence, text: n.text.substring(0, 30) })),
+                        activitySequences: activityItems.map(a => ({ seq: a.sequence, label: a.data.label })),
+                      });
+
                       allItems.sort((a, b) => {
                         const hasSeqA = a.sequence > 0;
                         const hasSeqB = b.sequence > 0;
@@ -11695,6 +11702,16 @@ export default function NaviChatPanel({
                         }
                         return a.sourceIndex - b.sourceIndex;
                       });
+
+                      // DEBUG: Log after sorting
+                      console.log('[CHRONOLOGICAL DEBUG] Items after sort (first 20):',
+                        allItems.slice(0, 20).map((item, i) => ({
+                          index: i,
+                          type: item.itemType,
+                          seq: item.sequence,
+                          preview: item.itemType === 'narrative' ? item.text.substring(0, 40) : item.data.label,
+                        }))
+                      );
 
                       // Combine consecutive narrative items to prevent broken markdown patterns
                       // (e.g., [text](url) split across chunks)
@@ -12900,6 +12917,12 @@ export default function NaviChatPanel({
 
                     // Merge and sort by sequence/timestamp for chronological order
                     const allItems: StreamItem[] = [...narrativeItems, ...activityItems];
+
+                    // DEBUG: Log sequence numbers before sorting (inline activities section)
+                    console.log('[CHRONOLOGICAL DEBUG - INLINE] Items before sort:', {
+                      narrativeSequences: narrativeItems.map(n => ({ seq: n.sequence, text: n.text.substring(0, 30) })),
+                      activitySequences: activityItems.map(a => ({ seq: a.sequence, label: a.data.label })),
+                    });
 
                     allItems.sort((a, b) => {
                       const hasSeqA = a.sequence > 0;

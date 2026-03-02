@@ -1,3 +1,4 @@
+console.log("[BUILD CHECK] panel.js loading - timestamp: " + Date.now());
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";

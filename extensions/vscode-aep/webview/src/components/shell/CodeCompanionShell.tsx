@@ -627,6 +627,7 @@ interface UserPreferences {
 }
 
 export function CodeCompanionShell() {
+  console.log("[DEBUG] CodeCompanionShell is mounting!");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true); // Sidebar closed by default
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<UserInfo | undefined>(undefined);

@@ -163,6 +163,7 @@ jobs:
 
       - name: Capture failure diagnostics
         if: failure() && steps.wait-stable.conclusion != 'success'
+        continue-on-error: true
         run: |
           echo "::error::Service failed to stabilize. Capturing diagnostics..."
 

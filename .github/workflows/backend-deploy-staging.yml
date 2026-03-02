@@ -136,16 +136,19 @@ jobs:
           # Inject required environment variables for staging
           # Coalesce null/missing environment to [] to handle task definitions without env vars
           # Remove existing JWT_ENABLED and AUTH0_VALID_CLIENT_IDS to avoid duplicates, then add new values
-          jq '.containerDefinitions[0].environment =
+          AUTH0_CLIENT_IDS="${{ secrets.AUTH0_VALID_CLIENT_IDS || 'tWcHeAvn3uGAsRnwp1Bt4uhgto9GLplu' }}"
+
+          jq --arg CLIENT_IDS "$AUTH0_CLIENT_IDS" \
+            '.containerDefinitions[0].environment =
             ((.containerDefinitions[0].environment // []) |
              map(select(.name != "JWT_ENABLED" and .name != "AUTH0_VALID_CLIENT_IDS"))) +
             [
               {"name": "JWT_ENABLED", "value": "true"},
-              {"name": "AUTH0_VALID_CLIENT_IDS", "value": "tWcHeAvn3uGAsRnwp1Bt4uhgto9GLplu"}
+              {"name": "AUTH0_VALID_CLIENT_IDS", "value": $CLIENT_IDS}
             ]' \
             task-definition-image.json > task-definition-updated.json
 
-          echo "::notice::Injected environment variables: JWT_ENABLED=true, AUTH0_VALID_CLIENT_IDS=tWcHeAvn3uGAsRnwp1Bt4uhgto9GLplu"
+          echo "::notice::Injected environment variables: JWT_ENABLED=true, AUTH0_VALID_CLIENT_IDS=***"
 
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
@@ -182,6 +185,7 @@ jobs:
 
       - name: Capture failure diagnostics
         if: failure() && steps.wait-stable.conclusion != 'success'
+        continue-on-error: true
         run: |
           echo "::error::Service failed to stabilize. Capturing diagnostics..."
 

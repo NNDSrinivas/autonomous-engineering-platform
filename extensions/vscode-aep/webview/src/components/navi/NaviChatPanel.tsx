@@ -109,6 +109,16 @@ import {
   toggleSessionStarWithBackend,
   toggleSessionArchiveWithBackend,
   toggleSessionPinWithBackend,
+  // Checkpoint persistence for interrupted work recovery
+  createCheckpoint,
+  updateCheckpointProgress,
+  syncCheckpointToBackend,
+  markCompletedOnBackend,
+  markInterruptedOnBackend,
+  getInterruptedCheckpointsFromBackend,
+  initCheckpointSync,
+  type StreamingState,
+  type TaskCheckpoint,
 } from "../../utils/chatSessions";
 import { QuickActionsBar, type QuickAction } from "./QuickActionsBar";
 import { AttachmentToolbar } from "./AttachmentToolbar";
@@ -160,6 +170,7 @@ type NarrativeLine = {
   text: string;
   timestamp: string;
   _sequence?: number; // Shared ordering with activity events
+  actionIndex?: number | null;
 };
 
 export interface ChatMessage {
@@ -482,6 +493,7 @@ type ActivityEvent = {
   purpose?: string; // Why this command/action is being run
   explanation?: string; // What the result means
   nextAction?: string; // What will happen next
+  actionIndex?: number | null; // Correlates events by planned action step
 };
 
 type ActivityFile = {
@@ -1703,8 +1715,37 @@ export default function NaviChatPanel({
     setHistoryOpen(false);
   }, [openSettingsTrigger]);
 
+  // Initialize checkpoint sync configuration on mount
+  useEffect(() => {
+    const apiBaseUrl = resolveBackendBase();
+    initCheckpointSync({
+      apiBaseUrl,
+      userId: USER_ID,
+      onError: (error) => {
+        console.error('[Checkpoint] Sync error:', error);
+      },
+    });
+    console.log('[Checkpoint] Sync config initialized:', { apiBaseUrl, userId: USER_ID });
+  }, []);
+
+  // Check for interrupted checkpoints on mount
+  useEffect(() => {
+    const checkInterrupted = async () => {
+      try {
+        const interrupted = await getInterruptedCheckpointsFromBackend();
+        if (interrupted && interrupted.length > 0) {
+          setInterruptedCheckpoint(interrupted[0]); // Show most recent
+        }
+      } catch (err) {
+        console.warn('[Checkpoint] Failed to fetch interrupted checkpoints:', err);
+      }
+    };
+    checkInterrupted();
+  }, []);
+
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [interruptedCheckpoint, setInterruptedCheckpoint] = useState<TaskCheckpoint | null>(null);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<AttachmentChipData[]>([]);
   const [sending, setSending] = useState(false);
@@ -2012,6 +2053,14 @@ export default function NaviChatPanel({
     messagesRef.current = messages;
   }, [messages]);
 
+  // Restore sessionId from VSCode webview state for resume after refresh
+  type WebviewState = { sessionId?: string };
+  useEffect(() => {
+    const state = vscodeApi.getState() as WebviewState | undefined;
+    if (state?.sessionId) {
+      persistedSessionIdRef.current = state.sessionId;
+    }
+  }, []);
 
   // Wrapper to set activity events AND sync ref immediately (before React renders)
   const setActivityEventsWithRef = useCallback((updater: React.SetStateAction<ActivityEvent[]>) => {
@@ -2029,6 +2078,79 @@ export default function NaviChatPanel({
       narrativeLinesRef.current = next; // Sync ref immediately
       return next;
     });
+  }, []);
+
+  // Handle stream interruption with flush-first pattern
+  const handleStreamInterruption = useCallback(async (messageId: string, reason: string) => {
+    // Guard against duplicate interruption footers
+    if (interruptionHandledRef.current) return;
+    interruptionHandledRef.current = true;
+
+    const sessionId = persistedSessionIdRef.current;
+    if (!sessionId) return;
+
+    // Get latest content from refs (not state)
+    const interruptedMessage = messagesRef.current.find(m => m.id === messageId);
+    const interruptedContent = interruptedMessage?.content || '';
+
+    // Cap payload for interruption sync
+    const MAX_ACTIVITIES = 100;
+    const MAX_NARRATIVES = 100;
+    const MAX_THINKING_CHARS = 4000;
+
+    const streamingState: StreamingState = {
+      sessionId,
+      messageId,
+      content: interruptedContent,
+      activities: (activityEventsRef.current || []).slice(-MAX_ACTIVITIES),
+      narratives: (narrativeLinesRef.current || []).slice(-MAX_NARRATIVES),
+      thinking: (accumulatedThinkingRef.current || '').slice(-MAX_THINKING_CHARS),
+      startedAt: interruptedMessage?.createdAt || nowIso(),
+      lastUpdatedAt: nowIso(),
+      isComplete: false,
+    };
+
+    // Step 1: Update local checkpoint with latest content
+    const updated = updateCheckpointProgress(sessionId, {
+      partialContent: interruptedContent,
+      streamingState,
+      status: 'interrupted',
+    });
+    if (!updated) return;
+
+    // Step 2: Sync to backend (AWAIT to ensure content is saved)
+    let syncSuccess = false;
+    try {
+      syncSuccess = await syncCheckpointToBackend(updated);
+      if (syncSuccess) {
+        hasBackendSyncRef.current = true;
+        lastConfirmedAtRef.current = Date.now();
+      }
+    } catch (err) {
+      console.error('[Checkpoint] Interruption sync failed:', err);
+    }
+
+    // Step 3: ONLY AFTER successful sync, mark interrupted on backend
+    if (syncSuccess) {
+      try {
+        await markInterruptedOnBackend(sessionId, reason);
+      } catch (err) {
+        console.error('[Checkpoint] Mark interrupted failed:', err);
+      }
+    }
+
+    // Step 4: Show truthful UI message
+    const truthfulFooter = syncSuccess
+      ? '\n\n---\n*Connection was interrupted. Your progress has been saved.*'
+      : '\n\n---\n*Connection was interrupted. Unable to save progress — please check your connection.*';
+
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? { ...m, content: m.content + truthfulFooter, isStreaming: false }
+          : m
+      )
+    );
   }, []);
 
   // Rotating placeholder effect
@@ -2090,6 +2212,15 @@ export default function NaviChatPanel({
   const currentActionMessageIdRef = useRef<string | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const lastLiveProgressRef = useRef<string>("");
+
+  // Checkpoint state tracking for interrupted work persistence
+  const hasBackendSyncRef = useRef(false);
+  const lastSyncTimeRef = useRef(0);
+  const pendingSyncRef = useRef(false);
+  const lastUserMessageRef = useRef('');
+  const persistedSessionIdRef = useRef<string | null>(null);
+  const interruptionHandledRef = useRef(false);
+  const lastConfirmedAtRef = useRef<number | null>(null);
   const commandStateRef = useRef(
     new Map<
       string,
@@ -2463,7 +2594,8 @@ export default function NaviChatPanel({
   const appendNarrativeChunk = (
     existing: NarrativeLine[],
     text: string,
-    timestamp: string
+    timestamp: string,
+    actionIndex?: number | null
   ): NarrativeLine[] => {
     if (!text) return existing;
     activitySequenceRef.current += 1;
@@ -2472,6 +2604,7 @@ export default function NaviChatPanel({
       text,
       timestamp,
       _sequence: activitySequenceRef.current,
+      actionIndex: typeof actionIndex === "number" ? actionIndex : null,
     };
     // Keep recent stream chunks bounded to avoid long-run UI slowdowns.
     return [...existing, nextChunk].slice(-400);
@@ -4045,6 +4178,30 @@ export default function NaviChatPanel({
           rekeyPerActionOutputs(placeholderId, newMessageId);
         }
         currentActionMessageIdRef.current = newMessageId;
+
+        // Create checkpoint for interrupted work recovery
+        // Use stable sessionId (conversation-scoped, not time-based)
+        const newSessionId = globalThis.crypto?.randomUUID?.() ??
+          `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const sessionId = persistedSessionIdRef.current ??= newSessionId;
+
+        // Persist to VSCode webview state for resume-after-refresh
+        vscodeApi.setState({ ...(vscodeApi.getState() || {}), sessionId });
+
+        // Reset checkpoint state for new streaming message
+        hasBackendSyncRef.current = false;
+        pendingSyncRef.current = false;
+        lastSyncTimeRef.current = 0;
+        interruptionHandledRef.current = false;
+
+        // Create checkpoint with correct signature: (sessionId, messageId, userMessage, steps)
+        createCheckpoint(
+          sessionId,
+          newMessageId,
+          lastUserMessageRef.current || '',
+          []  // steps - empty for streaming
+        );
+
         // Don't clear activities here - they're already being populated from backend streaming
         // Activities will be cleared after response completes (in botMessageEnd handler)
         return;
@@ -4052,6 +4209,65 @@ export default function NaviChatPanel({
 
       // Handle streaming message chunk - update the streaming message content
       if (msg.type === "botMessageChunk" && msg.messageId && msg.fullContent !== undefined) {
+        // Periodic checkpoint sync (every 5 seconds) - ONLY IF SESSION EXISTS
+        const sessionId = persistedSessionIdRef.current;
+
+        // CRITICAL: Don't return early - only skip sync block if no session
+        // (Otherwise UI updates break if chunk arrives before start)
+        if (sessionId) {
+          const now = Date.now();
+          if (!pendingSyncRef.current && now - lastSyncTimeRef.current > 5000) {
+            pendingSyncRef.current = true;
+            lastSyncTimeRef.current = now;
+
+            // Cap payload growth to prevent DB/network bloat
+            const MAX_ACTIVITIES = 100;
+            const MAX_NARRATIVES = 100;
+            const MAX_THINKING_CHARS = 4000;
+
+            const activities = (activityEventsRef.current || []).slice(-MAX_ACTIVITIES);
+            const narratives = (narrativeLinesRef.current || []).slice(-MAX_NARRATIVES);
+            const thinking = (accumulatedThinkingRef.current || '').slice(-MAX_THINKING_CHARS);
+
+            // Build streaming state object
+            const streamingState: StreamingState = {
+              sessionId,
+              messageId: msg.messageId,
+              content: msg.fullContent || '',
+              activities,
+              narratives,
+              thinking,
+              startedAt: messagesRef.current.find(m => m.id === msg.messageId)?.createdAt || nowIso(),
+              lastUpdatedAt: nowIso(),
+              isComplete: false,
+            };
+
+            // Update local checkpoint
+            const updated = updateCheckpointProgress(sessionId, {
+              partialContent: msg.fullContent,
+              streamingState,
+            });
+
+            // Sync to backend
+            if (updated) {
+              syncCheckpointToBackend(updated)
+                .then((success) => {
+                  // Ever-confirmed pattern (don't overwrite true with false)
+                  if (success) {
+                    hasBackendSyncRef.current = true;
+                    lastConfirmedAtRef.current = Date.now();
+                  }
+                })
+                .finally(() => {
+                  pendingSyncRef.current = false;
+                });
+            } else {
+              pendingSyncRef.current = false;
+            }
+          }
+        }
+
+        // setMessages() always runs (outside sync block) - existing code
         setMessages((prev) =>
           prev.map((m) =>
             m.id === msg.messageId
@@ -4077,6 +4293,54 @@ export default function NaviChatPanel({
           const currentNarratives = [...narrativeLinesRef.current];
           const currentThinking = accumulatedThinkingRef.current;
           console.log('[NaviChatPanel] 📦 Storing for message:', currentActivities.length, 'activities,', currentNarratives.length, 'narratives,', currentThinking.length, 'chars thinking');
+
+          // Final checkpoint sync for completed message
+          const sessionId = persistedSessionIdRef.current;
+          if (sessionId) {
+            // Get final content from messagesRef (use ref for latest value)
+            const finalMessage = messagesRef.current.find(m => m.id === messageId);
+            const finalContent = finalMessage?.content || msgText || '';
+
+            // Cap payload for final sync too
+            const MAX_ACTIVITIES = 100;
+            const MAX_NARRATIVES = 100;
+            const MAX_THINKING_CHARS = 4000;
+
+            const finalStreamingState: StreamingState = {
+              sessionId,
+              messageId,
+              content: finalContent,
+              activities: currentActivities.slice(-MAX_ACTIVITIES),
+              narratives: currentNarratives.slice(-MAX_NARRATIVES),
+              thinking: currentThinking.slice(-MAX_THINKING_CHARS),
+              startedAt: finalMessage?.createdAt || nowIso(),
+              lastUpdatedAt: nowIso(),
+              isComplete: true,
+            };
+
+            // Update local checkpoint
+            const updated = updateCheckpointProgress(sessionId, {
+              status: 'completed',
+              partialContent: finalContent,
+              streamingState: finalStreamingState,
+            });
+
+            // Run async sync in background (don't block UI finalization)
+            if (updated) {
+              (async () => {
+                try {
+                  const success = await syncCheckpointToBackend(updated);
+                  if (success) {
+                    hasBackendSyncRef.current = true;
+                    lastConfirmedAtRef.current = Date.now();
+                    await markCompletedOnBackend(sessionId);
+                  }
+                } catch (err) {
+                  console.warn('[Checkpoint] Final completion sync failed:', err);
+                }
+              })();
+            }
+          }
 
           setMessages((prev) =>
             prev.map((m) =>
@@ -4674,7 +4938,7 @@ export default function NaviChatPanel({
         // Add to the live narrative stream (Claude Code-like display)
         if (narrativeText) {
           setNarrativeLines((prev) =>
-            appendNarrativeChunk(prev, narrativeText, narrativeTimestamp)
+            appendNarrativeChunk(prev, narrativeText, narrativeTimestamp, actionIndex)
           );
         }
 
@@ -4682,7 +4946,7 @@ export default function NaviChatPanel({
         if (narrativeText && actionIndex !== null) {
           updatePerActionNarratives(
             actionIndex,
-            (existing) => appendNarrativeChunk(existing, narrativeText, narrativeTimestamp)
+            (existing) => appendNarrativeChunk(existing, narrativeText, narrativeTimestamp, actionIndex)
           );
         }
         return;
@@ -4736,6 +5000,7 @@ export default function NaviChatPanel({
           label: "Running command",
           detail: command,
           commandId: terminalId,
+          actionIndex,
           status: "running",
           timestamp: nowIso(),
         };
@@ -6735,6 +7000,12 @@ export default function NaviChatPanel({
               case "error":
                 // Handle error
                 console.error("Streaming error:", data.message);
+                if (currentActionMessageIdRef.current) {
+                  handleStreamInterruption(
+                    currentActionMessageIdRef.current,
+                    data.message || 'Streaming error'
+                  );
+                }
                 reject(new Error(data.message));
                 break;
             }
@@ -6745,6 +7016,12 @@ export default function NaviChatPanel({
 
         onerror(err) {
           console.error("Stream connection error:", err);
+          if (currentActionMessageIdRef.current) {
+            handleStreamInterruption(
+              currentActionMessageIdRef.current,
+              err instanceof Error ? err.message : 'Stream connection error'
+            );
+          }
           reject(err);
           throw err; // Stop retrying
         },
@@ -7250,6 +7527,10 @@ export default function NaviChatPanel({
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
+
+    // Store user message for checkpoint creation
+    lastUserMessageRef.current = text;
+
     const editTargetId = !overrideText ? editingMessageId : null;
     const interruptedContext =
       interruptedRunRef.current ||
@@ -10097,6 +10378,86 @@ export default function NaviChatPanel({
         </div>
       )}
 
+      {/* Resume Banner for Interrupted Checkpoints */}
+      {interruptedCheckpoint && (
+        <div className="interrupted-checkpoint-banner" style={{
+          padding: '12px 16px',
+          backgroundColor: '#fff3cd',
+          borderLeft: '4px solid #ffc107',
+          marginBottom: '16px',
+          borderRadius: '4px',
+        }}>
+          <div className="banner-content" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span className="banner-icon">⚠️</span>
+            <span className="banner-text" style={{ flex: 1 }}>
+              Previous conversation was interrupted.
+              {interruptedCheckpoint.partialContent && (
+                <strong> "{interruptedCheckpoint.partialContent.slice(0, 60)}..."</strong>
+              )}
+            </span>
+            <button
+              className="resume-button"
+              style={{
+                padding: '6px 12px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              onClick={() => {
+                // Resume from checkpoint - APPEND to messages (don't prepend)
+                if (interruptedCheckpoint.streamingState) {
+                  const state = interruptedCheckpoint.streamingState;
+
+                  setMessages((prev) => [
+                    ...prev,  // Keep existing messages
+                    {
+                      id: state.messageId,
+                      role: 'assistant' as ChatRole,
+                      content: state.content,
+                      createdAt: state.startedAt,
+                      isStreaming: false,
+                    },
+                  ]);
+
+                  // Set sessionId so new messages use same session
+                  persistedSessionIdRef.current = interruptedCheckpoint.sessionId;
+
+                  // Persist to vscode state so refresh after resume keeps same session
+                  vscodeApi.setState({
+                    ...(vscodeApi.getState() || {}),
+                    sessionId: interruptedCheckpoint.sessionId,
+                  });
+                }
+
+                // Hide banner (view-only - don't delete checkpoint unless API exists)
+                setInterruptedCheckpoint(null);
+              }}
+            >
+              Resume
+            </button>
+            <button
+              className="dismiss-button"
+              style={{
+                padding: '6px 12px',
+                backgroundColor: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+              onClick={() => {
+                // Just hide banner (optional: mark completed/failed on backend later)
+                setInterruptedCheckpoint(null);
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {authRequired && (
         <div className="navi-auth-required">
           <div className="navi-auth-required-icon">
@@ -11256,33 +11617,77 @@ export default function NaviChatPanel({
 
                       // Build unified stream sorted by shared sequence (fallback to timestamp)
                       type StreamItem =
-                        | { itemType: 'narrative'; id: string; text: string; timestamp: string; sequence: number }
-                        | { itemType: 'activity'; data: ActivityEvent; timestamp: string; sequence: number };
+                        | {
+                            itemType: 'narrative';
+                            id: string;
+                            text: string;
+                            timestamp: string;
+                            sequence: number;
+                            actionIndex?: number | null;
+                            sourceIndex: number;
+                            mixedIndex: number;
+                          }
+                        | {
+                            itemType: 'activity';
+                            data: ActivityEvent;
+                            timestamp: string;
+                            sequence: number;
+                            actionIndex?: number | null;
+                            sourceIndex: number;
+                            mixedIndex: number;
+                          };
 
                       const allItems: StreamItem[] = [
-                        ...filteredNarratives.map(n => ({
+                        ...filteredNarratives.map((n, idx) => ({
                           itemType: 'narrative' as const,
                           id: n.id,
                           text: n.text,
                           timestamp: n.timestamp,
                           sequence: n._sequence || 0,
+                          actionIndex: n.actionIndex,
+                          sourceIndex: idx,
+                          mixedIndex: idx * 2,
                         })),
-                        ...filteredActivities.map(a => ({
+                        ...filteredActivities.map((a, idx) => ({
                           itemType: 'activity' as const,
                           data: a,
                           timestamp: a.timestamp,
                           sequence: a._sequence || 0,
+                          actionIndex: a.actionIndex,
+                          sourceIndex: idx,
+                          mixedIndex: idx * 2 + 1,
                         })),
                       ];
 
                       // Sort by sequence first (cross-stream stable order), then timestamp.
                       allItems.sort((a, b) => {
-                        if (a.sequence > 0 || b.sequence > 0) {
-                          if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+                        const hasSeqA = a.sequence > 0;
+                        const hasSeqB = b.sequence > 0;
+
+                        // Primary: explicit sequence from backend stream.
+                        if (hasSeqA && hasSeqB && a.sequence !== b.sequence) {
+                          return a.sequence - b.sequence;
                         }
-                        const timeA = a.timestamp;
-                        const timeB = b.timestamp;
-                        return new Date(timeA).getTime() - new Date(timeB).getTime();
+
+                        // Secondary: timestamp.
+                        const timeA = new Date(a.timestamp).getTime();
+                        const timeB = new Date(b.timestamp).getTime();
+                        if (!Number.isNaN(timeA) && !Number.isNaN(timeB) && timeA !== timeB) {
+                          return timeA - timeB;
+                        }
+
+                        // Tertiary: prefer items that have explicit sequence.
+                        if (hasSeqA !== hasSeqB) {
+                          return hasSeqA ? -1 : 1;
+                        }
+
+                        // Final fallback: interleave by source-local index to avoid
+                        // "all narratives first / all commands last" clumping.
+                        if (a.mixedIndex !== b.mixedIndex) {
+                          return a.mixedIndex - b.mixedIndex;
+                        }
+
+                        return 0;
                       });
 
                       // Combine consecutive narrative items to prevent broken markdown patterns
@@ -11333,6 +11738,12 @@ export default function NaviChatPanel({
                             return true;
                           })
                         : mergedItems;
+                      const hasRenderableNarratives = streamItems.some(
+                        (item) =>
+                          item.itemType === 'narrative' &&
+                          typeof item.text === 'string' &&
+                          item.text.trim().length > 0
+                      );
 
                       // Render activity item helper
                       const renderActivityItem = (evt: ActivityEvent) => {
@@ -11878,6 +12289,17 @@ export default function NaviChatPanel({
 
                       return (
                         <div data-testid="ai-response-text" className="navi-interleaved-stream">
+                          {(() => {
+                            const shouldRenderFallbackContentFirst =
+                              !hasRenderableNarratives &&
+                              Boolean(m.content && m.content.trim());
+                            if (!shouldRenderFallbackContentFirst) return null;
+                            return (
+                              <div className="navi-narrative-chunk">
+                                {renderMessageContent(m)}
+                              </div>
+                            );
+                          })()}
                           {explorationSummary && (() => {
                             const explorationKey = `${m.id}-explore`;
                             const isExpanded = expandedExplorationIds.has(explorationKey);
@@ -11949,12 +12371,6 @@ export default function NaviChatPanel({
                               return renderActivityItem(item.data);
                             }
                           })}
-                          {/* If no narratives but we have message content, render it */}
-                          {narrativesToUse.length === 0 && m.content && (
-                            <div className="navi-narrative-chunk">
-                              {renderMessageContent(m)}
-                            </div>
-                          )}
                         </div>
                       );
                     })()}
@@ -12433,35 +12849,69 @@ export default function NaviChatPanel({
                 {/* Claude Code-style stream - interleave narratives and activities by sequence */}
                 {(() => {
                   // Combine narratives and activities into a single sorted stream
-                  type StreamItem =
-                    | { type: 'narrative'; id: string; text: string; timestamp: string; sequence: number }
-                    | { type: 'activity'; data: typeof activityEvents[0]; timestamp: string; sequence: number };
+                    type StreamItem =
+                      | {
+                          type: 'narrative';
+                          id: string;
+                          text: string;
+                          timestamp: string;
+                          sequence: number;
+                          actionIndex?: number | null;
+                          sourceIndex: number;
+                          mixedIndex: number;
+                        }
+                      | {
+                          type: 'activity';
+                          data: typeof activityEvents[0];
+                          timestamp: string;
+                          sequence: number;
+                          actionIndex?: number | null;
+                          sourceIndex: number;
+                          mixedIndex: number;
+                        };
 
-                  const allItems: StreamItem[] = [
-                    ...narrativeLines.map(n => ({
-                      type: 'narrative' as const,
-                      id: n.id,
-                      text: n.text,
-                      timestamp: n.timestamp,
-                      sequence: n._sequence || 0,
-                    })),
-                    ...activityEvents.map(a => ({
-                      type: 'activity' as const,
-                      data: a,
-                      timestamp: a.timestamp,
-                      sequence: a._sequence || 0,
-                    })),
-                  ];
+                    const allItems: StreamItem[] = [
+                      ...narrativeLines.map((n, idx) => ({
+                        type: 'narrative' as const,
+                        id: n.id,
+                        text: n.text,
+                        timestamp: n.timestamp,
+                        sequence: n._sequence || 0,
+                        actionIndex: n.actionIndex,
+                        sourceIndex: idx,
+                        mixedIndex: idx * 2,
+                      })),
+                      ...activityEvents.map((a, idx) => ({
+                        type: 'activity' as const,
+                        data: a,
+                        timestamp: a.timestamp,
+                        sequence: a._sequence || 0,
+                        actionIndex: a.actionIndex,
+                        sourceIndex: idx,
+                        mixedIndex: idx * 2 + 1,
+                      })),
+                    ];
 
-                  // Sort by sequence first, then timestamp fallback
-                  allItems.sort((a, b) => {
-                    if (a.sequence > 0 || b.sequence > 0) {
-                      if (a.sequence !== b.sequence) return a.sequence - b.sequence;
-                    }
-                    const timeA = a.timestamp;
-                    const timeB = b.timestamp;
-                    return new Date(timeA).getTime() - new Date(timeB).getTime();
-                  });
+                    // Sort by sequence first, then timestamp fallback
+                    allItems.sort((a, b) => {
+                      const hasSeqA = a.sequence > 0;
+                      const hasSeqB = b.sequence > 0;
+                      if (hasSeqA && hasSeqB && a.sequence !== b.sequence) {
+                        return a.sequence - b.sequence;
+                      }
+                      const timeA = new Date(a.timestamp).getTime();
+                      const timeB = new Date(b.timestamp).getTime();
+                      if (!Number.isNaN(timeA) && !Number.isNaN(timeB) && timeA !== timeB) {
+                        return timeA - timeB;
+                      }
+                      if (hasSeqA !== hasSeqB) {
+                        return hasSeqA ? -1 : 1;
+                      }
+                      if (a.mixedIndex !== b.mixedIndex) {
+                        return a.mixedIndex - b.mixedIndex;
+                      }
+                      return 0;
+                    });
 
                   return allItems.map((item, idx) => {
                     if (item.type === 'narrative') {

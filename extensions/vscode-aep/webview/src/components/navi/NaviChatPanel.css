@@ -4066,60 +4066,63 @@ html.light .navi-slash-menu {
    Clean, minimal, professional design
    ======================================== */
 .navi-chat-send-btn {
-  --send-size: 40px;
+  --send-size: 34px;
 
   position: relative;
   width: var(--send-size);
   height: var(--send-size);
-  border-radius: 12px;
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--secondary));
+  border-radius: 11px;
+  border: 1px solid hsl(var(--border) / 0.9);
+  background: hsl(var(--secondary) / 0.82);
   color: hsl(var(--muted-foreground));
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.12s ease, color 0.16s ease;
   flex-shrink: 0;
   overflow: hidden;
+  box-shadow: 0 1px 6px rgba(2, 6, 23, 0.22);
 }
 
 /* Icon styling - sleek arrow */
 .navi-chat-send-btn svg {
-  width: 18px;
-  height: 18px;
-  transition: all 0.2s ease;
+  width: 15px;
+  height: 15px;
+  transition: transform 0.16s ease;
 }
 
 /* Hover state */
 .navi-chat-send-btn:not(:disabled):hover {
-  background: hsl(var(--secondary));
-  border-color: hsl(var(--primary) / 0.5);
-  color: hsl(var(--primary));
+  background: hsl(var(--secondary) / 0.96);
+  border-color: hsl(var(--primary) / 0.42);
+  color: hsl(var(--foreground));
+  box-shadow: 0 3px 10px rgba(2, 6, 23, 0.28);
 }
 
 .navi-chat-send-btn:not(:disabled):hover svg {
-  transform: translateX(2px);
+  transform: translateX(1px);
 }
 
 /* Active/pressed state */
 .navi-chat-send-btn:not(:disabled):active {
-  transform: scale(0.95);
+  transform: scale(0.97);
+  box-shadow: 0 1px 6px rgba(2, 6, 23, 0.24);
 }
 
 /* Focus state */
 .navi-chat-send-btn:not(:disabled):focus-visible {
   outline: none;
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.18), 0 2px 8px rgba(2, 6, 23, 0.26);
 }
 
 /* Ready-to-send state (when input has text) - this is the key state */
 .navi-chat-send-btn.has-input {
-  background: hsl(var(--primary));
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.9), hsl(var(--primary) / 0.84));
   border-color: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
-  box-shadow: 0 2px 8px hsl(var(--primary) / 0.3);
+  box-shadow: 0 3px 10px hsl(var(--primary) / 0.26);
 }
 
 .navi-chat-send-btn.has-input svg {
@@ -4127,44 +4130,27 @@ html.light .navi-slash-menu {
 }
 
 .navi-chat-send-btn.has-input:hover {
-  background: hsl(var(--primary) / 0.9);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px hsl(var(--primary) / 0.4);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.95), hsl(var(--primary) / 0.9));
+  box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
 }
 
 .navi-chat-send-btn.has-input:hover svg {
-  transform: translateX(3px);
+  transform: translateX(2px);
 }
 
 .navi-chat-send-btn.has-input:active {
-  transform: translateY(0) scale(0.98);
-  box-shadow: 0 1px 4px hsl(var(--primary) / 0.3);
-}
-
-/* Subtle pulse when ready - minimal animation */
-.navi-chat-send-btn.has-input::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: 13px;
-  background: hsl(var(--primary));
-  opacity: 0;
-  z-index: -1;
-  animation: sendReady 2s ease-in-out infinite;
-}
-
-@keyframes sendReady {
-  0%, 100% { opacity: 0; transform: scale(1); }
-  50% { opacity: 0.15; transform: scale(1.05); }
+  transform: scale(0.97);
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.24);
 }
 
 /* Disabled state */
 .navi-chat-send-btn:disabled {
   cursor: not-allowed;
-  opacity: 0.4;
+  opacity: 0.55;
   background: hsl(var(--muted));
   border-color: hsl(var(--border));
   color: hsl(var(--muted-foreground));
+  box-shadow: none;
 }
 
 .navi-chat-send-btn:disabled svg {
@@ -4174,49 +4160,30 @@ html.light .navi-slash-menu {
 /* Stop/Cancel button state - futuristic design */
 .navi-chat-send-btn--stop {
   background: linear-gradient(135deg,
-    hsl(0 84% 60%) 0%,
-    hsl(0 72% 51%) 100%
+    hsl(0 52% 50%) 0%,
+    hsl(0 45% 44%) 100%
   );
-  border-color: hsl(0 84% 60%);
+  border-color: hsl(0 46% 40%);
   color: white;
-  box-shadow:
-    0 2px 8px hsla(0, 84%, 60%, 0.4),
-    0 0 20px hsla(0, 84%, 60%, 0.2);
-  animation: stopPulse 1.5s ease-in-out infinite;
+  box-shadow: 0 3px 10px hsla(0, 48%, 38%, 0.28);
 }
 
 .navi-chat-send-btn--stop:hover {
   background: linear-gradient(135deg,
-    hsl(0 84% 55%) 0%,
-    hsl(0 72% 46%) 100%
+    hsl(0 55% 53%) 0%,
+    hsl(0 48% 46%) 100%
   );
-  transform: scale(1.05);
-  box-shadow:
-    0 4px 16px hsla(0, 84%, 60%, 0.5),
-    0 0 30px hsla(0, 84%, 60%, 0.3);
+  box-shadow: 0 4px 12px hsla(0, 50%, 42%, 0.3);
 }
 
 .navi-chat-send-btn--stop:active {
-  transform: scale(0.95);
+  transform: scale(0.96);
 }
 
 .navi-chat-send-btn--stop svg {
-  width: 16px;
-  height: 16px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
-}
-
-@keyframes stopPulse {
-  0%, 100% {
-    box-shadow:
-      0 2px 8px hsla(0, 84%, 60%, 0.4),
-      0 0 20px hsla(0, 84%, 60%, 0.2);
-  }
-  50% {
-    box-shadow:
-      0 2px 12px hsla(0, 84%, 60%, 0.6),
-      0 0 30px hsla(0, 84%, 60%, 0.3);
-  }
+  width: 12px;
+  height: 12px;
+  filter: none;
 }
 
 .navi-chat-mode-row {
@@ -5527,16 +5494,6 @@ html.light .navi-slash-menu {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.navi-chat-send-btn {
-  position: relative;
-  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.35);
-}
-
-.navi-chat-send-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 16px 32px rgba(37, 99, 235, 0.4);
 }
 
 .navi-terminal-panel {
@@ -8641,23 +8598,57 @@ html.light .navi-terminal-output {
 .light .navi-chat-send-btn,
 :root.light .navi-chat-send-btn,
 html.light .navi-chat-send-btn {
-  background: linear-gradient(135deg, hsl(190 85% 42%), hsl(262 75% 55%)) !important;
-  border: none !important;
-  box-shadow: 0 4px 12px hsla(190, 85%, 42%, 0.3) !important;
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #475569 !important;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.12) !important;
 }
 
 .light .navi-chat-send-btn:hover:not(:disabled),
 :root.light .navi-chat-send-btn:hover:not(:disabled),
 html.light .navi-chat-send-btn:hover:not(:disabled) {
-  box-shadow: 0 8px 20px hsla(190, 85%, 42%, 0.4) !important;
-  transform: translateY(-2px);
+  background: #f1f5f9 !important;
+  border-color: #60a5fa !important;
+  color: #1e293b !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.18) !important;
 }
 
 .light .navi-chat-send-btn:active:not(:disabled),
 :root.light .navi-chat-send-btn:active:not(:disabled),
 html.light .navi-chat-send-btn:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px hsla(190, 85%, 42%, 0.3) !important;
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.14) !important;
+}
+
+.light .navi-chat-send-btn.has-input,
+:root.light .navi-chat-send-btn.has-input,
+html.light .navi-chat-send-btn.has-input {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  border-color: #1d4ed8 !important;
+  color: #eff6ff !important;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.25) !important;
+}
+
+.light .navi-chat-send-btn.has-input:hover:not(:disabled),
+:root.light .navi-chat-send-btn.has-input:hover:not(:disabled),
+html.light .navi-chat-send-btn.has-input:hover:not(:disabled) {
+  background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+}
+
+.light .navi-chat-send-btn--stop,
+:root.light .navi-chat-send-btn--stop,
+html.light .navi-chat-send-btn--stop {
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 10px rgba(220, 38, 38, 0.22) !important;
+}
+
+.light .navi-chat-send-btn--stop:hover:not(:disabled),
+:root.light .navi-chat-send-btn--stop:hover:not(:disabled),
+html.light .navi-chat-send-btn--stop:hover:not(:disabled) {
+  background: linear-gradient(135deg, #f87171, #dc2626) !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.24) !important;
 }
 
 .light .navi-chat-send-btn:disabled,

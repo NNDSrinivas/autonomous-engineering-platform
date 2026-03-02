@@ -15415,6 +15415,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const assetsPath = vscode.Uri.file(path.join(distPath, 'assets'));
       const assetsUri = webview.asWebviewUri(assetsPath);
 
+      const chunksPath = vscode.Uri.file(path.join(distPath, 'chunks'));
+      const chunksUri = webview.asWebviewUri(chunksPath);
+      console.log('[AEP] Chunks URI:', chunksUri.toString());
+
       const jsPath = vscode.Uri.file(path.join(distPath, 'panel.js'));
       const jsUri = webview.asWebviewUri(jsPath);
       let buildVersion = String(Date.now());
@@ -15440,8 +15444,13 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       html = html
         .replace('./panel.js', `${jsUri.toString()}?v=${buildVersion}`)
         .replace('./assets/', `${assetsUri.toString()}/`)
+        .replace('./chunks/', `${chunksUri.toString()}/`)
         .replace(
           new RegExp(`(href|src)=\"(${assetsUri.toString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/[^\"']+)\"`, 'g'),
+          `$1="$2?v=${buildVersion}"`
+        )
+        .replace(
+          new RegExp(`(href|src)=\"(${chunksUri.toString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/[^\"']+)\"`, 'g'),
           `$1="$2?v=${buildVersion}"`
         )
         .replace('<head>', `<head>

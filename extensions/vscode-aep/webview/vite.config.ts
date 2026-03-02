@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
@@ -7,11 +7,10 @@ export default defineConfig({
   root: ".",
   base: "",
   server: {
+    port: 3008,
     fs: {
-      // Only allow access to shared directory, not the entire repo root
-      allow: [
-        resolve(__dirname, "../../../shared"),
-      ],
+      // Allow access to entire workspace
+      allow: [searchForWorkspaceRoot(process.cwd())],
     },
   },
   resolve: {

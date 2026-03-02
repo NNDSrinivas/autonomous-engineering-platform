@@ -162,10 +162,10 @@ jobs:
           echo "::notice::Service is stable"
 
       - name: Capture failure diagnostics
-        if: failure() && steps.wait-stable.conclusion != 'success'
+        if: failure() && steps.deploy.outcome == 'success' && steps.wait-stable.conclusion != 'success'
         continue-on-error: true
         run: |
-          echo "::error::Service failed to stabilize. Capturing diagnostics..."
+          echo "::error::Service failed to stabilize. Capturing ECS diagnostics..."
 
           # Get service events (last 10)
           echo "=== ECS Service Events ==="

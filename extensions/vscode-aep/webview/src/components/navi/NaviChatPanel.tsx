@@ -11637,39 +11637,44 @@ export default function NaviChatPanel({
                             mixedIndex: number;
                           };
 
-                      const allItems: StreamItem[] = [
-                        ...filteredNarratives.map((n, idx) => ({
-                          itemType: 'narrative' as const,
-                          id: n.id,
-                          text: n.text,
-                          timestamp: n.timestamp,
-                          sequence: n._sequence || 0,
-                          actionIndex: n.actionIndex,
-                          sourceIndex: idx,
-                          mixedIndex: idx * 2,
-                        })),
-                        ...filteredActivities.map((a, idx) => ({
-                          itemType: 'activity' as const,
-                          data: a,
-                          timestamp: a.timestamp,
-                          sequence: a._sequence || 0,
-                          actionIndex: a.actionIndex,
-                          sourceIndex: idx,
-                          mixedIndex: idx * 2 + 1,
-                        })),
-                      ];
+                      // Build unified stream preserving chronological order
+                      // Map narratives and activities with metadata
+                      const narrativeItems = filteredNarratives.map((n, idx) => ({
+                        itemType: 'narrative' as const,
+                        id: n.id,
+                        text: n.text,
+                        timestamp: n.timestamp,
+                        sequence: n._sequence || 0,
+                        actionIndex: n.actionIndex,
+                        sourceIndex: idx,
+                        mixedIndex: idx,
+                      }));
 
-                      // Sort by sequence first (cross-stream stable order), then timestamp.
+                      const activityItems = filteredActivities.map((a, idx) => ({
+                        itemType: 'activity' as const,
+                        data: a,
+                        timestamp: a.timestamp,
+                        sequence: a._sequence || 0,
+                        actionIndex: a.actionIndex,
+                        sourceIndex: idx,
+                        mixedIndex: idx,
+                      }));
+
+                      // Merge both arrays and sort by sequence/timestamp for chronological order
+                      const allItems: StreamItem[] = [...narrativeItems, ...activityItems];
+
                       allItems.sort((a, b) => {
                         const hasSeqA = a.sequence > 0;
                         const hasSeqB = b.sequence > 0;
 
-                        // Primary: explicit sequence from backend stream.
+                        // Primary: explicit sequence from backend stream (chronological order).
+                        // Both narratives and activities share the same sequence counter,
+                        // so this creates the true chronological interleave.
                         if (hasSeqA && hasSeqB && a.sequence !== b.sequence) {
                           return a.sequence - b.sequence;
                         }
 
-                        // Secondary: timestamp.
+                        // Secondary: timestamp (for items without sequence numbers).
                         const timeA = new Date(a.timestamp).getTime();
                         const timeB = new Date(b.timestamp).getTime();
                         if (!Number.isNaN(timeA) && !Number.isNaN(timeB) && timeA !== timeB) {
@@ -11681,13 +11686,14 @@ export default function NaviChatPanel({
                           return hasSeqA ? -1 : 1;
                         }
 
-                        // Final fallback: interleave by source-local index to avoid
-                        // "all narratives first / all commands last" clumping.
-                        if (a.mixedIndex !== b.mixedIndex) {
-                          return a.mixedIndex - b.mixedIndex;
+                        // Final fallback: stable sort by preserving relative order within each type
+                        // When all else is equal, maintain the order they appeared in their source arrays
+                        if (a.itemType !== b.itemType) {
+                          // If types differ and sequence/timestamp can't disambiguate,
+                          // we have no way to know true order - maintain array concat order
+                          return a.itemType === 'narrative' ? -1 : 1;
                         }
-
-                        return 0;
+                        return a.sourceIndex - b.sourceIndex;
                       });
 
                       // Combine consecutive narrative items to prevent broken markdown patterns
@@ -12870,47 +12876,57 @@ export default function NaviChatPanel({
                           mixedIndex: number;
                         };
 
-                    const allItems: StreamItem[] = [
-                      ...narrativeLines.map((n, idx) => ({
-                        type: 'narrative' as const,
-                        id: n.id,
-                        text: n.text,
-                        timestamp: n.timestamp,
-                        sequence: n._sequence || 0,
-                        actionIndex: n.actionIndex,
-                        sourceIndex: idx,
-                        mixedIndex: idx * 2,
-                      })),
-                      ...activityEvents.map((a, idx) => ({
-                        type: 'activity' as const,
-                        data: a,
-                        timestamp: a.timestamp,
-                        sequence: a._sequence || 0,
-                        actionIndex: a.actionIndex,
-                        sourceIndex: idx,
-                        mixedIndex: idx * 2 + 1,
-                      })),
-                    ];
+                    // Map narratives and activities with metadata
+                    const narrativeItems = narrativeLines.map((n, idx) => ({
+                      type: 'narrative' as const,
+                      id: n.id,
+                      text: n.text,
+                      timestamp: n.timestamp,
+                      sequence: n._sequence || 0,
+                      actionIndex: n.actionIndex,
+                      sourceIndex: idx,
+                      mixedIndex: idx,
+                    }));
 
-                    // Sort by sequence first, then timestamp fallback
+                    const activityItems = activityEvents.map((a, idx) => ({
+                      type: 'activity' as const,
+                      data: a,
+                      timestamp: a.timestamp,
+                      sequence: a._sequence || 0,
+                      actionIndex: a.actionIndex,
+                      sourceIndex: idx,
+                      mixedIndex: idx,
+                    }));
+
+                    // Merge and sort by sequence/timestamp for chronological order
+                    const allItems: StreamItem[] = [...narrativeItems, ...activityItems];
+
                     allItems.sort((a, b) => {
                       const hasSeqA = a.sequence > 0;
                       const hasSeqB = b.sequence > 0;
+
+                      // Primary: sequence number (chronological order)
                       if (hasSeqA && hasSeqB && a.sequence !== b.sequence) {
                         return a.sequence - b.sequence;
                       }
+
+                      // Secondary: timestamp
                       const timeA = new Date(a.timestamp).getTime();
                       const timeB = new Date(b.timestamp).getTime();
                       if (!Number.isNaN(timeA) && !Number.isNaN(timeB) && timeA !== timeB) {
                         return timeA - timeB;
                       }
+
+                      // Tertiary: prefer items with explicit sequence
                       if (hasSeqA !== hasSeqB) {
                         return hasSeqA ? -1 : 1;
                       }
-                      if (a.mixedIndex !== b.mixedIndex) {
-                        return a.mixedIndex - b.mixedIndex;
+
+                      // Final fallback: stable sort within each type
+                      if (a.type !== b.type) {
+                        return a.type === 'narrative' ? -1 : 1;
                       }
-                      return 0;
+                      return a.sourceIndex - b.sourceIndex;
                     });
 
                   return allItems.map((item, idx) => {

@@ -14937,3 +14937,29 @@ html.light .navi-user-message-toggle {
   font-size: 10px;
   line-height: 1.35;
 }
+/* Command Syntax Highlighting in Consent Dialog */
+.navi-cmd-command {
+  color: #c678dd; /* Purple for commands */
+  font-weight: 500;
+}
+
+.navi-cmd-flag {
+  color: #56b6c2; /* Cyan for flags */
+}
+
+.navi-cmd-path {
+  color: #98c379; /* Green for paths */
+}
+
+.navi-cmd-operator {
+  color: #e5c07b; /* Yellow for operators */
+  font-weight: 600;
+}
+
+.navi-cmd-string {
+  color: #d19a66; /* Orange for strings */
+}
+
+.navi-cmd-normal {
+  color: #d1e8ff; /* Light blue for normal text */
+}

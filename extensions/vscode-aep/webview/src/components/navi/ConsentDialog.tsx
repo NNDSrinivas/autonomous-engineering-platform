@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ShieldCheck, ShieldX, TerminalSquare } from "lucide-react";
+import { AlertTriangle, Settings, ShieldCheck, ShieldX, TerminalSquare } from "lucide-react";
 
 // Parse command into colored segments for syntax highlighting
 function parseCommand(cmd: string): Array<{ text: string; type: 'command' | 'flag' | 'path' | 'operator' | 'string' | 'normal' }> {
@@ -273,6 +273,27 @@ export const ConsentDialog: React.FC<ConsentDialogProps> = ({ consent, onDecisio
           </button>
         </div>
       )}
+
+      {/* Settings button - always visible */}
+      <div className="navi-inline-consent__settings">
+        <button
+          type="button"
+          className="navi-inline-consent__settings-btn"
+          onClick={() => {
+            // Open consent preferences in settings
+            if (typeof window !== 'undefined' && (window as any).vscode) {
+              (window as any).vscode.postMessage({
+                type: 'openSettings',
+                section: 'consent-preferences'
+              });
+            }
+          }}
+          title="Manage auto-approve preferences"
+        >
+          <Settings className="h-3.5 w-3.5" />
+          <span>Manage preferences</span>
+        </button>
+      </div>
     </div>
   );
 };

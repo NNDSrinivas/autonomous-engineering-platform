@@ -1918,6 +1918,11 @@ class AutonomousAgent:
         # Initialize consent service for preferences and audit logging
         self.consent_service = get_consent_service(db=self.db_session)
 
+        # Event sequence counter for strict chronological ordering
+        # This ensures events are displayed in the correct order regardless of timestamps
+        self._event_sequence_counter = 0
+        self._sequence_lock = asyncio.Lock()
+
     async def _is_cancel_requested(self) -> bool:
         if not self._cancel_check:
             return False
@@ -1926,6 +1931,21 @@ class AutonomousAgent:
         except Exception as exc:
             logger.warning("[AutonomousAgent] Cancel-check callback failed: %s", exc)
             return False
+
+    async def _get_next_sequence(self) -> int:
+        """
+        Get next event sequence number for strict chronological ordering.
+
+        This ensures events are emitted with monotonically increasing sequence numbers,
+        preventing race conditions where events might be displayed out of order due to
+        identical timestamps or network delays.
+
+        Returns:
+            Unique sequence number for this agent instance's event stream
+        """
+        async with self._sequence_lock:
+            self._event_sequence_counter += 1
+            return self._event_sequence_counter
 
     def _normalize_openai_compatible_model_name(self, model: Any) -> Any:
         if not isinstance(model, str):
@@ -5327,14 +5347,14 @@ Respond with ONLY a JSON object:
                 f"[AutonomousAgent] ⚠️ Tool error: {result.get('error', 'Unknown error')}"
             )
 
-    def _create_tool_result_event(
+    async def _create_tool_result_event(
         self, tool_id: str, result: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Create a tool_result SSE event.
+        Create a tool_result SSE event with sequence number.
 
         This is a unified method used by all provider code paths (OpenAI, Anthropic, etc.)
-        to ensure consistent event structure.
+        to ensure consistent event structure and chronological ordering.
 
         Args:
             tool_id: Tool call ID from the LLM
@@ -5343,6 +5363,7 @@ Respond with ONLY a JSON object:
         Returns:
             Dict containing the tool_result event in SSE format
         """
+        sequence = await self._get_next_sequence()
         return {
             "type": "tool_result",
             "tool_result": {
@@ -5350,6 +5371,7 @@ Respond with ONLY a JSON object:
                 "result": result,
             },
             "timestamp": get_event_timestamp(),
+            "sequence": sequence,
         }
 
     def _is_destructive_operation(
@@ -7194,10 +7216,12 @@ Respond with ONLY a JSON object:
                                     if len(text_buffer) >= 30 or text.endswith(
                                         (".", "!", "?", "\n")
                                     ):
+                                        sequence = await self._get_next_sequence()
                                         yield {
                                             "type": "text",
                                             "text": text_buffer,
                                             "timestamp": get_event_timestamp(),
+                                            "sequence": sequence,
                                         }
                                         text_buffer = ""
                                 elif (
@@ -7219,6 +7243,7 @@ Respond with ONLY a JSON object:
                                     except json.JSONDecodeError:
                                         args = {}
 
+                                    sequence = await self._get_next_sequence()
                                     yield {
                                         "type": "tool_call",
                                         "tool_call": {
@@ -7227,6 +7252,7 @@ Respond with ONLY a JSON object:
                                             "arguments": args,
                                         },
                                         "timestamp": get_event_timestamp(),
+                                        "sequence": sequence,
                                     }
 
                                     # Emit step progress updates BEFORE execution (unified method)
@@ -7355,7 +7381,7 @@ Respond with ONLY a JSON object:
                                     self._log_tool_result(result)
 
                                     # Yield tool result event (unified method)
-                                    yield self._create_tool_result_event(
+                                    yield await self._create_tool_result_event(
                                         current_tool["id"], result
                                     )
 
@@ -7897,7 +7923,7 @@ Respond with ONLY a JSON object:
                                 self._log_tool_result(result)
 
                                 # Yield tool result event (unified method)
-                                yield self._create_tool_result_event(
+                                yield await self._create_tool_result_event(
                                     tool_info["id"], result
                                 )
                                 full_messages.append(
@@ -8031,7 +8057,7 @@ Respond with ONLY a JSON object:
                             self._log_tool_result(result)
 
                             # Yield tool result event (unified method)
-                            yield self._create_tool_result_event(tc["id"], result)
+                            yield await self._create_tool_result_event(tc["id"], result)
 
                             full_messages.append(
                                 {

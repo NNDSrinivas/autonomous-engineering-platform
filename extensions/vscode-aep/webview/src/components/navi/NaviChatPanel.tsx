@@ -2371,11 +2371,14 @@ export default function NaviChatPanel({
         return next;
       }
 
-      // New event - assign sequence number
-      activitySequenceRef.current += 1;
+      // New event - assign sequence number (use backend sequence if provided, otherwise use local counter)
+      const backendSequence = event._sequence;
+      if (!backendSequence) {
+        activitySequenceRef.current += 1;
+      }
       const sequencedEvent: ActivityEvent = {
         ...event,
-        _sequence: activitySequenceRef.current,
+        _sequence: backendSequence || activitySequenceRef.current,
       };
 
       // Add new event and sort by sequence number for guaranteed order
@@ -4059,6 +4062,42 @@ export default function NaviChatPanel({
               : m
           )
         );
+
+        // Also add chunk to narrative stream for chronological ordering with activities
+        if (msg.chunk && typeof msg.chunk === 'string' && msg.chunk.trim()) {
+          const narrativeTimestamp = msg.timestamp || nowIso();
+          const chunkSequence = typeof msg.sequence === 'number' ? msg.sequence : undefined;
+          setNarrativeLines((prev) => {
+            if (!chunkSequence) {
+              // No sequence - use existing append logic
+              return appendNarrativeChunk(prev, msg.chunk, narrativeTimestamp);
+            }
+            // Has sequence - append to last narrative if consecutive, otherwise create new
+            const lastItem = prev[prev.length - 1];
+            const isConsecutive = lastItem && typeof lastItem._sequence === 'number' && chunkSequence === lastItem._sequence + 1;
+            if (lastItem && isConsecutive) {
+              // Append to last narrative for consecutive sequences (preserves spaces in chunk)
+              const updated = [...prev];
+              updated[updated.length - 1] = {
+                ...lastItem,
+                text: lastItem.text + msg.chunk,
+                timestamp: narrativeTimestamp,
+                _sequence: chunkSequence,  // Update to latest sequence
+              };
+              return updated.slice(-400);
+            } else {
+              // Create new narrative chunk (new sequence range or gap)
+              const nextChunk: NarrativeLine = {
+                id: makeActivityId(),
+                text: msg.chunk,
+                timestamp: narrativeTimestamp,
+                _sequence: chunkSequence,
+              };
+              return [...prev, nextChunk].slice(-400);
+            }
+          });
+        }
+
         return;
       }
 
@@ -4738,6 +4777,7 @@ export default function NaviChatPanel({
           commandId: terminalId,
           status: "running",
           timestamp: nowIso(),
+          _sequence: typeof msg.sequence === 'number' ? msg.sequence : undefined,  // Use backend sequence
         };
         pushActivityEvent(newActivity);
 
@@ -6177,6 +6217,7 @@ export default function NaviChatPanel({
               status: "running",
               timestamp: msg.timestamp || nowIso(),
               purpose,
+              _sequence: typeof msg.sequence === 'number' ? msg.sequence : undefined,  // Use backend sequence
               ...(data.toolId ? { toolId: data.toolId } : {}),
             } as any);
           }

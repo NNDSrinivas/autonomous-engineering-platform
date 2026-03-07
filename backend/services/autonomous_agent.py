@@ -7413,10 +7413,12 @@ Respond with ONLY a JSON object:
                             continue
 
                     if text_buffer:
+                        sequence = await self._get_next_sequence()
                         yield {
                             "type": "text",
                             "text": text_buffer,
                             "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
                         }
 
                     # === METRICS: Record successful LLM call latency ===
@@ -7687,10 +7689,12 @@ Respond with ONLY a JSON object:
                                 if len(text_buffer) >= 30 or text.endswith(
                                     (".", "!", "?", "\n")
                                 ):
+                                    sequence = await self._get_next_sequence()
                                     yield {
                                         "type": "text",
                                         "text": text_buffer,
                                         "timestamp": get_event_timestamp(),
+                                        "sequence": sequence,
                                     }
                                     text_buffer = ""
 
@@ -7722,10 +7726,12 @@ Respond with ONLY a JSON object:
                             continue
 
                     if text_buffer:
+                        sequence = await self._get_next_sequence()
                         yield {
                             "type": "text",
                             "text": text_buffer,
                             "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
                         }
 
                     # === METRICS: Record successful LLM call latency ===
@@ -7796,6 +7802,7 @@ Respond with ONLY a JSON object:
                                 tool_info = parallel_reads[i]
                                 result = pr["result"]
 
+                                sequence = await self._get_next_sequence()
                                 yield {
                                     "type": "tool_call",
                                     "tool_call": {
@@ -7803,6 +7810,8 @@ Respond with ONLY a JSON object:
                                         "name": tool_info["name"],
                                         "arguments": tool_info["arguments"],
                                     },
+                                    "timestamp": get_event_timestamp(),
+                                    "sequence": sequence,
                                 }
 
                                 # Emit step progress updates
@@ -7936,6 +7945,7 @@ Respond with ONLY a JSON object:
 
                         # Execute write operations sequentially (preserve order)
                         for tc in sequential_writes:
+                            sequence = await self._get_next_sequence()
                             yield {
                                 "type": "tool_call",
                                 "tool_call": {
@@ -7943,6 +7953,8 @@ Respond with ONLY a JSON object:
                                     "name": tc["name"],
                                     "arguments": tc["arguments"],
                                 },
+                                "timestamp": get_event_timestamp(),
+                                "sequence": sequence,
                             }
 
                             # Emit step progress updates BEFORE execution

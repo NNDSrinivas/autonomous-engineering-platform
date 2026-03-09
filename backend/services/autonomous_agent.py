@@ -2232,7 +2232,7 @@ class AutonomousAgent:
                     elif any(cmd in command.lower() for cmd in ['build', 'compile']):
                         interpretation = "✅ Build completed successfully (exit code 0, no output)"
                     else:
-                        interpretation = f"✅ Command completed successfully (exit code 0, no output)"
+                        interpretation = "✅ Command completed successfully (exit code 0, no output)"
             elif process.returncode != 0 and not has_output:
                 interpretation = f"❌ Command failed (exit code {process.returncode}, no output)"
 
@@ -5776,7 +5776,7 @@ Respond with ONLY a JSON object:
 
             # CRITICAL: Block edits to node_modules (generated/managed by package manager)
             if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
-                return (True, f"Cannot edit files in node_modules - these are managed by npm/yarn and will be overwritten on install")
+                return (True, "Cannot edit files in node_modules - these are managed by npm/yarn and will be overwritten on install")
 
             if file_basename in {p.lower() for p in PROTECTED_PATHS}:
                 return (True, f"Protected file {file_basename} requires confirmation")
@@ -5823,7 +5823,7 @@ Respond with ONLY a JSON object:
 
             # CRITICAL: Block writes to node_modules (generated/managed by package manager)
             if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
-                return (True, f"Cannot write files to node_modules - these are managed by npm/yarn and will be overwritten on install")
+                return (True, "Cannot write files to node_modules - these are managed by npm/yarn and will be overwritten on install")
 
             if file_basename in {p.lower() for p in PROTECTED_PATHS}:
                 # Check if file already exists

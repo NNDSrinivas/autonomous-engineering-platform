@@ -138,6 +138,28 @@
   color: var(--nic-error);
 }
 
+/* Bash Syntax Highlighting */
+.bash-command {
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.bash-flag {
+  color: #a78bfa;
+}
+
+.bash-string {
+  color: #34d399;
+}
+
+.bash-path {
+  color: #fbbf24;
+}
+
+.bash-arg {
+  color: #e4e4e7;
+}
+
 /* Expand */
 .nic-expand {
   color: var(--nic-text-muted);

@@ -348,6 +348,8 @@ class TaskContext:
     ] = None  # Track most recent diagnostic run (lint/test)
     # NEW: Read-only mode enforcement (set on clarification timeout)
     read_only_mode: bool = False  # When True, block all write operations
+    # NEW: Autonomous mode flag (when True, bypass consent for file operations)
+    autonomous_mode: bool = False  # Set by execute_task based on user's mode selection
 
     @classmethod
     def with_adaptive_limits(
@@ -574,6 +576,81 @@ class VerificationRunner:
         except Exception as e:
             return False, str(e), -1
 
+    async def run_verification_streaming(
+        self, verification_type: VerificationType, command: str
+    ):
+        """Run a verification command and stream output in real-time.
+
+        Yields tuples of (output_chunk, is_complete, result).
+        - output_chunk: str - new output line
+        - is_complete: bool - whether command has finished
+        - result: VerificationResult | None - only set when is_complete=True
+        """
+        import asyncio
+        import shlex
+
+        # Parse command for shell execution
+        cmd_parts = shlex.split(command)
+
+        errors = []
+        warnings = []
+        output_lines = []
+
+        try:
+            # Create subprocess with stdout/stderr pipes
+            process = await asyncio.create_subprocess_exec(
+                *cmd_parts,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=self.workspace_path,
+            )
+
+            # Stream output line by line
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+
+                line_text = line.decode('utf-8', errors='replace')
+                output_lines.append(line_text)
+
+                # Parse for errors/warnings
+                line_lower = line_text.lower()
+                if "error" in line_lower or "failed" in line_lower:
+                    errors.append(line_text.strip())
+                elif "warning" in line_lower or "warn" in line_lower:
+                    warnings.append(line_text.strip())
+
+                # Yield this chunk
+                yield (line_text, False, None)
+
+            # Wait for process to complete
+            exit_code = await process.wait()
+            success = exit_code == 0
+
+            # Build final result
+            result = VerificationResult(
+                type=verification_type,
+                success=success,
+                output="".join(output_lines)[:5000],
+                errors=errors[:20],
+                warnings=warnings[:20],
+            )
+
+            # Yield completion
+            yield ("", True, result)
+
+        except Exception as e:
+            # On error, yield error result
+            result = VerificationResult(
+                type=verification_type,
+                success=False,
+                output=str(e),
+                errors=[str(e)],
+                warnings=[],
+            )
+            yield ("", True, result)
+
     async def run_verification(
         self, verification_type: VerificationType, command: str
     ) -> VerificationResult:
@@ -782,6 +859,85 @@ When user asks to "fix linting errors", "fix eslint errors", "check for errors",
    ```
 
 5. **Verify the fixes** by running linter again
+
+## CRITICAL RULE: PREFER SURGICAL EDITS OVER FULL REWRITES
+
+When modifying existing files, **ALWAYS prefer `edit_file` over `write_file`**:
+
+**✅ Use `edit_file` for:**
+- Fixing specific lines (linting errors, type errors, bugs)
+- Adding/removing imports
+- Modifying a function or class
+- Updating configuration values
+- Any change to existing content
+
+**❌ Use `write_file` ONLY for:**
+- Creating NEW files that don't exist
+- Completely replacing a file's architecture (very rare)
+
+**Why this matters:**
+- `edit_file` changes only the specified lines → easy to review, safe
+- `write_file` replaces entire file → hard to review, risky, can lose uncommitted changes
+- Surgical edits are faster and more predictable
+- Full rewrites waste tokens and create massive diffs
+
+**Example - Fixing a single line:**
+
+❌ WRONG (rewrites 100+ lines):
+```
+[write_file: src/utils/api.ts] ← Replaces entire file just to fix one import
+```
+
+✅ CORRECT (changes only what's needed):
+```
+[read_file: src/utils/api.ts]
+[edit_file: {
+  "path": "src/utils/api.ts",
+  "old_text": "import { User } from './types'",
+  "new_text": "import { User, Role } from './types'"
+}]
+```
+
+**NEVER edit files in `node_modules/` - these are managed by package managers and will be overwritten on install. If you need to fix types, create patch files or type definition overrides in your project.**
+
+## CRITICAL RULE: RECOGNIZE TASK COMPLETION - DON'T LOOP ENDLESSLY
+
+When a task succeeds, **STOP IMMEDIATELY**. Do not re-verify, re-check, or re-run the same command:
+
+**❌ WRONG (endless verification loop):**
+```
+[run typecheck] → ✅ exit code 0, no errors
+"Let me verify the file is correct..."
+[read node_modules/file.ts] → File looks good
+"Let me run typecheck again to be sure..."
+[run typecheck] → ✅ exit code 0, no errors
+"Let me check the file one more time..."
+[read node_modules/file.ts] → File looks good
+... LOOPS 20+ TIMES ...
+```
+
+**✅ CORRECT (task complete, stop immediately):**
+```
+[run typecheck] → ✅ exit code 0, no errors
+"Typecheck passed - no TypeScript errors found."
+STOP. TASK DONE.
+```
+
+**When to stop:**
+- ✅ **Tests pass** → STOP, report success
+- ✅ **Build succeeds** → STOP, report success
+- ✅ **Typecheck passes** → STOP, report success
+- ✅ **Lint passes** → STOP, report success
+- ✅ **Command exits 0** → STOP, report success
+- ✅ **File already correct** → STOP, no action needed
+
+**NEVER:**
+- Re-run the same verification command if it already passed
+- Re-read files you just verified
+- Re-check things that are already correct
+- Try to "fix" files that don't need fixing
+
+If the user asks "verify there are no errors" and you run the check and it passes → **YOU'RE DONE**. Don't keep verifying!
 
 **Example - User asks: "fix any linting errors"**
 
@@ -1923,6 +2079,10 @@ class AutonomousAgent:
         self._event_sequence_counter = 0
         self._sequence_lock = asyncio.Lock()
 
+        # Anti-loop detection: track last N commands to prevent infinite loops
+        self._command_history = []
+        self._max_command_history = 5
+
     async def _is_cancel_requested(self) -> bool:
         if not self._cancel_check:
             return False
@@ -1946,6 +2106,159 @@ class AutonomousAgent:
         async with self._sequence_lock:
             self._event_sequence_counter += 1
             return self._event_sequence_counter
+
+    async def _execute_run_command_streaming(self, tool_id: str, args: dict, context):
+        """Execute run_command with real-time output streaming."""
+        import asyncio
+        import os
+
+        command = args.get("command", "")
+        cwd = self.workspace_path
+        if args.get("cwd"):
+            cwd = os.path.join(self.workspace_path, args["cwd"])
+
+        # Anti-loop detection: check if same command was run 2+ times recently (catch loops early)
+        self._command_history.append(command)
+        if len(self._command_history) > self._max_command_history:
+            self._command_history.pop(0)
+
+        # Count consecutive identical commands - stop after just 2 to save tokens/money
+        if len(self._command_history) >= 2:
+            recent_cmds = self._command_history[-2:]
+            if recent_cmds[0] == recent_cmds[1] == command:
+                logger.warning(f"[AutonomousAgent] 🔁 Loop detected: command '{command[:50]}' run 2 times consecutively")
+                # Return ERROR to force agent to stop looping
+                yield {
+                    "_is_final_result": True,
+                    "success": False,
+                    "stdout": "",
+                    "stderr": "⚠️ Loop detected: This command has been executed twice with the same result. Task appears complete.",
+                    "exit_code": 99,  # Special exit code for loop detection
+                    "command": command,
+                    "interpretation": f"⚠️ Loop detected: Command '{command[:80]}' was executed 2 times consecutively with identical results. The task is likely complete. Stopping to prevent wasting tokens and money.",
+                    "loop_detected": True
+                }
+                return
+
+        logger.info(f"[AutonomousAgent] 📤 Starting streaming execution: {command[:100]}")
+
+        try:
+            # Create async subprocess
+            process = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+                executable="/bin/bash",
+                start_new_session=True,
+            )
+
+            stdout_output = []
+            stderr_output = []
+
+            # Read and stream output in real-time
+            while True:
+                # Check if we have stdout data
+                try:
+                    line = await asyncio.wait_for(process.stdout.readline(), timeout=0.1)
+                    if line:
+                        line_text = line.decode("utf-8", errors="replace")
+                        stdout_output.append(line_text.rstrip())
+
+                        # Yield streaming event
+                        sequence = await self._get_next_sequence()
+                        logger.info(f"📤 Streaming stdout: {len(line_text)} bytes, seq={sequence}")
+                        yield {
+                            "type": "command_output",
+                            "commandId": tool_id,
+                            "command": command,
+                            "line": line_text,
+                            "stream": "stdout",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                except asyncio.TimeoutError:
+                    pass
+
+                # Check if process has completed
+                if process.returncode is not None:
+                    # Read any remaining stdout
+                    remaining = await process.stdout.read()
+                    if remaining:
+                        remaining_text = remaining.decode("utf-8", errors="replace")
+                        for line in remaining_text.splitlines(keepends=True):
+                            stdout_output.append(line.rstrip())
+                            sequence = await self._get_next_sequence()
+                            yield {
+                                "type": "command_output",
+                                "commandId": tool_id,
+                                "command": command,
+                                "line": line,
+                                "stream": "stdout",
+                                "timestamp": get_event_timestamp(),
+                                "sequence": sequence,
+                            }
+                    break
+
+                # Small delay to prevent busy waiting
+                await asyncio.sleep(0.01)
+
+            # Wait for process to complete if not already done
+            if process.returncode is None:
+                await process.wait()
+
+            # Read any stderr output
+            stderr_data = await process.stderr.read()
+            if stderr_data:
+                stderr_text = stderr_data.decode("utf-8", errors="replace")
+                stderr_output = stderr_text.splitlines()
+
+            # Build final result with interpretation
+            stdout_text = "\n".join(stdout_output)
+            stderr_text = "\n".join(stderr_output)
+            has_output = bool(stdout_text.strip() or stderr_text.strip())
+
+            # Add human-readable interpretation for common commands
+            interpretation = None
+            if process.returncode == 0:
+                if not has_output:
+                    # Success with no output - explain what this means
+                    if any(cmd in command.lower() for cmd in ['tsc', 'typecheck']):
+                        interpretation = "✅ Typecheck passed - no TypeScript errors found (exit code 0, no output)"
+                    elif any(cmd in command.lower() for cmd in ['eslint', 'lint']):
+                        interpretation = "✅ Linting passed - no style violations found (exit code 0, no output)"
+                    elif any(cmd in command.lower() for cmd in ['test', 'jest', 'vitest']):
+                        interpretation = "✅ Tests passed successfully (exit code 0, no output)"
+                    elif any(cmd in command.lower() for cmd in ['build', 'compile']):
+                        interpretation = "✅ Build completed successfully (exit code 0, no output)"
+                    else:
+                        interpretation = f"✅ Command completed successfully (exit code 0, no output)"
+            elif process.returncode != 0 and not has_output:
+                interpretation = f"❌ Command failed (exit code {process.returncode}, no output)"
+
+            result = {
+                "_is_final_result": True,
+                "success": process.returncode == 0,
+                "stdout": stdout_text,
+                "stderr": stderr_text,
+                "exit_code": process.returncode,
+                "command": command,
+            }
+
+            if interpretation:
+                result["interpretation"] = interpretation
+
+            logger.info(f"[AutonomousAgent] ✅ Command completed: exit_code={process.returncode}")
+            yield result
+
+        except Exception as e:
+            logger.error(f"[AutonomousAgent] ❌ Command execution failed: {e}")
+            yield {
+                "_is_final_result": True,
+                "success": False,
+                "error": str(e),
+                "command": command,
+            }
 
     def _normalize_openai_compatible_model_name(self, model: Any) -> Any:
         if not isinstance(model, str):
@@ -5390,14 +5703,18 @@ Respond with ONLY a JSON object:
         if tool_name == "move_file":
             return (True, "File move requires confirmation")
 
-        # Edit file: Check for autofix exception
+        # Edit file: Require consent based on mode
+        # USER REQUIREMENT: File modifications need explicit approval (except in autonomous/agent mode)
         if tool_name == "edit_file":
             file_path = arguments.get("path", "")
             new_text = arguments.get("new_text", "")
 
-            # EXCEPTION: Safe autofix if file was in EXACT diagnostic run
-            # (within 5 min, max 20 files, max 50-line payload)
-            # CRITICAL: Bind to SINGLE diagnostic run using run_id
+            # AGENT MODE: Skip consent gates for autonomous operation
+            if context.autonomous_mode:
+                # In agent mode, allow file operations without consent
+                # Still check for protected paths and large payload warnings
+                pass
+            # NON-AGENT MODE: Strict consent required for all edits
             if context.last_diagnostic_run:
                 diagnostic_run = context.last_diagnostic_run
                 age = time.time() - diagnostic_run.get("timestamp", 0)
@@ -5457,20 +5774,37 @@ Respond with ONLY a JSON object:
             normalized_path = file_path.replace("\\", "/").lower()
             file_basename = os.path.basename(normalized_path)
 
+            # CRITICAL: Block edits to node_modules (generated/managed by package manager)
+            if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
+                return (True, f"Cannot edit files in node_modules - these are managed by npm/yarn and will be overwritten on install")
+
             if file_basename in {p.lower() for p in PROTECTED_PATHS}:
                 return (True, f"Protected file {file_basename} requires confirmation")
 
-            # If no autofix exception applies, check payload size
-            edit_payload_lines = new_text.count("\n") if new_text else 0
-            if edit_payload_lines > 50:
-                return (
-                    True,
-                    f"Large edit ({edit_payload_lines} lines) requires confirmation",
-                )
+            # NON-AGENT MODE: All edits require consent (strict policy)
+            # AGENT MODE: Skip consent for autonomous operation
+            if not context.autonomous_mode:
+                # This ensures user approval for any file modification
+                edit_payload_lines = new_text.count("\n") if new_text else 0
 
-        # Write file: Check if overwriting protected paths or writing to protected names
+                # Provide context about edit size in consent message
+                if edit_payload_lines > 30:
+                    return (
+                        True,
+                        f"File edit requested ({edit_payload_lines} lines modified in {file_path}) - approval required",
+                    )
+                else:
+                    return (
+                        True,
+                        f"File edit requested ({file_path}) - approval required",
+                    )
+
+        # Write file: Require consent based on mode
+        # USER REQUIREMENT: File creation needs explicit approval (except in autonomous/agent mode)
         if tool_name == "write_file":
             file_path = arguments.get("path", "")
+            content = arguments.get("content", "")
+            line_count = content.count("\n") + 1 if content else 0
 
             # Check for protected paths (always, even when creating new files)
             PROTECTED_PATHS = {
@@ -5486,6 +5820,10 @@ Respond with ONLY a JSON object:
 
             normalized_path = file_path.replace("\\", "/").lower()
             file_basename = os.path.basename(normalized_path)
+
+            # CRITICAL: Block writes to node_modules (generated/managed by package manager)
+            if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
+                return (True, f"Cannot write files to node_modules - these are managed by npm/yarn and will be overwritten on install")
 
             if file_basename in {p.lower() for p in PROTECTED_PATHS}:
                 # Check if file already exists
@@ -5518,6 +5856,21 @@ Respond with ONLY a JSON object:
                 except Exception:
                     # Can't read file - safer to require confirmation
                     return (True, "Cannot verify file size - requiring confirmation")
+
+            # NON-AGENT MODE: All file writes require consent (strict policy)
+            # AGENT MODE: Skip consent for autonomous operation
+            if not context.autonomous_mode:
+                # Provide context about file size in consent message
+                if line_count > 50:
+                    return (
+                        True,
+                        f"Create new file requested ({file_path}, {line_count} lines) - approval required",
+                    )
+                else:
+                    return (
+                        True,
+                        f"Create new file requested ({file_path}) - approval required",
+                    )
 
         # Not destructive
         return (False, "")
@@ -7267,9 +7620,23 @@ Respond with ONLY a JSON object:
                                     logger.info(
                                         f"[AutonomousAgent] ⚙️ Executing tool: {current_tool['name']}"
                                     )
-                                    result = await self._execute_tool(
-                                        current_tool["name"], args, context
-                                    )
+
+                                    # Special handling for run_command: stream output in real-time
+                                    if current_tool["name"] == "run_command":
+                                        # Stream command execution with real-time output
+                                        async for event_or_result in self._execute_run_command_streaming(
+                                            current_tool["id"], args, context
+                                        ):
+                                            if isinstance(event_or_result, dict) and event_or_result.get("_is_final_result"):
+                                                result = event_or_result
+                                                del result["_is_final_result"]
+                                            else:
+                                                yield event_or_result
+                                    else:
+                                        result = await self._execute_tool(
+                                            current_tool["name"], args, context
+                                        )
+
                                     logger.info(
                                         f"[AutonomousAgent] ✅ Tool result: success={result.get('success', 'N/A')}"
                                     )
@@ -7965,9 +8332,20 @@ Respond with ONLY a JSON object:
                                 for step_event in step_events:
                                     yield step_event
 
-                            result = await self._execute_tool(
-                                tc["name"], tc["arguments"], context
-                            )
+                            # Special handling for run_command: stream output in real-time
+                            if tc["name"] == "run_command":
+                                async for event_or_result in self._execute_run_command_streaming(
+                                    tc["id"], tc["arguments"], context
+                                ):
+                                    if isinstance(event_or_result, dict) and event_or_result.get("_is_final_result"):
+                                        result = event_or_result
+                                        del result["_is_final_result"]
+                                    else:
+                                        yield event_or_result
+                            else:
+                                result = await self._execute_tool(
+                                    tc["name"], tc["arguments"], context
+                                )
 
                             # Check if consent is required for this command
                             consent_event = self._check_requires_consent(
@@ -8139,6 +8517,7 @@ Respond with ONLY a JSON object:
         request: str,
         run_verification: bool = True,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
+        autonomous_mode: bool = True,  # True for agent mode (autonomous), False for ask/chat mode
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Execute a task autonomously with verification and self-healing.
@@ -8147,6 +8526,8 @@ Respond with ONLY a JSON object:
             request: The user's task/question
             run_verification: Whether to run verification steps
             conversation_history: Previous conversation messages for context
+            autonomous_mode: When True, bypasses consent for file operations (agent mode)
+                           When False, requires consent for all file modifications
 
         Yields events:
         - {"type": "status", "status": "planning|executing|verifying|fixing|completed|failed"}
@@ -8170,6 +8551,11 @@ Respond with ONLY a JSON object:
         )
         logger.info("=" * 60)
 
+        # CRITICAL: Clear command history at start of each task to prevent false loop detection
+        # Command history is used for anti-loop detection WITHIN a task, not across tasks
+        self._command_history = []
+        logger.info("[AutonomousAgent] 🔄 Command history cleared for new task")
+
         # Assess task complexity for adaptive optimization
         complexity = self._assess_task_complexity(request)
         logger.info(f"[AutonomousAgent] 📊 Task complexity: {complexity.value}")
@@ -8184,6 +8570,10 @@ Respond with ONLY a JSON object:
             project_type=self.project_type,
             framework=self.framework,
         )
+        # Set autonomous mode flag for consent gates
+        context.autonomous_mode = autonomous_mode
+        logger.info(f"[AutonomousAgent] 🤖 Autonomous mode: {autonomous_mode}")
+
         if conversation_history:
             # Preserve recent conversation history for intent disambiguation
             context.conversation_history = [
@@ -9191,9 +9581,6 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         continue  # Skip to next iteration
 
                 # For MEDIUM and COMPLEX tasks: run appropriate verification
-                # Don't emit verification status as text - it makes responses verbose
-                # yield {"type": "text", "text": "\n\n**Running verification...**\n", "timestamp": get_event_timestamp()}
-
                 # Always run tests for MEDIUM and COMPLEX tasks (not just COMPLEX)
                 # Tests are crucial for validating changes work correctly
                 run_tests = context.complexity in (
@@ -9204,9 +9591,309 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     f"[AutonomousAgent] Running verification (run_tests={run_tests}) for {context.complexity.value} task"
                 )
 
-                results = await self.verifier.verify_changes(
-                    self.verification_commands, run_tests=run_tests
-                )
+                # Run verification commands one by one and show progress
+                results = []
+
+                # Typecheck
+                if self.verification_commands.get("typecheck"):
+                    cmd = self.verification_commands["typecheck"]
+                    tool_id = f"verify_typecheck_{context.iteration}"
+
+                    # Emit explanatory text before running command
+                    sequence = await self._get_next_sequence()
+                    yield {
+                        "type": "text",
+                        "text": "\n\nNow let me run typecheck to verify there are no TypeScript errors.",
+                        "timestamp": get_event_timestamp(),
+                        "sequence": sequence,
+                    }
+
+                    # Emit tool_call to show command starting
+                    sequence = await self._get_next_sequence()
+                    yield {
+                        "type": "tool_call",
+                        "tool_call": {
+                            "id": tool_id,
+                            "name": "run_command",
+                            "arguments": {"command": cmd},
+                        },
+                        "timestamp": get_event_timestamp(),
+                        "sequence": sequence,
+                    }
+
+                    # Stream command output in real-time
+                    accumulated_output = ""
+                    result = None
+                    async for output_chunk, is_complete, verification_result in self.verifier.run_verification_streaming(
+                        VerificationType.TYPESCRIPT, cmd
+                    ):
+                        if not is_complete and output_chunk:
+                            # Stream output chunk as command_output event
+                            accumulated_output += output_chunk
+                            sequence = await self._get_next_sequence()
+                            logger.info(f"📤 Streaming typecheck output chunk: {len(output_chunk)} bytes, seq={sequence}")
+                            yield {
+                                "type": "command_output",
+                                "commandId": tool_id,  # Link to command panel
+                                "command": cmd,
+                                "line": output_chunk,
+                                "stream": "stdout",
+                                "timestamp": get_event_timestamp(),
+                                "sequence": sequence,
+                            }
+                        elif is_complete:
+                            # Command completed
+                            result = verification_result
+                            results.append(result)
+                            # Emit final result
+                            yield await self._create_tool_result_event(tool_id, {
+                                "command": cmd,
+                                "stdout": result.output[:2000] if result.success else result.output[:1000],
+                                "exit_code": 0 if result.success else 1,
+                                "success": result.success,
+                                "streaming": False,
+                            })
+
+                    # Emit result summary
+                    sequence = await self._get_next_sequence()
+                    if result.success:
+                        yield {
+                            "type": "text",
+                            "text": "✅ Typecheck passed - no TypeScript errors found.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                    else:
+                        error_count = len(result.errors)
+                        yield {
+                            "type": "text",
+                            "text": f"❌ Typecheck failed with {error_count} error{'s' if error_count != 1 else ''}. I'll fix the type errors and retry.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+
+                # Lint (only if typecheck passed)
+                if results and results[-1].success and self.verification_commands.get("lint"):
+                    cmd = self.verification_commands["lint"]
+                    tool_id = f"verify_lint_{context.iteration}"
+
+                    # Emit explanatory text before running command
+                    sequence = await self._get_next_sequence()
+                    yield {
+                        "type": "text",
+                        "text": "\n\nNow let me run the linter to check code quality and style.",
+                        "timestamp": get_event_timestamp(),
+                        "sequence": sequence,
+                    }
+
+                    # Emit tool_call to show command starting
+                    sequence = await self._get_next_sequence()
+                    yield {
+                        "type": "tool_call",
+                        "tool_call": {
+                            "id": tool_id,
+                            "name": "run_command",
+                            "arguments": {"command": cmd},
+                        },
+                        "timestamp": get_event_timestamp(),
+                        "sequence": sequence,
+                    }
+
+                    # Stream command output in real-time
+                    accumulated_output = ""
+                    result = None
+                    async for output_chunk, is_complete, verification_result in self.verifier.run_verification_streaming(
+                        VerificationType.LINT, cmd
+                    ):
+                        if not is_complete and output_chunk:
+                            # Stream output chunk
+                            accumulated_output += output_chunk
+                            yield await self._create_tool_result_event(tool_id, {
+                                "command": cmd,
+                                "output": accumulated_output[-2000:],
+                                "exit_code": None,
+                                "success": None,
+                                "streaming": True,
+                            })
+                        elif is_complete:
+                            # Command completed
+                            result = verification_result
+                            results.append(result)
+                            # Emit final result
+                            yield await self._create_tool_result_event(tool_id, {
+                                "command": cmd,
+                                "output": result.output[:2000],
+                                "exit_code": 0 if result.success else 1,
+                                "success": result.success,
+                                "streaming": False,
+                            })
+
+                    # Emit result summary
+                    sequence = await self._get_next_sequence()
+                    if result.success:
+                        yield {
+                            "type": "text",
+                            "text": "✅ Linting passed - code follows style guidelines.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                    else:
+                        warning_count = len(result.warnings)
+                        yield {
+                            "type": "text",
+                            "text": f"⚠️ Linter found .* style issue{'s' if warning_count != 1 else ''}. I'll address them and retry.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+
+                # Tests (only if previous checks passed)
+                if (not results or results[-1].success) and run_tests and self.verification_commands.get("test"):
+                    cmd = self.verification_commands["test"]
+                    tool_id = f"verify_test_{context.iteration}"
+
+                    # Emit explanatory text before running command
+                    sequence = await self._get_next_sequence()
+                    yield {
+                        "type": "text",
+                        "text": "\n\nNow let me run the tests to ensure the changes work correctly.",
+                        "timestamp": get_event_timestamp(),
+                        "sequence": sequence,
+                    }
+
+                    # Emit tool_call to show command starting
+                    sequence = await self._get_next_sequence()
+                    yield {
+                        "type": "tool_call",
+                        "tool_call": {
+                            "id": tool_id,
+                            "name": "run_command",
+                            "arguments": {"command": cmd},
+                        },
+                        "timestamp": get_event_timestamp(),
+                        "sequence": sequence,
+                    }
+
+                    # Stream command output in real-time
+                    accumulated_output = ""
+                    result = None
+                    async for output_chunk, is_complete, verification_result in self.verifier.run_verification_streaming(
+                        VerificationType.TESTS, cmd
+                    ):
+                        if not is_complete and output_chunk:
+                            # Stream output chunk
+                            accumulated_output += output_chunk
+                            yield await self._create_tool_result_event(tool_id, {
+                                "command": cmd,
+                                "output": accumulated_output[-2000:],
+                                "exit_code": None,
+                                "success": None,
+                                "streaming": True,
+                            })
+                        elif is_complete:
+                            # Command completed
+                            result = verification_result
+                            results.append(result)
+                            # Emit final result
+                            yield await self._create_tool_result_event(tool_id, {
+                                "command": cmd,
+                                "output": result.output[:2000],
+                                "exit_code": 0 if result.success else 1,
+                                "success": result.success,
+                                "streaming": False,
+                            })
+
+                    # Emit result summary
+                    sequence = await self._get_next_sequence()
+                    if result.success:
+                        yield {
+                            "type": "text",
+                            "text": "✅ All tests passed successfully.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                    else:
+                        error_count = len(result.errors)
+                        yield {
+                            "type": "text",
+                            "text": f"❌ Tests failed with {error_count} error{'s' if error_count != 1 else ''}. I'll fix the issues and retry.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+
+                # Build (always run if available)
+                if self.verification_commands.get("build"):
+                    cmd = self.verification_commands["build"]
+                    tool_id = f"verify_build_{context.iteration}"
+
+                    # Emit explanatory text before running command
+                    sequence = await self._get_next_sequence()
+                    yield {
+                        "type": "text",
+                        "text": "\n\nNow let me run the build to ensure everything compiles correctly.",
+                        "timestamp": get_event_timestamp(),
+                        "sequence": sequence,
+                    }
+
+                    # Emit tool_call to show command starting
+                    sequence = await self._get_next_sequence()
+                    yield {
+                        "type": "tool_call",
+                        "tool_call": {
+                            "id": tool_id,
+                            "name": "run_command",
+                            "arguments": {"command": cmd},
+                        },
+                        "timestamp": get_event_timestamp(),
+                        "sequence": sequence,
+                    }
+
+                    # Stream command output in real-time
+                    accumulated_output = ""
+                    result = None
+                    async for output_chunk, is_complete, verification_result in self.verifier.run_verification_streaming(
+                        VerificationType.BUILD, cmd
+                    ):
+                        if not is_complete and output_chunk:
+                            # Stream output chunk
+                            accumulated_output += output_chunk
+                            yield await self._create_tool_result_event(tool_id, {
+                                "command": cmd,
+                                "output": accumulated_output[-2000:],
+                                "exit_code": None,
+                                "success": None,
+                                "streaming": True,
+                            })
+                        elif is_complete:
+                            # Command completed
+                            result = verification_result
+                            results.append(result)
+                            # Emit final result
+                            yield await self._create_tool_result_event(tool_id, {
+                                "command": cmd,
+                                "output": result.output[:2000],
+                                "exit_code": 0 if result.success else 1,
+                                "success": result.success,
+                                "streaming": False,
+                            })
+
+                    # Emit result summary
+                    sequence = await self._get_next_sequence()
+                    if result.success:
+                        yield {
+                            "type": "text",
+                            "text": "✅ Build completed successfully.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                    else:
+                        error_count = len(result.errors)
+                        yield {
+                            "type": "text",
+                            "text": f"❌ Build failed with {error_count} error{'s' if error_count != 1 else ''}. I'll fix the issues and retry.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+
                 context.verification_results = results
 
                 yield {
@@ -9230,12 +9917,14 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         "[AutonomousAgent] ✅ ALL VERIFICATIONS PASSED - TASK COMPLETE"
                     )
                     context.last_verification_failed = False
-                    # Don't emit verification success as text - it makes responses verbose
-                    # yield {
-                    #     "type": "text",
-                    #     "text": "\n✅ **All verifications passed!**\n",
-                    # "timestamp": get_event_timestamp()
-                    # }
+                    # Emit completion message so users know verification finished
+                    sequence = await self._get_next_sequence()
+                    yield {
+                        "type": "text",
+                        "text": "\n✅ **All verifications passed!**\n",
+                        "timestamp": get_event_timestamp(),
+                        "sequence": sequence,
+                    }
                     yield {"type": "status", "status": "completed"}
 
                     # Mark all plan steps as completed (0-indexed for frontend)

@@ -9254,6 +9254,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           } else if (event.type === 'tool_result') {
             // Execute the buffered tool_result handler
             await event.handler();
+          } else if (event.type === 'command_output') {
+            // Execute the buffered command_output handler
+            console.log('[AEP] 📤 Flushing command_output seq:', nextExpectedSequence);
+            event.handler();
           }
 
           nextExpectedSequence++;
@@ -9843,23 +9847,22 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   }
                 }
 
-                // Handle command consent requests - send as navi.confirm message
+                // Handle command consent requests - send as navi.consent message
                 if (parsed.type === 'command.consent_required' && parsed.data) {
-                  // Send consent as navi.confirm with data wrapper (uses existing handler)
+                  // CRITICAL FIX: Send as 'navi.consent' not 'navi.confirm' so webview routes to ConsentDialog
                   const consentId = String(parsed.data.consent_id || '');
                   const consentMessage = {
-                    type: 'navi.confirm',
-                    data: {
-                      consent_id: consentId,
-                      command: String(parsed.data.command || ''),
-                      shell: String(parsed.data.shell || 'bash'),
-                      cwd: String(parsed.data.cwd || ''),
-                      danger_level: String(parsed.data.danger_level || 'medium'),
-                      warning: String(parsed.data.warning || 'This command requires your consent.'),
-                      consequences: Array.isArray(parsed.data.consequences) ? parsed.data.consequences.map(String) : [],
-                      alternatives: Array.isArray(parsed.data.alternatives) ? parsed.data.alternatives.map(String) : [],
-                      rollback_possible: Boolean(parsed.data.rollback_possible),
-                    },
+                    type: 'navi.consent',
+                    // Flat structure - webview expects top-level fields, not nested in data
+                    consent_id: consentId,
+                    command: String(parsed.data.command || ''),
+                    shell: String(parsed.data.shell || 'bash'),
+                    cwd: String(parsed.data.cwd || ''),
+                    danger_level: String(parsed.data.danger_level || 'medium'),
+                    warning: String(parsed.data.warning || 'This command requires your consent.'),
+                    consequences: Array.isArray(parsed.data.consequences) ? parsed.data.consequences.map(String) : [],
+                    alternatives: Array.isArray(parsed.data.alternatives) ? parsed.data.alternatives.map(String) : [],
+                    rollback_possible: Boolean(parsed.data.rollback_possible),
                     timestamp: new Date().toISOString(),
                   };
 
@@ -9874,13 +9877,38 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
                 // Handle real-time command output streaming
                 if (parsed.type === 'command_output') {
-                  this.postToWebview({
-                    type: 'command.output',
+                  const seq = typeof parsed.sequence === 'number' ? parsed.sequence : null;
+                  console.log('[AEP] 📤 Received command_output from backend:', {
+                    commandId: parsed.commandId,
+                    lineLength: parsed.line?.length,
                     stream: parsed.stream,
-                    line: parsed.line,
-                    command: parsed.command,
-                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
+                    sequence: seq,
                   });
+
+                  const handleCommandOutput = () => {
+                    this.postToWebview({
+                      type: 'command.output',
+                      commandId: parsed.commandId,  // Forward commandId so webview can route output
+                      stream: parsed.stream,
+                      line: parsed.line,
+                      command: parsed.command,
+                      timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
+                    });
+                    console.log('[AEP] ✅ Forwarded command.output to webview (seq:', seq, ')');
+                  };
+
+                  if (seq !== null) {
+                    // Buffer command_output by sequence number for chronological ordering
+                    // This ensures command.start is processed before command.output
+                    eventBuffer.set(seq, {
+                      type: 'command_output',
+                      handler: handleCommandOutput,
+                    });
+                    await flushSequencedEvents();
+                  } else {
+                    // No sequence number - send immediately (fallback for old backend)
+                    handleCommandOutput();
+                  }
                 }
 
                 if (parsed.type === 'done') {

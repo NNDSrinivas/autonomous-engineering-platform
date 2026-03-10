@@ -9962,7 +9962,7 @@ async def navi_autonomous_task(
             # Determine autonomous mode based on intelligence mode selection
             # "agent" or "agent-full-access" = autonomous (no consent)
             # "ask", "chat-only", "plan", "edit" = requires consent
-            mode = request.mode or "agent-full-access"
+            mode = request.mode or "ask"  # Safe default: require consent
             autonomous_mode = mode.startswith("agent")
             async for event in heartbeat_wrapper(
                 agent.execute_task(

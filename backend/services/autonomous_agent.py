@@ -2330,12 +2330,8 @@ class AutonomousAgent:
                 # Check if deadline exceeded
                 if time.time() > deadline:
                     logger.warning(f"[AutonomousAgent] ⏱️ Command timeout exceeded ({cmd_timeout}s), terminating process")
-                    try:
-                        process.terminate()
-                        await asyncio.wait_for(process.wait(), timeout=5)
-                    except asyncio.TimeoutError:
-                        process.kill()
-                        await process.wait()
+                    # Use _terminate_process_tree to kill entire process group (not just shell)
+                    await self._terminate_process_tree(process, reason="timeout")
 
                     # Cancel pending tasks before returning to prevent resource leaks
                     if stdout_task and not stdout_task.done():

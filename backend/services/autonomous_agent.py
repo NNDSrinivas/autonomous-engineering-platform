@@ -596,6 +596,10 @@ class VerificationRunner:
         warnings = []
         output_lines = []
 
+        # Timeout for verification commands (10 minutes)
+        verification_timeout = 600
+        start_time = time.time()
+
         try:
             # Create subprocess with stdout/stderr pipes
             process = await asyncio.create_subprocess_exec(
@@ -605,9 +609,32 @@ class VerificationRunner:
                 cwd=self.workspace_path,
             )
 
-            # Stream output line by line
+            # Stream output line by line with timeout protection
             while True:
-                line = await process.stdout.readline()
+                # Check if timeout exceeded
+                elapsed = time.time() - start_time
+                if elapsed > verification_timeout:
+                    logger.warning(f"[Verifier] Verification timeout ({verification_timeout}s) - terminating process")
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        process.kill()
+                    raise TimeoutError(f"Verification command timed out after {verification_timeout}s")
+
+                # Read line with timeout
+                remaining_timeout = verification_timeout - elapsed
+                try:
+                    line = await asyncio.wait_for(
+                        process.stdout.readline(),
+                        timeout=min(remaining_timeout, 10.0)  # Max 10s per readline
+                    )
+                except asyncio.TimeoutError:
+                    # No output for 10s, check if process still alive
+                    if process.returncode is not None:
+                        break  # Process finished
+                    continue  # Keep waiting
+
                 if not line:
                     break
 
@@ -2207,8 +2234,9 @@ class AutonomousAgent:
             return
 
         # Check if this is a dangerous command that requires consent
+        # In autonomous (agent) mode, skip consent for dangerous commands
         cmd_info = get_command_info(command)
-        if cmd_info is not None and cmd_info.requires_confirmation:
+        if cmd_info is not None and cmd_info.requires_confirmation and not context.autonomous_mode:
             # Check if command is auto-allowed by user preferences
             auto_allowed = await self._check_auto_allow(command)
             if not auto_allowed:

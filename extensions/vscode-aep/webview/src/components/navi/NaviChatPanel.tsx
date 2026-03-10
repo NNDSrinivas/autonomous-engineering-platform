@@ -11832,17 +11832,6 @@ export default function NaviChatPanel({
                               const commandExitCode = evt.exitCode ?? terminalEntry?.exitCode;
                               const commandStatus = evt.status || terminalEntry?.status || 'done';
 
-                              // DEBUG: Log output resolution
-                              if (!commandOutput && evt.commandId) {
-                                console.warn('[NaviChatPanel] ⚠️ No output for command:', {
-                                  commandId: evt.commandId,
-                                  evtOutput: evt.output?.substring(0, 100),
-                                  terminalFound: !!terminalEntry,
-                                  terminalOutput: terminalEntry?.output?.substring(0, 100),
-                                  totalTerminalEntries: terminalEntries.length
-                                });
-                              }
-
                               return (
                                 <NaviInlineCommand
                                   commandId={evt.commandId || terminalEntry?.id}

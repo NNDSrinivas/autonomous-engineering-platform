@@ -759,9 +759,8 @@ export function NaviActionRunner({
 
         /* Readonly command result display (for contentChunks) */
         .navi-command-result {
-          background: var(--vscode-editor-background, #1e1e1e);
-          border: 1px solid rgba(74, 222, 128, 0.3);
           background: rgba(74, 222, 128, 0.05);
+          border: 1px solid rgba(74, 222, 128, 0.3);
           border-radius: 8px;
           padding: 12px 16px;
           margin: 8px 0;

@@ -9239,7 +9239,6 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           if (event.type === 'text' && event.text) {
             if (!shouldSkipChunk(event.text)) {
               streamedContent = this.normalizeStreamedContent(streamedContent + event.text);
-              console.log('[AEP] 📝 Flushing text seq:', nextExpectedSequence, 'length:', event.text.length);
               this.postToWebview({
                 type: 'botMessageChunk',
                 messageId,
@@ -9256,7 +9255,6 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             await event.handler();
           } else if (event.type === 'command_output') {
             // Execute the buffered command_output handler
-            console.log('[AEP] 📤 Flushing command_output seq:', nextExpectedSequence);
             event.handler();
           }
 

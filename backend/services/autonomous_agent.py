@@ -2312,13 +2312,19 @@ class AutonomousAgent:
             # Create tasks for reading both streams simultaneously
             stdout_task = None
             stderr_task = None
+            stdout_eof = False
+            stderr_eof = False
 
             while True:
-                # Create readline tasks if not already running
-                if stdout_task is None or stdout_task.done():
+                # Create readline tasks if not already running and stream not at EOF
+                if (stdout_task is None or stdout_task.done()) and not stdout_eof:
                     stdout_task = asyncio.create_task(process.stdout.readline())
-                if stderr_task is None or stderr_task.done():
+                if (stderr_task is None or stderr_task.done()) and not stderr_eof:
                     stderr_task = asyncio.create_task(process.stderr.readline())
+
+                # If both streams at EOF, break to avoid busy-loop
+                if stdout_eof and stderr_eof:
+                    break
 
                 # Wait for any stream to have data (with timeout)
                 done, pending = await asyncio.wait(
@@ -2357,7 +2363,6 @@ class AutonomousAgent:
 
                         # Yield streaming event
                         sequence = await self._get_next_sequence()
-                        logger.info(f"📤 Streaming stdout: {len(line_text)} bytes, seq={sequence}")
                         yield {
                             "type": "command_output",
                             "commandId": tool_id,
@@ -2367,6 +2372,9 @@ class AutonomousAgent:
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
+                    else:
+                        # Empty bytes means EOF
+                        stdout_eof = True
                     stdout_task = None  # Mark for recreation
 
                 # Process stderr if ready
@@ -2378,7 +2386,6 @@ class AutonomousAgent:
 
                         # Yield streaming event for stderr
                         sequence = await self._get_next_sequence()
-                        logger.info(f"📤 Streaming stderr: {len(line_text)} bytes, seq={sequence}")
                         yield {
                             "type": "command_output",
                             "commandId": tool_id,
@@ -2388,6 +2395,9 @@ class AutonomousAgent:
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
+                    else:
+                        # Empty bytes means EOF
+                        stderr_eof = True
                     stderr_task = None  # Mark for recreation
 
                 # Check if process has completed
@@ -9828,19 +9838,23 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     f"[AutonomousAgent] Running verification (run_tests={run_tests}) for {context.complexity.value} task"
                 )
 
-                # Run verification commands one by one and show progress
-                results = []
-
-                # Typecheck
-                if self.verification_commands.get("typecheck"):
-                    cmd = self.verification_commands["typecheck"]
-                    tool_id = f"verify_typecheck_{context.iteration}"
+                async def run_single_verification(
+                    verification_type: VerificationType,
+                    cmd: str,
+                    tool_id_prefix: str,
+                    intro_text: str,
+                    success_text: str,
+                    failure_text_template: str,
+                    failure_text_incomplete: str,
+                ):
+                    """Helper to run a single verification command with streaming output."""
+                    tool_id = f"{tool_id_prefix}_{context.iteration}"
 
                     # Emit explanatory text before running command
                     sequence = await self._get_next_sequence()
                     yield {
                         "type": "text",
-                        "text": "\n\nNow let me run typecheck to verify there are no TypeScript errors.",
+                        "text": intro_text,
                         "timestamp": get_event_timestamp(),
                         "sequence": sequence,
                     }
@@ -9859,19 +9873,16 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     }
 
                     # Stream command output in real-time
-                    accumulated_output = ""
                     result = None
                     async for output_chunk, is_complete, verification_result in self.verifier.run_verification_streaming(
-                        VerificationType.TYPESCRIPT, cmd
+                        verification_type, cmd
                     ):
                         if not is_complete and output_chunk:
                             # Stream output chunk as command_output event
-                            accumulated_output += output_chunk
                             sequence = await self._get_next_sequence()
-                            logger.info(f"📤 Streaming typecheck output chunk: {len(output_chunk)} bytes, seq={sequence}")
                             yield {
                                 "type": "command_output",
-                                "commandId": tool_id,  # Link to command panel
+                                "commandId": tool_id,
                                 "command": cmd,
                                 "line": output_chunk,
                                 "stream": "stdout",
@@ -9881,7 +9892,6 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         elif is_complete:
                             # Command completed
                             result = verification_result
-                            results.append(result)
                             # Emit final result
                             yield await self._create_tool_result_event(tool_id, {
                                 "command": cmd,
@@ -9891,285 +9901,108 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                                 "streaming": False,
                             })
 
-                    # Emit result summary (check if result is not None)
+                    # Emit result summary
                     sequence = await self._get_next_sequence()
                     if result and result.success:
                         yield {
                             "type": "text",
-                            "text": "✅ Typecheck passed - no TypeScript errors found.\n",
+                            "text": success_text,
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
+                            "_result": result,  # Attach result for caller
                         }
                     elif result:
-                        error_count = len(result.errors)
+                        issue_count = len(result.errors) if hasattr(result, 'errors') else len(result.warnings) if hasattr(result, 'warnings') else 0
                         yield {
                             "type": "text",
-                            "text": f"❌ Typecheck failed with {error_count} error{'s' if error_count != 1 else ''}. I'll fix the type errors and retry.\n",
+                            "text": failure_text_template.format(count=issue_count, plural='s' if issue_count != 1 else ''),
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
+                            "_result": result,  # Attach result for caller
                         }
                     else:
                         yield {
                             "type": "text",
-                            "text": "❌ Typecheck verification failed to complete.\n",
+                            "text": failure_text_incomplete,
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
+                            "_result": None,  # No result available
                         }
+
+                # Run verification commands one by one and show progress
+                results = []
+
+                # Typecheck
+                if self.verification_commands.get("typecheck"):
+                    result = None
+                    async for event in run_single_verification(
+                        VerificationType.TYPESCRIPT,
+                        self.verification_commands["typecheck"],
+                        "verify_typecheck",
+                        "\n\nNow let me run typecheck to verify there are no TypeScript errors.",
+                        "✅ Typecheck passed - no TypeScript errors found.\n",
+                        "❌ Typecheck failed with {count} error{plural}. I'll fix the type errors and retry.\n",
+                        "❌ Typecheck verification failed to complete.\n",
+                    ):
+                        yield event
+                        if event.get("type") == "text" and ("✅" in event.get("text", "") or "❌" in event.get("text", "")):
+                            result = event.get("_result")
+                    if result:
+                        results.append(result)
 
                 # Lint (only if typecheck passed)
                 if results and results[-1].success and self.verification_commands.get("lint"):
-                    cmd = self.verification_commands["lint"]
-                    tool_id = f"verify_lint_{context.iteration}"
-
-                    # Emit explanatory text before running command
-                    sequence = await self._get_next_sequence()
-                    yield {
-                        "type": "text",
-                        "text": "\n\nNow let me run the linter to check code quality and style.",
-                        "timestamp": get_event_timestamp(),
-                        "sequence": sequence,
-                    }
-
-                    # Emit tool_call to show command starting
-                    sequence = await self._get_next_sequence()
-                    yield {
-                        "type": "tool_call",
-                        "tool_call": {
-                            "id": tool_id,
-                            "name": "run_command",
-                            "arguments": {"command": cmd},
-                        },
-                        "timestamp": get_event_timestamp(),
-                        "sequence": sequence,
-                    }
-
-                    # Stream command output in real-time
-                    accumulated_output = ""
                     result = None
-                    async for output_chunk, is_complete, verification_result in self.verifier.run_verification_streaming(
-                        VerificationType.LINT, cmd
+                    async for event in run_single_verification(
+                        VerificationType.LINT,
+                        self.verification_commands["lint"],
+                        "verify_lint",
+                        "\n\nNow let me run the linter to check code quality and style.",
+                        "✅ Linting passed - code follows style guidelines.\n",
+                        "⚠️ Linter found {count} style issue{plural}. I'll address them and retry.\n",
+                        "❌ Lint verification failed to complete.\n",
                     ):
-                        if not is_complete and output_chunk:
-                            # Stream output chunk as command_output event
-                            accumulated_output += output_chunk
-                            sequence = await self._get_next_sequence()
-                            logger.info(f"📤 Streaming lint output chunk: {len(output_chunk)} bytes, seq={sequence}")
-                            yield {
-                                "type": "command_output",
-                                "commandId": tool_id,  # Link to command panel
-                                "command": cmd,
-                                "line": output_chunk,
-                                "stream": "stdout",
-                                "timestamp": get_event_timestamp(),
-                                "sequence": sequence,
-                            }
-                        elif is_complete:
-                            # Command completed
-                            result = verification_result
-                            results.append(result)
-                            # Emit final result
-                            yield await self._create_tool_result_event(tool_id, {
-                                "command": cmd,
-                                "output": result.output[:2000],
-                                "exit_code": 0 if result.success else 1,
-                                "success": result.success,
-                                "streaming": False,
-                            })
-
-                    # Emit result summary (check if result is not None)
-                    sequence = await self._get_next_sequence()
-                    if result and result.success:
-                        yield {
-                            "type": "text",
-                            "text": "✅ Linting passed - code follows style guidelines.\n",
-                            "timestamp": get_event_timestamp(),
-                            "sequence": sequence,
-                        }
-                    elif result:
-                        warning_count = len(result.warnings)
-                        yield {
-                            "type": "text",
-                            "text": f"⚠️ Linter found {warning_count} style issue{'s' if warning_count != 1 else ''}. I'll address them and retry.\n",
-                            "timestamp": get_event_timestamp(),
-                            "sequence": sequence,
-                        }
-                    else:
-                        yield {
-                            "type": "text",
-                            "text": "❌ Lint verification failed to complete.\n",
-                            "timestamp": get_event_timestamp(),
-                            "sequence": sequence,
-                        }
+                        yield event
+                        if event.get("type") == "text" and ("✅" in event.get("text", "") or "⚠️" in event.get("text", "") or "❌" in event.get("text", "")):
+                            result = event.get("_result")
+                    if result:
+                        results.append(result)
 
                 # Tests (only if previous checks passed)
                 if (not results or results[-1].success) and run_tests and self.verification_commands.get("test"):
-                    cmd = self.verification_commands["test"]
-                    tool_id = f"verify_test_{context.iteration}"
-
-                    # Emit explanatory text before running command
-                    sequence = await self._get_next_sequence()
-                    yield {
-                        "type": "text",
-                        "text": "\n\nNow let me run the tests to ensure the changes work correctly.",
-                        "timestamp": get_event_timestamp(),
-                        "sequence": sequence,
-                    }
-
-                    # Emit tool_call to show command starting
-                    sequence = await self._get_next_sequence()
-                    yield {
-                        "type": "tool_call",
-                        "tool_call": {
-                            "id": tool_id,
-                            "name": "run_command",
-                            "arguments": {"command": cmd},
-                        },
-                        "timestamp": get_event_timestamp(),
-                        "sequence": sequence,
-                    }
-
-                    # Stream command output in real-time
-                    accumulated_output = ""
                     result = None
-                    async for output_chunk, is_complete, verification_result in self.verifier.run_verification_streaming(
-                        VerificationType.TESTS, cmd
+                    async for event in run_single_verification(
+                        VerificationType.TESTS,
+                        self.verification_commands["test"],
+                        "verify_test",
+                        "\n\nNow let me run the tests to ensure the changes work correctly.",
+                        "✅ All tests passed successfully.\n",
+                        "❌ Tests failed with {count} error{plural}. I'll fix the issues and retry.\n",
+                        "❌ Test verification failed to complete.\n",
                     ):
-                        if not is_complete and output_chunk:
-                            # Stream output chunk as command_output event
-                            accumulated_output += output_chunk
-                            sequence = await self._get_next_sequence()
-                            logger.info(f"📤 Streaming test output chunk: {len(output_chunk)} bytes, seq={sequence}")
-                            yield {
-                                "type": "command_output",
-                                "commandId": tool_id,  # Link to command panel
-                                "command": cmd,
-                                "line": output_chunk,
-                                "stream": "stdout",
-                                "timestamp": get_event_timestamp(),
-                                "sequence": sequence,
-                            }
-                        elif is_complete:
-                            # Command completed
-                            result = verification_result
-                            results.append(result)
-                            # Emit final result
-                            yield await self._create_tool_result_event(tool_id, {
-                                "command": cmd,
-                                "output": result.output[:2000],
-                                "exit_code": 0 if result.success else 1,
-                                "success": result.success,
-                                "streaming": False,
-                            })
-
-                    # Emit result summary (check if result is not None)
-                    sequence = await self._get_next_sequence()
-                    if result and result.success:
-                        yield {
-                            "type": "text",
-                            "text": "✅ All tests passed successfully.\n",
-                            "timestamp": get_event_timestamp(),
-                            "sequence": sequence,
-                        }
-                    elif result:
-                        error_count = len(result.errors)
-                        yield {
-                            "type": "text",
-                            "text": f"❌ Tests failed with {error_count} error{'s' if error_count != 1 else ''}. I'll fix the issues and retry.\n",
-                            "timestamp": get_event_timestamp(),
-                            "sequence": sequence,
-                        }
-                    else:
-                        yield {
-                            "type": "text",
-                            "text": "❌ Test verification failed to complete.\n",
-                            "timestamp": get_event_timestamp(),
-                            "sequence": sequence,
-                        }
+                        yield event
+                        if event.get("type") == "text" and ("✅" in event.get("text", "") or "❌" in event.get("text", "")):
+                            result = event.get("_result")
+                    if result:
+                        results.append(result)
 
                 # Build (always run if available)
                 if self.verification_commands.get("build"):
-                    cmd = self.verification_commands["build"]
-                    tool_id = f"verify_build_{context.iteration}"
-
-                    # Emit explanatory text before running command
-                    sequence = await self._get_next_sequence()
-                    yield {
-                        "type": "text",
-                        "text": "\n\nNow let me run the build to ensure everything compiles correctly.",
-                        "timestamp": get_event_timestamp(),
-                        "sequence": sequence,
-                    }
-
-                    # Emit tool_call to show command starting
-                    sequence = await self._get_next_sequence()
-                    yield {
-                        "type": "tool_call",
-                        "tool_call": {
-                            "id": tool_id,
-                            "name": "run_command",
-                            "arguments": {"command": cmd},
-                        },
-                        "timestamp": get_event_timestamp(),
-                        "sequence": sequence,
-                    }
-
-                    # Stream command output in real-time
-                    accumulated_output = ""
                     result = None
-                    async for output_chunk, is_complete, verification_result in self.verifier.run_verification_streaming(
-                        VerificationType.BUILD, cmd
+                    async for event in run_single_verification(
+                        VerificationType.BUILD,
+                        self.verification_commands["build"],
+                        "verify_build",
+                        "\n\nNow let me run the build to ensure everything compiles correctly.",
+                        "✅ Build completed successfully.\n",
+                        "❌ Build failed with {count} error{plural}. I'll fix the issues and retry.\n",
+                        "❌ Build verification failed to complete.\n",
                     ):
-                        if not is_complete and output_chunk:
-                            # Stream output chunk as command_output event
-                            accumulated_output += output_chunk
-                            sequence = await self._get_next_sequence()
-                            logger.info(f"📤 Streaming build output chunk: {len(output_chunk)} bytes, seq={sequence}")
-                            yield {
-                                "type": "command_output",
-                                "commandId": tool_id,  # Link to command panel
-                                "command": cmd,
-                                "line": output_chunk,
-                                "stream": "stdout",
-                                "timestamp": get_event_timestamp(),
-                                "sequence": sequence,
-                            }
-                        elif is_complete:
-                            # Command completed
-                            result = verification_result
-                            results.append(result)
-                            # Emit final result
-                            yield await self._create_tool_result_event(tool_id, {
-                                "command": cmd,
-                                "output": result.output[:2000],
-                                "exit_code": 0 if result.success else 1,
-                                "success": result.success,
-                                "streaming": False,
-                            })
-
-                    # Emit result summary (check if result is not None)
-                    sequence = await self._get_next_sequence()
-                    if result and result.success:
-                        yield {
-                            "type": "text",
-                            "text": "✅ Build completed successfully.\n",
-                            "timestamp": get_event_timestamp(),
-                            "sequence": sequence,
-                        }
-                    elif result:
-                        error_count = len(result.errors)
-                        yield {
-                            "type": "text",
-                            "text": f"❌ Build failed with {error_count} error{'s' if error_count != 1 else ''}. I'll fix the issues and retry.\n",
-                            "timestamp": get_event_timestamp(),
-                            "sequence": sequence,
-                        }
-                    else:
-                        yield {
-                            "type": "text",
-                            "text": "❌ Build verification failed to complete.\n",
-                            "timestamp": get_event_timestamp(),
-                            "sequence": sequence,
-                        }
+                        yield event
+                        if event.get("type") == "text" and ("✅" in event.get("text", "") or "❌" in event.get("text", "")):
+                            result = event.get("_result")
+                    if result:
+                        results.append(result)
 
                 context.verification_results = results
 

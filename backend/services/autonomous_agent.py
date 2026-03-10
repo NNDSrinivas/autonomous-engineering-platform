@@ -2111,35 +2111,99 @@ class AutonomousAgent:
         """Execute run_command with real-time output streaming."""
         import asyncio
         import os
+        import shlex
+        import re
 
         command = args.get("command", "")
         cwd = self.workspace_path
         if args.get("cwd"):
             cwd = os.path.join(self.workspace_path, args["cwd"])
 
-        # Anti-loop detection: check if same command was run 2+ times recently (catch loops early)
-        self._command_history.append(command)
-        if len(self._command_history) > self._max_command_history:
-            self._command_history.pop(0)
+        # Apply scan command guard before execution
+        from backend.services.scan_command_guard import (
+            is_scan_command,
+            is_piped_or_chained,
+        )
 
-        # Count consecutive identical commands - stop after just 2 to save tokens/money
-        if len(self._command_history) >= 2:
-            recent_cmds = self._command_history[-2:]
-            if recent_cmds[0] == recent_cmds[1] == command:
-                logger.warning(f"[AutonomousAgent] 🔁 Loop detected: command '{command[:50]}' run 2 times consecutively")
-                # Return ERROR to force agent to stop looping
-                yield {
-                    "_is_final_result": True,
-                    "success": False,
-                    "stdout": "",
-                    "stderr": "⚠️ Loop detected: This command has been executed twice with the same result. Task appears complete.",
-                    "exit_code": 99,  # Special exit code for loop detection
-                    "command": command,
-                    "interpretation": f"⚠️ Loop detected: Command '{command[:80]}' was executed 2 times consecutively with identical results. The task is likely complete. Stopping to prevent wasting tokens and money.",
-                    "loop_detected": True
-                }
-                return
+        # Unwrap bash -c before scan detection
+        command_to_check = command
+        try:
+            parts = shlex.split(command.strip())
+            if len(parts) >= 3 and parts[0] in ("bash", "sh"):
+                cmd_index = None
+                for i, arg in enumerate(parts[1:], start=1):
+                    if arg == "-c" or (
+                        arg.startswith("-")
+                        and not arg.startswith("--")
+                        and "c" in arg
+                    ):
+                        if i + 1 < len(parts):
+                            cmd_index = i + 1
+                        break
+                if cmd_index is not None:
+                    command_to_check = parts[cmd_index]
+        except ValueError:
+            pass
 
+        # Block scan commands that can hang large repos
+        if is_piped_or_chained(command_to_check):
+            if "`" in command_to_check or "$(" in command_to_check:
+                scan_tools = ["find", "grep", "egrep", "rg"]
+                tokens = command_to_check.split()
+                if any(tool in tokens for tool in scan_tools) or any(
+                    tool in command_to_check for tool in scan_tools
+                ):
+                    yield {
+                        "_is_final_result": True,
+                        "success": False,
+                        "error": "⚠️ SCAN BLOCKED: Scan command using command substitution/backticks detected.",
+                        "blocked_command": command,
+                        "reason": "Scan commands using command substitution/backticks can cause multi-minute hangs in large repos.",
+                        "suggestion": (
+                            "Break into steps:\n"
+                            "1) Use search_files to find candidate files (bounded)\n"
+                            "2) Use read_file on candidates (or bounded commands per file)"
+                        ),
+                    }
+                    return
+
+            # Check all segments for scan commands
+            segments = re.split(
+                r"\|\||\||&&|;|&|[<>]|-exec(?:dir)?\b|\bxargs\b",
+                command_to_check,
+            )
+            for seg in segments:
+                seg_trimmed = seg.strip()
+                if is_scan_command(seg_trimmed):
+                    yield {
+                        "_is_final_result": True,
+                        "success": False,
+                        "error": "⚠️ SCAN BLOCKED: Unbounded scan command detected in piped/chained command.",
+                        "blocked_command": command,
+                        "blocked_segment": seg_trimmed,
+                        "reason": "Scan commands can cause multi-minute hangs in large repos.",
+                        "suggestion": (
+                            "Use search_files tool instead for bounded file discovery, "
+                            "or use grep_file for specific file content searches."
+                        ),
+                    }
+                    return
+        elif is_scan_command(command_to_check):
+            yield {
+                "_is_final_result": True,
+                "success": False,
+                "error": "⚠️ SCAN BLOCKED: Unbounded scan command detected.",
+                "blocked_command": command,
+                "reason": "Scan commands can cause multi-minute hangs in large repos.",
+                "suggestion": (
+                    "Use search_files tool instead for bounded file discovery, "
+                    "or use grep_file for specific file content searches."
+                ),
+            }
+            return
+
+        # Anti-loop detection: track commands but allow legitimate re-runs
+        # Don't block before execution - commands may succeed after fixes
         logger.info(f"[AutonomousAgent] 📤 Starting streaming execution: {command[:100]}")
 
         try:
@@ -2156,11 +2220,28 @@ class AutonomousAgent:
             stdout_output = []
             stderr_output = []
 
-            # Read and stream output in real-time
+            # Read both stdout and stderr concurrently to prevent pipe buffer deadlock
+            # Create tasks for reading both streams simultaneously
+            stdout_task = None
+            stderr_task = None
+
             while True:
-                # Check if we have stdout data
-                try:
-                    line = await asyncio.wait_for(process.stdout.readline(), timeout=0.1)
+                # Create readline tasks if not already running
+                if stdout_task is None or stdout_task.done():
+                    stdout_task = asyncio.create_task(process.stdout.readline())
+                if stderr_task is None or stderr_task.done():
+                    stderr_task = asyncio.create_task(process.stderr.readline())
+
+                # Wait for any stream to have data (with timeout)
+                done, pending = await asyncio.wait(
+                    {stdout_task, stderr_task},
+                    timeout=0.1,
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # Process stdout if ready
+                if stdout_task in done:
+                    line = stdout_task.result()
                     if line:
                         line_text = line.decode("utf-8", errors="replace")
                         stdout_output.append(line_text.rstrip())
@@ -2177,15 +2258,35 @@ class AutonomousAgent:
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
-                except asyncio.TimeoutError:
-                    pass
+                    stdout_task = None  # Mark for recreation
+
+                # Process stderr if ready
+                if stderr_task in done:
+                    line = stderr_task.result()
+                    if line:
+                        line_text = line.decode("utf-8", errors="replace")
+                        stderr_output.append(line_text.rstrip())
+
+                        # Yield streaming event for stderr
+                        sequence = await self._get_next_sequence()
+                        logger.info(f"📤 Streaming stderr: {len(line_text)} bytes, seq={sequence}")
+                        yield {
+                            "type": "command_output",
+                            "commandId": tool_id,
+                            "command": command,
+                            "line": line_text,
+                            "stream": "stderr",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                    stderr_task = None  # Mark for recreation
 
                 # Check if process has completed
                 if process.returncode is not None:
-                    # Read any remaining stdout
-                    remaining = await process.stdout.read()
-                    if remaining:
-                        remaining_text = remaining.decode("utf-8", errors="replace")
+                    # Read any remaining from both streams
+                    remaining_stdout = await process.stdout.read()
+                    if remaining_stdout:
+                        remaining_text = remaining_stdout.decode("utf-8", errors="replace")
                         for line in remaining_text.splitlines(keepends=True):
                             stdout_output.append(line.rstrip())
                             sequence = await self._get_next_sequence()
@@ -2198,20 +2299,33 @@ class AutonomousAgent:
                                 "timestamp": get_event_timestamp(),
                                 "sequence": sequence,
                             }
+
+                    remaining_stderr = await process.stderr.read()
+                    if remaining_stderr:
+                        remaining_text = remaining_stderr.decode("utf-8", errors="replace")
+                        for line in remaining_text.splitlines(keepends=True):
+                            stderr_output.append(line.rstrip())
+                            sequence = await self._get_next_sequence()
+                            yield {
+                                "type": "command_output",
+                                "commandId": tool_id,
+                                "command": command,
+                                "line": line,
+                                "stream": "stderr",
+                                "timestamp": get_event_timestamp(),
+                                "sequence": sequence,
+                            }
                     break
 
-                # Small delay to prevent busy waiting
-                await asyncio.sleep(0.01)
+            # Cancel any pending tasks
+            if stdout_task and not stdout_task.done():
+                stdout_task.cancel()
+            if stderr_task and not stderr_task.done():
+                stderr_task.cancel()
 
             # Wait for process to complete if not already done
             if process.returncode is None:
                 await process.wait()
-
-            # Read any stderr output
-            stderr_data = await process.stderr.read()
-            if stderr_data:
-                stderr_text = stderr_data.decode("utf-8", errors="replace")
-                stderr_output = stderr_text.splitlines()
 
             # Build final result with interpretation
             stdout_text = "\n".join(stdout_output)
@@ -2250,6 +2364,22 @@ class AutonomousAgent:
 
             logger.info(f"[AutonomousAgent] ✅ Command completed: exit_code={process.returncode}")
             yield result
+
+            # Result-based loop detection: check if same command with same result twice
+            # This allows legitimate re-runs (e.g., lint → fix → lint) to succeed
+            command_result_key = f"{command}::{process.returncode}"
+            self._command_history.append(command_result_key)
+            if len(self._command_history) > self._max_command_history:
+                self._command_history.pop(0)
+
+            # Warn if same command with same exit code run twice consecutively
+            if len(self._command_history) >= 2:
+                recent = self._command_history[-2:]
+                if recent[0] == recent[1] == command_result_key:
+                    logger.warning(
+                        f"[AutonomousAgent] 🔁 Possible loop: command '{command[:50]}' "
+                        f"ran twice with same exit code {process.returncode}"
+                    )
 
         except Exception as e:
             logger.error(f"[AutonomousAgent] ❌ Command execution failed: {e}")
@@ -5709,13 +5839,9 @@ Respond with ONLY a JSON object:
             file_path = arguments.get("path", "")
             new_text = arguments.get("new_text", "")
 
-            # AGENT MODE: Skip consent gates for autonomous operation
-            if context.autonomous_mode:
-                # In agent mode, allow file operations without consent
-                # Still check for protected paths and large payload warnings
-                pass
-            # NON-AGENT MODE: Strict consent required for all edits
-            if context.last_diagnostic_run:
+            # NON-AGENT MODE: Diagnostic autofix exception (only applies in ask/chat mode)
+            # In autonomous mode, skip diagnostic autofix logic entirely
+            if not context.autonomous_mode and context.last_diagnostic_run:
                 diagnostic_run = context.last_diagnostic_run
                 age = time.time() - diagnostic_run.get("timestamp", 0)
                 affected = diagnostic_run.get("affected_files", [])
@@ -5841,21 +5967,23 @@ Respond with ONLY a JSON object:
                         f"Creating protected file {file_basename} requires confirmation",
                     )
 
-            # Check if overwriting existing file (even if not protected)
-            full_path = os.path.join(self.workspace_path, file_path)
-            if os.path.exists(full_path):
-                # Check if overwriting large file (>100 lines)
-                try:
-                    with open(full_path, "r") as f:
-                        existing_lines = len(f.readlines())
-                        if existing_lines > 100:
-                            return (
-                                True,
-                                f"Overwriting large file ({existing_lines} lines) requires confirmation",
-                            )
-                except Exception:
-                    # Can't read file - safer to require confirmation
-                    return (True, "Cannot verify file size - requiring confirmation")
+            # NON-AGENT MODE: Check if overwriting large existing file
+            # AGENT MODE: Skip this check for autonomous operation
+            if not context.autonomous_mode:
+                full_path = os.path.join(self.workspace_path, file_path)
+                if os.path.exists(full_path):
+                    # Check if overwriting large file (>100 lines)
+                    try:
+                        with open(full_path, "r") as f:
+                            existing_lines = len(f.readlines())
+                            if existing_lines > 100:
+                                return (
+                                    True,
+                                    f"Overwriting large file ({existing_lines} lines) requires confirmation",
+                                )
+                    except Exception:
+                        # Can't read file - safer to require confirmation
+                        return (True, "Cannot verify file size - requiring confirmation")
 
             # NON-AGENT MODE: All file writes require consent (strict policy)
             # AGENT MODE: Skip consent for autonomous operation
@@ -9654,20 +9782,27 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                                 "streaming": False,
                             })
 
-                    # Emit result summary
+                    # Emit result summary (check if result is not None)
                     sequence = await self._get_next_sequence()
-                    if result.success:
+                    if result and result.success:
                         yield {
                             "type": "text",
                             "text": "✅ Typecheck passed - no TypeScript errors found.\n",
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
-                    else:
+                    elif result:
                         error_count = len(result.errors)
                         yield {
                             "type": "text",
                             "text": f"❌ Typecheck failed with {error_count} error{'s' if error_count != 1 else ''}. I'll fix the type errors and retry.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                    else:
+                        yield {
+                            "type": "text",
+                            "text": "❌ Typecheck verification failed to complete.\n",
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
@@ -9728,20 +9863,27 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                                 "streaming": False,
                             })
 
-                    # Emit result summary
+                    # Emit result summary (check if result is not None)
                     sequence = await self._get_next_sequence()
-                    if result.success:
+                    if result and result.success:
                         yield {
                             "type": "text",
                             "text": "✅ Linting passed - code follows style guidelines.\n",
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
-                    else:
+                    elif result:
                         warning_count = len(result.warnings)
                         yield {
                             "type": "text",
-                            "text": f"⚠️ Linter found .* style issue{'s' if warning_count != 1 else ''}. I'll address them and retry.\n",
+                            "text": f"⚠️ Linter found {warning_count} style issue{'s' if warning_count != 1 else ''}. I'll address them and retry.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                    else:
+                        yield {
+                            "type": "text",
+                            "text": "❌ Lint verification failed to complete.\n",
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
@@ -9802,20 +9944,27 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                                 "streaming": False,
                             })
 
-                    # Emit result summary
+                    # Emit result summary (check if result is not None)
                     sequence = await self._get_next_sequence()
-                    if result.success:
+                    if result and result.success:
                         yield {
                             "type": "text",
                             "text": "✅ All tests passed successfully.\n",
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
-                    else:
+                    elif result:
                         error_count = len(result.errors)
                         yield {
                             "type": "text",
                             "text": f"❌ Tests failed with {error_count} error{'s' if error_count != 1 else ''}. I'll fix the issues and retry.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                    else:
+                        yield {
+                            "type": "text",
+                            "text": "❌ Test verification failed to complete.\n",
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
@@ -9876,20 +10025,27 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                                 "streaming": False,
                             })
 
-                    # Emit result summary
+                    # Emit result summary (check if result is not None)
                     sequence = await self._get_next_sequence()
-                    if result.success:
+                    if result and result.success:
                         yield {
                             "type": "text",
                             "text": "✅ Build completed successfully.\n",
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }
-                    else:
+                    elif result:
                         error_count = len(result.errors)
                         yield {
                             "type": "text",
                             "text": f"❌ Build failed with {error_count} error{'s' if error_count != 1 else ''}. I'll fix the issues and retry.\n",
+                            "timestamp": get_event_timestamp(),
+                            "sequence": sequence,
+                        }
+                    else:
+                        yield {
+                            "type": "text",
+                            "text": "❌ Build verification failed to complete.\n",
                             "timestamp": get_event_timestamp(),
                             "sequence": sequence,
                         }

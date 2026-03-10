@@ -2119,10 +2119,14 @@ class AutonomousAgent:
         if args.get("cwd"):
             cwd = os.path.join(self.workspace_path, args["cwd"])
 
-        # Apply scan command guard before execution
+        # Apply scan command guard and dangerous command check before execution
         from backend.services.scan_command_guard import (
             is_scan_command,
             is_piped_or_chained,
+        )
+        from backend.agent.tools.dangerous_commands import (
+            get_command_info,
+            format_permission_request,
         )
 
         # Unwrap bash -c before scan detection
@@ -2201,6 +2205,75 @@ class AutonomousAgent:
                 ),
             }
             return
+
+        # Check if this is a dangerous command that requires consent
+        cmd_info = get_command_info(command)
+        if cmd_info is not None and cmd_info.requires_confirmation:
+            # Check if consent has already been granted
+            consent_id = args.get("consent_id")
+
+            # Check global consent approvals first
+            consent_denied = False
+            with _consent_lock:
+                if consent_id and consent_id in _consent_approvals:
+                    approval = _consent_approvals[consent_id]
+                    if approval.get("approved"):
+                        logger.info(f"[AutonomousAgent] ✅ Consent approved for command: {command}")
+                        del _consent_approvals[consent_id]
+                    else:
+                        logger.info(f"[AutonomousAgent] ❌ Consent denied for command: {command}")
+                        consent_denied = True
+
+            # Handle consent decision
+            if consent_denied:
+                yield {
+                    "_is_final_result": True,
+                    "success": False,
+                    "error": "User denied consent for this command",
+                    "consent_denied": True,
+                }
+                return
+            elif not consent_id or consent_id not in self.pending_consents:
+                # Generate new consent request
+                consent_id = str(uuid.uuid4())
+                permission_request = format_permission_request(command, cmd_info, cwd)
+
+                # Store pending consent
+                consent_data = {
+                    "command": command,
+                    "cwd": cwd,
+                    "cmd_info": cmd_info,
+                    "permission_request": permission_request,
+                    "timestamp": int(__import__("time").time()),
+                    "user_id": self.user_id,
+                    "org_id": self.org_id,
+                }
+                self.pending_consents[consent_id] = consent_data
+                with _consent_lock:
+                    _consent_approvals[consent_id] = {
+                        "approved": False,
+                        "command": command,
+                        "timestamp": int(__import__("time").time()),
+                        "pending": True,
+                        "user_id": self.user_id,
+                        "org_id": self.org_id,
+                    }
+
+                # Yield consent required response
+                yield {
+                    "_is_final_result": True,
+                    "success": False,
+                    "requires_consent": True,
+                    "consent_id": consent_id,
+                    "command": command,
+                    "danger_level": cmd_info.risk_level.value,
+                    "warning": permission_request["warning_message"],
+                    "consequences": cmd_info.consequences,
+                    "alternatives": cmd_info.alternatives,
+                    "rollback_possible": cmd_info.rollback_possible,
+                    "error": f"⚠️ CONSENT REQUIRED: This command requires user approval. A consent dialog has been shown to the user. DO NOT retry this command until the user has approved it. The consent_id is: {consent_id}",
+                }
+                return
 
         # Anti-loop detection: track commands but allow legitimate re-runs
         # Don't block before execution - commands may succeed after fixes
@@ -9841,15 +9914,19 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         VerificationType.LINT, cmd
                     ):
                         if not is_complete and output_chunk:
-                            # Stream output chunk
+                            # Stream output chunk as command_output event
                             accumulated_output += output_chunk
-                            yield await self._create_tool_result_event(tool_id, {
+                            sequence = await self._get_next_sequence()
+                            logger.info(f"📤 Streaming lint output chunk: {len(output_chunk)} bytes, seq={sequence}")
+                            yield {
+                                "type": "command_output",
+                                "commandId": tool_id,  # Link to command panel
                                 "command": cmd,
-                                "output": accumulated_output[-2000:],
-                                "exit_code": None,
-                                "success": None,
-                                "streaming": True,
-                            })
+                                "line": output_chunk,
+                                "stream": "stdout",
+                                "timestamp": get_event_timestamp(),
+                                "sequence": sequence,
+                            }
                         elif is_complete:
                             # Command completed
                             result = verification_result
@@ -9922,15 +9999,19 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         VerificationType.TESTS, cmd
                     ):
                         if not is_complete and output_chunk:
-                            # Stream output chunk
+                            # Stream output chunk as command_output event
                             accumulated_output += output_chunk
-                            yield await self._create_tool_result_event(tool_id, {
+                            sequence = await self._get_next_sequence()
+                            logger.info(f"📤 Streaming test output chunk: {len(output_chunk)} bytes, seq={sequence}")
+                            yield {
+                                "type": "command_output",
+                                "commandId": tool_id,  # Link to command panel
                                 "command": cmd,
-                                "output": accumulated_output[-2000:],
-                                "exit_code": None,
-                                "success": None,
-                                "streaming": True,
-                            })
+                                "line": output_chunk,
+                                "stream": "stdout",
+                                "timestamp": get_event_timestamp(),
+                                "sequence": sequence,
+                            }
                         elif is_complete:
                             # Command completed
                             result = verification_result
@@ -10003,15 +10084,19 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         VerificationType.BUILD, cmd
                     ):
                         if not is_complete and output_chunk:
-                            # Stream output chunk
+                            # Stream output chunk as command_output event
                             accumulated_output += output_chunk
-                            yield await self._create_tool_result_event(tool_id, {
+                            sequence = await self._get_next_sequence()
+                            logger.info(f"📤 Streaming build output chunk: {len(output_chunk)} bytes, seq={sequence}")
+                            yield {
+                                "type": "command_output",
+                                "commandId": tool_id,  # Link to command panel
                                 "command": cmd,
-                                "output": accumulated_output[-2000:],
-                                "exit_code": None,
-                                "success": None,
-                                "streaming": True,
-                            })
+                                "line": output_chunk,
+                                "stream": "stdout",
+                                "timestamp": get_event_timestamp(),
+                                "sequence": sequence,
+                            }
                         elif is_complete:
                             # Command completed
                             result = verification_result

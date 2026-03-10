@@ -5343,16 +5343,20 @@ export default function NaviChatPanel({
           flushSync(() => {
             setTerminalEntries((prev) => {
               const updated = [...prev];
-              const entry = updated.find((e) => e.id === commandId);
+              const entryIndex = updated.findIndex((e) => e.id === commandId);
 
-              if (entry) {
-                // Append output line to the terminal entry
+              if (entryIndex !== -1) {
+                // Create new entry object instead of mutating existing one
+                const entry = updated[entryIndex];
                 const currentOutput = entry.output || "";
-                entry.output = currentOutput + outputLine;
-                entry.status = "running";  // Ensure status is running while receiving output
+                updated[entryIndex] = {
+                  ...entry,
+                  output: currentOutput + outputLine,
+                  status: "running",  // Ensure status is running while receiving output
+                };
                 console.log('[NaviChatPanel] ✅ Updated terminal entry:', {
-                  entryId: entry.id,
-                  totalOutputLength: entry.output.length,
+                  entryId: updated[entryIndex].id,
+                  totalOutputLength: updated[entryIndex].output.length,
                 });
               } else {
                 console.log('[NaviChatPanel] ❌ No terminal entry found for commandId:', commandId);

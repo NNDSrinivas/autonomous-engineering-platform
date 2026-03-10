@@ -4092,9 +4092,12 @@ export default function NaviChatPanel({
               // No sequence - use existing append logic
               return appendNarrativeChunk(prev, msg.chunk, narrativeTimestamp);
             }
-            // Has sequence - append to last narrative if consecutive, otherwise create new
+            // Has sequence - append to last narrative if it exists, store sequence for chronological ordering
             const lastItem = prev[prev.length - 1];
-            const isConsecutive = lastItem && typeof lastItem._sequence === 'number' && chunkSequence === lastItem._sequence + 1;
+            // Note: Don't check for consecutive sequence numbers because _event_sequence_counter
+            // is shared across all event types. Tool calls/output between text chunks consume
+            // sequence numbers, so consecutive text chunks won't have adjacent sequences.
+            const isConsecutive = lastItem !== undefined;
             if (lastItem && isConsecutive) {
               // Append to last narrative for consecutive sequences (preserves spaces in chunk)
               const updated = [...prev];

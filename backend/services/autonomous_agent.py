@@ -7926,15 +7926,16 @@ Respond with ONLY a JSON object:
                                     )
 
                                     # Check if consent is required for this command
-                                    # For run_command, streaming handles consent internally but we still need to check result
+                                    # For run_command, streaming handles consent internally (emits consent event
+                                    # and waits for approval), so we skip the outer consent handling block
                                     consent_event = None
                                     if current_tool["name"] != "run_command":
                                         consent_event = self._check_requires_consent(
                                             result, args
                                         )
-                                    elif result.get("requires_consent"):
-                                        # Streaming already handled consent internally, just need to check result
-                                        consent_event = True  # Mark that consent was needed
+                                    # Note: When result.get("requires_consent") is True after streaming,
+                                    # consent was already emitted and handled inside _execute_run_command_streaming,
+                                    # so we leave consent_event=None to skip the outer consent block
 
                                     if consent_event:
                                         command = result.get("command", "")
@@ -8642,15 +8643,16 @@ Respond with ONLY a JSON object:
                                 )
 
                             # Check if consent is required for this command
-                            # For run_command, streaming handles consent internally but we still need to check result
+                            # For run_command, streaming handles consent internally (emits consent event
+                            # and waits for approval), so we skip the outer consent handling block
                             consent_event = None
                             if tc["name"] != "run_command":
                                 consent_event = self._check_requires_consent(
                                     result, tc["arguments"]
                                 )
-                            elif result.get("requires_consent"):
-                                # Streaming already handled consent internally, just need to check result
-                                consent_event = True  # Mark that consent was needed
+                            # Note: When result.get("requires_consent") is True after streaming,
+                            # consent was already emitted and handled inside _execute_run_command_streaming,
+                            # so we leave consent_event=None to skip the outer consent block
 
                             if consent_event:
                                 command = result.get("command", "")

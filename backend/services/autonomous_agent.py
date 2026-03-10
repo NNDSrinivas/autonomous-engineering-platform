@@ -7896,6 +7896,9 @@ Respond with ONLY a JSON object:
                                         f"[AutonomousAgent] ⚙️ Executing tool: {current_tool['name']}"
                                     )
 
+                                    # Initialize result to safe default before streaming/execution
+                                    result = {"success": False, "error": "Command produced no result"}
+
                                     # Special handling for run_command: stream output in real-time
                                     if current_tool["name"] == "run_command":
                                         # Stream command execution with real-time output
@@ -7917,9 +7920,12 @@ Respond with ONLY a JSON object:
                                     )
 
                                     # Check if consent is required for this command
-                                    consent_event = self._check_requires_consent(
-                                        result, args
-                                    )
+                                    # Skip for run_command since streaming already handles consent internally
+                                    consent_event = None
+                                    if current_tool["name"] != "run_command":
+                                        consent_event = self._check_requires_consent(
+                                            result, args
+                                        )
                                     if consent_event:
                                         command = result.get("command", "")
                                         consent_id = result.get("consent_id")
@@ -8607,6 +8613,9 @@ Respond with ONLY a JSON object:
                                 for step_event in step_events:
                                     yield step_event
 
+                            # Initialize result to safe default before streaming/execution
+                            result = {"success": False, "error": "Command produced no result"}
+
                             # Special handling for run_command: stream output in real-time
                             if tc["name"] == "run_command":
                                 async for event_or_result in self._execute_run_command_streaming(
@@ -8623,9 +8632,12 @@ Respond with ONLY a JSON object:
                                 )
 
                             # Check if consent is required for this command
-                            consent_event = self._check_requires_consent(
-                                result, tc["arguments"]
-                            )
+                            # Skip for run_command since streaming already handles consent internally
+                            consent_event = None
+                            if tc["name"] != "run_command":
+                                consent_event = self._check_requires_consent(
+                                    result, tc["arguments"]
+                                )
                             if consent_event:
                                 command = result.get("command", "")
                                 consent_id = result.get("consent_id")
@@ -9979,8 +9991,8 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                     if result:
                         results.append(result)
 
-                # Lint (only if typecheck passed)
-                if results and results[-1].success and self.verification_commands.get("lint"):
+                # Lint (only if previous check passed, or no previous checks)
+                if (not results or results[-1].success) and self.verification_commands.get("lint"):
                     result = None
                     async for event in run_single_verification(
                         VerificationType.LINT,

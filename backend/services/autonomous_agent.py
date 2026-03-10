@@ -651,8 +651,21 @@ class VerificationRunner:
                 # Yield this chunk
                 yield (line_text, False, None)
 
-            # Wait for process to complete
-            exit_code = await process.wait()
+            # Wait for process to complete with bounded timeout
+            # After EOF, process should exit quickly, but guard against edge cases
+            try:
+                exit_code = await asyncio.wait_for(process.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                logger.warning("[Verifier] Process did not exit within 30s after stdout closed - terminating")
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    logger.warning("[Verifier] Process did not terminate gracefully - killing")
+                    process.kill()
+                # Use returncode if available, otherwise treat as failure
+                exit_code = process.returncode if process.returncode is not None else -1
+
             success = exit_code == 0
 
             # Build final result
@@ -2104,7 +2117,7 @@ class AutonomousAgent:
         # Event sequence counter for strict chronological ordering
         # This ensures events are displayed in the correct order regardless of timestamps
         self._event_sequence_counter = 0
-        self._sequence_lock = asyncio.Lock()
+        self._sequence_lock = None  # Lazy-initialized to ensure event loop context
 
         # Anti-loop detection: track last N commands to prevent infinite loops
         self._command_history = []
@@ -2130,6 +2143,10 @@ class AutonomousAgent:
         Returns:
             Unique sequence number for this agent instance's event stream
         """
+        # Lazy-initialize lock in async context to ensure correct event loop attachment
+        if self._sequence_lock is None:
+            self._sequence_lock = asyncio.Lock()
+
         async with self._sequence_lock:
             self._event_sequence_counter += 1
             return self._event_sequence_counter

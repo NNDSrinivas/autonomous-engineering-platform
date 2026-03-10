@@ -13624,7 +13624,7 @@ export default function NaviChatPanel({
               <span className="navi-live-status-inline__segments" aria-label={liveStatusText}>
                 {liveStatusSegments.map((segment, idx) => (
                   <span
-                    key={`${idx}-${segment}`}
+                    key={idx}
                     className={
                       segment === " "
                         ? "navi-live-status-inline__space"

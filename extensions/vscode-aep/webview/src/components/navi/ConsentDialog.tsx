@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Settings, ShieldCheck, ShieldX, TerminalSquare } from "lucide-react";
-import { vscodeApi } from "../../utils/vscodeApi";
+import * as vscodeApi from "../../utils/vscodeApi";
 
 // Parse command into colored segments for syntax highlighting
 function parseCommand(cmd: string): Array<{ text: string; type: 'command' | 'flag' | 'path' | 'operator' | 'string' | 'normal' }> {

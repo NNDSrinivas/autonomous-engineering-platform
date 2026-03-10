@@ -2322,6 +2322,10 @@ class AutonomousAgent:
         start_time = time.time()
         deadline = start_time + cmd_timeout
 
+        # Initialize task variables before try block to avoid NameError in finally
+        stdout_task = None
+        stderr_task = None
+
         try:
             # Create async subprocess
             process = await asyncio.create_subprocess_shell(
@@ -2337,9 +2341,6 @@ class AutonomousAgent:
             stderr_output = []
 
             # Read both stdout and stderr concurrently to prevent pipe buffer deadlock
-            # Create tasks for reading both streams simultaneously
-            stdout_task = None
-            stderr_task = None
             stdout_eof = False
             stderr_eof = False
 

@@ -18,6 +18,55 @@
 - [x] HTTPException proper propagation
 - [x] Safe error decoding in LLM client
 
+## 📋 Deferred Items (Address in Upcoming PRs)
+
+### Code Quality Improvements (Non-Blocking)
+From PR #87 Copilot code reviews - identified but not critical for merge:
+
+#### Frontend (NaviChatPanel.tsx)
+- [ ] **Command Output Handler Optimization**
+  - Issue: New `command.output` handler uses `msg.line` but doesn't call `setPerActionOutputForAction`
+  - Impact: NaviActionRunner may show empty output in action cards
+  - Issue: Bypasses `appendWithLimit` (MAX_COMMAND_OUTPUT), making output unbounded
+  - Location: Line 5317 in NaviChatPanel.tsx
+  - Priority: Medium (affects inline command output display)
+
+- [ ] **Textarea Arrow Key Navigation**
+  - Issue: Arrow key handlers call `preventDefault()` unconditionally
+  - Impact: Users can't navigate cursor up/down in multi-line messages
+  - Fix: Only intercept at start (ArrowUp) or end (ArrowDown) of content
+  - Location: Line 8048+ in NaviChatPanel.tsx (handleKeyDown)
+  - Priority: Medium (UX enhancement for multi-line editing)
+
+#### Frontend (NaviChatPanel.css)
+- [ ] **CSS List Style Conflicts**
+  - Issue: New flex list styles with `!important` override older `display: list-item` styles
+  - Impact: `.navi-list-item` inside `.navi-message-content` loses bullet points
+  - Location: Lines 7589-7626 conflict with 7554-7562
+  - Priority: Low (cosmetic, may affect list rendering)
+
+#### Frontend (NaviActionRunner.tsx)
+- [ ] **Remove Dead Code: readonly Prop**
+  - Issue: `readonly` prop added but never passed from call site (line 12198 in NaviChatPanel)
+  - Impact: Dead code, unused rendering path
+  - Action: Either wire up or remove the prop and associated code
+  - Location: Lines 54-68 in NaviActionRunner.tsx
+  - Priority: Low (cleanup, no functional impact)
+
+#### Backend (autonomous_agent.py)
+- [ ] **Refactor _result Pattern (Architecture)**
+  - Issue: Using `_result` field in events for internal state passing
+  - Risk: If not popped before yielding, causes JSON serialization TypeError
+  - Suggestion: Use side-channel (return value or wrapper object) instead
+  - Location: Line 9944+ in run_single_verification
+  - Priority: Low (architectural improvement, currently working with pop() guards)
+  - Note: Current implementation with event.pop("_result") works but is fragile
+
+### Technical Debt
+- [ ] Consider adding integration tests for streaming command execution
+- [ ] Document autonomous_mode behavior and consent gates in developer docs
+- [ ] Add JSDoc comments to complex React hooks in NaviChatPanel
+
 ## ⚠️  Required Before Production Deploy
 
 ### Environment Configuration

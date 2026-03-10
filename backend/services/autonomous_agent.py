@@ -2044,6 +2044,18 @@ class AutonomousAgent:
     Autonomous agent that completes tasks end-to-end with verification.
     """
 
+    # Protected files that always require confirmation, even in autonomous mode
+    PROTECTED_PATHS = frozenset({
+        "package.json",
+        "package-lock.json",
+        ".env",
+        ".env.local",
+        ".env.production",
+        "docker-compose.yml",
+        "Dockerfile",
+        ".gitignore",
+    })
+
     def __init__(
         self,
         workspace_path: str,
@@ -2321,16 +2333,70 @@ class AutonomousAgent:
                         "error": f"⚠️ CONSENT REQUIRED: This command requires user approval. A consent dialog has been shown to the user. DO NOT retry this command until the user has approved it. The consent_id is: {consent_id}",
                     }
 
-                    # First, yield the SSE consent event for the frontend
+                    # First, yield the SSE consent event for the frontend so the UI
+                    # can present the consent dialog to the user
                     consent_event = self._create_consent_event(consent_result, args)
                     yield consent_event
 
-                    # Then yield the final result with consent metadata
-                    yield {
-                        "_is_final_result": True,
-                        **consent_result,
-                    }
-                    return
+                    # CRITICAL: In streaming mode, we must now wait for the user's consent
+                    # decision before proceeding. The higher-level callers do not run generic
+                    # consent handling for run_command, so this method is responsible for
+                    # blocking until approval/denial.
+                    consent_timeout = args.get("consent_timeout_seconds", 1800)  # 30 minutes default
+                    poll_interval = 1
+                    elapsed = 0
+
+                    while True:
+                        # Sleep briefly to avoid busy-waiting
+                        await asyncio.sleep(poll_interval)
+                        elapsed += poll_interval
+
+                        # Check consent approval status
+                        with _consent_lock:
+                            approval = _consent_approvals.get(consent_id)
+
+                        # If approval record was removed, assume it was approved by another flow
+                        if approval is None:
+                            logger.info(
+                                f"[AutonomousAgent] ✅ Consent record for {consent_id} no longer present; proceeding with command: {command}"
+                            )
+                            break
+
+                        pending = approval.get("pending", False)
+                        approved = approval.get("approved", False)
+
+                        # Decision made and pending flag cleared
+                        if not pending:
+                            if approved:
+                                logger.info(f"[AutonomousAgent] ✅ Consent approved for command: {command}")
+                                with _consent_lock:
+                                    _consent_approvals.pop(consent_id, None)
+                                break
+                            else:
+                                logger.info(f"[AutonomousAgent] ❌ Consent denied for command: {command}")
+                                with _consent_lock:
+                                    _consent_approvals.pop(consent_id, None)
+                                yield {
+                                    "_is_final_result": True,
+                                    "success": False,
+                                    "error": "User denied consent for this command",
+                                    "consent_denied": True,
+                                }
+                                return
+
+                        # Timeout: avoid waiting indefinitely if user never responds
+                        if consent_timeout is not None and elapsed >= consent_timeout:
+                            logger.warning(f"[AutonomousAgent] ⏰ Timed out waiting for consent for command: {command}")
+                            yield {
+                                "_is_final_result": True,
+                                "success": False,
+                                "error": "Timed out waiting for user consent for this command",
+                                "consent_timeout": True,
+                            }
+                            return
+
+                    # If we reach here, consent was approved - proceed with execution
+                    logger.info(f"[AutonomousAgent] 🚀 Consent approved, proceeding with execution: {command}")
             else:
                 logger.info(f"[AutonomousAgent] 🚀 Auto-allowed '{command}', executing without consent")
 
@@ -6009,18 +6075,6 @@ Respond with ONLY a JSON object:
         if tool_name == "delete_file":
             file_path = arguments.get("path", "")
 
-            # Check for protected paths (always require confirmation, even in agent mode)
-            PROTECTED_PATHS = {
-                "package.json",
-                "package-lock.json",
-                ".env",
-                ".env.local",
-                ".env.production",
-                "docker-compose.yml",
-                "Dockerfile",
-                ".gitignore",
-            }
-
             normalized_path = file_path.replace("\\", "/").lower()
             file_basename = os.path.basename(normalized_path)
 
@@ -6028,8 +6082,8 @@ Respond with ONLY a JSON object:
             if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
                 return (True, "Cannot delete files in node_modules - these are managed by npm/yarn")
 
-            # Protected files always require confirmation
-            if file_basename in {p.lower() for p in PROTECTED_PATHS}:
+            # Protected files always require confirmation (using class-level constant)
+            if file_basename in {p.lower() for p in self.PROTECTED_PATHS}:
                 return (True, f"Protected file {file_basename} cannot be deleted without confirmation")
 
             # Non-agent mode: all deletes require confirmation
@@ -6041,18 +6095,6 @@ Respond with ONLY a JSON object:
             source = arguments.get("source", "")
             destination = arguments.get("destination", "")
 
-            # Check for protected paths (always require confirmation, even in agent mode)
-            PROTECTED_PATHS = {
-                "package.json",
-                "package-lock.json",
-                ".env",
-                ".env.local",
-                ".env.production",
-                "docker-compose.yml",
-                "Dockerfile",
-                ".gitignore",
-            }
-
             # Check both source and destination
             for path in [source, destination]:
                 normalized_path = path.replace("\\", "/").lower()
@@ -6062,8 +6104,8 @@ Respond with ONLY a JSON object:
                 if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
                     return (True, "Cannot move files in/to node_modules - these are managed by npm/yarn")
 
-                # Protected files always require confirmation
-                if file_basename in {p.lower() for p in PROTECTED_PATHS}:
+                # Protected files always require confirmation (using class-level constant)
+                if file_basename in {p.lower() for p in self.PROTECTED_PATHS}:
                     return (True, f"Protected file {file_basename} cannot be moved without confirmation")
 
             # Non-agent mode: all moves require confirmation
@@ -6121,18 +6163,6 @@ Respond with ONLY a JSON object:
                         f"Large autofix payload ({edit_payload_lines} lines) requires confirmation",
                     )
 
-            # Check for protected paths (always require confirmation)
-            PROTECTED_PATHS = {
-                "package.json",
-                "package-lock.json",
-                ".env",
-                ".env.local",
-                ".env.production",
-                "docker-compose.yml",
-                "Dockerfile",
-                ".gitignore",
-            }
-
             # Normalize path for comparison (handle both relative and absolute)
             normalized_path = file_path.replace("\\", "/").lower()
             file_basename = os.path.basename(normalized_path)
@@ -6141,7 +6171,8 @@ Respond with ONLY a JSON object:
             if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
                 return (True, "Cannot edit files in node_modules - these are managed by npm/yarn and will be overwritten on install")
 
-            if file_basename in {p.lower() for p in PROTECTED_PATHS}:
+            # Check for protected paths (always require confirmation, using class-level constant)
+            if file_basename in {p.lower() for p in self.PROTECTED_PATHS}:
                 return (True, f"Protected file {file_basename} requires confirmation")
 
             # NON-AGENT MODE: All edits require consent (strict policy)
@@ -6169,18 +6200,6 @@ Respond with ONLY a JSON object:
             content = arguments.get("content", "")
             line_count = content.count("\n") + 1 if content else 0
 
-            # Check for protected paths (always, even when creating new files)
-            PROTECTED_PATHS = {
-                "package.json",
-                "package-lock.json",
-                ".env",
-                ".env.local",
-                ".env.production",
-                "docker-compose.yml",
-                "Dockerfile",
-                ".gitignore",
-            }
-
             normalized_path = file_path.replace("\\", "/").lower()
             file_basename = os.path.basename(normalized_path)
 
@@ -6188,7 +6207,8 @@ Respond with ONLY a JSON object:
             if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
                 return (True, "Cannot write files to node_modules - these are managed by npm/yarn and will be overwritten on install")
 
-            if file_basename in {p.lower() for p in PROTECTED_PATHS}:
+            # Check for protected paths (always, even when creating new files, using class-level constant)
+            if file_basename in {p.lower() for p in self.PROTECTED_PATHS}:
                 # Check if file already exists
                 full_path = os.path.join(self.workspace_path, file_path)
                 file_exists = os.path.exists(full_path)

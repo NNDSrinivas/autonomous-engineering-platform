@@ -2209,75 +2209,90 @@ class AutonomousAgent:
         # Check if this is a dangerous command that requires consent
         cmd_info = get_command_info(command)
         if cmd_info is not None and cmd_info.requires_confirmation:
-            # Check if consent has already been granted
-            consent_id = args.get("consent_id")
+            # Check if command is auto-allowed by user preferences
+            auto_allowed = await self._check_auto_allow(command)
+            if not auto_allowed:
+                # Not auto-allowed, need to check for consent
+                consent_id = args.get("consent_id")
 
-            # Check global consent approvals first
-            consent_denied = False
-            with _consent_lock:
-                if consent_id and consent_id in _consent_approvals:
-                    approval = _consent_approvals[consent_id]
-                    if approval.get("approved"):
-                        logger.info(f"[AutonomousAgent] ✅ Consent approved for command: {command}")
-                        del _consent_approvals[consent_id]
-                    else:
-                        logger.info(f"[AutonomousAgent] ❌ Consent denied for command: {command}")
-                        consent_denied = True
-
-            # Handle consent decision
-            if consent_denied:
-                yield {
-                    "_is_final_result": True,
-                    "success": False,
-                    "error": "User denied consent for this command",
-                    "consent_denied": True,
-                }
-                return
-            elif not consent_id or consent_id not in self.pending_consents:
-                # Generate new consent request
-                consent_id = str(uuid.uuid4())
-                permission_request = format_permission_request(command, cmd_info, cwd)
-
-                # Store pending consent
-                consent_data = {
-                    "command": command,
-                    "cwd": cwd,
-                    "cmd_info": cmd_info,
-                    "permission_request": permission_request,
-                    "timestamp": int(__import__("time").time()),
-                    "user_id": self.user_id,
-                    "org_id": self.org_id,
-                }
-                self.pending_consents[consent_id] = consent_data
+                # Check global consent approvals first
+                consent_denied = False
                 with _consent_lock:
-                    _consent_approvals[consent_id] = {
-                        "approved": False,
+                    if consent_id and consent_id in _consent_approvals:
+                        approval = _consent_approvals[consent_id]
+                        if approval.get("approved"):
+                            logger.info(f"[AutonomousAgent] ✅ Consent approved for command: {command}")
+                            del _consent_approvals[consent_id]
+                        else:
+                            logger.info(f"[AutonomousAgent] ❌ Consent denied for command: {command}")
+                            consent_denied = True
+
+                # Handle consent decision
+                if consent_denied:
+                    yield {
+                        "_is_final_result": True,
+                        "success": False,
+                        "error": "User denied consent for this command",
+                        "consent_denied": True,
+                    }
+                    return
+                elif not consent_id or consent_id not in self.pending_consents:
+                    # Generate new consent request
+                    consent_id = str(uuid.uuid4())
+                    permission_request = format_permission_request(command, cmd_info, cwd)
+
+                    # Store pending consent
+                    consent_data = {
                         "command": command,
+                        "cwd": cwd,
+                        "cmd_info": cmd_info,
+                        "permission_request": permission_request,
                         "timestamp": int(__import__("time").time()),
-                        "pending": True,
                         "user_id": self.user_id,
                         "org_id": self.org_id,
                     }
+                    self.pending_consents[consent_id] = consent_data
+                    with _consent_lock:
+                        _consent_approvals[consent_id] = {
+                            "approved": False,
+                            "command": command,
+                            "timestamp": int(__import__("time").time()),
+                            "pending": True,
+                            "user_id": self.user_id,
+                            "org_id": self.org_id,
+                        }
 
-                # Yield consent required response
-                yield {
-                    "_is_final_result": True,
-                    "success": False,
-                    "requires_consent": True,
-                    "consent_id": consent_id,
-                    "command": command,
-                    "danger_level": cmd_info.risk_level.value,
-                    "warning": permission_request["warning_message"],
-                    "consequences": cmd_info.consequences,
-                    "alternatives": cmd_info.alternatives,
-                    "rollback_possible": cmd_info.rollback_possible,
-                    "error": f"⚠️ CONSENT REQUIRED: This command requires user approval. A consent dialog has been shown to the user. DO NOT retry this command until the user has approved it. The consent_id is: {consent_id}",
-                }
-                return
+                    # Yield consent required response
+                    yield {
+                        "_is_final_result": True,
+                        "success": False,
+                        "requires_consent": True,
+                        "consent_id": consent_id,
+                        "command": command,
+                        "danger_level": cmd_info.risk_level.value,
+                        "warning": permission_request["warning_message"],
+                        "consequences": cmd_info.consequences,
+                        "alternatives": cmd_info.alternatives,
+                        "rollback_possible": cmd_info.rollback_possible,
+                        "error": f"⚠️ CONSENT REQUIRED: This command requires user approval. A consent dialog has been shown to the user. DO NOT retry this command until the user has approved it. The consent_id is: {consent_id}",
+                    }
+                    return
+            else:
+                logger.info(f"[AutonomousAgent] 🚀 Auto-allowed '{command}', executing without consent")
+
+        # Set timeout with same defaults as _execute_tool
+        cmd_timeout = args.get("timeout_seconds", 300)
+        # Cap timeout at 30 minutes
+        cmd_timeout = min(cmd_timeout, 1800)
+        logger.info(f"[AutonomousAgent] Using timeout: {cmd_timeout}s for command")
 
         # Anti-loop detection: track commands but allow legitimate re-runs
         # Don't block before execution - commands may succeed after fixes
         logger.info(f"[AutonomousAgent] 📤 Starting streaming execution: {command[:100]}")
+
+        import time
+        start_time = time.time()
+        deadline = start_time + cmd_timeout
 
         try:
             # Create async subprocess
@@ -2311,6 +2326,24 @@ class AutonomousAgent:
                     timeout=0.1,
                     return_when=asyncio.FIRST_COMPLETED
                 )
+
+                # Check if deadline exceeded
+                if time.time() > deadline:
+                    logger.warning(f"[AutonomousAgent] ⏱️ Command timeout exceeded ({cmd_timeout}s), terminating process")
+                    try:
+                        process.terminate()
+                        await asyncio.wait_for(process.wait(), timeout=5)
+                    except asyncio.TimeoutError:
+                        process.kill()
+                        await process.wait()
+                    yield {
+                        "_is_final_result": True,
+                        "success": False,
+                        "error": f"Command timed out after {cmd_timeout}s",
+                        "exit_code": 124,  # Timeout exit code
+                        "command": command,
+                    }
+                    return
 
                 # Process stdout if ready
                 if stdout_task in done:
@@ -8718,7 +8751,7 @@ Respond with ONLY a JSON object:
         request: str,
         run_verification: bool = True,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
-        autonomous_mode: bool = True,  # True for agent mode (autonomous), False for ask/chat mode
+        autonomous_mode: bool = False,  # False (safe default), True for agent mode
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Execute a task autonomously with verification and self-healing.

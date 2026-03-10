@@ -12692,10 +12692,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     } else if (message.type === 'command.output' && message.commandId) {
       const output = this._commandOutputs.get(message.commandId);
       if (output) {
+        // Support both 'text' (batch path) and 'line' (streaming path)
+        const outputLine = (message as any).text || (message as any).line || '';
         if (message.stream === 'stdout') {
-          output.stdout += message.text || '';
+          output.stdout += outputLine;
         } else if (message.stream === 'stderr') {
-          output.stderr += message.text || '';
+          output.stderr += outputLine;
         }
       }
     } else if (message.type === 'command.done' && message.commandId) {

@@ -2290,9 +2290,8 @@ class AutonomousAgent:
                             "org_id": self.org_id,
                         }
 
-                    # Yield consent required response
-                    yield {
-                        "_is_final_result": True,
+                    # Build result dict for consent event
+                    consent_result = {
                         "success": False,
                         "requires_consent": True,
                         "consent_id": consent_id,
@@ -2303,6 +2302,16 @@ class AutonomousAgent:
                         "alternatives": cmd_info.alternatives,
                         "rollback_possible": cmd_info.rollback_possible,
                         "error": f"⚠️ CONSENT REQUIRED: This command requires user approval. A consent dialog has been shown to the user. DO NOT retry this command until the user has approved it. The consent_id is: {consent_id}",
+                    }
+
+                    # First, yield the SSE consent event for the frontend
+                    consent_event = self._create_consent_event(consent_result, args)
+                    yield consent_event
+
+                    # Then yield the final result with consent metadata
+                    yield {
+                        "_is_final_result": True,
+                        **consent_result,
                     }
                     return
             else:

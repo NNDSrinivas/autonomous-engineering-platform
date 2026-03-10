@@ -2273,18 +2273,28 @@ class AutonomousAgent:
                 consent_id = args.get("consent_id")
 
                 # Check global consent approvals first
+                consent_decision_made = False
+                consent_approved = False
                 consent_denied = False
+
                 with _consent_lock:
                     if consent_id and consent_id in _consent_approvals:
                         approval = _consent_approvals[consent_id]
-                        if approval.get("approved"):
-                            logger.info(f"[AutonomousAgent] ✅ Consent approved for command: {command}")
-                            del _consent_approvals[consent_id]
-                        else:
-                            logger.info(f"[AutonomousAgent] ❌ Consent denied for command: {command}")
-                            consent_denied = True
+                        pending = approval.get("pending", False)
 
-                # Handle consent decision
+                        # If decision was made (pending=False), process it
+                        if not pending:
+                            consent_decision_made = True
+                            if approval.get("approved"):
+                                logger.info(f"[AutonomousAgent] ✅ Consent approved for command: {command}")
+                                consent_approved = True
+                                del _consent_approvals[consent_id]
+                            else:
+                                logger.info(f"[AutonomousAgent] ❌ Consent denied for command: {command}")
+                                consent_denied = True
+                        # If still pending, we need to wait (fall through to waiting logic)
+
+                # Handle denial immediately
                 if consent_denied:
                     yield {
                         "_is_final_result": True,
@@ -2293,7 +2303,10 @@ class AutonomousAgent:
                         "consent_denied": True,
                     }
                     return
-                elif not consent_id or consent_id not in self.pending_consents:
+
+                # If approved, proceed with execution (fall through)
+                # If still pending or no consent_id exists, need to request/wait
+                if not consent_decision_made and (not consent_id or consent_id not in self.pending_consents):
                     # Generate new consent request
                     consent_id = str(uuid.uuid4())
                     permission_request = format_permission_request(command, cmd_info, cwd)
@@ -2338,6 +2351,11 @@ class AutonomousAgent:
                     consent_event = self._create_consent_event(consent_result, args)
                     yield consent_event
 
+                # If consent was already approved, skip waiting and proceed to execution
+                if consent_approved:
+                    logger.info(f"[AutonomousAgent] 🚀 Consent was already approved, proceeding with execution: {command}")
+                # Otherwise, wait for user decision (only if we generated a new consent request)
+                elif not consent_decision_made:
                     # CRITICAL: In streaming mode, we must now wait for the user's consent
                     # decision before proceeding. The higher-level callers do not run generic
                     # consent handling for run_command, so this method is responsible for

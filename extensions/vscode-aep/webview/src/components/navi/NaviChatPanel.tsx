@@ -4026,7 +4026,6 @@ export default function NaviChatPanel({
         // Activities are already stored in the message's storedActivities field
         // setActivityEvents([]);
         // setNarrativeLines([]);
-        setSending(false); // Ensure sending state is reset
         setIsAnalyzing(false);
         clearExecutionPlanState();
         showToast(
@@ -8046,7 +8045,7 @@ export default function NaviChatPanel({
 
   /* ---------- keyboard ---------- */
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter to send
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();

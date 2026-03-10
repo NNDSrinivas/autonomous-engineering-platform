@@ -2464,12 +2464,6 @@ class AutonomousAgent:
                             }
                     break
 
-            # Cancel any pending tasks
-            if stdout_task and not stdout_task.done():
-                stdout_task.cancel()
-            if stderr_task and not stderr_task.done():
-                stderr_task.cancel()
-
             # Wait for process to complete if not already done
             if process.returncode is None:
                 await process.wait()
@@ -2536,6 +2530,12 @@ class AutonomousAgent:
                 "error": str(e),
                 "command": command,
             }
+        finally:
+            # Always cancel pending tasks to prevent resource leaks
+            if stdout_task and not stdout_task.done():
+                stdout_task.cancel()
+            if stderr_task and not stderr_task.done():
+                stderr_task.cancel()
 
     def _normalize_openai_compatible_model_name(self, model: Any) -> Any:
         if not isinstance(model, str):
@@ -5973,11 +5973,11 @@ Respond with ONLY a JSON object:
         Returns:
             (needs_confirmation, reason)
         """
-        # Always destructive: delete, move
-        if tool_name == "delete_file":
+        # File operations: delete, move (skip in autonomous mode)
+        if tool_name == "delete_file" and not context.autonomous_mode:
             return (True, "File deletion requires confirmation")
 
-        if tool_name == "move_file":
+        if tool_name == "move_file" and not context.autonomous_mode:
             return (True, "File move requires confirmation")
 
         # Edit file: Require consent based on mode

@@ -33,6 +33,7 @@ export const QueuedMessageChip: React.FC<Props> = ({
           onClick={() => onSendNow(message.id)}
           className="navi-queue-chip-send"
           title="Cancel current and send now"
+          aria-label="Cancel current and send now"
           type="button"
         >
           <Zap size={11} />

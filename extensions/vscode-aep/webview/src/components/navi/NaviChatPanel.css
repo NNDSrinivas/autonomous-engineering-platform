@@ -6,6 +6,13 @@
   --navi-code-line-height: var(--vscode-editor-line-height, 1.5);
   --navi-link-color: #6aaeff;
   --navi-link-color-active: #8cc2ff;
+
+  /* Syntax highlighting colors - theme-aware */
+  --navi-syntax-command: var(--vscode-symbolIcon-functionForeground, #c678dd);
+  --navi-syntax-flag: var(--vscode-symbolIcon-variableForeground, #56b6c2);
+  --navi-syntax-path: var(--vscode-symbolIcon-stringForeground, #98c379);
+  --navi-syntax-operator: var(--vscode-symbolIcon-operatorForeground, #e5c07b);
+  --navi-syntax-string: var(--vscode-symbolIcon-stringForeground, #d19a66);
 }
 
 /* Main layout: chat + side panel */
@@ -15191,25 +15198,25 @@ html.light .navi-user-message-toggle {
 }
 /* Command Syntax Highlighting in Consent Dialog */
 .navi-cmd-command {
-  color: #c678dd; /* Purple for commands */
+  color: var(--navi-syntax-command);
   font-weight: 500;
 }
 
 .navi-cmd-flag {
-  color: #56b6c2; /* Cyan for flags */
+  color: var(--navi-syntax-flag);
 }
 
 .navi-cmd-path {
-  color: #98c379; /* Green for paths */
+  color: var(--navi-syntax-path);
 }
 
 .navi-cmd-operator {
-  color: #e5c07b; /* Yellow for operators */
+  color: var(--navi-syntax-operator);
   font-weight: 600;
 }
 
 .navi-cmd-string {
-  color: #d19a66; /* Orange for strings */
+  color: var(--navi-syntax-string);
 }
 
 .navi-cmd-normal {

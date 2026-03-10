@@ -5369,9 +5369,9 @@ export default function NaviChatPanel({
           // CRITICAL FIX: Also update the activity event with accumulated output in real-time
           // This ensures output is available for rendering even if command.done has timing issues
           const activityId = commandActivityRef.current.get(commandId);
-          const commandEntry = commandStateRef.current.get(commandId);
-          if (activityId && commandEntry) {
-            const accumulatedOutput = commandEntry.output;
+          const updatedCommandState = commandStateRef.current.get(commandId);
+          if (activityId && updatedCommandState) {
+            const accumulatedOutput = updatedCommandState.output;
 
             // Update activityEvents (live stream)
             setActivityEvents((prev) =>
@@ -5383,7 +5383,7 @@ export default function NaviChatPanel({
             );
 
             // Update per-action activities (inline display)
-            const actionIndex = commandEntry.actionIndex;
+            const actionIndex = updatedCommandState.actionIndex;
             if (actionIndex !== null) {
               updatePerActionActivities(actionIndex, (existing) =>
                 existing.map((evt) =>

@@ -9944,9 +9944,10 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         "❌ Typecheck failed with {count} error{plural}. I'll fix the type errors and retry.\n",
                         "❌ Typecheck verification failed to complete.\n",
                     ):
+                        # Extract internal fields before yielding (prevent JSON serialization errors)
+                        if "_result" in event:
+                            result = event.pop("_result")
                         yield event
-                        if event.get("type") == "text" and ("✅" in event.get("text", "") or "❌" in event.get("text", "")):
-                            result = event.get("_result")
                     if result:
                         results.append(result)
 
@@ -9962,9 +9963,10 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         "⚠️ Linter found {count} style issue{plural}. I'll address them and retry.\n",
                         "❌ Lint verification failed to complete.\n",
                     ):
+                        # Extract internal fields before yielding (prevent JSON serialization errors)
+                        if "_result" in event:
+                            result = event.pop("_result")
                         yield event
-                        if event.get("type") == "text" and ("✅" in event.get("text", "") or "⚠️" in event.get("text", "") or "❌" in event.get("text", "")):
-                            result = event.get("_result")
                     if result:
                         results.append(result)
 
@@ -9980,9 +9982,10 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         "❌ Tests failed with {count} error{plural}. I'll fix the issues and retry.\n",
                         "❌ Test verification failed to complete.\n",
                     ):
+                        # Extract internal fields before yielding (prevent JSON serialization errors)
+                        if "_result" in event:
+                            result = event.pop("_result")
                         yield event
-                        if event.get("type") == "text" and ("✅" in event.get("text", "") or "❌" in event.get("text", "")):
-                            result = event.get("_result")
                     if result:
                         results.append(result)
 
@@ -9998,9 +10001,10 @@ Based on your analysis, what specific file(s) need to be edited? Make those edit
                         "❌ Build failed with {count} error{plural}. I'll fix the issues and retry.\n",
                         "❌ Build verification failed to complete.\n",
                     ):
+                        # Extract internal fields before yielding (prevent JSON serialization errors)
+                        if "_result" in event:
+                            result = event.pop("_result")
                         yield event
-                        if event.get("type") == "text" and ("✅" in event.get("text", "") or "❌" in event.get("text", "")):
-                            result = event.get("_result")
                     if result:
                         results.append(result)
 

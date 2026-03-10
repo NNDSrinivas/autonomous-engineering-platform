@@ -6005,12 +6005,70 @@ Respond with ONLY a JSON object:
         Returns:
             (needs_confirmation, reason)
         """
-        # File operations: delete, move (skip in autonomous mode)
-        if tool_name == "delete_file" and not context.autonomous_mode:
-            return (True, "File deletion requires confirmation")
+        # Delete file: Protected paths require confirmation even in autonomous mode
+        if tool_name == "delete_file":
+            file_path = arguments.get("path", "")
 
-        if tool_name == "move_file" and not context.autonomous_mode:
-            return (True, "File move requires confirmation")
+            # Check for protected paths (always require confirmation, even in agent mode)
+            PROTECTED_PATHS = {
+                "package.json",
+                "package-lock.json",
+                ".env",
+                ".env.local",
+                ".env.production",
+                "docker-compose.yml",
+                "Dockerfile",
+                ".gitignore",
+            }
+
+            normalized_path = file_path.replace("\\", "/").lower()
+            file_basename = os.path.basename(normalized_path)
+
+            # CRITICAL: Block deletes in node_modules (managed by package manager)
+            if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
+                return (True, "Cannot delete files in node_modules - these are managed by npm/yarn")
+
+            # Protected files always require confirmation
+            if file_basename in {p.lower() for p in PROTECTED_PATHS}:
+                return (True, f"Protected file {file_basename} cannot be deleted without confirmation")
+
+            # Non-agent mode: all deletes require confirmation
+            if not context.autonomous_mode:
+                return (True, "File deletion requires confirmation")
+
+        # Move file: Protected paths require confirmation even in autonomous mode
+        if tool_name == "move_file":
+            source = arguments.get("source", "")
+            destination = arguments.get("destination", "")
+
+            # Check for protected paths (always require confirmation, even in agent mode)
+            PROTECTED_PATHS = {
+                "package.json",
+                "package-lock.json",
+                ".env",
+                ".env.local",
+                ".env.production",
+                "docker-compose.yml",
+                "Dockerfile",
+                ".gitignore",
+            }
+
+            # Check both source and destination
+            for path in [source, destination]:
+                normalized_path = path.replace("\\", "/").lower()
+                file_basename = os.path.basename(normalized_path)
+
+                # CRITICAL: Block moves in/to node_modules
+                if "node_modules/" in normalized_path or normalized_path.startswith("node_modules/"):
+                    return (True, "Cannot move files in/to node_modules - these are managed by npm/yarn")
+
+                # Protected files always require confirmation
+                if file_basename in {p.lower() for p in PROTECTED_PATHS}:
+                    return (True, f"Protected file {file_basename} cannot be moved without confirmation")
+
+            # Non-agent mode: all moves require confirmation
+            if not context.autonomous_mode:
+                return (True, "File move requires confirmation")
 
         # Edit file: Require consent based on mode
         # USER REQUIREMENT: File modifications need explicit approval (except in autonomous/agent mode)

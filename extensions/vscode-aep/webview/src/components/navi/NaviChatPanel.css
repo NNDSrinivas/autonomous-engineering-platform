@@ -15220,5 +15220,5 @@ html.light .navi-user-message-toggle {
 }
 
 .navi-cmd-normal {
-  color: #d1e8ff; /* Light blue for normal text */
+  color: var(--vscode-foreground, #d1e8ff);
 }

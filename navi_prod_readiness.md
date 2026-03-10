@@ -35,8 +35,22 @@ From PR #87 Copilot code reviews - identified but not critical for merge:
   - Issue: Arrow key handlers call `preventDefault()` unconditionally
   - Impact: Users can't navigate cursor up/down in multi-line messages
   - Fix: Only intercept at start (ArrowUp) or end (ArrowDown) of content
-  - Location: Line 8048+ in NaviChatPanel.tsx (handleKeyDown)
+  - Location: Line 8051+ in NaviChatPanel.tsx (handleKeyDown)
   - Priority: Medium (UX enhancement for multi-line editing)
+
+- [ ] **flushSync Performance Issue**
+  - Issue: flushSync fires synchronously on every streamed output line
+  - Impact: For commands with many lines (npm install, docker build), this forces full re-render per line, blocking event loop and freezing UI
+  - Fix: Debounce/throttle updates (e.g., accumulate lines for 50-100ms) instead of forcing synchronous render per line
+  - Location: Lines 5344-5369 in NaviChatPanel.tsx
+  - Priority: Medium (performance degradation for verbose commands)
+
+- [ ] **Duplicate command.output Handlers**
+  - Issue: Two separate handlers at lines 4839 and 5320, split by msg.text vs msg.line
+  - Impact: Fragile design; second handler doesn't call setPerActionOutputForAction or use appendWithLimit
+  - Risk: Output becomes unbounded, diverges from first handler's bounded tracking
+  - Location: Lines 4839 and 5320 in NaviChatPanel.tsx
+  - Priority: Medium (architectural fragility, output consistency)
 
 #### Frontend (NaviChatPanel.css)
 - [ ] **CSS List Style Conflicts**
@@ -52,6 +66,14 @@ From PR #87 Copilot code reviews - identified but not critical for merge:
   - Action: Either wire up or remove the prop and associated code
   - Location: Lines 54-68 in NaviActionRunner.tsx
   - Priority: Low (cleanup, no functional impact)
+
+#### Frontend (QueuedMessageChip.tsx)
+- [ ] **Remove Dead Code: QueuedMessageChip Component**
+  - Issue: Component exported but never imported or used anywhere
+  - Impact: Dead code with associated unused CSS classes (.navi-queue-panel, .navi-queue-chip, etc.)
+  - Action: Remove component file and associated CSS if message queuing feature is not planned
+  - Location: QueuedMessageChip.tsx (entire file), NaviChatPanel.css (queue-related styles)
+  - Priority: Low (cleanup, adds confusion without functional value)
 
 #### Backend (autonomous_agent.py)
 - [ ] **Refactor _result Pattern (Architecture)**

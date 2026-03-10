@@ -2355,9 +2355,14 @@ class AutonomousAgent:
                 if stdout_eof and stderr_eof:
                     break
 
+                # Build set of active tasks (filter out None)
+                tasks_to_wait = {t for t in (stdout_task, stderr_task) if t is not None}
+                if not tasks_to_wait:
+                    break  # No active tasks, exit loop
+
                 # Wait for any stream to have data (with timeout)
                 done, pending = await asyncio.wait(
-                    {stdout_task, stderr_task},
+                    tasks_to_wait,
                     timeout=0.1,
                     return_when=asyncio.FIRST_COMPLETED
                 )
@@ -7921,12 +7926,16 @@ Respond with ONLY a JSON object:
                                     )
 
                                     # Check if consent is required for this command
-                                    # Skip for run_command since streaming already handles consent internally
+                                    # For run_command, streaming handles consent internally but we still need to check result
                                     consent_event = None
                                     if current_tool["name"] != "run_command":
                                         consent_event = self._check_requires_consent(
                                             result, args
                                         )
+                                    elif result.get("requires_consent"):
+                                        # Streaming already handled consent internally, just need to check result
+                                        consent_event = True  # Mark that consent was needed
+
                                     if consent_event:
                                         command = result.get("command", "")
                                         consent_id = result.get("consent_id")
@@ -8633,12 +8642,16 @@ Respond with ONLY a JSON object:
                                 )
 
                             # Check if consent is required for this command
-                            # Skip for run_command since streaming already handles consent internally
+                            # For run_command, streaming handles consent internally but we still need to check result
                             consent_event = None
                             if tc["name"] != "run_command":
                                 consent_event = self._check_requires_consent(
                                     result, tc["arguments"]
                                 )
+                            elif result.get("requires_consent"):
+                                # Streaming already handled consent internally, just need to check result
+                                consent_event = True  # Mark that consent was needed
+
                             if consent_event:
                                 command = result.get("command", "")
                                 consent_id = result.get("consent_id")

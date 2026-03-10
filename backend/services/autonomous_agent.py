@@ -2336,6 +2336,13 @@ class AutonomousAgent:
                     except asyncio.TimeoutError:
                         process.kill()
                         await process.wait()
+
+                    # Cancel pending tasks before returning to prevent resource leaks
+                    if stdout_task and not stdout_task.done():
+                        stdout_task.cancel()
+                    if stderr_task and not stderr_task.done():
+                        stderr_task.cancel()
+
                     yield {
                         "_is_final_result": True,
                         "success": False,

@@ -8757,7 +8757,7 @@ async def _run_autonomous_job(job_id: str) -> None:
             # Determine autonomous mode based on intelligence mode selection
             # "agent" or "agent-full-access" = autonomous (no consent)
             # "ask", "chat-only", "plan", "edit" = requires consent
-            mode = request_model.mode or "agent-full-access"
+            mode = request_model.mode or "ask"  # Safe default: require consent
             autonomous_mode = mode.startswith("agent")
             async for event in agent.execute_task(
                 request=effective_request,

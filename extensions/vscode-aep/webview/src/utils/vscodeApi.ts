@@ -66,10 +66,8 @@ export function postMessage(message: VsCodeMessage) {
 export function onMessage(listener: Listener): () => void {
   if (typeof window === "undefined") return () => undefined;
   listeners.add(listener);
-  console.log("[vscodeApi] Listener registered. Total listeners:", listeners.size);
   return () => {
     listeners.delete(listener);
-    console.log("[vscodeApi] Listener removed. Total listeners:", listeners.size);
   };
 }
 

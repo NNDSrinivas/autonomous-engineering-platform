@@ -24,8 +24,8 @@ fi
 # Activate venv if exists, otherwise use system python
 if [ -d "aep-venv" ]; then
     source aep-venv/bin/activate
-    python -m uvicorn backend.api.main:app --reload --host 127.0.0.1 --port 8787
+    python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8787
 else
     echo "No venv found, using system python3"
-    python3 -m uvicorn backend.api.main:app --reload --host 127.0.0.1 --port 8787
+    python3 -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8787
 fi

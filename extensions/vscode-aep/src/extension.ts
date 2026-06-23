@@ -9225,6 +9225,43 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const toolCommandMap = new Map<string, { command: string; cwd?: string }>();
       const toolFileMap = new Map<string, { path: string; actionType: 'editFile' | 'createFile'; summary?: string; content?: string }>();
 
+      // Event sequencing: buffer events by sequence number for chronological ordering
+      const eventBuffer = new Map<number, any>(); // sequence -> event data
+      let nextExpectedSequence = 1; // Track what sequence we should send next
+
+      // Flush buffered events in sequence order (async to handle tool operations)
+      const flushSequencedEvents = async () => {
+        while (eventBuffer.has(nextExpectedSequence)) {
+          const event = eventBuffer.get(nextExpectedSequence)!;
+          eventBuffer.delete(nextExpectedSequence);
+
+          // Process the event in chronological order
+          if (event.type === 'text' && event.text) {
+            if (!shouldSkipChunk(event.text)) {
+              streamedContent = this.normalizeStreamedContent(streamedContent + event.text);
+              this.postToWebview({
+                type: 'botMessageChunk',
+                messageId,
+                chunk: event.text,
+                fullContent: streamedContent,
+                sequence: nextExpectedSequence,  // Pass sequence for chronological ordering in narrative stream
+              });
+            }
+          } else if (event.type === 'tool_call') {
+            // Execute the buffered tool_call handler
+            await event.handler();
+          } else if (event.type === 'tool_result') {
+            // Execute the buffered tool_result handler
+            await event.handler();
+          } else if (event.type === 'command_output') {
+            // Execute the buffered command_output handler
+            event.handler();
+          }
+
+          nextExpectedSequence++;
+        }
+      };
+
       try {
         // AUTO-RECOVERY: Include last action error if recent (within 5 minutes)
         const lastErrorContext = this._lastActionError && (Date.now() - this._lastActionError.timestamp < 300000)
@@ -9493,17 +9530,30 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 // These have a 'type' field: text, thinking, tool_call, tool_result, done
                 if (parsed.type === 'text' && parsed.text) {
                   // Stream narrative text - this is the LLM explaining what it's doing
-                  console.log('[AEP] 📝 V2 Text chunk:', parsed.text.substring(0, 50) + '...');
-                  if (!shouldSkipChunk(parsed.text)) {
-                    streamedContent = this.normalizeStreamedContent(streamedContent + parsed.text);
-                    console.log('[AEP] 📝 Sending botMessageChunk, total length:', streamedContent.length);
-                    this.postToWebview({
-                      type: 'botMessageChunk',
-                      messageId,
-                      chunk: parsed.text,
-                      fullContent: streamedContent,
+                  const seq = typeof parsed.sequence === 'number' ? parsed.sequence : null;
+                  console.log('[AEP] 📝 V2 Text chunk:', parsed.text.substring(0, 50) + '...', 'seq:', seq);
+
+                  if (seq !== null) {
+                    // Buffer event by sequence number for chronological ordering
+                    eventBuffer.set(seq, {
+                      type: 'text',
+                      text: parsed.text,
                     });
+                    await flushSequencedEvents();
+                  } else {
+                    // No sequence number - send immediately (fallback for old backend)
+                    if (!shouldSkipChunk(parsed.text)) {
+                      streamedContent = this.normalizeStreamedContent(streamedContent + parsed.text);
+                      console.log('[AEP] 📝 Sending botMessageChunk (no seq), total length:', streamedContent.length);
+                      this.postToWebview({
+                        type: 'botMessageChunk',
+                        messageId,
+                        chunk: parsed.text,
+                        fullContent: streamedContent,
+                      });
+                    }
                   }
+
                   // Track that we've seen text content (helps with tool call interleaving)
                   if (!hasSeenToolCalls) {
                     hasSeenToolCalls = true;
@@ -9522,260 +9572,295 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 if (parsed.type === 'tool_call' && parsed.tool_call) {
                   // LLM is calling a tool (read_file, edit_file, run_command)
                   const tc = parsed.tool_call;
-                  console.log('[AEP] 🔧 V2 Tool Call:', tc.name, tc.arguments);
+                  const seq = typeof parsed.sequence === 'number' ? parsed.sequence : null;
+                  console.log('[AEP] 🔧 V2 Tool Call:', tc.name, tc.arguments, 'seq:', seq);
 
-                  // Mark that we've seen tool calls - enables narrative interleaving
-                  hasSeenToolCalls = true;
+                  // Define the tool_call handler as an async function
+                  const handleToolCall = async () => {
+                    // Mark that we've seen tool calls - enables narrative interleaving
+                    hasSeenToolCalls = true;
 
-                  // Map tool names to activity kinds for display
-                  const toolToKind: Record<string, string> = {
-                    'read_file': 'read',
-                    'write_file': 'create',
-                    'edit_file': 'edit',
-                    'run_command': 'command',
-                    'search_files': 'rag',
-                    'list_directory': 'context',
+                    // Map tool names to activity kinds for display
+                    const toolToKind: Record<string, string> = {
+                      'read_file': 'read',
+                      'write_file': 'create',
+                      'edit_file': 'edit',
+                      'run_command': 'command',
+                      'search_files': 'rag',
+                      'list_directory': 'context',
+                    };
+
+                    const commandText = String(tc.arguments?.command || '').trim();
+                    const isGrepCommand = tc.name === 'run_command' && /^(rg|grep)\b/i.test(commandText);
+                    const kind = isGrepCommand ? 'grep' : (toolToKind[tc.name] || 'info');
+                    const pathDetail = String(tc.arguments?.path || '');
+                    let detail = pathDetail || commandText || tc.name;
+
+                    if (tc.name === 'read_file' && pathDetail) {
+                      const startLine = tc.arguments?.start_line ?? tc.arguments?.start;
+                      const endLine = tc.arguments?.end_line ?? tc.arguments?.end;
+                      if (startLine || endLine) {
+                        const from = Number(startLine) || 1;
+                        const to = Number(endLine) || from;
+                        detail = `${pathDetail} (lines ${from}-${to})`;
+                      } else {
+                        detail = pathDetail;
+                      }
+                    } else if (isGrepCommand && commandText) {
+                      detail = commandText;
+                    }
+
+                    console.log('[AEP] 🔧 Executing tool_call seq:', seq, 'kind:', kind);
+                    this.postToWebview({
+                      type: 'navi.agent.event',
+                      event: {
+                        kind,
+                        data: {
+                          label: isGrepCommand ? 'Grep' : tc.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                          detail,
+                          status: 'running',
+                          toolId: tc.id,
+                          filePath: pathDetail || undefined,
+                        }
+                      },
+                      // Use backend timestamp if available for accurate chronological ordering
+                      timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
+                      sequence: seq,  // Pass backend sequence for chronological ordering
+                    });
+
+                    if (tc.name === 'run_command') {
+                      const commandId = String(tc.id || `cmd-${Date.now()}`);
+                      const command = String(tc.arguments?.command || '');
+                      const cwd = typeof tc.arguments?.cwd === 'string' ? tc.arguments.cwd : undefined;
+                      toolCommandMap.set(commandId, { command, cwd });
+                      this.postToWebview({
+                        type: 'command.start',
+                        commandId,
+                        command,
+                        cwd,
+                        meta: { actionIndex: tc.arguments?.actionIndex },
+                        sequence: seq,  // Pass backend sequence for chronological ordering
+                      });
+                    }
+
+                    if (tc.name === 'write_file' || tc.name === 'edit_file') {
+                      const relPath = String(tc.arguments?.path || '');
+                      const content = typeof tc.arguments?.content === 'string' ? tc.arguments.content : undefined;
+                      if (relPath && workspaceRoot) {
+                        await this.captureUndoSnapshot(relPath);
+                        const absPath = path.join(workspaceRoot, relPath);
+                        const snapshot = this.getUndoSnapshot(relPath);
+                        const existedBefore = snapshot ? snapshot.existed : fs.existsSync(absPath);
+                        const actionType: 'editFile' | 'createFile' =
+                          tc.name === 'write_file' && !existedBefore ? 'createFile' : 'editFile';
+                        const summary =
+                          tc.arguments?.summary ||
+                          tc.arguments?.description ||
+                          tc.arguments?.purpose ||
+                          tc.arguments?.reason ||
+                          tc.arguments?.changes ||
+                          '';
+                        toolFileMap.set(String(tc.id), { path: relPath, actionType, summary, content });
+                        this.postToWebview({
+                          type: 'action.start',
+                          action: {
+                            type: actionType,
+                            filePath: relPath,
+                          },
+                          actionIndex: tc.arguments?.actionIndex,
+                        });
+                      }
+                    }
+
+                    if (tc.name === 'read_file' || tc.name === 'write_file' || tc.name === 'edit_file') {
+                      const relPath = String(tc.arguments?.path || '');
+                      if (relPath) {
+                        const reason =
+                          tc.arguments?.reason ||
+                          tc.arguments?.description ||
+                          tc.arguments?.purpose ||
+                          tc.arguments?.summary ||
+                          tc.arguments?.changes ||
+                          '';
+                        const verb =
+                          tc.name === 'read_file'
+                            ? 'Reading'
+                            : tc.name === 'write_file'
+                              ? 'Writing'
+                              : 'Editing';
+                        const suffix = reason ? ` — ${reason}` : '';
+                        this.postToWebview({
+                          type: 'navi.narrative',
+                          text: `${verb} ${relPath}${suffix}`,
+                        });
+                      }
+                    }
                   };
 
-                  const commandText = String(tc.arguments?.command || '').trim();
-                  const isGrepCommand = tc.name === 'run_command' && /^(rg|grep)\b/i.test(commandText);
-                  const kind = isGrepCommand ? 'grep' : (toolToKind[tc.name] || 'info');
-                  const pathDetail = String(tc.arguments?.path || '');
-                  let detail = pathDetail || commandText || tc.name;
-
-                  if (tc.name === 'read_file' && pathDetail) {
-                    const startLine = tc.arguments?.start_line ?? tc.arguments?.start;
-                    const endLine = tc.arguments?.end_line ?? tc.arguments?.end;
-                    if (startLine || endLine) {
-                      const from = Number(startLine) || 1;
-                      const to = Number(endLine) || from;
-                      detail = `${pathDetail} (lines ${from}-${to})`;
-                    } else {
-                      detail = pathDetail;
-                    }
-                  } else if (isGrepCommand && commandText) {
-                    detail = commandText;
-                  }
-
-                  this.postToWebview({
-                    type: 'navi.agent.event',
-                    event: {
-                      kind,
-                      data: {
-                        label: isGrepCommand ? 'Grep' : tc.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-                        detail,
-                        status: 'running',
-                        toolId: tc.id,
-                        filePath: pathDetail || undefined,
-                      }
-                    },
-                    // Use backend timestamp if available for accurate chronological ordering
-                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
-                  });
-
-                  if (tc.name === 'run_command') {
-                    const commandId = String(tc.id || `cmd-${Date.now()}`);
-                    const command = String(tc.arguments?.command || '');
-                    const cwd = typeof tc.arguments?.cwd === 'string' ? tc.arguments.cwd : undefined;
-                    toolCommandMap.set(commandId, { command, cwd });
-                    this.postToWebview({
-                      type: 'command.start',
-                      commandId,
-                      command,
-                      cwd,
-                      meta: { actionIndex: tc.arguments?.actionIndex },
+                  if (seq !== null) {
+                    // Buffer tool_call by sequence number for chronological ordering
+                    eventBuffer.set(seq, {
+                      type: 'tool_call',
+                      handler: handleToolCall,
                     });
-                  }
-
-                  if (tc.name === 'write_file' || tc.name === 'edit_file') {
-                    const relPath = String(tc.arguments?.path || '');
-                    const content = typeof tc.arguments?.content === 'string' ? tc.arguments.content : undefined;
-                    if (relPath && workspaceRoot) {
-                      await this.captureUndoSnapshot(relPath);
-                      const absPath = path.join(workspaceRoot, relPath);
-                      const snapshot = this.getUndoSnapshot(relPath);
-                      const existedBefore = snapshot ? snapshot.existed : fs.existsSync(absPath);
-                      const actionType: 'editFile' | 'createFile' =
-                        tc.name === 'write_file' && !existedBefore ? 'createFile' : 'editFile';
-                      const summary =
-                        tc.arguments?.summary ||
-                        tc.arguments?.description ||
-                        tc.arguments?.purpose ||
-                        tc.arguments?.reason ||
-                        tc.arguments?.changes ||
-                        '';
-                      toolFileMap.set(String(tc.id), { path: relPath, actionType, summary, content });
-                      this.postToWebview({
-                        type: 'action.start',
-                        action: {
-                          type: actionType,
-                          filePath: relPath,
-                        },
-                        actionIndex: tc.arguments?.actionIndex,
-                      });
-                    }
-                  }
-
-                  if (tc.name === 'read_file' || tc.name === 'write_file' || tc.name === 'edit_file') {
-                    const relPath = String(tc.arguments?.path || '');
-                    if (relPath) {
-                      const reason =
-                        tc.arguments?.reason ||
-                        tc.arguments?.description ||
-                        tc.arguments?.purpose ||
-                        tc.arguments?.summary ||
-                        tc.arguments?.changes ||
-                        '';
-                      const verb =
-                        tc.name === 'read_file'
-                          ? 'Reading'
-                          : tc.name === 'write_file'
-                            ? 'Writing'
-                            : 'Editing';
-                      const suffix = reason ? ` — ${reason}` : '';
-                      this.postToWebview({
-                        type: 'navi.narrative',
-                        text: `${verb} ${relPath}${suffix}`,
-                      });
-                    }
+                    await flushSequencedEvents();
+                  } else {
+                    // No sequence number - execute immediately (fallback for old backend)
+                    await handleToolCall();
                   }
                 }
 
                 if (parsed.type === 'tool_result' && parsed.tool_result) {
                   // Tool completed - update status
                   const tr = parsed.tool_result;
-                  console.log('[AEP] ✅ V2 Tool Result:', tr.id, tr.result?.success);
+                  const seq = typeof parsed.sequence === 'number' ? parsed.sequence : null;
+                  console.log('[AEP] ✅ V2 Tool Result:', tr.id, tr.result?.success, 'seq:', seq);
 
-                  // Extract details for fallback matching if toolId doesn't match
-                  const resultDetails = {
-                    path: tr.result?.path || tr.result?.file,
-                    command: tr.result?.command,
-                    kind: tr.result?.kind || tr.name,
+                  // Define the tool_result handler as an async function
+                  const handleToolResult = async () => {
+                    // Extract details for fallback matching if toolId doesn't match
+                    const resultDetails = {
+                      path: tr.result?.path || tr.result?.file,
+                      command: tr.result?.command,
+                      kind: tr.result?.kind || tr.name,
+                    };
+
+                    const mappedCommand = toolCommandMap.get(tr.id);
+                    if (mappedCommand) {
+                      const stdout = tr.result?.stdout ? String(tr.result.stdout) : '';
+                      const stderr = tr.result?.stderr ? String(tr.result.stderr) : '';
+                      if (stdout) {
+                        this.postToWebview({
+                          type: 'command.output',
+                          commandId: tr.id,
+                          text: stdout,
+                          stream: 'stdout',
+                        });
+                      }
+                      if (stderr) {
+                        this.postToWebview({
+                          type: 'command.output',
+                          commandId: tr.id,
+                          text: stderr,
+                          stream: 'stderr',
+                        });
+                      }
+                      console.log('[AEP] ✅ Executing tool_result seq:', seq, 'commandId:', tr.id);
+                      this.postToWebview({
+                        type: 'command.done',
+                        commandId: tr.id,
+                        exitCode: typeof tr.result?.exit_code === 'number'
+                          ? tr.result.exit_code
+                          : (tr.result?.success === false ? 1 : 0),
+                        stdout,
+                        stderr,
+                      });
+                      toolCommandMap.delete(tr.id);
+                    }
+
+                    const fileAction = toolFileMap.get(String(tr.id));
+                    if (fileAction) {
+                      const success = tr.result?.success !== false;
+                      let diffInfo: { diff: string | undefined; additions: number; deletions: number } = {
+                        diff: undefined,
+                        additions: 0,
+                        deletions: 0,
+                      };
+                      if (success && workspaceRoot) {
+                        diffInfo = await getGitDiffInfo(workspaceRoot, fileAction.path);
+                      }
+                      if (!success) {
+                        const errText = tr.result?.error || 'Unknown error';
+                        this.postToWebview({
+                          type: 'navi.narrative',
+                          text: `⚠️ ${fileAction.actionType === 'editFile' ? 'Edit' : 'Write'} failed for ${fileAction.path}: ${errText}`,
+                        });
+                      } else if (fileAction.summary) {
+                        const verb = fileAction.actionType === 'editFile' ? 'Edited' : 'Wrote';
+                        this.postToWebview({
+                          type: 'navi.narrative',
+                          text: `${verb} ${fileAction.path} — ${fileAction.summary}`,
+                        });
+                      }
+                      const undoMetadata = this.buildUndoRestoreMetadata(
+                        fileAction.path,
+                        fileAction.actionType,
+                        tr.result,
+                      );
+                      this.postToWebview({
+                        type: 'action.complete',
+                        action: {
+                          type: fileAction.actionType,
+                          filePath: fileAction.path,
+                          diff: diffInfo.diff,
+                          diffUnified: diffInfo.diff,
+                          content: fileAction.content,
+                        },
+                        success,
+                        data: {
+                          diffStats: {
+                            additions: diffInfo.additions,
+                            deletions: diffInfo.deletions,
+                          },
+                          diffUnified: diffInfo.diff,
+                          content: fileAction.content,
+                          ...undoMetadata,
+                        },
+                      });
+                      toolFileMap.delete(String(tr.id));
+                    }
+
+                    const toolResultDetailBase = tr.result?.success ? 'Success' : (tr.result?.error || 'Failed');
+                    const toolResultDetail = resultDetails.path
+                      ? `${resultDetails.path}: ${toolResultDetailBase}`
+                      : toolResultDetailBase;
+                    this.postToWebview({
+                      type: 'navi.agent.event',
+                      event: {
+                        kind: 'tool_result',
+                        data: {
+                          label: 'Complete',
+                          detail: toolResultDetail,
+                          status: 'done',
+                          toolId: tr.id,
+                          result: {
+                            ...tr.result,
+                            ...resultDetails,
+                          },
+                        }
+                      }
+                    });
                   };
 
-                  const mappedCommand = toolCommandMap.get(tr.id);
-                  if (mappedCommand) {
-                    const stdout = tr.result?.stdout ? String(tr.result.stdout) : '';
-                    const stderr = tr.result?.stderr ? String(tr.result.stderr) : '';
-                    if (stdout) {
-                      this.postToWebview({
-                        type: 'command.output',
-                        commandId: tr.id,
-                        text: stdout,
-                        stream: 'stdout',
-                      });
-                    }
-                    if (stderr) {
-                      this.postToWebview({
-                        type: 'command.output',
-                        commandId: tr.id,
-                        text: stderr,
-                        stream: 'stderr',
-                      });
-                    }
-                    this.postToWebview({
-                      type: 'command.done',
-                      commandId: tr.id,
-                      exitCode: typeof tr.result?.exit_code === 'number'
-                        ? tr.result.exit_code
-                        : (tr.result?.success === false ? 1 : 0),
-                      stdout,
-                      stderr,
+                  if (seq !== null) {
+                    // Buffer tool_result by sequence number for chronological ordering
+                    eventBuffer.set(seq, {
+                      type: 'tool_result',
+                      handler: handleToolResult,
                     });
-                    toolCommandMap.delete(tr.id);
+                    await flushSequencedEvents();
+                  } else {
+                    // No sequence number - execute immediately (fallback for old backend)
+                    await handleToolResult();
                   }
-
-                  const fileAction = toolFileMap.get(String(tr.id));
-                  if (fileAction) {
-                    const success = tr.result?.success !== false;
-                    let diffInfo: { diff: string | undefined; additions: number; deletions: number } = {
-                      diff: undefined,
-                      additions: 0,
-                      deletions: 0,
-                    };
-                    if (success && workspaceRoot) {
-                      diffInfo = await getGitDiffInfo(workspaceRoot, fileAction.path);
-                    }
-                    if (!success) {
-                      const errText = tr.result?.error || 'Unknown error';
-                      this.postToWebview({
-                        type: 'navi.narrative',
-                        text: `⚠️ ${fileAction.actionType === 'editFile' ? 'Edit' : 'Write'} failed for ${fileAction.path}: ${errText}`,
-                      });
-                    } else if (fileAction.summary) {
-                      const verb = fileAction.actionType === 'editFile' ? 'Edited' : 'Wrote';
-                      this.postToWebview({
-                        type: 'navi.narrative',
-                        text: `${verb} ${fileAction.path} — ${fileAction.summary}`,
-                      });
-                    }
-                    const undoMetadata = this.buildUndoRestoreMetadata(
-                      fileAction.path,
-                      fileAction.actionType,
-                      tr.result,
-                    );
-                    this.postToWebview({
-                      type: 'action.complete',
-                      action: {
-                        type: fileAction.actionType,
-                        filePath: fileAction.path,
-                        diff: diffInfo.diff,
-                        diffUnified: diffInfo.diff,
-                        content: fileAction.content,
-                      },
-                      success,
-                      data: {
-                        diffStats: {
-                          additions: diffInfo.additions,
-                          deletions: diffInfo.deletions,
-                        },
-                        diffUnified: diffInfo.diff,
-                        content: fileAction.content,
-                        ...undoMetadata,
-                      },
-                    });
-                    toolFileMap.delete(String(tr.id));
-                  }
-
-                  const toolResultDetailBase = tr.result?.success ? 'Success' : (tr.result?.error || 'Failed');
-                  const toolResultDetail = resultDetails.path
-                    ? `${resultDetails.path}: ${toolResultDetailBase}`
-                    : toolResultDetailBase;
-                  this.postToWebview({
-                    type: 'navi.agent.event',
-                    event: {
-                      kind: 'tool_result',
-                      data: {
-                        label: 'Complete',
-                        detail: toolResultDetail,
-                        status: 'done',
-                        toolId: tr.id,
-                        result: {
-                          ...tr.result,
-                          ...resultDetails,
-                        },
-                      }
-                    }
-                  });
                 }
 
-                // Handle command consent requests - send as navi.confirm message
+                // Handle command consent requests - send as navi.consent message
                 if (parsed.type === 'command.consent_required' && parsed.data) {
-                  // Send consent as navi.confirm with data wrapper (uses existing handler)
+                  // CRITICAL FIX: Send as 'navi.consent' not 'navi.confirm' so webview routes to ConsentDialog
                   const consentId = String(parsed.data.consent_id || '');
                   const consentMessage = {
-                    type: 'navi.confirm',
-                    data: {
-                      consent_id: consentId,
-                      command: String(parsed.data.command || ''),
-                      shell: String(parsed.data.shell || 'bash'),
-                      cwd: String(parsed.data.cwd || ''),
-                      danger_level: String(parsed.data.danger_level || 'medium'),
-                      warning: String(parsed.data.warning || 'This command requires your consent.'),
-                      consequences: Array.isArray(parsed.data.consequences) ? parsed.data.consequences.map(String) : [],
-                      alternatives: Array.isArray(parsed.data.alternatives) ? parsed.data.alternatives.map(String) : [],
-                      rollback_possible: Boolean(parsed.data.rollback_possible),
-                    },
+                    type: 'navi.consent',
+                    // Flat structure - webview expects top-level fields, not nested in data
+                    consent_id: consentId,
+                    command: String(parsed.data.command || ''),
+                    shell: String(parsed.data.shell || 'bash'),
+                    cwd: String(parsed.data.cwd || ''),
+                    danger_level: String(parsed.data.danger_level || 'medium'),
+                    warning: String(parsed.data.warning || 'This command requires your consent.'),
+                    consequences: Array.isArray(parsed.data.consequences) ? parsed.data.consequences.map(String) : [],
+                    alternatives: Array.isArray(parsed.data.alternatives) ? parsed.data.alternatives.map(String) : [],
+                    rollback_possible: Boolean(parsed.data.rollback_possible),
                     timestamp: new Date().toISOString(),
                   };
 
@@ -9790,13 +9875,38 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
                 // Handle real-time command output streaming
                 if (parsed.type === 'command_output') {
-                  this.postToWebview({
-                    type: 'command.output',
+                  const seq = typeof parsed.sequence === 'number' ? parsed.sequence : null;
+                  console.log('[AEP] 📤 Received command_output from backend:', {
+                    commandId: parsed.commandId,
+                    lineLength: parsed.line?.length,
                     stream: parsed.stream,
-                    line: parsed.line,
-                    command: parsed.command,
-                    timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
+                    sequence: seq,
                   });
+
+                  const handleCommandOutput = () => {
+                    this.postToWebview({
+                      type: 'command.output',
+                      commandId: parsed.commandId,  // Forward commandId so webview can route output
+                      stream: parsed.stream,
+                      line: parsed.line,
+                      command: parsed.command,
+                      timestamp: parsed.timestamp ? new Date(parsed.timestamp).toISOString() : new Date().toISOString(),
+                    });
+                    console.log('[AEP] ✅ Forwarded command.output to webview (seq:', seq, ')');
+                  };
+
+                  if (seq !== null) {
+                    // Buffer command_output by sequence number for chronological ordering
+                    // This ensures command.start is processed before command.output
+                    eventBuffer.set(seq, {
+                      type: 'command_output',
+                      handler: handleCommandOutput,
+                    });
+                    await flushSequencedEvents();
+                  } else {
+                    // No sequence number - send immediately (fallback for old backend)
+                    handleCommandOutput();
+                  }
                 }
 
                 if (parsed.type === 'done') {
@@ -12582,10 +12692,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     } else if (message.type === 'command.output' && message.commandId) {
       const output = this._commandOutputs.get(message.commandId);
       if (output) {
+        // Support both 'text' (batch path) and 'line' (streaming path)
+        const outputLine = (message as any).text || (message as any).line || '';
         if (message.stream === 'stdout') {
-          output.stdout += message.text || '';
+          output.stdout += outputLine;
         } else if (message.stream === 'stderr') {
-          output.stderr += message.text || '';
+          output.stderr += outputLine;
         }
       }
     } else if (message.type === 'command.done' && message.commandId) {

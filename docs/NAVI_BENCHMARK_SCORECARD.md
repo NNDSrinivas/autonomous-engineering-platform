@@ -1,24 +1,24 @@
 # NAVI Benchmark Scorecard
 
-Generated: 2026-07-16 04:02:53
+Generated: 2026-07-17 04:02:34
 
 ## Summary
 
 - Tasks: 6
 - Passed: 6
 - Failed: 0
-- Total Duration (s): 30.24
+- Total Duration (s): 28.72
 
 ## Results
 
 | Task | Label | Success | Timed Out | Duration (s) | Command |
 | --- | --- | --- | --- | --- | --- |
-| small | Small task | True | False | 1.49 | `python3 -m pytest backend/tests/test_navi_comprehensive.py::TestFileOperations::test_read_file_content backend/tests/test_navi_comprehensive.py::TestCodeAnalysis::test_detect_python_print_statements -q` |
+| small | Small task | True | False | 1.29 | `python3 -m pytest backend/tests/test_navi_comprehensive.py::TestFileOperations::test_read_file_content backend/tests/test_navi_comprehensive.py::TestCodeAnalysis::test_detect_python_print_statements -q` |
 | medium | Medium task | True | False | 1.19 | `python3 -m pytest backend/tests/test_navi_comprehensive.py::TestCodeAnalysis::test_analyze_large_repository_structure -q` |
-| semi_medium | Semi‑medium task | True | False | 9.97 | `python3 -m pytest backend/tests/test_navi_api_integration.py::TestCodeReviewEndpoints::test_review_working_tree_endpoint -q` |
-| long | Long task | True | False | 7.87 | `python3 -m pytest backend/tests/test_navi_api_integration.py -q` |
-| complex | Complex task | True | False | 8.0 | `python3 -m pytest backend/tests/test_navi_comprehensive.py backend/tests/test_navi_api_integration.py -q` |
-| staging_smoke | Staging smoke | True | False | 1.72 | `python3 -m pytest backend/tests/test_staging_smoke.py -q` |
+| semi_medium | Semi‑medium task | True | False | 9.3 | `python3 -m pytest backend/tests/test_navi_api_integration.py::TestCodeReviewEndpoints::test_review_working_tree_endpoint -q` |
+| long | Long task | True | False | 7.52 | `python3 -m pytest backend/tests/test_navi_api_integration.py -q` |
+| complex | Complex task | True | False | 7.65 | `python3 -m pytest backend/tests/test_navi_comprehensive.py backend/tests/test_navi_api_integration.py -q` |
+| staging_smoke | Staging smoke | True | False | 1.77 | `python3 -m pytest backend/tests/test_staging_smoke.py -q` |
 
 ## Notes
 

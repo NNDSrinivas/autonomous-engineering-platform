@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   Activity,
   AlertCircle,
@@ -2044,13 +2045,29 @@ export default function NaviChatPanel({
   // Track command outputs per action index for inline display
   const [perActionOutputs, setPerActionOutputs] = useState<Map<string, Map<number, string>>>(new Map());
 
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const diffSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Scroll navigation state
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+
+  // Auto-resize textarea input
+  const resizeComposerInput = useCallback((el?: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    const minHeight = 22;
+    const maxHeight = 176;
+    el.style.height = "auto";
+    const nextHeight = Math.min(Math.max(el.scrollHeight, minHeight), maxHeight);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, []);
+
+  useEffect(() => {
+    resizeComposerInput(inputRef.current);
+  }, [input, resizeComposerInput]);
+
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editRestoreSnapshot, setEditRestoreSnapshot] = useState<{
     messages: ChatMessage[];
@@ -2371,11 +2388,14 @@ export default function NaviChatPanel({
         return next;
       }
 
-      // New event - assign sequence number
-      activitySequenceRef.current += 1;
+      // New event - assign sequence number (use backend sequence if provided, otherwise use local counter)
+      const backendSequence = event._sequence;
+      if (!backendSequence) {
+        activitySequenceRef.current += 1;
+      }
       const sequencedEvent: ActivityEvent = {
         ...event,
-        _sequence: activitySequenceRef.current,
+        _sequence: backendSequence || activitySequenceRef.current,
       };
 
       // Add new event and sort by sequence number for guaranteed order
@@ -4002,8 +4022,11 @@ export default function NaviChatPanel({
             },
           ];
         });
-        setActivityEvents([]);
-        setNarrativeLines([]);
+        // DON'T clear activities/narratives on error - user should see what happened before the error
+        // Activities are already stored in the message's storedActivities field
+        // setActivityEvents([]);
+        // setNarrativeLines([]);
+        setIsAnalyzing(false);
         clearExecutionPlanState();
         showToast(
           msg.authRequired ? "Sign in required to continue." : errorText,
@@ -4059,6 +4082,45 @@ export default function NaviChatPanel({
               : m
           )
         );
+
+        // Also add chunk to narrative stream for chronological ordering with activities
+        if (msg.chunk && typeof msg.chunk === 'string' && msg.chunk.trim()) {
+          const narrativeTimestamp = msg.timestamp || nowIso();
+          const chunkSequence = typeof msg.sequence === 'number' ? msg.sequence : undefined;
+          setNarrativeLines((prev) => {
+            if (!chunkSequence) {
+              // No sequence - use existing append logic
+              return appendNarrativeChunk(prev, msg.chunk, narrativeTimestamp);
+            }
+            // Has sequence - append to last narrative if it exists, store sequence for chronological ordering
+            const lastItem = prev[prev.length - 1];
+            // Note: Don't check for consecutive sequence numbers because _event_sequence_counter
+            // is shared across all event types. Tool calls/output between text chunks consume
+            // sequence numbers, so consecutive text chunks won't have adjacent sequences.
+            // We simply append to lastItem if it exists.
+            if (lastItem) {
+              // Append to last narrative for consecutive sequences (preserves spaces in chunk)
+              const updated = [...prev];
+              updated[updated.length - 1] = {
+                ...lastItem,
+                text: lastItem.text + msg.chunk,
+                timestamp: narrativeTimestamp,
+                _sequence: chunkSequence,  // Update to latest sequence
+              };
+              return updated.slice(-400);
+            } else {
+              // Create new narrative chunk (new sequence range or gap)
+              const nextChunk: NarrativeLine = {
+                id: makeActivityId(),
+                text: msg.chunk,
+                timestamp: narrativeTimestamp,
+                _sequence: chunkSequence,
+              };
+              return [...prev, nextChunk].slice(-400);
+            }
+          });
+        }
+
         return;
       }
 
@@ -4672,10 +4734,14 @@ export default function NaviChatPanel({
         console.log('[NaviChatPanel] 💬 Narrative received:', narrativeText.substring(0, 100), 'for action:', actionIndex);
 
         // Add to the live narrative stream (Claude Code-like display)
+        // Use flushSync to force immediate rendering and prevent React 18 automatic batching
+        // This ensures smooth streaming instead of content appearing "slammed" all at once
         if (narrativeText) {
-          setNarrativeLines((prev) =>
-            appendNarrativeChunk(prev, narrativeText, narrativeTimestamp)
-          );
+          flushSync(() => {
+            setNarrativeLines((prev) =>
+              appendNarrativeChunk(prev, narrativeText, narrativeTimestamp)
+            );
+          });
         }
 
         // Also add to per-action narratives if we have an action context
@@ -4738,6 +4804,7 @@ export default function NaviChatPanel({
           commandId: terminalId,
           status: "running",
           timestamp: nowIso(),
+          _sequence: typeof msg.sequence === 'number' ? msg.sequence : undefined,  // Use backend sequence
         };
         pushActivityEvent(newActivity);
 
@@ -5251,27 +5318,102 @@ export default function NaviChatPanel({
 
       // Handle real-time command output streaming
       if (msg.type === "command.output") {
+        const commandId = msg.commandId;
         const outputLine = msg.line;
         const stream = msg.stream; // 'stdout' or 'stderr'
 
-        // Append to current bot message content (streamed output visible in real-time)
-        setMessages((prevMessages) => {
-          const updatedMessages = [...prevMessages];
-          const lastMessage = updatedMessages[updatedMessages.length - 1];
-
-          if (lastMessage && lastMessage.role === "assistant") {
-            const prefix = stream === "stderr" ? "⚠️ " : "";
-            const newLine = `${prefix}${outputLine}`;
-
-            // Add to content with code block formatting for terminal output
-            if (!lastMessage.content.includes("```")) {
-              lastMessage.content += "\n```bash\n";
-            }
-            lastMessage.content += newLine + "\n";
-          }
-
-          return updatedMessages;
+        console.log('[NaviChatPanel] 📤 Received command.output:', {
+          commandId,
+          outputLength: outputLine?.length,
+          stream,
         });
+
+        // CRITICAL: Update commandStateRef so output is available when command.done arrives
+        const commandEntry = commandStateRef.current.get(commandId);
+        if (commandEntry) {
+          const currentOutput = commandEntry.output || "";
+          commandEntry.output = currentOutput + outputLine;
+          console.log('[NaviChatPanel] ✅ Updated commandStateRef entry:', {
+            commandId,
+            totalOutputLength: commandEntry.output.length,
+          });
+        }
+
+        // Route output to the correct terminal entry (command panel)
+        // Use flushSync to ensure immediate rendering for smooth streaming
+        if (commandId) {
+          flushSync(() => {
+            setTerminalEntries((prev) => {
+              const updated = [...prev];
+              const entryIndex = updated.findIndex((e) => e.id === commandId);
+
+              if (entryIndex !== -1) {
+                // Create new entry object instead of mutating existing one
+                const entry = updated[entryIndex];
+                const currentOutput = entry.output || "";
+                updated[entryIndex] = {
+                  ...entry,
+                  output: currentOutput + outputLine,
+                  status: "running",  // Ensure status is running while receiving output
+                };
+                console.log('[NaviChatPanel] ✅ Updated terminal entry:', {
+                  entryId: updated[entryIndex].id,
+                  totalOutputLength: updated[entryIndex].output.length,
+                });
+              } else {
+                console.log('[NaviChatPanel] ❌ No terminal entry found for commandId:', commandId);
+              }
+
+              return updated;
+            });
+          });
+
+          // CRITICAL FIX: Also update the activity event with accumulated output in real-time
+          // This ensures output is available for rendering even if command.done has timing issues
+          const activityId = commandActivityRef.current.get(commandId);
+          const updatedCommandState = commandStateRef.current.get(commandId);
+          if (activityId && updatedCommandState) {
+            const accumulatedOutput = updatedCommandState.output;
+
+            // Update activityEvents (live stream)
+            setActivityEvents((prev) =>
+              prev.map((event) =>
+                event.id === activityId
+                  ? { ...event, output: accumulatedOutput }
+                  : event
+              )
+            );
+
+            // Update per-action activities (inline display)
+            const actionIndex = updatedCommandState.actionIndex;
+            if (actionIndex !== null) {
+              updatePerActionActivities(actionIndex, (existing) =>
+                existing.map((evt) =>
+                  evt.id === activityId
+                    ? { ...evt, output: accumulatedOutput }
+                    : evt
+                )
+              );
+            }
+
+            // Update storedActivities on messages (for display after streaming ends)
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.storedActivities && m.storedActivities.some((a) => a.id === activityId)) {
+                  return {
+                    ...m,
+                    storedActivities: m.storedActivities.map((a) =>
+                      a.id === activityId
+                        ? { ...a, output: accumulatedOutput }
+                        : a
+                    ),
+                  };
+                }
+                return m;
+              })
+            );
+          }
+        }
         return;
       }
 
@@ -6177,6 +6319,7 @@ export default function NaviChatPanel({
               status: "running",
               timestamp: msg.timestamp || nowIso(),
               purpose,
+              _sequence: typeof msg.sequence === 'number' ? msg.sequence : undefined,  // Use backend sequence
               ...(data.toolId ? { toolId: data.toolId } : {}),
             } as any);
           }
@@ -7905,7 +8048,7 @@ export default function NaviChatPanel({
 
   /* ---------- keyboard ---------- */
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter to send
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -8669,6 +8812,15 @@ export default function NaviChatPanel({
     const cleaned = raw.replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
     const trimmed = cleaned.trim();
     if (!trimmed) return raw;
+
+    // Check if this looks like a bash command (starts with common command names)
+    const bashCommandPattern = /^(npm|npx|yarn|pnpm|node|python|pip|git|docker|kubectl|curl|wget|tsc|eslint|prettier|jest|vitest|cargo|go|rustc|java|javac|mvn|gradle|make|cmake|gcc|clang|bash|sh|zsh|cd|ls|cat|grep|sed|awk|find|chmod|chown|mkdir|rm|mv|cp|echo|export|source|which|whereis)\b/i;
+
+    if (bashCommandPattern.test(trimmed)) {
+      // It's a bash command - preserve spaces, only normalize multiple spaces to single
+      return trimmed.replace(/\s+/g, ' ');
+    }
+
     const compact = trimmed.replace(/\s+/g, '');
     const looksLikePath =
       /[\\/]/.test(compact) ||
@@ -9503,6 +9655,30 @@ export default function NaviChatPanel({
   ]);
   const liveStatusText = liveStatusLines[0] || "Working...";
   const liveStatusTooltip = liveStatusLines.join(" | ");
+
+  // Split text into segments of 2-3 letters for staggered animation
+  const liveStatusSegments = useMemo(() => {
+    const chunks: string[] = [];
+    let buffer = "";
+    for (const ch of Array.from(liveStatusText || "")) {
+      if (ch === " ") {
+        if (buffer) {
+          chunks.push(buffer);
+          buffer = "";
+        }
+        chunks.push(" ");
+        continue;
+      }
+      buffer += ch;
+      if (buffer.length >= 3) {
+        chunks.push(buffer);
+        buffer = "";
+      }
+    }
+    if (buffer) chunks.push(buffer);
+    return chunks;
+  }, [liveStatusText]);
+
   // Keep floating status only as a last-resort empty-state indicator to avoid duplicate "Thinking..." UIs.
   const showFloatingStatus =
     sending && !hasStreamingMessage && hasRunningActivity && messages.length === 0;
@@ -11664,7 +11840,7 @@ export default function NaviChatPanel({
                                   command={evt.detail}
                                   output={commandOutput}
                                   status={commandStatus}
-                                  showOutput={false}
+                                  showOutput={true}
                                   purpose={evt.purpose}
                                   explanation={evt.explanation}
                                   nextAction={evt.nextAction}
@@ -13439,17 +13615,25 @@ export default function NaviChatPanel({
             data-testid="live-status-inline"
             title={liveStatusTooltip}
           >
-            <Loader2 className="h-3.5 w-3.5 navi-spin" />
+            <span className="navi-live-status-inline__signal" aria-hidden="true">
+              <span className="navi-live-status-inline__bar" />
+              <span className="navi-live-status-inline__bar" />
+              <span className="navi-live-status-inline__bar" />
+            </span>
             <span className="navi-live-status-inline__text">
-              <span className="navi-live-status-inline__wave" aria-label={liveStatusText}>
-                {Array.from(liveStatusText).map((char, idx) => (
+              <span className="navi-live-status-inline__segments" aria-label={liveStatusText}>
+                {liveStatusSegments.map((segment, idx) => (
                   <span
-                    key={`${idx}-${char}`}
-                    className="navi-live-status-inline__char"
-                    style={{ animationDelay: `${(idx % 24) * 0.04}s` }}
+                    key={idx}
+                    className={
+                      segment === " "
+                        ? "navi-live-status-inline__space"
+                        : "navi-live-status-inline__segment"
+                    }
+                    style={{ animationDelay: `${(idx % 8) * 0.11}s` }}
                     aria-hidden="true"
                   >
-                    {char === " " ? "\u00A0" : char}
+                    {segment === " " ? "\u00A0" : segment}
                   </span>
                 ))}
               </span>
@@ -13657,7 +13841,7 @@ export default function NaviChatPanel({
               </div>
             )}
 
-            <input
+            <textarea
               ref={inputRef}
               className={`navi-chat-input ${!isActivelyWorking ? "navi-chat-input--animated-placeholder" : ""}`}
               placeholder={
@@ -13668,9 +13852,11 @@ export default function NaviChatPanel({
                     : NAVI_SUGGESTIONS[placeholderIndex]
               }
               value={input}
+              rows={1}
               onChange={(e) => {
                 const newValue = e.target.value;
                 setInput(newValue);
+                resizeComposerInput(e.target);
 
                 // Check for slash command trigger
                 if (newValue === '/') {
@@ -13760,15 +13946,17 @@ export default function NaviChatPanel({
               data-testid="stop-btn"
               aria-label="Stop request"
             >
-              {/* Modern stop icon - square with rounded corners */}
+              {/* Horizontal line stop icon */}
               <svg
                 width="16"
                 height="16"
                 viewBox="0 0 24 24"
-                fill="currentColor"
-                stroke="none"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3.5"
+                strokeLinecap="round"
               >
-                <rect x="6" y="6" width="12" height="12" rx="2" />
+                <line x1="6" y1="12" x2="18" y2="12" />
               </svg>
             </button>
           ) : (

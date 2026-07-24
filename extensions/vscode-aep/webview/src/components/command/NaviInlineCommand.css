@@ -16,6 +16,15 @@
   --nic-error: #ef4444;
   --nic-radius: 8px;
 
+  /* Syntax highlighting colors - theme-aware */
+  --nic-syntax-command: #60a5fa;
+  --nic-syntax-flag: #a78bfa;
+  --nic-syntax-string: #34d399;
+  --nic-syntax-path: #fbbf24;
+  --nic-syntax-arg: var(--nic-text);
+  --nic-link: #7dd3fc;
+  --nic-link-hover: #e0f2fe;
+
   background: var(--nic-bg);
   border: 1px solid var(--nic-border);
   border-radius: var(--nic-radius);
@@ -138,6 +147,28 @@
   color: var(--nic-error);
 }
 
+/* Bash Syntax Highlighting */
+.bash-command {
+  color: var(--nic-syntax-command);
+  font-weight: 600;
+}
+
+.bash-flag {
+  color: var(--nic-syntax-flag);
+}
+
+.bash-string {
+  color: var(--nic-syntax-string);
+}
+
+.bash-path {
+  color: var(--nic-syntax-path);
+}
+
+.bash-arg {
+  color: var(--nic-syntax-arg);
+}
+
 /* Expand */
 .nic-expand {
   color: var(--nic-text-muted);
@@ -151,7 +182,7 @@
 }
 
 .nic-expand:active {
-  color: #60a5fa;
+  color: var(--nic-accent);
 }
 
 .nic-expand svg {
@@ -308,7 +339,7 @@
 .nic-output-link {
   background: transparent;
   border: 1px solid rgba(56, 189, 248, 0.4);
-  color: #7dd3fc;
+  color: var(--nic-link);
   padding: 4px 8px;
   border-radius: 999px;
   font-size: 11px;
@@ -317,7 +348,7 @@
 
 .nic-output-link:hover {
   background: rgba(56, 189, 248, 0.15);
-  color: #e0f2fe;
+  color: var(--nic-link-hover);
 }
 
 /* Exit code */

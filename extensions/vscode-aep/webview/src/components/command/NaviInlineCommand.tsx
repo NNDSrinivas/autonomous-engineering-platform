@@ -73,13 +73,89 @@ export const NaviInlineCommand: React.FC<NaviInlineCommandProps> = ({
     return cleaned.trim() || 'No output';
   };
 
+  // Syntax highlighting for bash commands
+  const highlightBashCommand = (cmd: string) => {
+    const tokens: { type: string; value: string }[] = [];
+    let i = 0;
+
+    while (i < cmd.length) {
+      const char = cmd[i];
+
+      // Skip whitespace
+      if (/\s/.test(char)) {
+        tokens.push({ type: 'whitespace', value: char });
+        i++;
+        continue;
+      }
+
+      // Handle quoted strings
+      if (char === '"' || char === "'") {
+        const quote = char;
+        let str = quote;
+        i++;
+        while (i < cmd.length && cmd[i] !== quote) {
+          if (cmd[i] === '\\' && i + 1 < cmd.length) {
+            str += cmd[i] + cmd[i + 1];
+            i += 2;
+          } else {
+            str += cmd[i];
+            i++;
+          }
+        }
+        if (i < cmd.length) str += cmd[i++];
+        tokens.push({ type: 'string', value: str });
+        continue;
+      }
+
+      // Handle flags (--flag or -f)
+      if (char === '-') {
+        let flag = char;
+        i++;
+        while (i < cmd.length && /[a-zA-Z0-9-]/.test(cmd[i])) {
+          flag += cmd[i++];
+        }
+        tokens.push({ type: 'flag', value: flag });
+        continue;
+      }
+
+      // Handle regular tokens (commands, paths, etc.)
+      let token = '';
+      while (i < cmd.length && !/[\s"']/.test(cmd[i])) {
+        // Only stop at '-' if it starts a new token (at beginning)
+        // This prevents splitting paths like "marketing-website-navra-labs"
+        if (cmd[i] === '-' && token.length === 0) {
+          break;  // This dash starts a flag token
+        }
+        token += cmd[i++];
+      }
+
+      // Determine token type
+      const type = tokens.length === 0 || (tokens.length === 1 && tokens[0].type === 'whitespace')
+        ? 'command'
+        : token.includes('/') || token.includes('.')
+          ? 'path'
+          : 'arg';
+
+      tokens.push({ type, value: token });
+    }
+
+    return tokens.map((token, idx) => {
+      if (token.type === 'whitespace') return token.value;
+      return (
+        <span key={idx} className={`bash-${token.type}`}>
+          {token.value}
+        </span>
+      );
+    });
+  };
+
   return (
     <div className={`nic nic--${status} ${highlighted ? 'nic--highlight' : ''}`} data-command-id={commandId}>
       <div className="nic-header" onClick={() => setExpanded(!expanded)}>
         <div className="nic-status">
           {getStatusIcon()}
         </div>
-        <code className="nic-command">{command}</code>
+        <code className="nic-command">{highlightBashCommand(command)}</code>
         {commandId && onOpenActivity && (
           <button
             className="nic-activity-btn"

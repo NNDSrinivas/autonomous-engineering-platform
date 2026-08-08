@@ -1,5 +1,65 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ShieldCheck, ShieldX, TerminalSquare } from "lucide-react";
+import { AlertTriangle, Settings, ShieldCheck, ShieldX, TerminalSquare } from "lucide-react";
+import * as vscodeApi from "../../utils/vscodeApi";
+
+// Parse command into colored segments for syntax highlighting
+function parseCommand(cmd: string): Array<{ text: string; type: 'command' | 'flag' | 'path' | 'operator' | 'string' | 'normal' }> {
+  const segments: Array<{ text: string; type: 'command' | 'flag' | 'path' | 'operator' | 'string' | 'normal' }> = [];
+  const tokens = cmd.split(/(\s+|&&|\|\||;|&|\|)/);
+  let isFirstToken = true;
+
+  for (const token of tokens) {
+    if (!token) continue;
+
+    // Whitespace
+    if (/^\s+$/.test(token)) {
+      segments.push({ text: token, type: 'normal' });
+      continue;
+    }
+
+    // Operators
+    if (['&&', '||', ';', '&', '|'].includes(token)) {
+      segments.push({ text: token, type: 'operator' });
+      isFirstToken = true;
+      continue;
+    }
+
+    // First token after operator is a command
+    if (isFirstToken) {
+      // Check if it's a path-like command
+      if (token.includes('/')) {
+        segments.push({ text: token, type: 'path' });
+      } else {
+        segments.push({ text: token, type: 'command' });
+      }
+      isFirstToken = false;
+      continue;
+    }
+
+    // Flags
+    if (token.startsWith('-')) {
+      segments.push({ text: token, type: 'flag' });
+      continue;
+    }
+
+    // Paths
+    if (token.includes('/') || token.startsWith('.')) {
+      segments.push({ text: token, type: 'path' });
+      continue;
+    }
+
+    // Strings (quoted)
+    if (token.startsWith('"') || token.startsWith("'")) {
+      segments.push({ text: token, type: 'string' });
+      continue;
+    }
+
+    // Normal text
+    segments.push({ text: token, type: 'normal' });
+  }
+
+  return segments;
+}
 
 export interface CommandConsentRequest {
   consent_id: string;
@@ -43,6 +103,9 @@ export const ConsentDialog: React.FC<ConsentDialogProps> = ({ consent, onDecisio
     [consent.cwd]
   );
 
+  // Parse command for syntax highlighting
+  const commandSegments = useMemo(() => parseCommand(consent.command), [consent.command]);
+
   useEffect(() => {
     if (showAlternativeInput && inputRef.current) {
       inputRef.current.focus();
@@ -83,7 +146,9 @@ export const ConsentDialog: React.FC<ConsentDialogProps> = ({ consent, onDecisio
       </div>
 
       <code className="navi-inline-consent__command" title={consent.command}>
-        {consent.command}
+        {commandSegments.map((seg, idx) => (
+          <span key={idx} className={`navi-cmd-${seg.type}`}>{seg.text}</span>
+        ))}
       </code>
 
       <div className="navi-inline-consent__warning">
@@ -209,6 +274,25 @@ export const ConsentDialog: React.FC<ConsentDialogProps> = ({ consent, onDecisio
           </button>
         </div>
       )}
+
+      {/* Settings button - always visible */}
+      <div className="navi-inline-consent__settings">
+        <button
+          type="button"
+          className="navi-inline-consent__settings-btn"
+          onClick={() => {
+            // Open consent preferences in settings using established vscodeApi utility
+            vscodeApi.postMessage({
+              type: 'openSettings',
+              section: 'consent-preferences'
+            });
+          }}
+          title="Manage auto-approve preferences"
+        >
+          <Settings className="h-3.5 w-3.5" />
+          <span>Manage preferences</span>
+        </button>
+      </div>
     </div>
   );
 };

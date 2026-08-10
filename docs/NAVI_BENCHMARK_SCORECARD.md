@@ -1,24 +1,24 @@
 # NAVI Benchmark Scorecard
 
-Generated: 2026-08-09 03:33:41
+Generated: 2026-08-10 03:35:26
 
 ## Summary
 
 - Tasks: 6
 - Passed: 6
 - Failed: 0
-- Total Duration (s): 30.48
+- Total Duration (s): 29.18
 
 ## Results
 
 | Task | Label | Success | Timed Out | Duration (s) | Command |
 | --- | --- | --- | --- | --- | --- |
-| small | Small task | True | False | 1.63 | `python3 -m pytest backend/tests/test_navi_comprehensive.py::TestFileOperations::test_read_file_content backend/tests/test_navi_comprehensive.py::TestCodeAnalysis::test_detect_python_print_statements -q` |
-| medium | Medium task | True | False | 1.26 | `python3 -m pytest backend/tests/test_navi_comprehensive.py::TestCodeAnalysis::test_analyze_large_repository_structure -q` |
-| semi_medium | Semi‑medium task | True | False | 9.46 | `python3 -m pytest backend/tests/test_navi_api_integration.py::TestCodeReviewEndpoints::test_review_working_tree_endpoint -q` |
-| long | Long task | True | False | 7.93 | `python3 -m pytest backend/tests/test_navi_api_integration.py -q` |
-| complex | Complex task | True | False | 8.98 | `python3 -m pytest backend/tests/test_navi_comprehensive.py backend/tests/test_navi_api_integration.py -q` |
-| staging_smoke | Staging smoke | True | False | 1.22 | `python3 -m pytest backend/tests/test_staging_smoke.py -q` |
+| small | Small task | True | False | 1.33 | `python3 -m pytest backend/tests/test_navi_comprehensive.py::TestFileOperations::test_read_file_content backend/tests/test_navi_comprehensive.py::TestCodeAnalysis::test_detect_python_print_statements -q` |
+| medium | Medium task | True | False | 1.21 | `python3 -m pytest backend/tests/test_navi_comprehensive.py::TestCodeAnalysis::test_analyze_large_repository_structure -q` |
+| semi_medium | Semi‑medium task | True | False | 9.39 | `python3 -m pytest backend/tests/test_navi_api_integration.py::TestCodeReviewEndpoints::test_review_working_tree_endpoint -q` |
+| long | Long task | True | False | 7.73 | `python3 -m pytest backend/tests/test_navi_api_integration.py -q` |
+| complex | Complex task | True | False | 7.95 | `python3 -m pytest backend/tests/test_navi_comprehensive.py backend/tests/test_navi_api_integration.py -q` |
+| staging_smoke | Staging smoke | True | False | 1.57 | `python3 -m pytest backend/tests/test_staging_smoke.py -q` |
 
 ## Notes
 

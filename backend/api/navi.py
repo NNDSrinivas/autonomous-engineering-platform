@@ -8754,10 +8754,16 @@ async def _run_autonomous_job(job_id: str) -> None:
 
             saw_complete = False
             saw_pending_gate = False
+            # Determine autonomous mode based on intelligence mode selection
+            # "agent" or "agent-full-access" = autonomous (no consent)
+            # "ask", "chat-only", "plan", "edit" = requires consent
+            mode = request_model.mode or "ask"  # Safe default: require consent
+            autonomous_mode = mode.startswith("agent")
             async for event in agent.execute_task(
                 request=effective_request,
                 run_verification=request_model.run_verification,
                 conversation_history=request_model.conversation_history or [],
+                autonomous_mode=autonomous_mode,
             ):
                 # Real cancel path: stop run when cancellation requested.
                 current_job_state = await job_manager.require_job(job_id)
@@ -9953,11 +9959,17 @@ async def navi_autonomous_task(
                 org_id=org_id,
             )
 
+            # Determine autonomous mode based on intelligence mode selection
+            # "agent" or "agent-full-access" = autonomous (no consent)
+            # "ask", "chat-only", "plan", "edit" = requires consent
+            mode = request.mode or "ask"  # Safe default: require consent
+            autonomous_mode = mode.startswith("agent")
             async for event in heartbeat_wrapper(
                 agent.execute_task(
                     request=final_message,  # Use message with image context + past conversation context
                     run_verification=request.run_verification,
                     conversation_history=final_conversation_history,  # Use database history for context
+                    autonomous_mode=autonomous_mode,
                 )
             ):
                 # Collect text events for final response

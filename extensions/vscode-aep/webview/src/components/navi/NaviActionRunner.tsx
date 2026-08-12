@@ -27,7 +27,7 @@ interface ActionActivity {
   kind: string;
   label: string;
   detail?: string;
-  status?: 'running' | 'done' | 'error';
+  status?: 'running' | 'done' | 'error' | 'pending' | 'completed' | 'failed' | 'success' | 'skipped';
   timestamp: string;
   actionIndex?: number;  // Which action this activity belongs to
 }
@@ -51,6 +51,8 @@ interface NaviActionRunnerProps {
   narratives?: Map<number, StreamingNarrative[]>;
   // New: command outputs by action index for inline display
   commandOutputs?: Map<number, string>;
+  // New: readonly mode for displaying completed actions from contentChunks
+  readonly?: boolean;
 }
 
 type ActionStatus = 'pending' | 'running' | 'completed' | 'skipped' | 'error';
@@ -62,7 +64,8 @@ export function NaviActionRunner({
   onAllComplete,
   actionActivities = new Map(),
   narratives = new Map(),
-  commandOutputs = new Map()
+  commandOutputs = new Map(),
+  readonly = false
 }: NaviActionRunnerProps) {
   if (!actions || actions.length === 0) {
     return null;
@@ -318,6 +321,32 @@ export function NaviActionRunner({
 
     if (isCommandAction(action)) {
       const commandOutput = commandOutputs.get(index) || '';
+
+      // For readonly mode (contentChunks), show simple completed result display
+      if (readonly) {
+        return (
+          <div key={index} className="action-item-wrapper">
+            <div className="navi-command-result">
+              <div className="navi-command-result-header">
+                <span className="navi-command-result-icon">✓</span>
+                <span className="navi-command-result-label">Command completed</span>
+              </div>
+              <div className="navi-command-result-command">
+                <code>{action.command || ''}</code>
+              </div>
+              {commandOutput && (
+                <div className="navi-command-result-output">
+                  <pre>{commandOutput}</pre>
+                </div>
+              )}
+            </div>
+            {/* Show activities/narratives inline */}
+            {renderActionActivities(index, action, 'completed')}
+          </div>
+        );
+      }
+
+      // For interactive mode, show approval UI
       return (
         <div key={index} className="action-item-wrapper">
           <InlineCommandApproval
@@ -726,6 +755,64 @@ export function NaviActionRunner({
         .narrative-text {
           color: var(--vscode-foreground, #cccccc);
           flex: 1;
+        }
+
+        /* Readonly command result display (for contentChunks) */
+        .navi-command-result {
+          background: rgba(74, 222, 128, 0.05);
+          border: 1px solid rgba(74, 222, 128, 0.3);
+          border-radius: 8px;
+          padding: 12px 16px;
+          margin: 8px 0;
+        }
+
+        .navi-command-result-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+          color: var(--vscode-foreground, #cccccc);
+          font-size: 13px;
+        }
+
+        .navi-command-result-icon {
+          color: #4ade80;
+          font-size: 14px;
+        }
+
+        .navi-command-result-label {
+          color: var(--vscode-foreground, #cccccc);
+        }
+
+        .navi-command-result-command {
+          background: var(--vscode-textCodeBlock-background, #1a1a1a);
+          padding: 10px 12px;
+          border-radius: 6px;
+          margin-bottom: 8px;
+        }
+
+        .navi-command-result-command code {
+          font-family: var(--vscode-editor-font-family, 'SF Mono', 'Monaco', 'Menlo', monospace);
+          font-size: 13px;
+          line-height: 1.5;
+          color: var(--vscode-foreground, #abb2bf);
+        }
+
+        .navi-command-result-output {
+          background: var(--vscode-textCodeBlock-background, #1a1a1a);
+          padding: 8px 12px;
+          border-radius: 4px;
+          max-height: 200px;
+          overflow-y: auto;
+        }
+
+        .navi-command-result-output pre {
+          font-family: var(--vscode-editor-font-family, monospace);
+          font-size: 11px;
+          line-height: 1.4;
+          color: var(--vscode-foreground, #cccccc);
+          white-space: pre-wrap;
+          margin: 0;
         }
       `}</style>
     </div>
